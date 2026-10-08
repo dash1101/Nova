@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.2-alpha (app only)
+- Toasts are real frosted glass.
+- Home layout: reorder or hide the server picture, shortcuts and at-a-glance stats (Home ⋮ → Edit Home, or Settings → Appearance).
+- Predictive back: on release the page finishes leaving while the one underneath settles, then swaps with no transition — no blank frame or re-fade.
+
 ## 0.4.1-alpha
 - App: frosted glass (real backdrop blur on the bottom bar, back/action buttons and toasts) and raised glass cards; back-button circle centred on the arrow.
 - Pages remember their scroll position when you go back; stronger predictive back (page lifts, scales and slides; the one underneath comes forward).

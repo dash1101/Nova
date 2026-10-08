@@ -130,3 +130,33 @@ private val ROW_H = 60.dp
         }
     }
 }
+
+// ── Home sections ────────────────────────────────────────────────────────────────
+val HOME_SECTIONS = listOf("hero", "shortcuts", "stats")
+fun sectionName(id: String) = when (id) { "hero" -> "Server picture"; "shortcuts" -> "Shortcuts"; else -> "At a glance" }
+private fun sectionIcon(id: String) = when (id) { "hero" -> Icons.Rounded.Dns; "shortcuts" -> Icons.Rounded.Apps; else -> Icons.Rounded.Speed }
+private fun sectionKey(id: String) = when (id) { "hero" -> "home_hero"; "shortcuts" -> "home_shortcuts"; else -> "home_stats" }
+fun sectionOn(id: String) = when (id) { "hero" -> AppPrefs.homeHero; "shortcuts" -> AppPrefs.homeShortcuts; else -> AppPrefs.homeStats }
+
+/** Settings → Appearance → Home layout (or Home ⋮ → Edit Home): order and show/hide the sections. */
+@Composable fun EditHomeScreen(app: AppState) {
+    Page("Home layout", app::back) {
+        SectionLabel("Top to bottom · hold and drag to reorder")
+        Group {
+            ReorderList(AppPrefs.homeOrder, onMove = { AppPrefs.set("home_order", it.joinToString(",")) }) { id, dragging ->
+                val on = sectionOn(id)
+                Row(Modifier.fillMaxWidth().height(ROW_H).padding(start = 20.dp, end = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Rounded.DragHandle, "Hold to move", tint = if (dragging) N.blue else N.sub, modifier = Modifier.size(22.dp))
+                    Spacer(Modifier.width(14.dp))
+                    Icon(sectionIcon(id), null, tint = if (on) N.blue else N.sub, modifier = Modifier.size(22.dp)); Spacer(Modifier.width(14.dp))
+                    Text(sectionName(id), color = if (on) N.text else N.sub, fontSize = 17.sp, modifier = Modifier.weight(1f))
+                    OneSwitch(on, { AppPrefs.set(sectionKey(id), it) })
+                }
+            }
+        }
+        Text("The name, status line and alerts always stay at the top. Hold the shortcut bar on Home to change its buttons.",
+            color = N.sub, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 30.dp, vertical = 4.dp))
+        LinksCard(listOf("Choose shortcuts" to { app.go(Route.EditShortcuts) },
+            "Reset Home" to { AppPrefs.set("home_order", HOME_SECTIONS.joinToString(",")); HOME_SECTIONS.forEach { AppPrefs.set(sectionKey(it), true) } }))
+    }
+}

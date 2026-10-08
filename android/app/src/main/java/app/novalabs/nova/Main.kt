@@ -51,7 +51,7 @@ sealed class Route {
     data object QuickPanel : Route(); data object EditQuick : Route(); data object Status : Route()
     data object Ssh : Route(); data object SshTerm : Route()
     data object Servers : Route(); data object ServerSettings : Route(); data object Dashboard : Route(); data object Approvals : Route()
-    data object Appearance : Route(); data object SetupGuide : Route(); data object EditShortcuts : Route()
+    data object Appearance : Route(); data object SetupGuide : Route(); data object EditShortcuts : Route(); data object EditHome : Route()
     data object Settings : Route(); data object Devices : Route(); data object About : Route()
 }
 
@@ -82,7 +82,8 @@ class AppState(val activity: Activity, val pairing: Pairing, val scope: Coroutin
     var navDir by mutableIntStateOf(0)          // 1 forward, -1 back, 0 tab switch / instant
     fun go(r: Route) { navDir = 1; if (wide && leftPane && stack.size >= 2) pop(); stack.add(r) }
     fun tab(r: Route) { navDir = 0; stack.clear(); scrolls.clear(); stack.add(r) }
-    fun back(instant: Boolean = false) { if (stack.size > 1) { navDir = if (instant) 0 else -1; pop() } }
+    /** [instant]: the page underneath is already on screen (predictive back finished) — swap with no transition. */
+    fun back(instant: Boolean = false) { if (stack.size > 1) { navDir = if (instant) 2 else -1; pop() } }
     private fun pop() { scrolls.keys.removeAll { it.first >= stack.lastIndex }; stack.removeAt(stack.lastIndex) }
     /** Scroll position of every page in the back stack, so going back lands where you left off. */
     private val scrolls = mutableMapOf<Pair<Int, Route>, androidx.compose.foundation.ScrollState>()
@@ -238,14 +239,27 @@ class MainActivity : ComponentActivity() {
         }
     }
     // Predictive back: the page follows your thumb, the one underneath shows through.
-    var backP by remember { mutableFloatStateOf(0f) }
+    // On release the page finishes leaving (slides on and fades) while the one underneath settles to
+    // full size; only then is the stack popped, with no transition, so nothing flashes or re-fades.
+    val backP = remember { androidx.compose.animation.core.Animatable(0f) }
+    val backExit = remember { androidx.compose.animation.core.Animatable(0f) }
+    val backScope = rememberCoroutineScope()
     var backEdge by remember { mutableIntStateOf(androidx.activity.BackEventCompat.EDGE_LEFT) }
     androidx.activity.compose.PredictiveBackHandler(enabled = app.stack.size > 1) { events ->
         try {
-            events.collect { e -> backP = e.progress; backEdge = e.swipeEdge }
+            events.collect { e -> backEdge = e.swipeEdge; backP.snapTo(e.progress) }
+            val finish = androidx.compose.animation.core.tween<Float>(if (reduceMotion()) 0 else 200, easing = androidx.compose.animation.core.FastOutSlowInEasing)
+            kotlinx.coroutines.coroutineScope {
+                launch { backP.animateTo(1f, finish) }
+                backExit.animateTo(1f, finish)
+            }
             app.back(instant = true)
-        } catch (e: kotlin.coroutines.cancellation.CancellationException) { /* gesture cancelled */ }
-        finally { backP = 0f }
+            backP.snapTo(0f); backExit.snapTo(0f)
+        } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+            // gesture cancelled: glide back into place
+            backScope.launch { backExit.snapTo(0f); backP.animateTo(0f, androidx.compose.animation.core.spring(stiffness = 700f)) }
+            throw e
+        }
     }
     LaunchedEffect(openApprovals) { if (openApprovals) { openApprovals = false; app.go(Route.Approvals) } }
 
@@ -256,7 +270,7 @@ class MainActivity : ComponentActivity() {
             app.wide = wide
             CompositionLocalProvider(LocalWide provides wide, LocalRootHaze provides rootHaze) {
                 if (!wide) {
-                    val p by androidx.compose.animation.core.animateFloatAsState(backP, spring(stiffness = 900f), label = "back")
+                    val p = backP.value; val x = backExit.value
                     // ease-out so the first part of the swipe already shows clearly
                     val e = 1f - (1f - p) * (1f - p)
                     val dirX = if (backEdge == androidx.activity.BackEventCompat.EDGE_LEFT) 1 else -1
@@ -275,10 +289,14 @@ class MainActivity : ComponentActivity() {
                                 translationX = dirX * 96.dp.toPx() * e
                                 translationY = 12.dp.toPx() * e
                                 shape = androidx.compose.foundation.shape.RoundedCornerShape(44.dp * e); clip = true
-                                shadowElevation = 24.dp.toPx() * e
+                                shadowElevation = 24.dp.toPx() * e * (1f - x)
+                                translationX += dirX * size.width * 0.35f * x       // released: it carries on out…
+                                alpha = 1f - x                                      // …and fades away
                             } },
                         transitionSpec = { navTransition(app.navDir, reduceMotion()) }, label = "nav") { r ->
-                        GlowBackground { Screen(app, r) }          // each page is opaque, so slides don't show through
+                        // each page is opaque, so slides don't show through; after a finished back gesture the
+                        // page that left is hidden at once (it already animated away)
+                        GlowBackground(Modifier.graphicsLayer { alpha = if (app.navDir == 2 && r != app.top) 0f else 1f }) { Screen(app, r) }
                     }
                     }
                     StatusBarScrim(Modifier.align(Alignment.TopCenter))
@@ -288,13 +306,16 @@ class MainActivity : ComponentActivity() {
                         Modifier.align(Alignment.BottomCenter))
                 } else WideLayout(app, maxWidth)
             }
-            OneToastHost(app.snack, Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = if (wide) 24.dp else 96.dp))
+            CompositionLocalProvider(LocalRootHaze provides rootHaze) {        // so the toast is real frosted glass
+                OneToastHost(app.snack, Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = if (wide) 24.dp else 96.dp))
+            }
         }
     }
 }
 
 /** Forward: the new page slides in from the right over a slight parallax; back: the reverse. */
 fun navTransition(dir: Int, reduce: Boolean): androidx.compose.animation.ContentTransform {
+    if (dir == 2) return androidx.compose.animation.EnterTransition.None togetherWith androidx.compose.animation.ExitTransition.None
     if (reduce || dir == 0) return fadeIn(androidx.compose.animation.core.tween(160)) togetherWith fadeOut(androidx.compose.animation.core.tween(120))
     val spec = androidx.compose.animation.core.tween<androidx.compose.ui.unit.IntOffset>(320, easing = androidx.compose.animation.core.FastOutSlowInEasing)
     return (androidx.compose.animation.slideInHorizontally(spec) { w -> if (dir > 0) w / 3 else -w / 6 } + fadeIn(androidx.compose.animation.core.tween(260))) togetherWith
@@ -363,6 +384,7 @@ private fun Modifier.paneTouch(app: AppState, left: Boolean) = pointerInput(left
         Route.QuickPanel -> QuickPanelScreen(app)
         Route.EditQuick -> EditQuickScreen(app)
         Route.EditShortcuts -> EditShortcutsScreen(app)
+        Route.EditHome -> EditHomeScreen(app)
         Route.Status -> StatusScreen(app)
         Route.Ssh -> SshScreen(app)
         Route.SshTerm -> SshTermScreen(app)

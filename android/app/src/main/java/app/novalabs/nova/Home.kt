@@ -48,7 +48,7 @@ import org.json.JSONObject
             IconButton({ app.act { app.refresh() } }) { Icon(Icons.Rounded.Refresh, "Refresh", tint = N.text) }
             Box {
                 IconButton({ menu = true }) { Icon(Icons.Rounded.MoreVert, "More", tint = N.text) }
-                OneMenu(menu, { menu = false }, listOf("Settings" to { app.go(Route.Settings) }, "About" to { app.go(Route.About) }))
+                OneMenu(menu, { menu = false }, listOf("Edit Home" to { app.go(Route.EditHome) }, "Settings" to { app.go(Route.Settings) }, "About" to { app.go(Route.About) }))
             }
         }
         // Status line — like "100% | Fully charged"
@@ -96,14 +96,19 @@ import org.json.JSONObject
     }
     // Sections can be hidden in Settings → Appearance & privacy.
     if (!LocalWide.current) Column(Modifier.fillMaxSize().verticalScroll(routeScroll())) {
-        // One rhythm: header · (banner) · server · shortcuts · numbers, each block Space.gap apart.
-        top(); if (AppPrefs.homeHero) hero(260.dp) else Spacer(Modifier.height(Space.gap))
-        if (AppPrefs.homeShortcuts) { pills(); Spacer(Modifier.height(Space.gap)) }
-        if (AppPrefs.homeStats) HomeStats(app); Spacer(Modifier.height(130.dp))
+        // One rhythm: header · (banner) · then your sections in your order, each block Space.gap apart.
+        top(); Spacer(Modifier.height(Space.gap))
+        AppPrefs.homeOrder.filter { sectionOn(it) }.forEach { id ->
+            when (id) { "hero" -> hero(260.dp); "shortcuts" -> pills(); else -> HomeStats(app) }
+            Spacer(Modifier.height(Space.gap))
+        }
+        Spacer(Modifier.height(118.dp))
     } else Row(Modifier.fillMaxSize()) {                       // tablet: server on the left, numbers on the right
         Column(Modifier.weight(1f).verticalScroll(routeScroll())) { top(); if (AppPrefs.homeHero) hero(440.dp); Spacer(Modifier.height(30.dp)) }
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).statusBarsPadding().padding(top = 36.dp, end = 8.dp)) {
-            if (AppPrefs.homeShortcuts) { pills(); Spacer(Modifier.height(Space.gap)) }; if (AppPrefs.homeStats) HomeStats(app); Spacer(Modifier.height(30.dp))
+            AppPrefs.homeOrder.filter { it != "hero" && sectionOn(it) }.forEach { id ->
+                if (id == "shortcuts") pills() else HomeStats(app); Spacer(Modifier.height(Space.gap)) }
+            Spacer(Modifier.height(30.dp))
         }
     }
 }

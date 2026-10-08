@@ -29,6 +29,7 @@ object AppPrefs {
     var homeShortcuts by mutableStateOf(true); private set
     var homeStats by mutableStateOf(true); private set
     var homeChips by mutableStateOf(DEFAULT_SHORTCUTS); private set        // Home shortcut bar, in order
+    var homeOrder by mutableStateOf(HOME_SECTIONS); private set            // Home sections, top to bottom
 
     fun init(ctx: Context) {
         if (::sp.isInitialized) return
@@ -36,6 +37,7 @@ object AppPrefs {
         theme = sp.getString("theme", "system")!!; reduceMotion = sp.getBoolean("reduce_motion", false)
         appLock = sp.getBoolean("app_lock", false); hideInRecents = sp.getBoolean("hide_recents", false)
         homeHero = sp.getBoolean("home_hero", true); homeShortcuts = sp.getBoolean("home_shortcuts", true); homeStats = sp.getBoolean("home_stats", true)
+        homeOrder = sp.getString("home_order", null)?.split(",")?.filter { it in HOME_SECTIONS }?.let { it + (HOME_SECTIONS - it.toSet()) } ?: HOME_SECTIONS
         homeChips = sp.getString("home_chips", null)?.let { s -> s.split(",").filter { it.isNotBlank() } } ?: DEFAULT_SHORTCUTS
     }
     fun set(key: String, v: Any) {
@@ -43,6 +45,7 @@ object AppPrefs {
             "theme" -> theme = v as String; "reduce_motion" -> reduceMotion = v as Boolean; "app_lock" -> appLock = v as Boolean
             "hide_recents" -> hideInRecents = v as Boolean; "home_hero" -> homeHero = v as Boolean
             "home_shortcuts" -> homeShortcuts = v as Boolean; "home_stats" -> homeStats = v as Boolean
+            "home_order" -> homeOrder = (v as String).split(",")
             "home_chips" -> homeChips = (v as String).split(",").filter { it.isNotBlank() }
         }
         sp.edit().apply { if (v is Boolean) putBoolean(key, v) else putString(key, v.toString()) }.apply()
@@ -102,14 +105,11 @@ object AppLock {
         }
         SectionLabel("Home")
         Group {
-            SwitchRow("Server picture", "The case with the live fan", AppPrefs.homeHero) { AppPrefs.set("home_hero", it) }
-            RowDivider()
-            SwitchRow("Shortcuts", "The row of buttons under the server", AppPrefs.homeShortcuts) { AppPrefs.set("home_shortcuts", it) }
+            Row1("Home layout", AppPrefs.homeOrder.filter { sectionOn(it) }.joinToString(" · ") { sectionName(it) }.ifEmpty { "Just the header" }, true,
+                Icons.Rounded.Dashboard, onClick = { app.go(Route.EditHome) })
             RowDivider()
             Row1("Choose shortcuts", homeShortcuts(app).joinToString(", ") { it.label }.ifEmpty { "None" }, true,
                 Icons.Rounded.Tune, onClick = { app.go(Route.EditShortcuts) })
-            RowDivider()
-            SwitchRow("Live stats", "CPU, memory, disk, services", AppPrefs.homeStats) { AppPrefs.set("home_stats", it) }
         }
         Text("Each server also has its own name and accent colour (Settings → Server).", color = N.sub, fontSize = 13.sp,
             modifier = Modifier.padding(horizontal = 30.dp, vertical = 4.dp))
