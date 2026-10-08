@@ -1,0 +1,30 @@
+name: ci
+on: [push, pull_request]
+jobs:
+  server:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get install -y python3-cryptography
+      - name: Syntax check
+        run: |
+          python3 -m py_compile server/api/server.py server/api/helper.py server/api/helper-sock.py
+          python3 -c "import ast; [ast.parse(open(f).read()) for f in ('server/api/nova-api','server/api/nova-setup')]"
+          bash -n server/install.sh packaging/build-deb.sh
+          node --check server/web/app.js
+      - name: Build package
+        run: packaging/build-deb.sh
+      - uses: actions/upload-artifact@v4
+        with: { name: nova-server-deb, path: dist/*.deb }
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: 21 }
+      - uses: android-actions/setup-android@v3
+      - name: Build debug APK
+        working-directory: android
+        run: ./gradlew --no-daemon assembleDebug
+      - uses: actions/upload-artifact@v4
+        with: { name: nova-debug-apk, path: android/app/build/outputs/apk/debug/*.apk }

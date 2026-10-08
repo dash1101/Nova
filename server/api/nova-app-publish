@@ -1,0 +1,25 @@
+#!/bin/bash
+# nova-app-publish <apk> ["release notes"] — publish an APK to the Nova app's in-app updater.
+set -euo pipefail
+APK=${1:?usage: nova-app-publish <apk> [notes]}; NOTES=${2:-}
+# aapt2 (Android build-tools) reads the APK's version: $AAPT, or found under $ANDROID_HOME / PATH.
+AAPT=${AAPT:-$(ls -1 ${ANDROID_HOME:-/mnt/cold_storage/.android-build/sdk}/build-tools/*/aapt2 2>/dev/null | sort -V | tail -1)}
+AAPT=${AAPT:-$(command -v aapt2 || true)}
+[ -x "$AAPT" ] || { echo "aapt2 not found: set AAPT=/path/to/aapt2 (Android build-tools)"; exit 1; }
+DIR=/var/lib/nova-api/apk
+line=$($AAPT dump badging "$APK" | sed -n 1p)
+vc=$(grep -oP "versionCode='\K[0-9]+" <<<"$line"); vn=$(grep -oP " versionName='\K[^']+" <<<"$line")
+pkg=$(grep -oP "package: name='\K[^']+" <<<"$line")
+[ "$pkg" = "app.novalabs.nova" ] || { echo "not the Nova app ($pkg)"; exit 1; }
+f="Nova-$vn.apk"; install -o nova-api -g nova-api -m 640 "$APK" "$DIR/$f"
+sha=$(sha256sum "$DIR/$f" | cut -d' ' -f1); size=$(stat -c %s "$DIR/$f")
+python3 - "$DIR/latest.json" "$vc" "$vn" "$sha" "$size" "$f" "$NOTES" <<'PY'
+import json, sys, time
+p, vc, vn, sha, size, f, notes = sys.argv[1:]
+json.dump({"version_code": int(vc), "version_name": vn, "sha256": sha, "size": int(size), "file": f,
+           "notes": notes, "published": time.strftime("%Y-%m-%d %H:%M")}, open(p, "w"), indent=1)
+PY
+chown nova-api:nova-api "$DIR/latest.json"
+ls -1t "$DIR"/Nova-*.apk | tail -n +4 | xargs -r rm -f      # keep the 3 newest
+echo "published $vn (code $vc, $size bytes, sha256 ${sha:0:16}…)"
+/usr/local/bin/nova-log claude "Published Nova app $vn to the in-app updater."

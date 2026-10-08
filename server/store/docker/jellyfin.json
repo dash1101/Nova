@@ -1,0 +1,11 @@
+{
+ "id": "jellyfin",
+ "name": "Jellyfin",
+ "category": "Media",
+ "icon": "movie",
+ "port": 8096,
+ "path": "/",
+ "image": "jellyfin/jellyfin:latest",
+ "description": "Stream your movies, shows and music to any device. Reads cold storage (read-only).",
+ "compose": "services:\n  jellyfin:\n    image: jellyfin/jellyfin:latest\n    container_name: jellyfin\n    restart: unless-stopped\n    ports:\n      - \"{PORT}:8096\"\n    devices:\n      - /dev/dri:/dev/dri\n    volumes:\n      - {DATA}/config:/config\n      - {DATA}/cache:/cache\n      - /mnt/cold_storage:/media:ro\n"
+}

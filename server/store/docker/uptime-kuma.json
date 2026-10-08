@@ -1,0 +1,11 @@
+{
+ "id": "uptime-kuma",
+ "name": "Uptime Kuma",
+ "category": "Monitoring",
+ "icon": "monitor_heart",
+ "port": 3201,
+ "path": "/",
+ "image": "louislam/uptime-kuma:1",
+ "description": "Watches your sites and services and alerts you when one goes down. Beautiful status pages.",
+ "compose": "services:\n  uptime-kuma:\n    image: louislam/uptime-kuma:1\n    container_name: uptime-kuma\n    restart: unless-stopped\n    ports:\n      - \"{PORT}:3001\"\n    volumes:\n      - {DATA}:/app/data\n"
+}

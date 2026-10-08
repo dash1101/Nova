@@ -1,0 +1,12 @@
+{
+ "id": "vaultwarden",
+ "name": "Vaultwarden",
+ "category": "Security",
+ "icon": "key",
+ "port": 8222,
+ "path": "/",
+ "image": "vaultwarden/server:latest",
+ "description": "Self-hosted Bitwarden-compatible password manager.",
+ "notes": "Browsers require HTTPS for the web vault \u2014 put it behind a Cloudflare hostname before using it outside the LAN.",
+ "compose": "services:\n  vaultwarden:\n    image: vaultwarden/server:latest\n    container_name: vaultwarden\n    restart: unless-stopped\n    ports:\n      - \"{PORT}:80\"\n    environment:\n      ADMIN_TOKEN: \"{SECRET1}\"\n      SIGNUPS_ALLOWED: \"true\"\n    volumes:\n      - {DATA}:/data\n"
+}

@@ -1,0 +1,11 @@
+{
+ "id": "it-tools",
+ "name": "IT Tools",
+ "category": "Utilities",
+ "icon": "build",
+ "port": 8282,
+ "path": "/",
+ "image": "corentinth/it-tools:latest",
+ "description": "80+ handy developer tools: converters, generators, encoders, network calculators.",
+ "compose": "services:\n  it-tools:\n    image: corentinth/it-tools:latest\n    container_name: it-tools\n    restart: unless-stopped\n    ports:\n      - \"{PORT}:80\"\n"
+}

@@ -1,0 +1,20 @@
+# Android build output and machine-specific files
+android/build/
+android/app/build/
+android/.gradle/
+android/.kotlin/
+android/local.properties
+android/*.apk
+*.apk
+# NEVER commit the release signing key or its passwords
+android/signing/
+*.jks
+*.keystore
+signing.properties
+# Python
+__pycache__/
+*.pyc
+# Real server config (has Cloudflare secrets) — only config.example.json belongs here
+server/config.json
+dist/
+release-ed25519.pem

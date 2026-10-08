@@ -1,0 +1,11 @@
+{
+ "id": "dozzle",
+ "name": "Dozzle",
+ "category": "Monitoring",
+ "icon": "article",
+ "port": 8888,
+ "path": "/",
+ "image": "amir20/dozzle:latest",
+ "description": "Live, searchable log viewer for every container, in the browser.",
+ "compose": "services:\n  dozzle:\n    image: amir20/dozzle:latest\n    container_name: dozzle\n    restart: unless-stopped\n    ports:\n      - \"{PORT}:8080\"\n    volumes:\n      - /var/run/docker.sock:/var/run/docker.sock:ro\n"
+}

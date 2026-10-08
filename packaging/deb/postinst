@@ -1,0 +1,21 @@
+#!/bin/sh
+set -e
+if [ "$1" = configure ]; then
+    getent passwd nova-api >/dev/null || useradd --system --home-dir /var/lib/nova-api --shell /usr/sbin/nologin nova-api
+    install -d -o nova-api -g nova-api -m 750 /var/lib/nova-api /var/lib/nova-api/apk /var/log/nova-api
+    install -d -m 750 -g nova-api /etc/nova-api
+    rm -f /etc/sudoers.d/nova-api           # very old source installs used a sudo rule
+    systemctl daemon-reload || true
+    systemctl enable --now nova-helper.socket >/dev/null 2>&1 || true
+    systemctl enable --now nova-update-check.timer >/dev/null 2>&1 || true
+    if [ -f /etc/nova-api/config.json ]; then
+        systemctl enable nova-api.service >/dev/null 2>&1 || true
+        systemctl restart nova-api.service || true
+        echo "Nova updated and restarted."
+    else
+        echo ""
+        echo "  Nova is installed.  Next:  sudo nova-setup"
+        echo ""
+    fi
+fi
+exit 0

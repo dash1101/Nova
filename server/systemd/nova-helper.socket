@@ -1,0 +1,13 @@
+[Unit]
+Description=Nova root helper socket (only nova-api can connect)
+
+[Socket]
+ListenStream=/run/nova-helper.sock
+SocketUser=root
+SocketGroup=nova-api
+SocketMode=0660
+Accept=yes
+MaxConnections=32
+
+[Install]
+WantedBy=sockets.target

@@ -1,0 +1,9 @@
+[Unit]
+Description=Fan light schedules + status light, every minute
+
+[Timer]
+OnCalendar=*-*-* *:*:02
+AccuracySec=1s
+
+[Install]
+WantedBy=timers.target

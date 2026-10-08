@@ -1,0 +1,12 @@
+{
+ "id": "filebrowser",
+ "name": "File Browser",
+ "category": "Files",
+ "icon": "folder_open",
+ "port": 8180,
+ "path": "/",
+ "image": "filebrowser/filebrowser:latest",
+ "description": "Browse, upload and share files on cold storage from any browser.",
+ "notes": "First login: admin / admin \u2014 change it right away.",
+ "compose": "services:\n  filebrowser:\n    image: filebrowser/filebrowser:latest\n    container_name: filebrowser\n    restart: unless-stopped\n    ports:\n      - \"{PORT}:80\"\n    volumes:\n      - /mnt/cold_storage:/srv\n      - {DATA}/database:/database\n      - {DATA}/config:/config\n"
+}

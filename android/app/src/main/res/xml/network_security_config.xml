@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- HTTPS only. On the home network Nova uses the server's own certificate, pinned at pairing
+     (see NovaApi.pinned); remotely, Cloudflare's. No plain HTTP anywhere. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false" />
+</network-security-config>

@@ -1,0 +1,153 @@
+#!/usr/bin/python3 -I
+"""
+nova-update — install a signed Nova release (server package + app for the in-app updater).
+
+    sudo nova-update --check             is there something newer? (no changes)
+    sudo nova-update                     install the newest release from the configured source
+    sudo nova-update /path/to/release    install from a folder (or a single SHA256SUMS-signed set)
+
+A release is a folder (or a GitHub release) containing:
+    nova-server_<version>_all.deb   nova-<version>-universal.apk (optional)
+    SHA256SUMS                      SHA256SUMS.sig  (Ed25519 signature by the Nova release key)
+
+Nothing is installed unless SHA256SUMS is signed by the release key shipped in this package and
+every file matches it. Downgrades are refused (unless --allow-downgrade).
+Source: "update_source" in /etc/nova-api/config.json — a local folder, or "github:owner/repo".
+Status for the app: /var/lib/nova-api/update.json
+"""
+import hashlib, json, os, re, shutil, subprocess, sys, tempfile, time, urllib.request
+
+# The public half of the release key ships with the package; in a source checkout it's in packaging/.
+KEY = next((p for p in ("/usr/lib/nova-api/release-key.pub",
+                        os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "..", "packaging", "release-key.pub"))
+            if os.path.exists(p)), None)
+CONF, STATUS = "/etc/nova-api/config.json", "/var/lib/nova-api/update.json"
+ARGS = [a for a in sys.argv[1:] if not a.startswith("--")]
+FLAGS = {a for a in sys.argv[1:] if a.startswith("--")}
+
+
+def say(m): print(m, flush=True)
+
+
+def status(**kv):
+    try: cur = json.load(open(STATUS))
+    except Exception: cur = {}
+    cur.update(kv, t=int(time.time()))
+    tmp = STATUS + ".tmp"
+    with open(tmp, "w") as f: json.dump(cur, f)
+    try: shutil.chown(tmp, "nova-api", "nova-api")
+    except Exception: pass
+    os.chmod(tmp, 0o640); os.replace(tmp, STATUS)
+
+
+def fail(m, code=1):
+    status(state="failed", error=m); say(f"✗ {m}"); sys.exit(code)
+
+
+def installed_version():
+    r = subprocess.run(["dpkg-query", "-W", "-f=${Version}", "nova-server"], capture_output=True, text=True)
+    return r.stdout.strip() if r.returncode == 0 else ""
+
+
+def newer(a, b):          # is a newer than b (Debian version rules)
+    return subprocess.run(["dpkg", "--compare-versions", a, "gt", b]).returncode == 0
+
+
+def verify_sums(sums: bytes, sig: bytes):
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.exceptions import InvalidSignature
+    import base64
+    if not KEY: fail("no release key installed — can't verify updates")
+    pub = serialization.load_pem_public_key(open(KEY, "rb").read())
+    try: pub.verify(base64.b64decode(sig.strip()), sums)
+    except (InvalidSignature, ValueError): fail("the release signature is NOT valid — refusing to install")
+
+
+def fetch(url, dest=None, limit=200 * 1024 * 1024):
+    if not url.startswith("https://"): fail("refusing a non-https download")
+    req = urllib.request.Request(url, headers={"User-Agent": "nova-update", "Accept": "application/octet-stream"})
+    with urllib.request.urlopen(req, timeout=60) as r:
+        data = r.read(limit + 1)
+    if len(data) > limit: fail("download too large")
+    if dest: open(dest, "wb").write(data)
+    return data
+
+
+def gather(src, work):
+    """Copy/download the release into `work` and return the file names listed in SHA256SUMS."""
+    if src.startswith("github:"):
+        repo = src.split(":", 1)[1]
+        if not re.fullmatch(r"[\w.-]+/[\w.-]+", repo): fail("bad github source")
+        rel = json.loads(fetch(f"https://api.github.com/repos/{repo}/releases/latest"))
+        assets = {a["name"]: a["browser_download_url"] for a in rel.get("assets", [])}
+        for need in ("SHA256SUMS", "SHA256SUMS.sig"):
+            if need not in assets: fail(f"the latest release has no {need}")
+            fetch(assets[need], os.path.join(work, need))
+        for name in parse_sums(open(os.path.join(work, "SHA256SUMS"), "rb").read()):
+            if name in assets: fetch(assets[name], os.path.join(work, name))
+    else:
+        if not os.path.isdir(src): fail(f"{src} isn't a folder")
+        for name in os.listdir(src):
+            if name in ("SHA256SUMS", "SHA256SUMS.sig") or name.endswith((".deb", ".apk")):
+                shutil.copy(os.path.join(src, name), work)
+    sums = open(os.path.join(work, "SHA256SUMS"), "rb").read() if os.path.exists(os.path.join(work, "SHA256SUMS")) else fail("no SHA256SUMS")
+    sig = open(os.path.join(work, "SHA256SUMS.sig"), "rb").read() if os.path.exists(os.path.join(work, "SHA256SUMS.sig")) else fail("no SHA256SUMS.sig — unsigned release")
+    verify_sums(sums, sig)
+    listed = parse_sums(sums)
+    for name, want in listed.items():
+        p = os.path.join(work, name)
+        if not os.path.exists(p): continue                      # optional files (e.g. other APK flavours)
+        if hashlib.sha256(open(p, "rb").read()).hexdigest() != want: fail(f"{name} doesn't match its signed checksum")
+    for f in os.listdir(work):                                    # anything not signed is dropped
+        if f not in listed and f not in ("SHA256SUMS", "SHA256SUMS.sig"): os.remove(os.path.join(work, f))
+    return listed
+
+
+def parse_sums(b):
+    out = {}
+    for line in b.decode().splitlines():
+        m = re.fullmatch(r"([0-9a-f]{64})\s+\*?([\w.+~-]+)", line.strip())
+        if m: out[m.group(2)] = m.group(1)
+    return out
+
+
+def main():
+    if os.geteuid() != 0: sys.exit("run with sudo")
+    cfg = {}
+    try: cfg = json.load(open(CONF))
+    except Exception: pass
+    src = ARGS[0] if ARGS else cfg.get("update_source", "")
+    if not src: fail("no update source — pass a folder, or set \"update_source\" in /etc/nova-api/config.json (a folder or github:owner/repo)", 2)
+    cur = installed_version()
+    status(state="checking", current=cur, source=src)
+    work = tempfile.mkdtemp(prefix="nova-update-")
+    try:
+        listed = gather(os.path.abspath(src) if not src.startswith("github:") else src, work)
+        debs = sorted(n for n in listed if n.startswith("nova-server_") and n.endswith("_all.deb") and os.path.exists(os.path.join(work, n)))
+        if not debs: fail("the release has no server package")
+        deb = debs[-1]; ver = deb[len("nova-server_"):-len("_all.deb")]
+        avail_newer = not cur or newer(ver, cur)
+        status(state="available" if avail_newer else "current", current=cur, available=ver)
+        if "--check" in FLAGS:
+            say(f"installed {cur or 'none'} · release {ver} · {'update available' if avail_newer else 'up to date'}"); return
+        if not avail_newer and "--allow-downgrade" not in FLAGS and "--reinstall" not in FLAGS:
+            say(f"✓ already up to date ({cur})"); return
+        say(f"→ installing nova-server {ver} (signature and checksums verified)")
+        status(state="installing", available=ver)
+        apks = sorted(n for n in listed if n.endswith("-universal.apk") and os.path.exists(os.path.join(work, n)))
+        keep = None
+        if apks:                                             # stage the app before the server restarts
+            keep = os.path.join(tempfile.mkdtemp(prefix="nova-apk-"), apks[-1]); shutil.copy(os.path.join(work, apks[-1]), keep)
+        r = subprocess.run(["apt-get", "install", "-y", "--allow-downgrades", os.path.join(work, deb)], capture_output=True, text=True)
+        if r.returncode != 0: fail("apt couldn't install it: " + (r.stderr or r.stdout)[-400:])
+        if keep:
+            subprocess.run(["nova-app-publish", keep, f"Nova {ver}"], capture_output=True)
+            say(f"→ app {os.path.basename(keep)} published to the in-app updater")
+        status(state="done", current=installed_version(), available=ver, error="")
+        say(f"✓ Nova {installed_version()} installed")
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+
+
+if __name__ == "__main__":
+    main()

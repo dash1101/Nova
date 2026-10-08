@@ -1,0 +1,11 @@
+{
+ "id": "excalidraw",
+ "name": "Excalidraw",
+ "category": "Utilities",
+ "icon": "draw",
+ "port": 8383,
+ "path": "/",
+ "image": "excalidraw/excalidraw:latest",
+ "description": "Hand-drawn style whiteboard for sketches and diagrams.",
+ "compose": "services:\n  excalidraw:\n    image: excalidraw/excalidraw:latest\n    container_name: excalidraw\n    restart: unless-stopped\n    ports:\n      - \"{PORT}:80\"\n"
+}

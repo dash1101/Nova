@@ -1,0 +1,14 @@
+{
+ "id": "syncthing",
+ "name": "Syncthing",
+ "category": "Files",
+ "icon": "sync",
+ "port": 8384,
+ "extra_ports": [
+  22000
+ ],
+ "path": "/",
+ "image": "syncthing/syncthing:latest",
+ "description": "Continuously syncs folders between your devices \u2014 no cloud.",
+ "compose": "services:\n  syncthing:\n    image: syncthing/syncthing:latest\n    container_name: syncthing\n    restart: unless-stopped\n    ports:\n      - \"{PORT}:8384\"\n      - \"22000:22000\"\n    volumes:\n      - {DATA}:/var/syncthing\n"
+}

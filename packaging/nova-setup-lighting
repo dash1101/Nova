@@ -1,0 +1,13 @@
+#!/bin/sh
+# Turn on the optional lighting module (Gigabyte RGB Fusion 2, USB 048d:5702).
+set -e
+[ "$(id -u)" = 0 ] || { echo "run with sudo"; exit 1; }
+getent group nova-rgb >/dev/null || groupadd --system nova-rgb
+install -d -o nova-api -g nova-api -m 755 /var/lib/nova-rgb
+cp /usr/lib/nova-rgb/60-nova-rgb.rules /etc/udev/rules.d/ && udevadm control --reload && udevadm trigger --subsystem-match=hidraw
+install -d /etc/systemd/system/nova-api.service.d
+cp /usr/lib/nova-rgb/nova-api-rgb.conf /etc/systemd/system/nova-api.service.d/rgb.conf
+systemctl daemon-reload
+systemctl enable --now nova-rgb-restore.service nova-rgb-tick.timer nova-rgb-anim.service
+systemctl restart nova-api.service
+echo "Lighting is on — open Lighting in the Nova app."

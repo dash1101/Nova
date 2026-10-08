@@ -1,0 +1,13 @@
+[Unit]
+Description=Restore the fan light setting at boot (otherwise the board reverts to rainbow)
+After=systemd-udev-settle.service multi-user.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /usr/local/lib/nova-rgb/nova_rgb.py restore
+User=nova-api
+Group=nova-api
+SupplementaryGroups=nova-rgb
+
+[Install]
+WantedBy=multi-user.target

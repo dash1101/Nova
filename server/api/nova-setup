@@ -1,0 +1,140 @@
+#!/usr/bin/python3
+"""
+nova-setup — guided setup for a Nova server. Safe to run again: your current settings are the
+defaults, and pressing Enter keeps them.
+
+    sudo nova-setup            interactive
+    sudo nova-setup --yes      accept every detected default (unattended installs)
+"""
+import getpass, glob, ipaddress, json, os, re, shutil, subprocess, sys
+
+CONF = "/etc/nova-api/config.json"
+YES = "--yes" in sys.argv
+B, D, G, Y, R, X = "\033[1m", "\033[2m", "\033[32m", "\033[33m", "\033[31m", "\033[0m"
+if not sys.stdout.isatty(): B = D = G = Y = R = X = ""
+
+
+def sh(*cmd):
+    try: r = subprocess.run(cmd, capture_output=True, text=True)
+    except FileNotFoundError: return 127, ""            # program not installed
+    return r.returncode, r.stdout.strip()
+
+
+def ask(q, default="", secret=False):
+    if YES: return default
+    shown = (" [" + ("•" * 6 if secret and default else default) + "]") if default else ""
+    a = (getpass.getpass if secret else input)(f"  {q}{D}{shown}{X}: ").strip()
+    return a or default
+
+
+def yes(q, default=True):
+    if YES: return default
+    a = input(f"  {q} {D}[{'Y/n' if default else 'y/N'}]{X}: ").strip().lower()
+    return default if not a else a.startswith("y")
+
+
+def step(n, title): print(f"\n{B}{n}. {title}{X}")
+
+
+def lan_guess():
+    _, out = sh("ip", "-4", "route", "get", "1.1.1.1")
+    ip = re.search(r"src (\S+)", out); dev = re.search(r"dev (\S+)", out)
+    if not ip: return "", ""
+    _, a = sh("ip", "-4", "-o", "addr", "show", "dev", dev.group(1))
+    cidr = re.search(r"inet (\S+)", a)
+    net = str(ipaddress.ip_interface(cidr.group(1)).network) if cidr else ip.group(1) + "/32"
+    return ip.group(1), net
+
+
+def main():
+    if os.geteuid() != 0: sys.exit("Run with sudo:  sudo nova-setup")
+    cfg = {}
+    try: cfg = json.load(open(CONF))
+    except Exception: pass
+    print(f"{B}Nova setup{X}  {D}— press Enter to keep the value in brackets{X}")
+
+    step(1, "Home network")
+    ip, net = lan_guess()
+    host = ask("Address phones use to reach this server", cfg.get("lan_host") or ip)
+    subnet = ask("Your home network (only it may pair new devices)", cfg.get("lan_subnet") or net)
+    try: ipaddress.ip_address(host); ipaddress.ip_network(subnet)
+    except ValueError: sys.exit(f"{R}That address or network doesn't look right.{X}")
+    # Phones and browsers use the encrypted port on the network; plain HTTP stays on localhost
+    # (only for a local Cloudflare tunnel).
+    cfg.update(lan_host=host, lan_subnet=subnet, lan_url=f"https://{host}:8495", port=cfg.get("port", 8095),
+               tls_port=cfg.get("tls_port", 8495), bind=["127.0.0.1"])
+
+    step(2, "Tailscale (optional)")
+    rc, ts = sh("tailscale", "ip", "-4")
+    if rc == 0 and ts:
+        print(f"  Tailscale is running here ({ts.splitlines()[0]}).")
+        if yes("Let your Tailscale devices use Nova too?", bool(cfg.get("tailnet_host")) or True):
+            cfg.update(tailnet_subnet="100.64.0.0/10", tailnet_host=ts.splitlines()[0])
+        else: cfg.update(tailnet_subnet="", tailnet_host="")
+    else:
+        print(f"  {D}Not installed — that's fine, Nova doesn't need it.{X}")
+
+    step(3, "Terminal (SSH from the app)")
+    user = ask("Account the Terminal logs in as", cfg.get("ssh_user") or os.environ.get("SUDO_USER", ""))
+    hosts = [{"name": "Home network", "host": host, "port": 22}]
+    if cfg.get("tailnet_host"): hosts.append({"name": "Tailscale", "host": cfg["tailnet_host"], "port": 22})
+    cfg.update(ssh_user=user, ssh_hosts=hosts)
+
+    step(4, "Remote access without a VPN (optional, Cloudflare Access)")
+    print(f"  {D}See docs/REMOTE.md for the 5-minute Cloudflare part. You can do this later by running nova-setup again.{X}")
+    if yes("Set up remote access now?", bool(cfg.get("remote_url"))):
+        cfg["remote_url"] = ask("Public address (https://…)", cfg.get("remote_url", ""))
+        cfg["cf_access_team"] = ask("Cloudflare team domain (…cloudflareaccess.com)", cfg.get("cf_access_team", ""))
+        cfg["cf_access_aud"] = ask("Access application AUD tag", cfg.get("cf_access_aud", ""))
+        cfg["cf_client_id"] = ask("Service token client ID", cfg.get("cf_client_id", ""))
+        cfg["cf_client_secret"] = ask("Service token client secret", cfg.get("cf_client_secret", ""), secret=True)
+    else:
+        for k in ("remote_url", "cf_access_team", "cf_access_aud", "cf_client_id", "cf_client_secret"): cfg.setdefault(k, "")
+
+    step(5, "Storage safety")
+    print(f"  {D}Mounts listed here can never be unmounted from the app.{X}")
+    prot = ask("Protected mounts (comma-separated)", ",".join(cfg.get("protected_mounts", ["/", "/boot", "/boot/efi"])))
+    cfg["protected_mounts"] = sorted({p.strip() for p in prot.split(",") if p.strip()} | {"/", "/boot", "/boot/efi"})
+    cfg.setdefault("drive_roles", {})
+
+    step(6, "Updates")
+    print(f"  {D}Nova only installs releases signed by the Nova release key. Where should it look?{X}")
+    print(f"  {D}  github:owner/repo  — the project's GitHub releases   ·   a folder — releases you copy over   ·   blank — manual only{X}")
+    cfg["update_source"] = ask("Update source", cfg.get("update_source", ""))
+
+    os.makedirs(os.path.dirname(CONF), exist_ok=True)
+    tmp = CONF + ".tmp"
+    with open(tmp, "w") as f: json.dump(cfg, f, indent=1)
+    gid = int(sh("getent", "group", "nova-api")[1].split(":")[2]) if sh("getent", "group", "nova-api")[0] == 0 else 0
+    os.chown(tmp, 0, gid); os.chmod(tmp, 0o640); os.replace(tmp, CONF)
+    print(f"\n  {G}✓{X} Saved {CONF} {D}(root:nova-api, 640){X}")
+
+    step(7, "Lighting module")
+    lit = any("048D:00005702" in open(u).read().upper() for u in glob.glob("/sys/class/hidraw/hidraw*/device/uevent"))
+    if lit: print(f"  Found a Gigabyte RGB Fusion 2 controller.  Install it with:  {B}sudo nova-setup-lighting{X}")
+    else: print(f"  {D}No supported lighting controller found — skipped.{X}")
+
+    step(8, "Firewall")
+    rc, st = sh("ufw", "status")
+    if rc == 0 and "Status: active" in st:
+        if yes(f"Allow {subnet} to reach Nova (port 8495, encrypted)?", True):
+            sh("ufw", "allow", "from", subnet, "to", "any", "port", "8495", "proto", "tcp", "comment", "Nova (home network)")
+            print(f"  {G}✓{X} Firewall rules added")
+    else: print(f"  {D}ufw isn't active — make sure your firewall lets {subnet} reach port 8495.{X}")
+
+    step(9, "Start Nova")
+    sh("systemctl", "daemon-reload")
+    sh("systemctl", "enable", "--now", "nova-helper.socket")
+    sh("systemctl", "enable", "nova-api.service"); sh("systemctl", "restart", "nova-api.service")
+    rc, _ = sh("systemctl", "is-active", "nova-api.service")
+    if rc != 0: sys.exit(f"  {R}nova-api didn't start — run: journalctl -u nova-api -n 50{X}")
+    print(f"  {G}✓{X} Nova is running.  App: pair below · Web: https://{host}:8495/")
+
+    if yes("\nPair your phone now?", True) and not YES:
+        os.execvp("nova-api", ["nova-api", "pair"])
+    print(f"\nWhen you're ready:  {B}sudo nova-api pair{X}   (scan the QR with the Nova app on your home Wi-Fi)")
+
+
+if __name__ == "__main__":
+    try: main()
+    except KeyboardInterrupt: print("\nCancelled — nothing else changed."); sys.exit(130)

@@ -1,0 +1,27 @@
+{
+  "_comment": "Copied to /etc/nova-api/config.json by install.sh (root:nova-api, mode 640). Only lan_host / lan_subnet are required.",
+  "port": 8095,
+  "tls_port": 8495,
+  "lan_host": "192.168.1.20",
+  "lan_subnet": "192.168.1.0/24",
+  "lan_url": "http://192.168.1.20:8095",
+  "bind": ["127.0.0.1", "192.168.1.20"],
+
+  "tailnet_subnet": "",
+  "tailnet_host": "",
+  "_tailnet": "optional, e.g. 100.64.0.0/10 and this server's Tailscale IP: lets Tailscale devices use Nova (pairing stays home-network only)",
+
+  "ssh_user": "me",
+  "ssh_hosts": [{"name": "Home Wi-Fi", "host": "192.168.1.20", "port": 22}],
+
+  "protected_mounts": ["/", "/boot", "/boot/efi"],
+  "protected_prefixes": [],
+  "backup_mount": "",
+  "drive_roles": {"/mnt/data": "Data drive"},
+
+  "remote_url": "",
+  "cf_access_team": "",
+  "cf_access_aud": "",
+  "cf_client_id": "",
+  "cf_client_secret": ""
+}

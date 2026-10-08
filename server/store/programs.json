@@ -1,0 +1,130 @@
+[
+ {
+  "pkg": "btop",
+  "name": "btop",
+  "category": "Monitoring",
+  "description": "Beautiful live CPU, memory, disk, network and process monitor."
+ },
+ {
+  "pkg": "htop",
+  "name": "htop",
+  "category": "Monitoring",
+  "description": "Classic interactive process viewer."
+ },
+ {
+  "pkg": "nvtop",
+  "name": "nvtop",
+  "category": "Monitoring",
+  "description": "GPU usage monitor (works with the Radeon iGPU)."
+ },
+ {
+  "pkg": "iotop",
+  "name": "iotop",
+  "category": "Monitoring",
+  "description": "Which process is hammering the disks."
+ },
+ {
+  "pkg": "glances",
+  "name": "glances",
+  "category": "Monitoring",
+  "description": "All-in-one system monitor, with a web mode."
+ },
+ {
+  "pkg": "ncdu",
+  "name": "ncdu",
+  "category": "Files",
+  "description": "Find what's eating disk space, fast."
+ },
+ {
+  "pkg": "tree",
+  "name": "tree",
+  "category": "Files",
+  "description": "Show folders as a tree."
+ },
+ {
+  "pkg": "p7zip-full",
+  "name": "7-Zip",
+  "category": "Files",
+  "description": "Open and create .7z/.zip/.rar-style archives."
+ },
+ {
+  "pkg": "rclone",
+  "name": "rclone",
+  "category": "Backup",
+  "description": "Sync files to 70+ cloud providers (B2, Drive, S3\u2026) \u2014 the off-site backup tool."
+ },
+ {
+  "pkg": "restic",
+  "name": "restic",
+  "category": "Backup",
+  "description": "Encrypted, deduplicated backups (great with rclone/B2)."
+ },
+ {
+  "pkg": "tmux",
+  "name": "tmux",
+  "category": "Shell",
+  "description": "Keep terminal sessions alive after you disconnect."
+ },
+ {
+  "pkg": "fastfetch",
+  "name": "fastfetch",
+  "category": "Shell",
+  "description": "System info with a logo \u2014 the neofetch replacement."
+ },
+ {
+  "pkg": "git",
+  "name": "git",
+  "category": "Development",
+  "description": "Version control.",
+  "protected": true
+ },
+ {
+  "pkg": "jq",
+  "name": "jq",
+  "category": "Development",
+  "description": "Slice and filter JSON on the command line.",
+  "protected": true
+ },
+ {
+  "pkg": "ffmpeg",
+  "name": "FFmpeg",
+  "category": "Media",
+  "description": "Convert and process any audio/video."
+ },
+ {
+  "pkg": "nmap",
+  "name": "nmap",
+  "category": "Network",
+  "description": "Scan your network for devices and open ports."
+ },
+ {
+  "pkg": "iperf3",
+  "name": "iperf3",
+  "category": "Network",
+  "description": "Measure real network speed between two machines."
+ },
+ {
+  "pkg": "mtr-tiny",
+  "name": "mtr",
+  "category": "Network",
+  "description": "Traceroute + ping in one live view."
+ },
+ {
+  "pkg": "speedtest-cli",
+  "name": "speedtest-cli",
+  "category": "Network",
+  "description": "Internet speed test from the server."
+ },
+ {
+  "pkg": "cockpit",
+  "name": "Cockpit",
+  "category": "Services",
+  "description": "Web admin panel for the server (port 9090): logs, services, storage, updates."
+ },
+ {
+  "pkg": "powertop",
+  "name": "PowerTOP",
+  "category": "Power",
+  "description": "See what's using power and tune for efficiency."
+ }
+]

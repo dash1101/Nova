@@ -1,0 +1,41 @@
+[Unit]
+Description=Nova — phone remote for this server (API on the LAN + optional Cloudflare tunnel)
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+User=nova-api
+Group=nova-api
+ExecStart=/usr/bin/python3 /usr/local/lib/nova-api/server.py
+Restart=on-failure
+RestartSec=3
+# The API itself runs unprivileged in a read-only sandbox and can never gain privileges.
+# Privileged actions go to the root helper (fixed verbs only) through /run/nova-helper.sock,
+# which systemd runs outside this sandbox — see docs/SECURITY.md.
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectSystem=strict
+ReadWritePaths=/var/lib/nova-api /var/log/nova-api
+ProtectHome=yes
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
+LockPersonality=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+UMask=0027
+
+[Install]
+WantedBy=multi-user.target

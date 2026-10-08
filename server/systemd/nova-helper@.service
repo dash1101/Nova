@@ -1,0 +1,9 @@
+[Unit]
+Description=Nova root helper (one request from nova-api)
+
+[Service]
+ExecStart=/usr/local/lib/nova-api/helper-sock
+StandardInput=socket
+StandardOutput=socket
+StandardError=journal
+RuntimeMaxSec=4h

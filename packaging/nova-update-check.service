@@ -1,0 +1,7 @@
+[Unit]
+Description=Check for a newer signed Nova release (no changes are made)
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/sbin/nova-update --check

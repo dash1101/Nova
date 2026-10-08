@@ -1,0 +1,12 @@
+{
+ "id": "portainer",
+ "name": "Portainer",
+ "category": "Management",
+ "icon": "view_in_ar",
+ "port": 9000,
+ "path": "/",
+ "image": "portainer/portainer-ce:lts",
+ "description": "Full web dashboard for Docker: containers, images, volumes, networks. (Your Homepage already links to it.)",
+ "notes": "Create the admin account within 5 minutes of installing, or Portainer locks itself until restarted.",
+ "compose": "services:\n  portainer:\n    image: portainer/portainer-ce:lts\n    container_name: portainer\n    restart: unless-stopped\n    ports:\n      - \"{PORT}:9000\"\n    volumes:\n      - /var/run/docker.sock:/var/run/docker.sock\n      - {DATA}:/data\n"
+}

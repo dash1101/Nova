@@ -1,0 +1,9 @@
+[Unit]
+Description=Fan light: run schedules + status light
+
+[Service]
+Type=oneshot
+User=nova-api
+Group=nova-api
+SupplementaryGroups=nova-rgb
+ExecStart=/usr/bin/python3 /usr/local/lib/nova-rgb/nova_rgb.py tick

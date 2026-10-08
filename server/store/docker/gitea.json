@@ -1,0 +1,14 @@
+{
+ "id": "gitea",
+ "name": "Gitea",
+ "category": "Development",
+ "icon": "code",
+ "port": 3300,
+ "extra_ports": [
+  2222
+ ],
+ "path": "/",
+ "image": "gitea/gitea:latest",
+ "description": "Your own GitHub: git hosting, issues, pull requests. Good home for RPC-Workspace.",
+ "compose": "services:\n  gitea:\n    image: gitea/gitea:latest\n    container_name: gitea\n    restart: unless-stopped\n    ports:\n      - \"{PORT}:3000\"\n      - \"2222:22\"\n    environment:\n      USER_UID: \"1000\"\n      USER_GID: \"1000\"\n    volumes:\n      - {DATA}:/data\n"
+}

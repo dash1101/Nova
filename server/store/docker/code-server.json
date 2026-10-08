@@ -1,0 +1,12 @@
+{
+ "id": "code-server",
+ "name": "VS Code (browser)",
+ "category": "Development",
+ "icon": "terminal",
+ "port": 8446,
+ "path": "/",
+ "image": "lscr.io/linuxserver/code-server:latest",
+ "description": "VS Code in your browser, editing files on the server.",
+ "notes": "The password is in /opt/code-server/.nova-secrets (SECRET1).",
+ "compose": "services:\n  code-server:\n    image: lscr.io/linuxserver/code-server:latest\n    container_name: code-server\n    restart: unless-stopped\n    ports:\n      - \"{PORT}:8443\"\n    environment:\n      PUID: \"1000\"\n      PGID: \"1000\"\n      TZ: America/New_York\n      PASSWORD: \"{SECRET1}\"\n    volumes:\n      - {DATA}/config:/config\n"
+}

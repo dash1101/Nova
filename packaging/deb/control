@@ -1,0 +1,21 @@
+Package: nova-server
+Version: @VERSION@
+Section: admin
+Priority: optional
+Architecture: all
+Installed-Size: @SIZE@
+Depends: python3 (>= 3.11), python3-cryptography, qrencode, iproute2, systemd
+Recommends: docker.io | docker-ce, ufw
+Suggests: tailscale, cloudflared
+Maintainer: Nova contributors <nova@localhost>
+Homepage: https://github.com/
+Description: secure phone & web remote for your home server
+ Nova lets you manage a Linux home server from the Nova Android app or a
+ browser: status and live graphs, containers (logs, shell, start/stop), an app
+ store, drives, backups, alerts and an SSH terminal.
+ .
+ Every request is signed by a hardware-backed key on your phone; risky actions
+ need your fingerprint. The API runs unprivileged in a systemd sandbox, and the
+ only privileged code is a root helper with a fixed list of commands.
+ .
+ After installing, run:  sudo nova-setup
