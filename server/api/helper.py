@@ -243,6 +243,11 @@ if verb == "notify-paired" and len(args) == 1:
     changelog(f"New device paired: {name}")
     out({"ok": True})
 
+if verb == "notify-ssh-key" and len(args) == 1:
+    name = "".join(c for c in args[0] if c.isprintable())[:60]
+    notify("warning", f"SSH access added for {name}", "Its key was installed from the Nova app with fingerprint confirmation. Removing the device in Nova removes the key too.")
+    out({"ok": True})
+
 if verb == "notify-revoked" and len(args) == 1 and args[0].isdigit():
     notify("warning", f"Nova app: {args[0]} paired device(s) removed", "Done from the app with fingerprint confirmation.")
     changelog(f"{args[0]} paired device(s) removed from the Nova app")
@@ -390,8 +395,65 @@ if verb == "drive-mount" and len(args) == 1:
 if verb == "power" and len(args) == 1 and args[0] in ("reboot", "poweroff"):
     changelog(f"Server {args[0]} requested from the Nova app")
     notify("warning", f"Server {'restarting' if args[0] == 'reboot' else 'shutting down'} (from the Nova app)", "")
-    rc, so, se = run(["systemd-run", "--on-active=5", "--unit=nova-app-power", "systemctl", args[0]])
-    out({"ok": rc == 0, "in_seconds": 5, "error": se.strip()[:200]}, 0 if rc == 0 else 1)
+    # nova-alert only queues the message (the monitor sends once a minute), so push it out now —
+    # otherwise phones and Discord hear about the shutdown after the next boot.
+    unit = SITE.get("alerts_unit", "nova-alerts.service")
+    if run(["systemctl", "cat", unit])[0] == 0:
+        for _ in range(2):            # a pass already running when we queued may have missed it
+            try: run(["systemctl", "start", unit], timeout=40)
+            except Exception: break
+            if not glob.glob("/var/lib/nova-alerts/spool/*.json"): break
+    rc, so, se = run(["systemd-run", "--on-active=8", "--unit=nova-app-power", "systemctl", args[0]])
+    out({"ok": rc == 0, "in_seconds": 8, "error": se.strip()[:200]}, 0 if rc == 0 else 1)
+
+# ── SSH: a phone's own key in the terminal user's authorized_keys ─────────────────
+# The key comes from the phone's hardware keystore over the signed, fingerprint-confirmed API,
+# so nobody has to copy and paste it. Each line is tagged with the device id, so removing the
+# device in Nova also removes its SSH access. Forwarding is disabled: the terminal needs a shell only.
+DEV_RE = r"[A-Za-z0-9_-]{8,40}"
+SSH_OPTS = "no-port-forwarding,no-agent-forwarding,no-X11-forwarding"
+
+def _ak_path():
+    import pwd
+    user = SITE.get("ssh_user", "")
+    if not re.fullmatch(r"[a-z_][a-z0-9_-]{0,31}", user or ""): fail("no terminal user set (sudo nova-setup)")
+    try: pw = pwd.getpwnam(user)
+    except KeyError: fail(f"user {user} doesn't exist")
+    return pw, os.path.join(pw.pw_dir, ".ssh"), os.path.join(pw.pw_dir, ".ssh", "authorized_keys")
+
+def _ak_write(pw, d, f, lines):
+    if os.path.islink(d) or os.path.islink(f): fail("~/.ssh is a symlink — refusing")
+    os.makedirs(d, mode=0o700, exist_ok=True); os.chown(d, pw.pw_uid, pw.pw_gid); os.chmod(d, 0o700)
+    tmp = f + ".nova-tmp"
+    with open(tmp, "w") as fh: fh.write("".join(l if l.endswith("\n") else l + "\n" for l in lines))
+    os.chown(tmp, pw.pw_uid, pw.pw_gid); os.chmod(tmp, 0o600); os.replace(tmp, f)
+
+def _ak_lines(f):
+    try: return open(f).read().splitlines(True)
+    except FileNotFoundError: return []
+
+if verb == "ssh-authorize" and len(args) == 2 and re.fullmatch(DEV_RE, args[0]):
+    import base64
+    parts = args[1].split()
+    if len(parts) < 2 or parts[0] != "ecdsa-sha2-nistp256" or not re.fullmatch(r"[A-Za-z0-9+/]{100,200}={0,2}", parts[1]): fail("not a Nova phone key")
+    blob = base64.b64decode(parts[1])
+    if blob[4:4 + 19] != b"ecdsa-sha2-nistp256": fail("not a Nova phone key")
+    pw, d, f = _ak_path(); tag = f"nova-{args[0]}"
+    keep = [l for l in _ak_lines(f) if not l.rstrip().endswith(" " + tag)]       # replaces this phone's old key
+    _ak_write(pw, d, f, keep + [f"{SSH_OPTS} {parts[0]} {parts[1]} {tag}"])
+    changelog(f"SSH key of Nova device {args[0]} added to {pw.pw_name}'s authorized_keys (from the Nova app)")
+    out({"ok": True, "user": pw.pw_name})
+
+if verb == "ssh-unauthorize" and len(args) == 1 and re.fullmatch(DEV_RE, args[0]):
+    pw, d, f = _ak_path(); tag = f"nova-{args[0]}"
+    lines = _ak_lines(f); keep = [l for l in lines if not l.rstrip().endswith(" " + tag)]
+    if len(keep) != len(lines):
+        _ak_write(pw, d, f, keep); changelog(f"SSH key of removed Nova device {args[0]} taken out of authorized_keys")
+    out({"ok": True, "removed": len(lines) - len(keep)})
+
+if verb == "ssh-key-status" and len(args) == 1 and re.fullmatch(DEV_RE, args[0]):
+    pw, d, f = _ak_path()
+    out({"installed": any(l.rstrip().endswith(f" nova-{args[0]}") for l in _ak_lines(f)), "user": pw.pw_name})
 
 # ── self-update (signed releases only; see nova-update) ─────────────────────────
 if verb == "update-status" and not args:

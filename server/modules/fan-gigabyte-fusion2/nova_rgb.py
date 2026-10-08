@@ -7,7 +7,8 @@ state.json fields:
   status_light: when on, the light shows server health (warning = amber, critical = red pulse)
                 instead of your colour, then goes back to normal when all is well,
   schedules: [{"id","time":"HH:MM","days":[0-6, Mon=0],"enabled",set:{...any of the fields above}}]
-`python3 nova_rgb.py restore` at boot, `python3 nova_rgb.py tick` every minute (schedules + status),
+`python3 nova_rgb.py restore` at boot (a wave fades in, then your setting), `python3 nova_rgb.py off` at
+shutdown (the ARGB header keeps standby power, so without it the fan stays lit on its last frame), `python3 nova_rgb.py tick` every minute (schedules + status),
 `python3 nova_rgb.py animate` as a service: draws software effects (wave) frame by frame in direct mode,
 because the controller's own wave doesn't render on this board's ARGB header.
 """
@@ -159,6 +160,29 @@ def animate(fps=30):
             except Exception: pass
             dev, order = None, None; time.sleep(2)
 
+def intro(st, seconds=2.6, fps=30):
+    """Boot: a wave in your colour (or rainbow) fades in and comes up to your brightness; the
+    caller then applies your real setting."""
+    look = {**st, "effect": "wave", "speed": max(55, st.get("speed", 50))}
+    target = max(20, st.get("brightness", 50)) if st.get("on", True) else 35
+    with fusion2.Fusion2() as f:
+        order = f.direct_setup(); t0 = time.time()
+        while (el := time.time() - t0) < seconds:
+            k = min(1.0, el / (seconds * 0.6))                       # fade in over the first 60%
+            f.set_direct([_scaled(c, target * k * k) for c in wave_frame(look, time.time())], order)
+            time.sleep(1 / fps)
+
+def off():
+    """Shutdown: every LED dark (the setting itself is kept for the next boot)."""
+    with fusion2.Fusion2() as f:
+        try: f.set_direct([(0, 0, 0)] * 32)
+        except Exception: pass
+        f.init()                                                      # back to controller effects…
+        f.set_effect("argb", "off", (0, 0, 0), 0)                     # …and switch the header off
+        tmp = APPLIED + ".tmp"
+        with open(tmp, "w") as fh: json.dump({"t": time.time(), "override": None, "anim": None, "off": True}, fh)
+        os.replace(tmp, APPLIED)                                      # the animator stops drawing
+
 def status_override(st):
     """What the status light wants right now (None = show the user's own setting)."""
     if not st.get("status_light"): return None
@@ -190,8 +214,11 @@ if __name__ == "__main__":
     cmd = sys.argv[1] if len(sys.argv) > 1 else "restore"
     if cmd == "tick": tick()
     elif cmd == "animate": animate()
+    elif cmd == "off": off(); print("lights off")
     else:
         st = load()
+        try: intro(st)
+        except Exception as e: print("intro skipped:", e)
         for attempt in range(5):
             try: apply(st, status_override(st)); print("restored", st); break
             except Exception as e: print("retry:", e); time.sleep(2)

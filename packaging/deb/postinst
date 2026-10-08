@@ -11,6 +11,13 @@ if [ "$1" = configure ]; then
     if [ -f /etc/nova-api/config.json ]; then
         systemctl enable nova-api.service >/dev/null 2>&1 || true
         systemctl restart nova-api.service || true
+        # lighting module set up (nova-setup-lighting): make sure the boot/shutdown unit is active,
+        # so the lights switch off at the next shutdown, and the animator is running
+        if systemctl is-enabled nova-rgb-restore.service >/dev/null 2>&1; then
+            systemctl is-active nova-rgb-restore.service >/dev/null 2>&1 || systemctl start nova-rgb-restore.service || true
+            systemctl enable nova-rgb-anim.service >/dev/null 2>&1 || true
+            systemctl restart nova-rgb-anim.service || true
+        fi
         echo "Nova updated and restarted."
     else
         echo ""

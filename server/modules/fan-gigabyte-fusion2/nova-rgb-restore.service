@@ -1,10 +1,16 @@
 [Unit]
-Description=Restore the fan light setting at boot (otherwise the board reverts to rainbow)
-After=systemd-udev-settle.service multi-user.target
+Description=Fan lights: wave in at boot, restore your setting; switch them off at shutdown
+# The board reverts to rainbow at power-on, and its ARGB header keeps standby power after shutdown
+# (the fan would stay lit on its last frame), so this unit owns both ends.
+After=systemd-udev-settle.service local-fs.target
+Before=nova-rgb-anim.service
 
 [Service]
 Type=oneshot
+RemainAfterExit=yes
 ExecStart=/usr/bin/python3 /usr/local/lib/nova-rgb/nova_rgb.py restore
+ExecStop=/usr/bin/python3 /usr/local/lib/nova-rgb/nova_rgb.py off
+TimeoutStopSec=15
 User=nova-api
 Group=nova-api
 SupplementaryGroups=nova-rgb

@@ -233,3 +233,20 @@ import java.util.*
             } finally { busy = false } }
         }) { if (busy || running) OneSpinner() }
 }
+
+/** "Disconnected · last contact 4 min ago" + a sheet explaining what each route said. */
+@Composable fun DisconnectedBanner(app: AppState) {
+    var open by remember { mutableStateOf(false) }
+    val now by produceState(System.currentTimeMillis()) { while (true) { value = System.currentTimeMillis(); kotlinx.coroutines.delay(30_000) } }
+    val ago = app.lastContact.takeIf { it > 0 }?.let { ((now - it) / 60_000).let { m -> if (m < 1) "just now" else if (m < 60) "$m min ago" else "${m / 60} h ${m % 60} min ago" } }
+    Banner(if (ago != null) "Disconnected · last contact $ago" else "Disconnected — tap for details", N.red) { open = true }
+    if (open) OneDialog({ open = false }, "Can't reach your server",
+        null, listOf(DialogButton("Close") { open = false }, DialogButton("Try again", N.blue) { open = false; app.act { app.refresh() } })) {
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            (app.api.lastAttempts.ifEmpty { listOf(app.error ?: "No answer yet") }).forEach { line ->
+                Text(line, color = N.text, fontSize = 14.sp) }
+            Text("Showing the last data Nova had${ago?.let { " (from $it)" } ?: ""}. Nova keeps trying in the background and reconnects by itself when the server is back.",
+                color = N.sub, fontSize = 13.sp)
+        }
+    }
+}

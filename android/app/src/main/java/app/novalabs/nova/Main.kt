@@ -66,6 +66,7 @@ class AppState(val activity: Activity, val pairing: Pairing, val scope: Coroutin
     var error by mutableStateOf<String?>(null)        // shown only after repeated failures
     var reconnecting by mutableStateOf(false)
     var unread by mutableIntStateOf(0)
+    var lastContact by mutableLongStateOf(0L)         // last successful refresh (ms)
     /** Last live numbers (CPU, memory…) from any screen, so a freshly drawn page never shows "—". */
     var lastNow by mutableStateOf<JSONObject?>(null)
     var paired by mutableStateOf(pairing.paired)
@@ -107,7 +108,7 @@ class AppState(val activity: Activity, val pairing: Pairing, val scope: Coroutin
             val o = api.get("/api/v1/overview"); overview = o
             o.optJSONObject("server")?.let { srv -> pairing.label = srv.optString("display_name").ifEmpty { srv.optString("name") } }
             if (fanInFlight == 0) o.optJSONObject("fan")?.let { f -> fan = JSONObject(fan?.toString() ?: "{}").also { m -> f.keys().forEach { k -> m.put(k, f.get(k)) } } }
-            error = null; reconnecting = false; failures = 0; notAuthorized = false
+            error = null; reconnecting = false; failures = 0; notAuthorized = false; lastContact = System.currentTimeMillis()
             if (pairing.lastEventSeen == 0.0) {     // fresh install: history isn't "new"
                 api.get("/api/v1/events?since=0").optJSONArray("events")?.optJSONObject(0)?.optDouble("t")?.let { pairing.lastEventSeen = it }
             }

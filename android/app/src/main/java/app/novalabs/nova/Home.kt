@@ -59,7 +59,7 @@ import org.json.JSONObject
                 tint = if (app.reconnecting || app.error != null) N.sub else levelColor(level, N),
                 modifier = Modifier.size(20.dp))
             Spacer(Modifier.width(8.dp))
-            val head = when { app.error != null -> "Offline"; app.reconnecting -> "Reconnecting…"; st == null -> "Connecting…"
+            val head = when { app.error != null -> "Disconnected"; app.reconnecting -> "Reconnecting…"; st == null -> "Connecting…"
                 level == "ok" -> "All systems normal"; else -> st.optInt("active_count").let { n -> "$n need${if (n == 1) "s" else ""} attention" } }
             Text(head, color = N.sub, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
             if (cs != null) {
@@ -73,7 +73,7 @@ import org.json.JSONObject
         val backup = if (backupRunning) live(app, "/api/v1/backup", 5_000).value else null
         when {
             app.notAuthorized -> Banner("This phone isn't authorized anymore — tap to pair again", N.red) { app.pairing.clear(); app.paired = false }
-            app.error != null -> Banner(app.error!!, N.red) { app.act { app.refresh() } }
+            app.error != null -> DisconnectedBanner(app)
             level != "ok" -> Banner(st?.optString("headline") ?: "", levelColor(level, N)) { app.go(Route.Inbox) }
             backupRunning -> Banner(backup?.let { backupLine(it) } ?: "Backing up…", N.blue) { app.go(Route.QuickPanel) }
         }

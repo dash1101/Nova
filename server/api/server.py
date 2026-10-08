@@ -34,7 +34,7 @@ try:                       # optional module: fan/case lighting (modules/fan-gig
 except ImportError:
     nova_rgb = None
 
-API_VERSION = "0.4.1-alpha"
+API_VERSION = "0.4.2-alpha"
 CONFIG = "/etc/nova-api/config.json"
 DATA = "/var/lib/nova-api"
 DEVICES = f"{DATA}/devices.json"
@@ -271,6 +271,7 @@ def describe_action(a):
     if p[:1] == ["drives"]: return f"{p[2].title()} a drive"
     if p[:1] == ["power"]: return "Restart the server" if p[1:] == ["reboot"] else "Shut down the server"
     if p[:1] == ["devices"]: return "Change paired devices"
+    if p[:1] == ["ssh"]: return "Let this phone log in over SSH"
     return f"{a['method']} {a['path']}"
 
 def browser_forbidden(method, parts, dev):
@@ -278,6 +279,7 @@ def browser_forbidden(method, parts, dev):
     if parts[:1] == ["approvals"] and method == "POST": return True
     if parts[:1] == ["browser"]: return True
     if parts == ["server", "update"] and method == "POST": return True          # updates: phones only
+    if parts[:1] == ["ssh"] and method != "GET": return True                      # SSH keys: phones only
     if parts[:1] == ["devices"] and method != "GET" and parts != ["devices", dev.get("id")]: return True
     return False
 
@@ -324,6 +326,7 @@ def needs_stepup(method, parts):
     if parts[:1] in (["store"], ["programs"]) and len(parts) == 3: return True
     if parts[:1] == ["drives"] and parts[-1:] == ["unmount"]: return True
     if parts[:1] == ["power"]: return True
+    if parts == ["ssh", "authorize"]: return True
     return False
 
 # ── Cloudflare Access JWT (remote requests) ─────────────────────────────────────
@@ -621,8 +624,10 @@ class Handler(BaseHTTPRequestHandler):
             with lock:
                 devs = load_json(DEVICES, {})
                 gone = [v["name"] for k, v in devs.items() if not (keep and k == dev["id"])]
+                gone_ids = [k for k in devs if not (keep and k == dev["id"])]
                 devs = {k: v for k, v in devs.items() if keep and k == dev["id"]}
                 save_json(DEVICES, devs)
+            for k in gone_ids: helper("ssh-unauthorize", k)
             helper("notify-revoked", str(len(gone)))
             return 200, {"ok": True, "revoked": gone, "kept_self": keep}
         if method == "POST" and len(parts) == 3 and parts[0] == "devices" and parts[2] == "access":
@@ -677,6 +682,7 @@ class Handler(BaseHTTPRequestHandler):
             with lock:
                 devs = load_json(DEVICES, {}); gone = devs.pop(parts[1], None); save_json(DEVICES, devs)
             if not gone: return 404, {"error": "no such device"}
+            helper("ssh-unauthorize", parts[1])
             return 200, {"ok": True, "revoked": gone["name"]}
         if method == "POST" and parts == ["browser", "approve"]:
             code = str(data.get("code", "")).strip().upper()
@@ -851,6 +857,14 @@ class Handler(BaseHTTPRequestHandler):
             if since == since:                                  # not NaN
                 return 200, {"recent": [p for p in STATS["recent"] if p["t"] > since], **now}
             return 200, {"history": STATS["history"], "recent": STATS["recent"], **now}
+        if parts == ["ssh", "authorize"] and method in ("GET", "POST"):
+            # GET: is this phone's key installed?  POST {key}: install it (fingerprint-confirmed).
+            if method == "GET":
+                rc, res = helper("ssh-key-status", dev["id"]); return (200 if rc == 0 else 500), res
+            key = str(data.get("key", ""))[:400]
+            rc, res = helper("ssh-authorize", dev["id"], key)
+            if rc == 0: helper("notify-ssh-key", dev["name"][:60])
+            return (200 if rc == 0 else 400), res
         if method == "GET" and parts == ["ssh-hostkeys"]:
             # Lets the app pin the server's SSH host keys (no trust-on-first-use).
             keys = []

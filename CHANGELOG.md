@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.4-alpha (app) · server 0.4.2-alpha
+- Terminal: "Let this phone log in" installs the phone's hardware-backed SSH key into the terminal user's authorized_keys (admin + fingerprint, phones only; forwarding disabled; tagged per device and removed when the device is removed — app, `nova-api revoke`, or "remove all").
+- "Disconnected · last contact …" with per-route details instead of raw Cloudflare errors (HTTP 530 etc.).
+- Fan light slider: label colour follows the fill edge (readable in light mode).
+- Lighting: boot no longer drops the wave animator (systemd ordering cycle); a wave fades in at boot before your setting; lights switch off at shutdown (the ARGB header keeps standby power).
+- Restart/shutdown from the app: the alert is pushed out immediately (phones + Discord) and the server goes down 8 s later instead of 5.
+
 ## 0.4.3-alpha (app only)
 - Bottom bar: the selected-tab indicator is frosted glass and slides between tabs; choose and reorder the tabs (hold the bar, or Settings → Appearance → Bottom bar).
 - Back from any tab goes to Home; back on Home closes the app (predictive back previews Home).

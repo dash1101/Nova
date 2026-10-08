@@ -29,6 +29,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import org.json.JSONObject
 
 private fun copy(ctx: Context, label: String, text: String) =
     (ctx.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText(label, text))
@@ -43,6 +44,20 @@ private fun copy(ctx: Context, label: String, text: String) =
     var keyDialog by remember { mutableStateOf(false) }
     val hosts = info?.optJSONArray("hosts")?.let { a -> (0 until a.length()).map { a.getJSONObject(it) } } ?: emptyList()
     val user = info?.optString("user") ?: "dash"
+    val keyState = live(app, "/api/v1/ssh/authorize")                  // {installed} — older servers: 404 → null
+    val installed = keyState.value?.optBoolean("installed")
+    var installing by remember { mutableStateOf(false) }
+    fun install() {
+        if (!app.isAdmin) { app.toast("Only admin phones can get SSH access"); return }
+        installing = true
+        app.act {
+            try {
+                sshKey.ensure(); hasKey = true
+                app.stepUp("Let this phone log in over SSH", "POST", "/api/v1/ssh/authorize", JSONObject().put("key", sshKey.openSsh()))
+                keyState.value = JSONObject().put("installed", true); app.toast("Done — this phone can log in now")
+            } finally { installing = false }
+        }
+    }
 
     fun connect() {
         val pinned = info?.optJSONArray("keys")?.let { a -> (0 until a.length()).map { a.getString(it) } }
@@ -73,9 +88,13 @@ private fun copy(ctx: Context, label: String, text: String) =
                 onClick = { app.go(Route.SshTerm) })
         }
         Box(Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 8.dp)) {
-            PrimaryButton(if (SshSession.state == "connecting") "Connecting…" else "Connect", Modifier.fillMaxWidth(),
+            if (installed == false) PrimaryButton(if (installing) "Adding the key…" else "Let this phone log in", Modifier.fillMaxWidth(), !installing) { install() }
+            else PrimaryButton(if (SshSession.state == "connecting") "Connecting…" else "Connect", Modifier.fillMaxWidth(),
                 SshSession.state != "connecting") { connect() }
         }
+        // The usual first-time snag: the server doesn't know this phone's key yet. One tap (and your fingerprint) fixes it.
+        if (installed == false) Text("The server doesn't know this phone's key yet. Nova adds it for you after your fingerprint.",
+            color = N.sub, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 30.dp))
         SectionLabel("Connect through")
         Group {
             (listOf("auto" to ("Automatic" to "Home network when you're home, otherwise the next route")) +
@@ -87,9 +106,12 @@ private fun copy(ctx: Context, label: String, text: String) =
         }
         SectionLabel("Security")
         Group {
-            ExpandRow("This phone's SSH key", if (hasKey) "In the secure chip · fingerprint to use" else "Created the first time you connect",
+            ExpandRow("This phone's SSH key", when (installed) { true -> "On the server · in the secure chip · fingerprint to use"
+                    false -> "Not on the server yet"; else -> if (hasKey) "In the secure chip · fingerprint to use" else "Created the first time you connect" },
                 hasKey, Icons.Rounded.Key) {
-                Detail("The server only accepts SSH keys listed in ~/.ssh/authorized_keys. Add this phone's key there once (on the server, or from a computer that can already log in):")
+                Detail("Nova adds this phone's key to $user's ~/.ssh/authorized_keys for you (fingerprint-confirmed), and removes it again if you remove this phone. Port and agent forwarding are off for it.")
+                if (installed != true) PillButton(if (installing) "Adding…" else "Add this phone's key to the server") { if (!installing) install() }
+                Detail("Or add it by hand, on the server or from a computer that can already log in:")
                 if (!hasKey) PillButton("Create the key now") { runCatching { sshKey.ensure(); hasKey = true }.onFailure { app.toast("Set a screen lock on this phone first") } }
                 else {
                     val cmd = "mkdir -p ~/.ssh && echo '${sshKey.openSsh()}' >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys"

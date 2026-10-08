@@ -54,6 +54,9 @@ elif cmd == "revoke" and len(sys.argv) > 2:
     devs = load(DEVICES, {}); hit = [k for k, d in devs.items() if sys.argv[2] in (k, d["name"])]
     for k in hit: devs.pop(k)
     save(DEVICES, devs); print("revoked:", hit or "nothing matched")
+    for k in hit:                    # and its SSH key, if the app installed one
+        h = next((p for p in ("/usr/lib/nova-api/helper", "/usr/local/lib/nova-api/helper") if os.path.exists(p)), None)
+        if h: subprocess.run([h, "ssh-unauthorize", k], capture_output=True)
 elif cmd == "log":
     n = int(sys.argv[2]) if len(sys.argv) > 2 else 20
     for l in open("/var/log/nova-api/audit.log").readlines()[-n:]: print(l.rstrip())

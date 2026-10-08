@@ -20,7 +20,7 @@ import java.util.concurrent.TimeUnit
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
-class ApiException(val code: Int, message: String, val stepUpRequired: Boolean = false) : Exception(message)
+class ApiException(val code: Int, message: String, val stepUpRequired: Boolean = false, val offline: Boolean = false) : Exception(message)
 
 /**
  * Talks to nova-api. Tries the home-LAN address first (fast, works without internet),
@@ -129,6 +129,26 @@ class NovaApi(private val pairing: Pairing) {
         e is java.net.UnknownServiceException ||           // plain http refused by the security policy (old pairings)
         e is java.net.NoRouteToHostException || (e is java.net.SocketTimeoutException && e.message.orEmpty().contains("connect", true))
 
+    /** What each route said on the last failed attempt — shown when you tap "Disconnected". */
+    @Volatile var lastAttempts: List<String> = emptyList(); private set
+
+    private fun routeName(name: String, base: String) =
+        (if (name == "home") "Home network" else "Remote (Cloudflare)") + " · " + base.substringAfter("://").substringBefore("/")
+
+    private fun describe(e: IOException): String = when (e) {
+        is java.net.UnknownHostException -> "no internet, or the name can't be found"
+        is java.net.ConnectException, is java.net.NoRouteToHostException -> "nothing answered (not on that network, or the server is off)"
+        is java.net.SocketTimeoutException -> "timed out"
+        is javax.net.ssl.SSLException -> "secure connection failed (${e.message?.take(60)})"
+        else -> e.message?.take(80) ?: "connection failed"
+    }
+
+    private fun cloudflareSays(code: Int) = when (code) {
+        530, 523, 521, 1033 -> "Cloudflare is up, but your server isn't connected to it (off, restarting or no internet) — $code"
+        522, 524, 504 -> "Cloudflare reached the server but it didn't answer in time — $code"
+        else -> "Cloudflare couldn't get an answer from the server — $code"
+    }
+
     private inline fun route(method: String, block: (String, String) -> String): String {
         val routes = buildList {
             if (pairing.lanUrl.isNotEmpty()) add("home" to pairing.lanUrl)
@@ -136,11 +156,16 @@ class NovaApi(private val pairing: Pairing) {
         }.let { if (preferRemote) it.reversed() else it }
         if (routes.isEmpty()) throw ApiException(0, "Not paired")
         var last: Exception = IOException("unreachable")
+        val notes = mutableListOf<String>()
         for ((name, base) in routes) {
             for (attempt in 0..1) {
                 try {
-                    val r = block(name, base); via = name; preferRemote = name == "remote"; return r
+                    val r = block(name, base); via = name; preferRemote = name == "remote"; lastAttempts = emptyList(); return r
+                } catch (e: ApiException) {
+                    if (!e.offline) throw e
+                    notes += "${routeName(name, base)}: ${e.message}"; last = IOException(e.message); break
                 } catch (e: IOException) {
+                    if (attempt == 1 || notSent(e)) notes += "${routeName(name, base)}: ${describe(e)}"
                     last = e
                     // A POST that may have arrived must not run twice (e.g. restart a container twice).
                     if (method != "GET" && !notSent(e)) throw ApiException(0, "Connection dropped — check whether it went through")
@@ -149,9 +174,9 @@ class NovaApi(private val pairing: Pairing) {
                 }
             }
         }
-        throw ApiException(0, if (pairing.remoteUrl.isEmpty())
-            "Can't reach Nova. Remote access isn't set up — connect to home Wi-Fi."
-        else "Can't reach Nova (${last.message ?: "offline"})")
+        if (pairing.remoteUrl.isEmpty()) notes += "Remote access isn't set up, so Nova only works on the home network"
+        lastAttempts = notes
+        throw ApiException(0, "Disconnected", offline = true)
     }
 
     private fun client(route: String) = if (route == "home") lanClient else remoteClient
@@ -180,6 +205,8 @@ class NovaApi(private val pairing: Pairing) {
                     throw ApiException(403, "This phone has view-only access — ask an admin to change it.")
                 if (obj.optString("error") == "stepup_required")
                     throw ApiException(403, obj.optString("message", "Needs fingerprint confirmation"), stepUpRequired = true)
+                if (route == "remote" && !obj.has("error") && (resp.code in 520..530 || resp.code in 502..504))
+                    throw ApiException(resp.code, cloudflareSays(resp.code), offline = true)
                 throw ApiException(resp.code, obj.optString("error", "HTTP ${resp.code}"))
             }
             return text

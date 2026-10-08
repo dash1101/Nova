@@ -18,6 +18,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
@@ -100,18 +102,26 @@ else QUICK_ACTIONS.firstOrNull { it.id == id }
         }
         .combinedClickable(onClick = onToggle, onLongClick = { haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress); onLongClick() })) {
         Box(Modifier.fillMaxHeight().fillMaxWidth(fill).background(N.blue.copy(alpha = if (on || drag != null) 0.9f else 0.25f)))
-        Row(Modifier.fillMaxSize().padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(40.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.22f)), contentAlignment = Alignment.Center) {
-                Icon(icon, null, tint = if (on) Color.White else N.blue, modifier = Modifier.size(22.dp))
+        // Drawn twice, like Google Home: dark text everywhere, white text only where the fill is,
+        // so the label is readable on both sides of the edge in light and dark mode.
+        val content: @Composable (Boolean) -> Unit = { onFill ->
+            val fg = if (onFill) Color.White else N.text
+            Row(Modifier.fillMaxSize().padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.size(40.dp).clip(CircleShape).background(if (onFill) N.blue else N.pill).background(if (onFill) Color.White.copy(alpha = 0.22f) else Color.Transparent), contentAlignment = Alignment.Center) {
+                    Icon(icon, null, tint = if (onFill) Color.White else N.blue, modifier = Modifier.size(22.dp))
+                }
+                Spacer(Modifier.width(10.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(label, color = fg, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                    Text(if (drag != null) "${(drag!! * 100).toInt().coerceAtLeast(1)}%" else if (on) "$value%" else "Off",
+                        color = fg.copy(alpha = 0.8f), fontSize = 12.sp)
+                }
+                Text("Slide to dim", color = (if (onFill) Color.White else N.sub).copy(alpha = 0.7f), fontSize = 12.sp)
             }
-            Spacer(Modifier.width(10.dp))
-            Column(Modifier.weight(1f)) {
-                Text(label, color = if (on || fill > 0.35f) Color.White else N.text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-                Text(if (drag != null) "${(drag!! * 100).toInt().coerceAtLeast(1)}%" else if (on) "$value%" else "Off",
-                    color = (if (on || fill > 0.35f) Color.White else N.text).copy(alpha = 0.8f), fontSize = 12.sp)
-            }
-            Text("Slide to dim", color = (if (fill > 0.8f) Color.White else N.sub).copy(alpha = 0.7f), fontSize = 12.sp)
         }
+        content(false)
+        if (fill > 0f && (on || drag != null)) Box(Modifier.fillMaxSize().drawWithContent {
+            clipRect(right = size.width * fill) { this@drawWithContent.drawContent() } }) { content(true) }
     }
 }
 
