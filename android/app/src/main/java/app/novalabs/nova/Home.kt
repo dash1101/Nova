@@ -48,7 +48,8 @@ import org.json.JSONObject
             IconButton({ app.act { app.refresh() } }) { Icon(Icons.Rounded.Refresh, "Refresh", tint = N.text) }
             Box {
                 IconButton({ menu = true }) { Icon(Icons.Rounded.MoreVert, "More", tint = N.text) }
-                OneMenu(menu, { menu = false }, listOf("Edit Home" to { app.go(Route.EditHome) }, "Settings" to { app.go(Route.Settings) }, "About" to { app.go(Route.About) }))
+                OneMenu(menu, { menu = false }, (if (navTabs(app).none { it.id == "menu" }) listOf("Menu" to { app.go(Route.Menu) }) else emptyList()) +
+                    listOf("Edit Home" to { app.go(Route.EditHome) }, "Settings" to { app.go(Route.Settings) }, "About" to { app.go(Route.About) }))
             }
         }
         // Status line — like "100% | Fully charged"
@@ -167,7 +168,9 @@ import org.json.JSONObject
 /** Live numbers under the hero: CPU, memory, disk, services. Tap any for the full status page. */
 @Composable private fun HomeStats(app: AppState) {
     val stats by live(app, "/api/v1/stats?since=9e12", 3_000)        // just the current numbers, every 3 s
-    val now = (stats ?: Cache["/api/v1/stats"])?.optJSONObject("now")?.takeIf { it.has("cpu") }
+    val fresh = stats?.optJSONObject("now")?.takeIf { it.has("cpu") }
+    LaunchedEffect(fresh) { if (fresh != null) app.lastNow = fresh }
+    val now = fresh ?: app.lastNow ?: Cache["/api/v1/stats"]?.optJSONObject("now")?.takeIf { it.has("cpu") }
     val m = app.overview?.optJSONObject("status")?.optJSONObject("metrics")
     val cs = app.overview?.optJSONObject("containers")
     fun pctOf(s: String?) = s?.let { Regex("(\\d+)%").find(it)?.groupValues?.get(1)?.toFloatOrNull() }

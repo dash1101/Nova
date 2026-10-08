@@ -45,7 +45,7 @@ class LiveStats { var now by mutableStateOf<JSONObject?>(null); var history by m
                 kotlinx.coroutines.delay(everyMs)
                 val since = ls.recent.lastOrNull()?.optDouble("t") ?: 0.0
                 runCatching { app.api.get("/api/v1/stats?since=$since") }.onSuccess { r ->
-                    r.optJSONObject("now")?.takeIf { it.has("cpu") }?.let { ls.now = it }
+                    r.optJSONObject("now")?.takeIf { it.has("cpu") }?.let { ls.now = it; app.lastNow = it }
                     val add = r.optJSONArray("recent").toObjects()
                     if (add.isNotEmpty()) { ls.recent = (ls.recent + add).takeLast(RECENT_POINTS); ls.tick++ }
                     // an older server has no 1-second feed: keep refreshing the hour instead

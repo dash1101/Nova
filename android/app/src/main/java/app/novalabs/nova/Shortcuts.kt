@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
+import androidx.compose.material.icons.automirrored.rounded.List
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
@@ -158,5 +159,57 @@ fun sectionOn(id: String) = when (id) { "hero" -> AppPrefs.homeHero; "shortcuts"
             color = N.sub, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 30.dp, vertical = 4.dp))
         LinksCard(listOf("Choose shortcuts" to { app.go(Route.EditShortcuts) },
             "Reset Home" to { AppPrefs.set("home_order", HOME_SECTIONS.joinToString(",")); HOME_SECTIONS.forEach { AppPrefs.set(sectionKey(it), true) } }))
+    }
+}
+
+// ── Bottom bar tabs ──────────────────────────────────────────────────────────────
+/** Pages that can be a tab in the bottom bar (Home is always there). */
+val NAV_TABS = listOf(
+    Shortcut("home", Icons.Rounded.Dns, "Home", Route.Home),
+    Shortcut("store", Icons.Rounded.Storefront, "Store", Route.Store, "store"),
+    Shortcut("menu", Icons.AutoMirrored.Rounded.List, "Menu", Route.Menu),
+) + SHORTCUTS.filter { it.id in listOf("status", "containers", "storage", "inbox", "quick", "lighting", "terminal") }
+val DEFAULT_TABS = listOf("store", "home", "menu")
+const val MAX_TABS = 5
+
+fun navTabs(app: AppState): List<Shortcut> =
+    AppPrefs.navTabs.mapNotNull { id -> NAV_TABS.firstOrNull { it.id == id } }.filter { it.feature == null || app.has(it.feature) }
+        .let { if (it.none { t -> t.id == "home" }) listOf(NAV_TABS[0]) + it else it }
+
+/** Settings → Appearance → Bottom bar (or hold the bar). */
+@Composable fun EditTabsScreen(app: AppState) {
+    val ids = AppPrefs.navTabs.let { if ("home" in it) it else listOf("home") + it }
+    fun save(v: List<String>) = AppPrefs.set("nav_tabs", v.joinToString(","))
+    Page("Bottom bar", app::back) {
+        Box(Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 6.dp), contentAlignment = Alignment.Center) {
+            val t = navTabs(app)
+            // the preview sits inside the blurred page, so it can't blur that same page: plain glass
+            CompositionLocalProvider(LocalRootHaze provides null) { FloatingNav(t.indexOfFirst { it.id == "home" }, t.map { it.icon }, t.map { it.label }, {}) }
+        }
+        SectionLabel("Tabs · hold and drag to reorder")
+        Group {
+            ReorderList(ids, onMove = ::save) { id, dragging ->
+                val s = NAV_TABS.firstOrNull { it.id == id } ?: return@ReorderList
+                Row(Modifier.fillMaxWidth().height(ROW_H).padding(start = 20.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Rounded.DragHandle, "Hold to move", tint = if (dragging) N.blue else N.sub, modifier = Modifier.size(22.dp))
+                    Spacer(Modifier.width(14.dp))
+                    Icon(s.icon, null, tint = N.blue, modifier = Modifier.size(22.dp)); Spacer(Modifier.width(14.dp))
+                    Text(s.label, color = N.text, fontSize = 17.sp, modifier = Modifier.weight(1f))
+                    if (id == "home") Text("Always", color = N.sub, fontSize = 14.sp, modifier = Modifier.padding(end = 16.dp))
+                    else IconButton({ if (ids.size > 2) save(ids - id) else app.toast("Keep at least two tabs") }) { Icon(Icons.Rounded.RemoveCircle, "Remove", tint = N.red) }
+                }
+            }
+        }
+        val more = NAV_TABS.filter { it.id !in ids && (it.feature == null || app.has(it.feature)) }
+        SectionLabel(if (ids.size >= MAX_TABS) "Add · the bar is full ($MAX_TABS max)" else "Add")
+        Group {
+            more.forEachIndexed { i, s -> if (i > 0) RowDivider()
+                Row1(s.label, null, icon = s.icon, onClick = { if (ids.size < MAX_TABS) save(ids + s.id) else app.toast("Remove one first — $MAX_TABS fit") }) {
+                    Icon(Icons.Rounded.AddCircle, "Add", tint = if (ids.size < MAX_TABS) N.green else N.divider) }
+            }
+        }
+        Text("Back from any tab goes to Home; back on Home closes Nova. If you remove Menu, it's still in Home ⋮.",
+            color = N.sub, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 30.dp, vertical = 4.dp))
+        LinksCard(listOf("Reset the bottom bar" to { save(DEFAULT_TABS) }))
     }
 }

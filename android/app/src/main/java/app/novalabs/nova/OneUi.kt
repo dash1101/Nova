@@ -102,7 +102,7 @@ data class TopAction(val icon: ImageVector, val label: String, val onClick: () -
                 Text(title, fontSize = 24.sp, fontWeight = FontWeight.Bold, color = N.text, maxLines = 2, overflow = TextOverflow.Ellipsis)
             }
             content()
-            Spacer(Modifier.height(bottom))
+            Spacer(Modifier.height(bottom + LocalNavPad.current))
         }
       }
         val px = with(LocalDensity.current) { 36.dp.toPx() }
@@ -346,3 +346,5 @@ data class DialogButton(val label: String, val color: Color? = null, val enabled
 /** The remembered scroll position for the page being shown (kept while it's in the back stack). */
 val LocalRouteScroll = staticCompositionLocalOf<ScrollState?> { null }
 @Composable fun routeScroll(): ScrollState = LocalRouteScroll.current ?: rememberScrollState()
+/** Extra space at the bottom of a page that has the floating bottom bar over it. */
+val LocalNavPad = staticCompositionLocalOf { 0.dp }

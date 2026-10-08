@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.3-alpha (app only)
+- Bottom bar: the selected-tab indicator is frosted glass and slides between tabs; choose and reorder the tabs (hold the bar, or Settings → Appearance → Bottom bar).
+- Back from any tab goes to Home; back on Home closes the app (predictive back previews Home).
+- Home's live numbers keep the last value instead of showing "—" when a page is redrawn.
+
 ## 0.4.2-alpha (app only)
 - Toasts are real frosted glass.
 - Home layout: reorder or hide the server picture, shortcuts and at-a-glance stats (Home ⋮ → Edit Home, or Settings → Appearance).

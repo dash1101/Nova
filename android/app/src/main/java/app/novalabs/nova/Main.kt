@@ -51,7 +51,7 @@ sealed class Route {
     data object QuickPanel : Route(); data object EditQuick : Route(); data object Status : Route()
     data object Ssh : Route(); data object SshTerm : Route()
     data object Servers : Route(); data object ServerSettings : Route(); data object Dashboard : Route(); data object Approvals : Route()
-    data object Appearance : Route(); data object SetupGuide : Route(); data object EditShortcuts : Route(); data object EditHome : Route()
+    data object Appearance : Route(); data object SetupGuide : Route(); data object EditShortcuts : Route(); data object EditHome : Route(); data object EditTabs : Route()
     data object Settings : Route(); data object Devices : Route(); data object About : Route()
 }
 
@@ -66,6 +66,8 @@ class AppState(val activity: Activity, val pairing: Pairing, val scope: Coroutin
     var error by mutableStateOf<String?>(null)        // shown only after repeated failures
     var reconnecting by mutableStateOf(false)
     var unread by mutableIntStateOf(0)
+    /** Last live numbers (CPU, memory…) from any screen, so a freshly drawn page never shows "—". */
+    var lastNow by mutableStateOf<JSONObject?>(null)
     var paired by mutableStateOf(pairing.paired)
     var notAuthorized by mutableStateOf(false)
     private var failures = 0
@@ -83,7 +85,14 @@ class AppState(val activity: Activity, val pairing: Pairing, val scope: Coroutin
     fun go(r: Route) { navDir = 1; if (wide && leftPane && stack.size >= 2) pop(); stack.add(r) }
     fun tab(r: Route) { navDir = 0; stack.clear(); scrolls.clear(); stack.add(r) }
     /** [instant]: the page underneath is already on screen (predictive back finished) — swap with no transition. */
-    fun back(instant: Boolean = false) { if (stack.size > 1) { navDir = if (instant) 2 else -1; pop() } }
+    fun back(instant: Boolean = false) {
+        if (stack.size > 1) { navDir = if (instant) 2 else -1; pop() }
+        else if (top != Route.Home) {                     // back from another tab goes Home; back on Home leaves the app
+            navDir = if (instant) 2 else -1; scrolls.keys.removeAll { it.second != Route.Home }; stack[0] = Route.Home
+        }
+    }
+    /** Where back goes from here (null: back leaves the app). */
+    val backTarget: Route? get() = stack.getOrNull(stack.size - 2) ?: if (top != Route.Home) Route.Home else null
     private fun pop() { scrolls.keys.removeAll { it.first >= stack.lastIndex }; stack.removeAt(stack.lastIndex) }
     /** Scroll position of every page in the back stack, so going back lands where you left off. */
     private val scrolls = mutableMapOf<Pair<Int, Route>, androidx.compose.foundation.ScrollState>()
@@ -245,7 +254,7 @@ class MainActivity : ComponentActivity() {
     val backExit = remember { androidx.compose.animation.core.Animatable(0f) }
     val backScope = rememberCoroutineScope()
     var backEdge by remember { mutableIntStateOf(androidx.activity.BackEventCompat.EDGE_LEFT) }
-    androidx.activity.compose.PredictiveBackHandler(enabled = app.stack.size > 1) { events ->
+    androidx.activity.compose.PredictiveBackHandler(enabled = app.backTarget != null) { events ->
         try {
             events.collect { e -> backEdge = e.swipeEdge; backP.snapTo(e.progress) }
             val finish = androidx.compose.animation.core.tween<Float>(if (reduceMotion()) 0 else 200, easing = androidx.compose.animation.core.FastOutSlowInEasing)
@@ -275,12 +284,13 @@ class MainActivity : ComponentActivity() {
                     val e = 1f - (1f - p) * (1f - p)
                     val dirX = if (backEdge == androidx.activity.BackEventCompat.EDGE_LEFT) 1 else -1
                     Box(Modifier.fillMaxSize().hazeSource(rootHaze)) {
-                    if (p > 0.001f && app.stack.size > 1) Box(Modifier.fillMaxSize().graphicsLayer {
+                    val under = app.backTarget
+                    if (p > 0.001f && under != null) Box(Modifier.fillMaxSize().graphicsLayer {
                         // the page underneath comes forward from behind, sliding in slightly from the opposite side
                         val s = 0.9f + 0.1f * e; scaleX = s; scaleY = s
                         translationX = -dirX * 48.dp.toPx() * (1f - e)
                     }) {
-                        GlowBackground { Screen(app, app.stack[app.stack.size - 2]) }
+                        GlowBackground { Screen(app, under) }
                         Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.32f * (1f - e))))   // dim lifts as it comes forward
                     }
                     AnimatedContent(app.top, modifier = Modifier.fillMaxSize().graphicsLayer {
@@ -300,10 +310,10 @@ class MainActivity : ComponentActivity() {
                     }
                     }
                     StatusBarScrim(Modifier.align(Alignment.TopCenter))
-                    val tabIndex = when (app.top) { Route.Store -> 0; Route.Home -> 1; Route.Menu -> 2; else -> -1 }
-                    if (tabIndex >= 0) FloatingNav(tabIndex, listOf(Icons.Rounded.Storefront, Icons.Rounded.Dns, Icons.AutoMirrored.Rounded.List),
-                        listOf("Store", "Home", "Menu"), { i -> app.tab(listOf(Route.Store, Route.Home, Route.Menu)[i]) },
-                        Modifier.align(Alignment.BottomCenter))
+                    val tabs = navTabs(app)
+                    val tabIndex = tabs.indexOfFirst { it.route == app.top }
+                    if (tabIndex >= 0) FloatingNav(tabIndex, tabs.map { it.icon }, tabs.map { it.label }, { i -> app.tab(tabs[i].route) },
+                        Modifier.align(Alignment.BottomCenter), onLongClick = { app.go(Route.EditTabs) })
                 } else WideLayout(app, maxWidth)
             }
             CompositionLocalProvider(LocalRootHaze provides rootHaze) {        // so the toast is real frosted glass
@@ -364,7 +374,8 @@ private fun Modifier.paneTouch(app: AppState, left: Boolean) = pointerInput(left
     }
 }
 
-@Composable fun Screen(app: AppState, r: Route) = CompositionLocalProvider(LocalRouteScroll provides app.scrollFor(r)) {
+@Composable fun Screen(app: AppState, r: Route) = CompositionLocalProvider(LocalRouteScroll provides app.scrollFor(r),
+        LocalNavPad provides (if (!app.wide && navTabs(app).any { it.route == r }) 84.dp else 0.dp)) {
     when (r) {
         Route.Home -> HomeScreen(app)
         Route.Store -> StoreScreen(app)
@@ -385,6 +396,7 @@ private fun Modifier.paneTouch(app: AppState, left: Boolean) = pointerInput(left
         Route.EditQuick -> EditQuickScreen(app)
         Route.EditShortcuts -> EditShortcutsScreen(app)
         Route.EditHome -> EditHomeScreen(app)
+        Route.EditTabs -> EditTabsScreen(app)
         Route.Status -> StatusScreen(app)
         Route.Ssh -> SshScreen(app)
         Route.SshTerm -> SshTermScreen(app)

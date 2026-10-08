@@ -219,16 +219,26 @@ val LocalWide = staticCompositionLocalOf { false }
     }
 }
 
+/** The floating bottom bar. The "you are here" bead is its own little pane of frosted glass that
+ *  slides from tab to tab; hold the bar to choose its tabs. */
 @Composable fun FloatingNav(selected: Int, icons: List<ImageVector>, labels: List<String>, onSelect: (Int) -> Unit,
-                            modifier: Modifier = Modifier) {
-    Row(modifier.navigationBarsPadding().padding(bottom = 14.dp).frosted(LocalRootHaze.current, RoundedCornerShape(40.dp), 18.dp)
-        .pointerInput(Unit) { detectTapGestures { } }          // taps between the buttons don't fall through to the page
-        .padding(6.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-        icons.forEachIndexed { i, ic ->
-            val bg by animateColorAsState(if (i == selected) (if (N.dark) Color.White.copy(alpha = 0.14f) else Color.Black.copy(alpha = 0.07f)) else Color.Transparent, label = "nav")
-            Box(Modifier.size(width = 76.dp, height = 56.dp).clip(RoundedCornerShape(28.dp)).background(bg)
-                .bouncy { onSelect(i) }, contentAlignment = Alignment.Center) {
-                Icon(ic, labels[i], tint = N.text, modifier = Modifier.size(26.dp))
+                            modifier: Modifier = Modifier, onLongClick: (() -> Unit)? = null) {
+    val itemW = 76.dp; val gap = 4.dp
+    val x by androidx.compose.animation.core.animateDpAsState((itemW + gap) * selected.coerceAtLeast(0),
+        if (reduceMotion()) androidx.compose.animation.core.snap() else androidx.compose.animation.core.spring(dampingRatio = 0.72f, stiffness = 420f), label = "bead")
+    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
+    Box(modifier.navigationBarsPadding().padding(bottom = 14.dp).frosted(LocalRootHaze.current, RoundedCornerShape(40.dp), 18.dp)
+        .pointerInput(onLongClick) { detectTapGestures(onLongPress = { onLongClick?.let { l -> haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress); l() } }) }
+        .padding(6.dp)) {
+        if (selected >= 0) Box(Modifier.offset(x = x).size(width = itemW, height = 56.dp)
+            .frosted(LocalRootHaze.current, RoundedCornerShape(28.dp), 4.dp)
+            .background(if (N.dark) Color.White.copy(alpha = 0.10f) else Color.Black.copy(alpha = 0.05f)))
+        Row(horizontalArrangement = Arrangement.spacedBy(gap)) {
+            icons.forEachIndexed { i, ic ->
+                Box(Modifier.size(width = itemW, height = 56.dp).clip(RoundedCornerShape(28.dp))
+                    .bouncy(onLongClick = onLongClick) { onSelect(i) }, contentAlignment = Alignment.Center) {
+                    Icon(ic, labels[i], tint = N.text, modifier = Modifier.size(26.dp))
+                }
             }
         }
     }
