@@ -25,7 +25,18 @@ From then on the app uses the LAN when it's home and the tunnel everywhere else.
 
 ## Using Nova web remotely
 
-The service-token policy only lets the app through. To use the web version from anywhere, add a
-second policy to the same Access application: **Action: Allow, Include: Emails → your address**
-(and set up the One-time PIN login method, or your identity provider). Cloudflare then asks you to
-log in before the page loads, and Nova still requires the browser's own key on top of that.
+The service-token policy only lets the app through; a browser gets **403** from Cloudflare. To open
+Nova web from anywhere, let *you* log in to Cloudflare as well:
+
+1. **Login method.** Zero Trust → Settings → Authentication → Login methods → *Add new* →
+   **One-time PIN** (Cloudflare emails you a code). Any identity provider works too.
+2. **Second policy.** Access → Applications → your Nova application → Policies → *Add a policy*:
+   - Action: **Allow**
+   - Include: **Emails** → your email address
+   - Keep the existing **Service Auth** policy (that's the app's).
+3. Open `https://nova.example.com` in the browser. Cloudflare asks for your email and a PIN, then
+   Nova web loads. Choose **Get a code**, and approve it in the app on an admin phone
+   (Menu → Users & devices → *Approve a browser*).
+
+Nova still needs the browser's own signing key on top of the Cloudflare login, and risky actions
+from a browser are always approved on your phone.

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.3-alpha (server: Nova web rebuilt)
+- Nova web now mirrors the app: Home (server picture, customizable shortcuts, at-a-glance stats, Home layout editor), Menu, Quick panel (fan slider tile, tiles, power) with editor, Status with live 1-second smooth graphs, Containers (actions, restart policy, logs, shell), App store (apps + programs), Inbox with filters, Notifications, Lighting (effects, colours, speed, rainbow, LEDs, status light) and Schedules, Storage & drives (SMART, mount/unmount), Users & devices, Settings, Server name & accent, Appearance (theme, reduce motion, Home layout, shortcuts, bottom bar), Dashboard mode with tile editor and night dimming, About, Setup guide.
+- Same look: glass cards, frosted bottom bar with a sliding indicator, frosted back button and toasts, One UI dialogs, slide transitions, scroll memory, back from a tab goes Home; side rail on wide screens.
+- "Disconnected" with details instead of raw Cloudflare errors; risky actions still go to your phone for approval.
+- Live graphs glide by the number of samples that arrived and poll just after the server's tick (no snapping back).
+
 ## 0.4.4-alpha (app) · server 0.4.2-alpha
 - Terminal: "Let this phone log in" installs the phone's hardware-backed SSH key into the terminal user's authorized_keys (admin + fingerprint, phones only; forwarding disabled; tagged per device and removed when the device is removed — app, `nova-api revoke`, or "remove all").
 - "Disconnected · last contact …" with per-route details instead of raw Cloudflare errors (HTTP 530 etc.).
