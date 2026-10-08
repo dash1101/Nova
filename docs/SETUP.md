@@ -12,7 +12,7 @@ containers and the app store.
 
 ```bash
 # from a release:
-sudo apt install ./nova-server_0.4.0~alpha_all.deb
+sudo apt install ./nova-server_<version>_all.deb
 
 # or from source:
 git clone https://github.com/<you>/nova && cd nova

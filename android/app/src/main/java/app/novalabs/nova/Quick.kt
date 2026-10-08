@@ -58,11 +58,11 @@ else QUICK_ACTIONS.firstOrNull { it.id == id }
 /** One UI quick-panel tile: blue when "on", card-coloured otherwise. Long-press opens its settings. */
 @Composable fun QuickTile(icon: ImageVector, label: String, state: String?, active: Boolean, modifier: Modifier = Modifier,
                           onLongClick: (() -> Unit)? = null, onClick: () -> Unit) {
-    val bg by animateColorAsState(if (active) N.blue else N.card, label = "tile")
+    val bg by animateColorAsState(if (active) N.blue else Color.Transparent, label = "tile")
     val fg = if (active) Color.White else N.text
     val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
     Row(modifier.height(76.dp).bouncy(onLongClick = onLongClick?.let { l -> { haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress); l() } }, onClick = onClick)
-        .clip(RoundedCornerShape(24.dp)).background(bg)
+        .glassCard(RoundedCornerShape(24.dp), if (active) 8.dp else 4.dp).background(bg)
         .padding(horizontal = 14.dp),
         verticalAlignment = Alignment.CenterVertically) {
         Box(Modifier.size(40.dp).clip(CircleShape).background(if (active) Color.White.copy(alpha = 0.22f) else N.pill), contentAlignment = Alignment.Center) {
@@ -88,7 +88,7 @@ else QUICK_ACTIONS.firstOrNull { it.id == id }
     val fill by androidx.compose.animation.core.animateFloatAsState(shown, label = "fill",
         animationSpec = if (drag != null) androidx.compose.animation.core.snap() else androidx.compose.animation.core.spring())
     val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
-    Box(modifier.height(76.dp).clip(RoundedCornerShape(24.dp)).background(N.card)
+    Box(modifier.height(76.dp).glassCard(RoundedCornerShape(24.dp), 4.dp)
         .onSizeChanged { width = it.width.toFloat().coerceAtLeast(1f) }
         .pointerInput(enabled) {
             if (!enabled) return@pointerInput

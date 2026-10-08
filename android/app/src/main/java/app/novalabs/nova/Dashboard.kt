@@ -90,7 +90,7 @@ class DashPrefs(ctx: android.content.Context, profile: String) {
 
     if (editing) { EditDashboard(app, prefs, tiles, { tiles = it; prefs.tiles = it }) { editing = false }; return }
 
-    val stats by live(app, "/api/v1/stats", 15_000)
+    val stats = liveStats(app)
     val events by live(app, "/api/v1/events?since=0", 30_000)
     Box(Modifier.fillMaxSize().clickable(interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
         indication = null) { chrome = !chrome }) {
@@ -127,7 +127,7 @@ class DashPrefs(ctx: android.content.Context, profile: String) {
 }
 
 @Composable private fun Tile(title: String, icon: ImageVector, color: Color, content: @Composable ColumnScope.() -> Unit) {
-    Column(Modifier.fillMaxSize().clip(RoundedCornerShape(28.dp)).background(N.card).padding(18.dp)) {
+    Column(Modifier.fillMaxSize().glassCard(RoundedCornerShape(28.dp)).padding(18.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(icon, null, tint = color, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(6.dp))
             Text(title, color = N.sub, fontSize = 14.sp)
@@ -137,12 +137,14 @@ class DashPrefs(ctx: android.content.Context, profile: String) {
     }
 }
 
-@Composable private fun DashTileView(app: AppState, t: DashTile, stats: JSONObject?, events: JSONObject?, now: Long) {
+@Composable private fun DashTileView(app: AppState, t: DashTile, stats: LiveStats, events: JSONObject?, now: Long) {
     val o = app.overview; val st = o?.optJSONObject("status"); val m = st?.optJSONObject("metrics")
-    val n = stats?.optJSONObject("now")?.takeIf { it.has("cpu") }; val hist = stats?.optJSONArray("history")
-    fun series(k: String) = hist?.let { h -> (0 until h.length()).map { h.getJSONObject(it).optDouble(k, 0.0).toFloat() } } ?: emptyList()
+    val n = stats.now; val live = stats.recent.size >= 2
+    val pts = if (live) stats.recent else stats.history
+    fun series(k: String) = pts.map { it.optDouble(k, 0.0).toFloat().let { v -> if (v.isNaN()) 0f else v } }
+    val tick = if (live) stats.tick else 0; val window = if (live) 120 else 0
     when (t.id) {
-        "clock" -> BoxWithConstraints(Modifier.fillMaxSize().clip(RoundedCornerShape(28.dp)).background(N.card).padding(18.dp)) {
+        "clock" -> BoxWithConstraints(Modifier.fillMaxSize().glassCard(RoundedCornerShape(28.dp)).padding(18.dp)) {
           val big = (maxWidth.value / 3.1f).coerceIn(28f, 72f).sp          // fits the tile, phone or tablet
           Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.Center) {
             Text(SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(now)), color = N.text, fontSize = big, fontWeight = FontWeight.Light,
@@ -157,13 +159,13 @@ class DashPrefs(ctx: android.content.Context, profile: String) {
                 Text(o?.optJSONObject("containers")?.let { "${it.optInt("running")}/${it.optInt("total")} containers running" } ?: "", color = N.sub, fontSize = 14.sp)
                 if (app.error != null) Text("Offline — showing the last data", color = N.amber, fontSize = 13.sp)
             } }
-        "cpu" -> GraphTile("CPU", Icons.Rounded.Memory, N.blue, n?.let { "%.0f%%".format(it.optDouble("cpu")) }, n?.let { "load ${it.optDouble("load")}" }, series("cpu"), 100f)
+        "cpu" -> GraphTile("CPU", Icons.Rounded.Memory, N.blue, n?.let { "%.0f%%".format(it.optDouble("cpu")) }, n?.let { "load ${it.optDouble("load")}" }, series("cpu"), 100f, tick, window)
         "mem" -> GraphTile("Memory", Icons.Rounded.DeveloperBoard, Color(0xFFBF5AF2), n?.let { "%.0f%%".format(it.optDouble("mem")) },
-            n?.let { "${it.optDouble("mem_used_gb")} / ${it.optDouble("mem_total_gb")} GB" }, series("mem"), 100f)
+            n?.let { "${it.optDouble("mem_used_gb")} / ${it.optDouble("mem_total_gb")} GB" }, series("mem"), 100f, tick, window)
         "temp" -> GraphTile("CPU temperature", Icons.Rounded.Thermostat, N.amber, n?.optDouble("temp")?.takeIf { !it.isNaN() }?.let { "%.0f°C".format(it) } ?: m?.optString("cpu_temp"),
-            n?.optDouble("nvme_temp")?.takeIf { !it.isNaN() }?.let { "NVMe %.0f°C".format(it) }, series("temp"), null)
+            n?.optDouble("nvme_temp")?.takeIf { !it.isNaN() }?.let { "NVMe %.0f°C".format(it) }, series("temp"), null, tick, window)
         "net" -> GraphTile("Network", Icons.Rounded.SwapVert, N.green, n?.let { "↓ ${rate(it.optDouble("rx"))}" }, n?.let { "↑ ${rate(it.optDouble("tx"))}" },
-            series("rx").zip(series("tx")) { a, b -> a + b }, null)
+            series("rx").zip(series("tx")) { a, b -> a + b }, null, tick, window)
         "storage" -> Tile("Storage", Icons.Rounded.Storage, N.green) {
             listOf("Photos" to "photo_pool_used", "System" to "root_used", "Cold" to "cold_storage_used", "Backup" to "backup_drive_used")
                 .filter { m?.has(it.second) == true }.take(4).forEach { (label, k) ->
@@ -216,12 +218,13 @@ class DashPrefs(ctx: android.content.Context, profile: String) {
     }
 }
 
-@Composable private fun GraphTile(title: String, icon: ImageVector, color: Color, value: String?, sub: String?, values: List<Float>, max: Float?) =
+@Composable private fun GraphTile(title: String, icon: ImageVector, color: Color, value: String?, sub: String?, values: List<Float>, max: Float?,
+                                   tick: Int = 0, window: Int = 0) =
     Tile(title, icon, color) {
         Text(value ?: "—", color = N.text, fontSize = 30.sp, fontWeight = FontWeight.Bold)
         Text(sub ?: "", color = N.sub, fontSize = 12.sp, maxLines = 1)
         Spacer(Modifier.height(8.dp))
-        Sparkline(values, color, Modifier.fillMaxWidth().weight(1f), max)
+        Sparkline(values, color, Modifier.fillMaxWidth().weight(1f), max, tick, window)
     }
 
 @Composable private fun EditDashboard(app: AppState, prefs: DashPrefs, tiles: List<String>, save: (List<String>) -> Unit, done: () -> Unit) {

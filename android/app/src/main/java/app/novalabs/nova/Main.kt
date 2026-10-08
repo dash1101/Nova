@@ -13,6 +13,9 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
+import androidx.compose.animation.core.spring
+import androidx.compose.ui.graphics.Color
+import dev.chrisbanes.haze.hazeSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.graphicsLayer
@@ -48,7 +51,7 @@ sealed class Route {
     data object QuickPanel : Route(); data object EditQuick : Route(); data object Status : Route()
     data object Ssh : Route(); data object SshTerm : Route()
     data object Servers : Route(); data object ServerSettings : Route(); data object Dashboard : Route(); data object Approvals : Route()
-    data object Appearance : Route(); data object SetupGuide : Route()
+    data object Appearance : Route(); data object SetupGuide : Route(); data object EditShortcuts : Route()
     data object Settings : Route(); data object Devices : Route(); data object About : Route()
 }
 
@@ -77,9 +80,16 @@ class AppState(val activity: Activity, val pairing: Pairing, val scope: Coroutin
     /** In the tablet list/detail view, opening something from the list replaces the detail instead of stacking. */
     /** Which way the last navigation went, so transitions slide the right way. */
     var navDir by mutableIntStateOf(0)          // 1 forward, -1 back, 0 tab switch / instant
-    fun go(r: Route) { navDir = 1; if (wide && leftPane && stack.size >= 2) stack.removeAt(stack.lastIndex); stack.add(r) }
-    fun tab(r: Route) { navDir = 0; stack.clear(); stack.add(r) }
-    fun back(instant: Boolean = false) { if (stack.size > 1) { navDir = if (instant) 0 else -1; stack.removeAt(stack.lastIndex) } }
+    fun go(r: Route) { navDir = 1; if (wide && leftPane && stack.size >= 2) pop(); stack.add(r) }
+    fun tab(r: Route) { navDir = 0; stack.clear(); scrolls.clear(); stack.add(r) }
+    fun back(instant: Boolean = false) { if (stack.size > 1) { navDir = if (instant) 0 else -1; pop() } }
+    private fun pop() { scrolls.keys.removeAll { it.first >= stack.lastIndex }; stack.removeAt(stack.lastIndex) }
+    /** Scroll position of every page in the back stack, so going back lands where you left off. */
+    private val scrolls = mutableMapOf<Pair<Int, Route>, androidx.compose.foundation.ScrollState>()
+    fun scrollFor(r: Route): androidx.compose.foundation.ScrollState {
+        val depth = stack.lastIndexOf(r).coerceAtLeast(0)
+        return scrolls.getOrPut(depth to r) { androidx.compose.foundation.ScrollState(0) }
+    }
     fun toast(m: String) = scope.launch { snack.currentSnackbarData?.dismiss(); snack.showSnackbar(m) }
 
     suspend fun refresh() {
@@ -239,25 +249,37 @@ class MainActivity : ComponentActivity() {
     }
     LaunchedEffect(openApprovals) { if (openApprovals) { openApprovals = false; app.go(Route.Approvals) } }
 
+    val rootHaze = remember { dev.chrisbanes.haze.HazeState() }
     GlowBackground {
         BoxWithConstraints(Modifier.fillMaxSize()) {
             val wide = maxWidth >= 720.dp
             app.wide = wide
-            CompositionLocalProvider(LocalWide provides wide) {
+            CompositionLocalProvider(LocalWide provides wide, LocalRootHaze provides rootHaze) {
                 if (!wide) {
-                    val p by androidx.compose.animation.core.animateFloatAsState(backP, label = "back")
+                    val p by androidx.compose.animation.core.animateFloatAsState(backP, spring(stiffness = 900f), label = "back")
+                    // ease-out so the first part of the swipe already shows clearly
+                    val e = 1f - (1f - p) * (1f - p)
+                    val dirX = if (backEdge == androidx.activity.BackEventCompat.EDGE_LEFT) 1 else -1
+                    Box(Modifier.fillMaxSize().hazeSource(rootHaze)) {
                     if (p > 0.001f && app.stack.size > 1) Box(Modifier.fillMaxSize().graphicsLayer {
-                        val s = 0.94f + 0.06f * p; scaleX = s; scaleY = s; alpha = 0.4f + 0.6f * p }) { GlowBackground { Screen(app, app.stack[app.stack.size - 2]) } }
+                        // the page underneath comes forward from behind, sliding in slightly from the opposite side
+                        val s = 0.9f + 0.1f * e; scaleX = s; scaleY = s
+                        translationX = -dirX * 48.dp.toPx() * (1f - e)
+                    }) {
+                        GlowBackground { Screen(app, app.stack[app.stack.size - 2]) }
+                        Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.32f * (1f - e))))   // dim lifts as it comes forward
+                    }
                     AnimatedContent(app.top, modifier = Modifier.fillMaxSize().graphicsLayer {
                             if (p > 0.001f) {
-                                // ease-out so the first part of the swipe already shows clearly
-                                val e = 1f - (1f - p) * (1f - p)
-                                val s = 1f - 0.14f * e; scaleX = s; scaleY = s
-                                translationX = (if (backEdge == androidx.activity.BackEventCompat.EDGE_LEFT) 1 else -1) * 56.dp.toPx() * e
-                                shape = androidx.compose.foundation.shape.RoundedCornerShape(36.dp * p); clip = true
+                                val s = 1f - 0.2f * e; scaleX = s; scaleY = s
+                                translationX = dirX * 96.dp.toPx() * e
+                                translationY = 12.dp.toPx() * e
+                                shape = androidx.compose.foundation.shape.RoundedCornerShape(44.dp * e); clip = true
+                                shadowElevation = 24.dp.toPx() * e
                             } },
                         transitionSpec = { navTransition(app.navDir, reduceMotion()) }, label = "nav") { r ->
                         GlowBackground { Screen(app, r) }          // each page is opaque, so slides don't show through
+                    }
                     }
                     StatusBarScrim(Modifier.align(Alignment.TopCenter))
                     val tabIndex = when (app.top) { Route.Store -> 0; Route.Home -> 1; Route.Menu -> 2; else -> -1 }
@@ -312,7 +334,7 @@ private fun Modifier.paneTouch(app: AppState, left: Boolean) = pointerInput(left
                 }
             } else Box(Modifier.fillMaxSize().paneTouch(app, false), contentAlignment = Alignment.TopCenter) {
                 val full = app.top == Route.Home || app.top == Route.Dashboard || app.top == Route.Status
-                Box(if (full) Modifier.fillMaxSize() else Modifier.widthIn(max = 760.dp).fillMaxHeight()) {
+                Box((if (full) Modifier.fillMaxSize() else Modifier.widthIn(max = 760.dp).fillMaxHeight()).then(LocalRootHaze.current?.let { Modifier.hazeSource(it) } ?: Modifier)) {
                     AnimatedContent(app.top, transitionSpec = { fadeIn() togetherWith fadeOut() }, label = "nav") { r -> Box(Modifier.fillMaxSize()) { Screen(app, r) } }
                 }
             }
@@ -321,7 +343,7 @@ private fun Modifier.paneTouch(app: AppState, left: Boolean) = pointerInput(left
     }
 }
 
-@Composable fun Screen(app: AppState, r: Route) {
+@Composable fun Screen(app: AppState, r: Route) = CompositionLocalProvider(LocalRouteScroll provides app.scrollFor(r)) {
     when (r) {
         Route.Home -> HomeScreen(app)
         Route.Store -> StoreScreen(app)
@@ -340,6 +362,7 @@ private fun Modifier.paneTouch(app: AppState, left: Boolean) = pointerInput(left
         Route.NotifySettings -> NotifySettingsScreen(app)
         Route.QuickPanel -> QuickPanelScreen(app)
         Route.EditQuick -> EditQuickScreen(app)
+        Route.EditShortcuts -> EditShortcutsScreen(app)
         Route.Status -> StatusScreen(app)
         Route.Ssh -> SshScreen(app)
         Route.SshTerm -> SshTermScreen(app)

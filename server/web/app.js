@@ -83,7 +83,7 @@ async function api(method, path, body) {
   if (r.status === 202 && j.approval) return waitApproval(j.approval);          // risky: approve on the phone
   if (r.status === 401) { if (S.me) toast("This browser isn't authorized anymore"); throw new ApiError(401, "unauthorized"); }
   if (!r.ok) throw new ApiError(r.status, j.message || j.error || `HTTP ${r.status}`);
-  if (method === "GET") S.cache[path] = j;
+  if (method === "GET" && !path.startsWith("/api/v1/stats?")) S.cache[path] = j;      // not the per-second deltas
   return j;
 }
 const get = p => api("GET", p), post = (p, b = {}) => api("POST", p, b);
@@ -122,7 +122,17 @@ function spark(canvas, vals, color, max) {
   const dpr = devicePixelRatio || 1, w = canvas.clientWidth, h = canvas.clientHeight; if (!w || vals.length < 2) return;
   canvas.width = w * dpr; canvas.height = h * dpr; const c = canvas.getContext("2d"); c.scale(dpr, dpr);
   const top = max || Math.max(1, Math.max(...vals) * 1.15), dx = w / (vals.length - 1), y = v => h - Math.min(1, v / top) * (h - 4) - 2;
-  c.beginPath(); vals.forEach((v, i) => i ? c.lineTo(i * dx, y(v)) : c.moveTo(0, y(v)));
+  // monotone cubic (Fritsch–Carlson): smooth, and never overshoots the data
+  const X = vals.map((_, i) => i * dx), Y = vals.map(y), n = vals.length;
+  const d = X.slice(1).map((x, i) => (Y[i + 1] - Y[i]) / dx);
+  const m = Y.map((_, i) => i === 0 ? d[0] : i === n - 1 ? d[n - 2] : d[i - 1] * d[i] <= 0 ? 0 : (d[i - 1] + d[i]) / 2);
+  for (let i = 0; i < n - 1; i++) {
+    if (d[i] === 0) { m[i] = m[i + 1] = 0; continue; }
+    const a = m[i] / d[i], b = m[i + 1] / d[i], q = a * a + b * b;
+    if (q > 9) { const t = 3 / Math.sqrt(q); m[i] = t * a * d[i]; m[i + 1] = t * b * d[i]; }
+  }
+  c.beginPath(); c.moveTo(X[0], Y[0]);
+  for (let i = 0; i < n - 1; i++) { const k = dx / 3; c.bezierCurveTo(X[i] + k, Y[i] + m[i] * k, X[i + 1] - k, Y[i + 1] - m[i + 1] * k, X[i + 1], Y[i + 1]); }
   const g = c.createLinearGradient(0, 0, 0, h); g.addColorStop(0, color + "55"); g.addColorStop(1, color + "00");
   c.lineWidth = 2; c.strokeStyle = color; c.lineJoin = "round"; c.stroke();
   c.lineTo(w, h); c.lineTo(0, h); c.closePath(); c.fillStyle = g; c.fill();
@@ -236,7 +246,7 @@ async function home(_a, _b, seq) {
 
 async function status(_a, _b, seq) {
   const draw = () => {
-    const st = S.overview?.status || {}, m = st.metrics || {}, s = S.cache["/api/v1/stats"], n = s?.now, h = s?.history || [];
+    const st = S.overview?.status || {}, m = st.metrics || {}, s = S.cache["/api/v1/stats"], n = s?.now;
     const lvl = st.level || "ok";
     const storage = [["Photos", "photo_pool_used"], ["System drive", "root_used"], ["Cold storage", "cold_storage_used"], ["Backup drive", "backup_drive_used"]].filter(x => m[x[1]]);
     shell(`${header("Server status")}
@@ -244,7 +254,7 @@ async function status(_a, _b, seq) {
         <div style="font-size:20px;font-weight:700">${esc(lvl === "ok" ? "All systems normal" : st.headline)}</div>
         <div class="muted">Updated ${esc((/\d{1,2}:\d{2}/.exec(st.updated_local || "") || ["—"])[0])} · up ${n ? Math.floor(n.uptime_s / 86400) + "d " + Math.floor(n.uptime_s % 86400 / 3600) + "h" : esc(m.uptime || "—")}</div></div>
       ${(st.active || []).filter(a => a.level !== "ok").length ? `<div class="sec">Needs attention</div><div class="group">${st.active.filter(a => a.level !== "ok").map(a => `<div class="row"><span class="dot" style="background:${levelColor(a.level)}"></span><div class="t"><b>${esc(a.title.replace(/^[^\p{L}\p{N}]+\s*/u, ""))}</b><small>${esc(a.detail)}</small></div></div>`).join("")}</div>` : ""}
-      <div class="sec">Last hour</div>
+      <div class="sec">${s?.recent?.length > 1 ? "Live · last 2 minutes" : "Last hour"}</div>
       <div class="grid">
         ${gcard("CPU", n ? Math.round(n.cpu) + "%" : "—", n ? `load ${n.load} · ${n.cores} cores` : "", "c1")}
         ${gcard("Memory", n ? Math.round(n.mem) + "%" : "—", n ? `${n.mem_used_gb} of ${n.mem_total_gb} GB` : "", "c2")}
@@ -257,14 +267,33 @@ async function status(_a, _b, seq) {
         .filter(x => x[1]).map(([l, v]) => `<div class="row"><div class="t"><b>${l}</b><small>${esc(v)}</small></div></div>`).join("")}</div>
       <div class="sec">Services</div><div class="group">${[["Containers", m.containers], ["Websites", m.websites], ["Swap", m.swap]].filter(x => x[1]).map(([l, v]) => `<div class="row"><div class="t"><b>${l}</b><small>${esc(v)}</small></div></div>`).join("")}</div>`);
     wireBack();
-    requestAnimationFrame(() => {
-      spark($("#c1"), h.map(x => x.cpu), css("--blue"), 100); spark($("#c2"), h.map(x => x.mem), "#bf5af2", 100);
-      spark($("#c3"), h.map(x => x.temp || 0), css("--amber")); spark($("#c4"), h.map(x => (x.rx || 0) + (x.tx || 0)), css("--green"));
-    });
+    requestAnimationFrame(graphs);
+  };
+  // Only the numbers and graphs change each second; the rest of the page stays put.
+  const graphs = () => {
+    const s = S.cache["/api/v1/stats"], n = s?.now, h = (s?.recent?.length > 1 ? s.recent.slice(-121) : s?.history) || [];
+    spark($("#c1"), h.map(x => x.cpu), css("--blue"), 100); spark($("#c2"), h.map(x => x.mem), "#bf5af2", 100);
+    spark($("#c3"), h.map(x => x.temp || 0), css("--amber")); spark($("#c4"), h.map(x => (x.rx || 0) + (x.tx || 0)), css("--green"));
+    if (!n) return;
+    const set = (id, v) => { const e = $("#" + id); if (e) e.textContent = v; };
+    set("c1v", Math.round(n.cpu) + "%"); set("c1s", `load ${n.load} · ${n.cores} cores`);
+    set("c2v", Math.round(n.mem) + "%"); set("c2s", `${n.mem_used_gb} of ${n.mem_total_gb} GB`);
+    if (n.temp) set("c3v", Math.round(n.temp) + "°C"); set("c4v", "↓ " + rate(n.rx)); set("c4s", "↑ " + rate(n.tx));
   };
   draw(); await Promise.all([refreshOverview(), get("/api/v1/stats")]); if (seq === renderSeq) draw();
+  while (seq === renderSeq) {
+    await new Promise(r => setTimeout(r, 1000));
+    if (seq !== renderSeq) break;
+    if (document.hidden) continue;
+    const s = S.cache["/api/v1/stats"]; if (!s || !s.recent) continue;          // older server: no 1-second feed
+    try {
+      const r = await api("GET", "/api/v1/stats?since=" + (s.recent.at(-1)?.t || 0));
+      if (r.now) s.now = r.now; s.recent = s.recent.concat(r.recent || []).slice(-180);
+      if (seq === renderSeq) graphs();
+    } catch (e) { /* offline for a moment: keep the last graph */ }
+  }
 }
-const gcard = (l, v, sub, id) => `<div class="card"><div class="lbl">${l}</div><div class="val">${esc(v)}</div><div class="sub">${esc(sub)}</div><canvas id="${id}"></canvas></div>`;
+const gcard = (l, v, sub, id) => `<div class="card"><div class="lbl">${l}</div><div class="val" id="${id}v">${esc(v)}</div><div class="sub" id="${id}s">${esc(sub)}</div><canvas id="${id}"></canvas></div>`;
 
 async function containers(name, sub, seq) {
   if (name && sub === "logs") return logsView(name);

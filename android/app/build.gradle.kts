@@ -19,8 +19,8 @@ android {
         applicationId = "app.novalabs.nova"
         minSdk = 31
         targetSdk = 36
-        versionCode = 8
-        versionName = "0.4.0-alpha.2"
+        versionCode = 9
+        versionName = "0.4.1-alpha"
     }
 
     signingConfigs {
@@ -71,4 +71,5 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.11.0")
     implementation("com.github.mwiede:jsch:0.2.25")                     // SSH client for the Terminal (maintained JSch fork)
     implementation("com.google.zxing:core:3.5.3")                       // QR codes for inviting phones
+    implementation("dev.chrisbanes.haze:haze:1.5.3")                    // frosted-glass backdrop blur
 }

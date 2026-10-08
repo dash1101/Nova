@@ -34,7 +34,7 @@ try:                       # optional module: fan/case lighting (modules/fan-gig
 except ImportError:
     nova_rgb = None
 
-API_VERSION = "0.4.0-alpha.3"
+API_VERSION = "0.4.1-alpha"
 CONFIG = "/etc/nova-api/config.json"
 DATA = "/var/lib/nova-api"
 DEVICES = f"{DATA}/devices.json"
@@ -174,8 +174,10 @@ def reap_shells():
             if not sh["alive"] and now - sh["last"] > 300: shells.pop(sid, None)
 threading.Thread(target=reap_shells, daemon=True).start()
 
-# ── live stats for the status page: sampled every 15 s, last hour kept in memory ──────
-STATS = {"history": [], "now": {}}
+# ── live stats for the status page: sampled every second; the last 3 minutes at 1 s and the
+#    last hour at 15 s (averaged) are kept in memory ──────
+STATS = {"history": [], "recent": [], "now": {}}
+RECENT_N, HISTORY_N, HISTORY_EVERY = 180, 240, 15
 def _hwmon(name, label=None):
     import glob as g
     for h in g.glob("/sys/class/hwmon/hwmon*"):
@@ -189,22 +191,34 @@ def _cpu_times():
     f = [int(x) for x in open("/proc/stat").readline().split()[1:]]
     return sum(f), f[3] + f[4]                        # total, idle+iowait
 
-def _net(dev="enp6s0"):
+def _default_iface():
+    try:
+        for l in open("/proc/net/route").readlines()[1:]:
+            f = l.split()
+            if f[1] == "00000000": return f[0]
+    except Exception: pass
+    return "eth0"
+
+def _net(dev=None):
+    dev = dev or _default_iface()
     for l in open("/proc/net/dev"):
         if l.strip().startswith(dev + ":"):
             v = l.split(":", 1)[1].split(); return int(v[0]), int(v[8])
     return 0, 0
 
 def stats_sampler():
-    prev_cpu, prev_net, prev_t = _cpu_times(), _net(), time.time()
-    first = True
+    iface = _default_iface()
+    prev_cpu, prev_net, prev_t = _cpu_times(), _net(iface), time.time()
+    n = 0
     while True:
-        time.sleep(1 if first else 15); first = False
+        time.sleep(1 - (time.time() % 1) + 0.02)         # on the second, so phones see an even beat
+        n += 1
+        if n % 300 == 0: iface = _default_iface()         # follow a changed network setup
         try:
-            cpu, net, t = _cpu_times(), _net(), time.time()
+            cpu, net, t = _cpu_times(), _net(iface), time.time()
             dt_all, dt_idle = cpu[0] - prev_cpu[0], cpu[1] - prev_cpu[1]
             m = {l.split(":")[0]: int(l.split()[1]) for l in open("/proc/meminfo")}
-            now = {"t": int(t), "cpu": round(100 * (1 - dt_idle / max(1, dt_all)), 1),
+            now = {"t": round(t, 2), "cpu": round(100 * (1 - dt_idle / max(1, dt_all)), 1),
                    "mem": round(100 * (1 - m["MemAvailable"] / m["MemTotal"]), 1),
                    "mem_used_gb": round((m["MemTotal"] - m["MemAvailable"]) / 1048576, 1), "mem_total_gb": round(m["MemTotal"] / 1048576, 1),
                    "swap": round(100 * (1 - m["SwapFree"] / max(1, m["SwapTotal"])), 1) if m.get("SwapTotal") else 0,
@@ -213,7 +227,13 @@ def stats_sampler():
                    "load": float(open("/proc/loadavg").read().split()[0]), "cores": os.cpu_count(),
                    "uptime_s": int(float(open("/proc/uptime").read().split()[0]))}
             STATS["now"] = now
-            STATS["history"] = (STATS["history"] + [{k: now[k] for k in ("t", "cpu", "mem", "temp", "rx", "tx")}])[-240:]
+            point = {k: now[k] for k in ("t", "cpu", "mem", "temp", "rx", "tx")}
+            STATS["recent"] = (STATS["recent"] + [point])[-RECENT_N:]
+            if n % HISTORY_EVERY == 1:                    # one averaged point per 15 s for the hour view
+                last = STATS["recent"][-HISTORY_EVERY:]
+                avg = {k: round(sum((p[k] or 0) for p in last) / len(last), 1) for k in ("cpu", "mem", "rx", "tx")}
+                avg["temp"] = point["temp"]; avg["t"] = int(t)
+                STATS["history"] = (STATS["history"] + [avg])[-HISTORY_N:]
             prev_cpu, prev_net, prev_t = cpu, net, t
         except Exception:
             pass
@@ -423,8 +443,9 @@ class Handler(BaseHTTPRequestHandler):
         nonces[nonce] = now + 2 * CLOCK_SKEW_MS / 1000
         with lock:
             devs = load_json(DEVICES, {})
-            if dev_id in devs:
-                devs[dev_id].update(last_seen=time.strftime("%Y-%m-%d %H:%M"), last_via=where)
+            seen = time.strftime("%Y-%m-%d %H:%M")
+            if dev_id in devs and (devs[dev_id].get("last_seen"), devs[dev_id].get("last_via")) != (seen, where):
+                devs[dev_id].update(last_seen=seen, last_via=where)       # at most one write a minute
                 save_json(DEVICES, devs)
         dev["id"], dev["via"], dev["ip"] = dev_id, where, ip
         return dev
@@ -823,7 +844,13 @@ class Handler(BaseHTTPRequestHandler):
 
         # ── status page / SSH ──
         if method == "GET" and parts == ["stats"]:
-            return 200, {"history": STATS["history"], **({"now": STATS["now"]} if STATS["now"] else {})}
+            # ?since=T (the phone polling once a second): only the new 1-second points
+            try: since = float(q.get("since", "") or "nan")
+            except ValueError: since = float("nan")
+            now = {"now": STATS["now"]} if STATS["now"] else {}
+            if since == since:                                  # not NaN
+                return 200, {"recent": [p for p in STATS["recent"] if p["t"] > since], **now}
+            return 200, {"history": STATS["history"], "recent": STATS["recent"], **now}
         if method == "GET" and parts == ["ssh-hostkeys"]:
             # Lets the app pin the server's SSH host keys (no trust-on-first-use).
             keys = []

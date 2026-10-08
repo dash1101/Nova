@@ -3,6 +3,7 @@ package app.novalabs.nova
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
@@ -14,6 +15,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
@@ -72,27 +74,29 @@ fun levelColor(level: String, t: NovaColors) = when (level) {
 
 // ── Background with the soft top glow ─────────────────────────────────────────────
 @Composable fun GlowBackground(modifier: Modifier = Modifier, content: @Composable BoxScope.() -> Unit) {
+    Box(modifier.fillMaxSize()) { GlowLayer(); content() }
+}
+
+/** The background colour + glow on its own (pages paint it again inside their blur source). */
+@Composable fun GlowLayer() {
     val t = N
-    Box(modifier.fillMaxSize().background(t.bg)) {
-        Canvas(Modifier.fillMaxSize()) {
-            drawRect(Brush.radialGradient(listOf(t.glow.copy(alpha = if (t.dark) 0.9f else 0.8f), Color.Transparent),
-                center = Offset(size.width * 0.85f, size.height * 0.18f), radius = size.width * 0.95f))
-            drawRect(Brush.radialGradient(listOf(t.glow2.copy(alpha = 0.6f), Color.Transparent),
-                center = Offset(size.width * 0.1f, size.height * 0.35f), radius = size.width * 0.8f))
-        }
-        content()
+    Canvas(Modifier.fillMaxSize().background(t.bg)) {
+        drawRect(Brush.radialGradient(listOf(t.glow.copy(alpha = if (t.dark) 0.9f else 0.8f), Color.Transparent),
+            center = Offset(size.width * 0.85f, size.height * 0.18f), radius = size.width * 0.95f))
+        drawRect(Brush.radialGradient(listOf(t.glow2.copy(alpha = 0.6f), Color.Transparent),
+            center = Offset(size.width * 0.1f, size.height * 0.35f), radius = size.width * 0.8f))
     }
 }
 
 // ── Headers ───────────────────────────────────────────────────────────────────────
 @Composable fun SectionLabel(text: String) =
     Text(text, color = N.sub, fontSize = 14.sp, fontWeight = FontWeight.Medium,
-        modifier = Modifier.padding(start = 30.dp, end = 30.dp, top = 18.dp, bottom = 8.dp))
+        modifier = Modifier.padding(start = Space.gutter + Space.inner - 6.dp, end = 30.dp, top = 18.dp, bottom = 8.dp))
 
 // ── Group cards ───────────────────────────────────────────────────────────────────
 @Composable fun Group(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
-    Column(modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 6.dp)
-        .clip(RoundedCornerShape(26.dp)).background(N.card), content = content)
+    Column(modifier.fillMaxWidth().padding(horizontal = Space.gutter, vertical = 6.dp)
+        .glassCard(RoundedCornerShape(26.dp)), content = content)
 }
 
 @Composable fun RowDivider() = HorizontalDivider(Modifier.padding(horizontal = 22.dp), thickness = 0.8.dp, color = N.divider)
@@ -175,20 +179,20 @@ fun levelColor(level: String, t: NovaColors) = when (level) {
 }
 
 // ── Pills ─────────────────────────────────────────────────────────────────────────
-data class PillItem(val icon: ImageVector, val label: String, val badge: Int = 0, val onClick: () -> Unit)
+data class PillItem(val icon: ImageVector, val label: String, val badge: Int = 0, val onLongClick: (() -> Unit)? = null, val onClick: () -> Unit)
 
 @Composable fun PillBar(items: List<PillItem>, modifier: Modifier = Modifier) {
-    Row(modifier.padding(horizontal = 26.dp).fillMaxWidth().clip(RoundedCornerShape(30.dp)).background(N.pill)
-        .padding(vertical = 14.dp, horizontal = 6.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
+    Row(modifier.padding(horizontal = Space.gutter).fillMaxWidth().glassCard(RoundedCornerShape(30.dp))
+        .padding(vertical = 12.dp, horizontal = 6.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
         items.forEach { it ->
-            Column(Modifier.weight(1f).clip(RoundedCornerShape(18.dp)).bouncy(onClick = it.onClick).padding(vertical = 6.dp),
+            Column(Modifier.weight(1f).clip(RoundedCornerShape(18.dp)).bouncy(onLongClick = it.onLongClick, onClick = it.onClick).padding(vertical = 6.dp),
                 horizontalAlignment = Alignment.CenterHorizontally) {
                 Box {
                     Icon(it.icon, null, tint = N.text, modifier = Modifier.size(26.dp))
                     Box(Modifier.align(Alignment.TopEnd).offset(x = 10.dp, y = (-6).dp)) { OneBadge(it.badge) }
                 }
                 Spacer(Modifier.height(6.dp))
-                Text(it.label, fontSize = 13.sp, color = N.text, fontWeight = FontWeight.Medium, textAlign = TextAlign.Center, maxLines = 1)
+                Text(it.label, fontSize = if (items.size >= 5) 12.sp else 13.sp, color = N.text, fontWeight = FontWeight.Medium, textAlign = TextAlign.Center, maxLines = 1)
             }
         }
     }
@@ -217,12 +221,13 @@ val LocalWide = staticCompositionLocalOf { false }
 
 @Composable fun FloatingNav(selected: Int, icons: List<ImageVector>, labels: List<String>, onSelect: (Int) -> Unit,
                             modifier: Modifier = Modifier) {
-    Row(modifier.navigationBarsPadding().padding(bottom = 14.dp).clip(RoundedCornerShape(40.dp)).background(N.nav)
+    Row(modifier.navigationBarsPadding().padding(bottom = 14.dp).frosted(LocalRootHaze.current, RoundedCornerShape(40.dp), 18.dp)
+        .pointerInput(Unit) { detectTapGestures { } }          // taps between the buttons don't fall through to the page
         .padding(6.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
         icons.forEachIndexed { i, ic ->
-            val bg by animateColorAsState(if (i == selected) N.navSel else Color.Transparent, label = "nav")
+            val bg by animateColorAsState(if (i == selected) (if (N.dark) Color.White.copy(alpha = 0.14f) else Color.Black.copy(alpha = 0.07f)) else Color.Transparent, label = "nav")
             Box(Modifier.size(width = 76.dp, height = 56.dp).clip(RoundedCornerShape(28.dp)).background(bg)
-                .clickable { onSelect(i) }, contentAlignment = Alignment.Center) {
+                .bouncy { onSelect(i) }, contentAlignment = Alignment.Center) {
                 Icon(ic, labels[i], tint = N.text, modifier = Modifier.size(26.dp))
             }
         }
@@ -231,7 +236,7 @@ val LocalWide = staticCompositionLocalOf { false }
 
 @Composable fun CancelSavePill(onCancel: () -> Unit, onSave: () -> Unit, saveEnabled: Boolean = true,
                                saveLabel: String = "Save", modifier: Modifier = Modifier) {
-    Row(modifier.navigationBarsPadding().padding(bottom = 14.dp).clip(RoundedCornerShape(40.dp)).background(N.nav)
+    Row(modifier.navigationBarsPadding().padding(bottom = 14.dp).frosted(null, RoundedCornerShape(40.dp), 18.dp)
         .padding(horizontal = 10.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
         Text("Cancel", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = N.text,
             modifier = Modifier.clip(RoundedCornerShape(24.dp)).clickable(onClick = onCancel).padding(horizontal = 28.dp, vertical = 14.dp))
@@ -243,8 +248,8 @@ val LocalWide = staticCompositionLocalOf { false }
 }
 
 @Composable fun Banner(text: String, color: Color, onClick: () -> Unit) {
-    Row(Modifier.padding(horizontal = 18.dp).fillMaxWidth().clip(RoundedCornerShape(26.dp)).background(N.pill)
-        .clickable(onClick = onClick).padding(horizontal = 20.dp, vertical = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(Modifier.padding(horizontal = Space.gutter).fillMaxWidth().glassCard(RoundedCornerShape(26.dp))
+        .bouncy(onClick = onClick).padding(horizontal = Space.inner, vertical = 16.dp), verticalAlignment = Alignment.CenterVertically) {
         Box(Modifier.size(9.dp).clip(CircleShape).background(color)); Spacer(Modifier.width(12.dp))
         Text(text, color = N.text, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
         Icon(Icons.Rounded.ChevronRight, null, tint = N.text)
@@ -253,8 +258,8 @@ val LocalWide = staticCompositionLocalOf { false }
 
 /** One UI segmented tabs (pill). */
 @Composable fun Segmented(options: List<String>, selected: Int, onSelect: (Int) -> Unit) {
-    Row(Modifier.padding(horizontal = 18.dp, vertical = 6.dp).fillMaxWidth().clip(RoundedCornerShape(24.dp))
-        .background(N.pill).padding(4.dp)) {
+    Row(Modifier.padding(horizontal = Space.gutter, vertical = 6.dp).fillMaxWidth().glassCard(RoundedCornerShape(24.dp), 3.dp)
+        .padding(4.dp)) {
         options.forEachIndexed { i, o ->
             Box(Modifier.weight(1f).clip(RoundedCornerShape(20.dp)).background(if (i == selected) N.navSel else Color.Transparent)
                 .clickable { onSelect(i) }.padding(vertical = 10.dp), contentAlignment = Alignment.Center) {

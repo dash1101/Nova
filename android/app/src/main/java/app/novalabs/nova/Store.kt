@@ -48,7 +48,7 @@ private fun storeItem(id: String) = Cache["/api/v1/store"]?.optJSONArray("items"
     val appsLive = live(app, "/api/v1/store"); val progsLive = live(app, "/api/v1/programs")
     val apps = appsLive.value?.optJSONArray("items"); val progs = progsLive.value?.optJSONArray("items")
     var busy by remember { mutableStateOf<String?>(null) }
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+    Column(Modifier.fillMaxSize().verticalScroll(routeScroll())) {
         Text("App store", fontSize = 32.sp, fontWeight = FontWeight.Bold, color = N.text,
             modifier = Modifier.statusBarsPadding().padding(start = 26.dp, top = 30.dp))
         Text("Hand-picked for your server. Installs run on Nova and show up in Containers.", color = N.sub, fontSize = 15.sp,

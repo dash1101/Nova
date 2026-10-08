@@ -28,7 +28,8 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.ArrowBackIos
+import androidx.compose.material.icons.rounded.ArrowBackIosNew
+import dev.chrisbanes.haze.hazeSource
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -87,20 +88,25 @@ data class TopAction(val icon: ImageVector, val label: String, val onClick: () -
  * circle fades in behind each, and fades out again when you scroll back to the top.
  */
 @Composable fun Page(title: String, onBack: () -> Unit, actions: List<TopAction> = emptyList(),
-                     scroll: ScrollState = rememberScrollState(), bottom: Dp = 40.dp,
+                     scroll: ScrollState = routeScroll(), bottom: Dp = 40.dp,
                      content: @Composable ColumnScope.() -> Unit) {
+    val haze = remember { dev.chrisbanes.haze.HazeState() }
     Box(Modifier.fillMaxSize()) {
+      // the blur source includes the background glow, so the frosted buttons pick up its colour
+      Box(Modifier.fillMaxSize().hazeSource(haze)) {
+        GlowLayer()
         Column(Modifier.fillMaxSize().verticalScroll(scroll)) {
             Row(Modifier.fillMaxWidth().statusBarsPadding()
-                .padding(start = 64.dp, end = 12.dp + 52.dp * actions.size, top = 18.dp, bottom = 10.dp)
+                .padding(start = 68.dp, end = 12.dp + 52.dp * actions.size, top = 18.dp, bottom = 10.dp)
                 .heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(title, fontSize = 24.sp, fontWeight = FontWeight.Bold, color = N.text, maxLines = 2, overflow = TextOverflow.Ellipsis)
             }
             content()
             Spacer(Modifier.height(bottom))
         }
+      }
         val px = with(LocalDensity.current) { 36.dp.toPx() }
-        StickyBar(onBack, actions, (scroll.value / px).coerceIn(0f, 1f))
+        CompositionLocalProvider(LocalPageHaze provides haze) { StickyBar(onBack, actions, (scroll.value / px).coerceIn(0f, 1f)) }
     }
 }
 
@@ -119,7 +125,7 @@ data class TopAction(val icon: ImageVector, val label: String, val onClick: () -
 @Composable private fun StickyBar(onBack: () -> Unit, actions: List<TopAction>, fade: Float) {
     Row(Modifier.fillMaxWidth().statusBarsPadding().padding(start = 10.dp, end = 10.dp, top = 18.dp),
         verticalAlignment = Alignment.CenterVertically) {
-        CircleButton(Icons.AutoMirrored.Rounded.ArrowBackIos, "Back", fade, onBack, iconSize = 20.dp, nudge = 3.dp)
+        CircleButton(Icons.Rounded.ArrowBackIosNew, "Back", fade, onBack, iconSize = 20.dp)
         Spacer(Modifier.weight(1f))
         actions.forEach { a -> Spacer(Modifier.width(4.dp)); CircleButton(a.icon, a.label, fade, a.onClick) }
     }
@@ -127,9 +133,10 @@ data class TopAction(val icon: ImageVector, val label: String, val onClick: () -
 
 @Composable fun CircleButton(icon: ImageVector, label: String, fade: Float, onClick: () -> Unit,
                              iconSize: Dp = 24.dp, nudge: Dp = 0.dp) {
-    val bg = if (N.dark) Color(0xFF2C2C31) else Color.White
-    Box(Modifier.size(48.dp).clip(CircleShape).background(bg.copy(alpha = 0.96f * fade))
-        .clickable(onClick = onClick), contentAlignment = Alignment.Center) {
+    // The glyph is centred in its box (ArrowBackIosNew, not the off-centre ArrowBackIos), so the
+    // frosted circle that fades in behind it sits exactly around it.
+    Box(Modifier.size(48.dp).frosted(LocalPageHaze.current, CircleShape, 8.dp, fade)
+        .bouncy(onClick = onClick), contentAlignment = Alignment.Center) {
         Icon(icon, label, tint = N.text, modifier = Modifier.padding(start = nudge).size(iconSize))
     }
 }
@@ -140,8 +147,7 @@ data class TopAction(val icon: ImageVector, val label: String, val onClick: () -
     SnackbarHost(state, modifier) { data ->
         Box(Modifier.fillMaxWidth().padding(horizontal = 36.dp), contentAlignment = Alignment.Center) {
             Text(data.visuals.message, color = if (N.dark) Color(0xFFF2F2F4) else Color(0xFF1B1B1D), fontSize = 15.sp,
-                textAlign = TextAlign.Center, modifier = Modifier.clip(RoundedCornerShape(22.dp))
-                    .background(if (N.dark) Color(0xFF3B3B40) else Color(0xFFE6E6EB))
+                textAlign = TextAlign.Center, modifier = Modifier.frosted(LocalRootHaze.current, RoundedCornerShape(22.dp), 10.dp)
                     .padding(horizontal = 20.dp, vertical = 12.dp))
         }
     }
@@ -336,3 +342,7 @@ data class DialogButton(val label: String, val color: Color? = null, val enabled
 @Composable fun DetailLine(label: String, value: String) {
     Row { Text(label, color = N.sub, fontSize = 14.sp, modifier = Modifier.weight(1f)); Text(value, color = N.text, fontSize = 14.sp) }
 }
+
+/** The remembered scroll position for the page being shown (kept while it's in the back stack). */
+val LocalRouteScroll = staticCompositionLocalOf<ScrollState?> { null }
+@Composable fun routeScroll(): ScrollState = LocalRouteScroll.current ?: rememberScrollState()

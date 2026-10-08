@@ -30,7 +30,7 @@ import org.json.JSONObject
 
     val top: @Composable () -> Unit = {
         // Title row
-        Row(Modifier.fillMaxWidth().statusBarsPadding().padding(start = 26.dp, end = 10.dp, top = 30.dp),
+        Row(Modifier.fillMaxWidth().statusBarsPadding().padding(start = Space.gutter + 8.dp, end = 8.dp, top = 28.dp),
             verticalAlignment = Alignment.CenterVertically) {
             var switcher by remember { mutableStateOf(false) }
             Box(Modifier.weight(1f)) {
@@ -52,21 +52,21 @@ import org.json.JSONObject
             }
         }
         // Status line — like "100% | Fully charged"
-        Row(Modifier.padding(start = 16.dp, top = 6.dp).clip(androidx.compose.foundation.shape.RoundedCornerShape(16.dp))
-            .clickable { app.go(Route.Status) }.padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.padding(start = Space.gutter, top = 2.dp).clip(androidx.compose.foundation.shape.RoundedCornerShape(16.dp))
+            .clickable { app.go(Route.Status) }.padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(if (app.reconnecting || app.error != null) Icons.Rounded.Sync else if (level == "ok") Icons.Rounded.CheckCircle else Icons.Rounded.Error, null,
                 tint = if (app.reconnecting || app.error != null) N.sub else levelColor(level, N),
                 modifier = Modifier.size(20.dp))
             Spacer(Modifier.width(8.dp))
             val head = when { app.error != null -> "Offline"; app.reconnecting -> "Reconnecting…"; st == null -> "Connecting…"
                 level == "ok" -> "All systems normal"; else -> st.optInt("active_count").let { n -> "$n need${if (n == 1) "s" else ""} attention" } }
-            Text(head, color = N.sub, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
+            Text(head, color = N.sub, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
             if (cs != null) {
-                Text("  |  ", color = N.sub, fontSize = 17.sp)
-                Text("${cs.optInt("running")}/${cs.optInt("total")} running", color = N.sub, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
+                Box(Modifier.padding(horizontal = 10.dp).size(4.dp).clip(androidx.compose.foundation.shape.CircleShape).background(N.sub.copy(alpha = 0.6f)))
+                Text("${cs.optInt("running")}/${cs.optInt("total")} running", color = N.sub, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
             }
         }
-        Spacer(Modifier.height(18.dp))
+        Spacer(Modifier.height(14.dp))
         // Banner (only when something is going on)
         val backupRunning = m?.optString("data_backup")?.contains("running") == true
         val backup = if (backupRunning) live(app, "/api/v1/backup", 5_000).value else null
@@ -75,7 +75,6 @@ import org.json.JSONObject
             app.error != null -> Banner(app.error!!, N.red) { app.act { app.refresh() } }
             level != "ok" -> Banner(st?.optString("headline") ?: "", levelColor(level, N)) { app.go(Route.Inbox) }
             backupRunning -> Banner(backup?.let { backupLine(it) } ?: "Backing up…", N.blue) { app.go(Route.QuickPanel) }
-            m != null -> Banner("Backup ${m.optString("data_backup", "—")} · ${m.optString("cpu_temp", "")} CPU", N.green) { app.go(Route.Hardware) }
         }
     }
     // Hero: the server with the live fan (tap it for Lighting)
@@ -87,21 +86,24 @@ import org.json.JSONObject
         }
     }
     val pills: @Composable () -> Unit = {
-        PillBar(listOf(
-            PillItem(Icons.Rounded.Notifications, "Inbox", app.unread) { app.go(Route.Inbox) },
-            PillItem(Icons.Rounded.Widgets, "Quick panel") { app.go(Route.QuickPanel) },
-            PillItem(Icons.Rounded.ViewInAr, "Containers") { app.go(Route.Containers) },
-            PillItem(Icons.Rounded.Storage, "Storage") { app.go(Route.Hardware) },
-        ))
+        // Your shortcuts (Settings → Appearance, or hold the bar to change them)
+        val edit = { app.go(Route.EditShortcuts) }
+        val list = homeShortcuts(app)
+        if (list.isEmpty()) Text("Hold here to add shortcuts", color = N.sub, fontSize = 14.sp,
+            modifier = Modifier.fillMaxWidth().padding(horizontal = Space.gutter).bouncy(onLongClick = edit, onClick = edit).padding(14.dp),
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+        else PillBar(list.map { s -> PillItem(s.icon, if (list.size >= 5) s.short else s.label, if (s.id == "inbox") app.unread else 0, onLongClick = edit) { app.go(s.route) } })
     }
     // Sections can be hidden in Settings → Appearance & privacy.
-    if (!LocalWide.current) Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-        top(); if (AppPrefs.homeHero) hero(270.dp) else Spacer(Modifier.height(8.dp)); if (AppPrefs.homeShortcuts) pills()
-        if (AppPrefs.homeStats) { Spacer(Modifier.height(14.dp)); HomeStats(app) }; Spacer(Modifier.height(130.dp))
+    if (!LocalWide.current) Column(Modifier.fillMaxSize().verticalScroll(routeScroll())) {
+        // One rhythm: header · (banner) · server · shortcuts · numbers, each block Space.gap apart.
+        top(); if (AppPrefs.homeHero) hero(260.dp) else Spacer(Modifier.height(Space.gap))
+        if (AppPrefs.homeShortcuts) { pills(); Spacer(Modifier.height(Space.gap)) }
+        if (AppPrefs.homeStats) HomeStats(app); Spacer(Modifier.height(130.dp))
     } else Row(Modifier.fillMaxSize()) {                       // tablet: server on the left, numbers on the right
-        Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) { top(); if (AppPrefs.homeHero) hero(440.dp); Spacer(Modifier.height(30.dp)) }
+        Column(Modifier.weight(1f).verticalScroll(routeScroll())) { top(); if (AppPrefs.homeHero) hero(440.dp); Spacer(Modifier.height(30.dp)) }
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).statusBarsPadding().padding(top = 36.dp, end = 8.dp)) {
-            if (AppPrefs.homeShortcuts) pills(); Spacer(Modifier.height(14.dp)); if (AppPrefs.homeStats) HomeStats(app); Spacer(Modifier.height(30.dp))
+            if (AppPrefs.homeShortcuts) { pills(); Spacer(Modifier.height(Space.gap)) }; if (AppPrefs.homeStats) HomeStats(app); Spacer(Modifier.height(30.dp))
         }
     }
 }
@@ -109,9 +111,9 @@ import org.json.JSONObject
 @Composable fun MenuScreen(app: AppState) {
     val m = app.overview?.optJSONObject("status")?.optJSONObject("metrics")
     val cs = app.overview?.optJSONObject("containers")
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+    Column(Modifier.fillMaxSize().verticalScroll(routeScroll())) {
         Text("Menu", fontSize = 32.sp, fontWeight = FontWeight.Bold, color = N.text,
-            modifier = Modifier.statusBarsPadding().padding(start = 26.dp, top = 30.dp, bottom = 16.dp))
+            modifier = Modifier.statusBarsPadding().padding(start = Space.gutter + 8.dp, top = 28.dp, bottom = 16.dp))
         Group {
             Row1("Containers", cs?.let { "${it.optInt("running")} of ${it.optInt("total")} running" }, true,
                 Icons.Rounded.ViewInAr, onClick = { app.go(Route.Containers) })
@@ -159,8 +161,8 @@ import org.json.JSONObject
 
 /** Live numbers under the hero: CPU, memory, disk, services. Tap any for the full status page. */
 @Composable private fun HomeStats(app: AppState) {
-    val stats by live(app, "/api/v1/stats", 15_000)
-    val now = stats?.optJSONObject("now")?.takeIf { it.has("cpu") }
+    val stats by live(app, "/api/v1/stats?since=9e12", 3_000)        // just the current numbers, every 3 s
+    val now = (stats ?: Cache["/api/v1/stats"])?.optJSONObject("now")?.takeIf { it.has("cpu") }
     val m = app.overview?.optJSONObject("status")?.optJSONObject("metrics")
     val cs = app.overview?.optJSONObject("containers")
     fun pctOf(s: String?) = s?.let { Regex("(\\d+)%").find(it)?.groupValues?.get(1)?.toFloatOrNull() }
@@ -176,12 +178,12 @@ import org.json.JSONObject
             m?.optString("websites")?.takeIf { it.isNotEmpty() }?.let { "sites $it" } ?: "containers running",
             cs?.let { if (it.optInt("total") > 0) it.optInt("running").toFloat() / it.optInt("total") else null }, N.amber),
     )
-    Column(Modifier.padding(horizontal = 18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    Column(Modifier.padding(horizontal = Space.gutter), verticalArrangement = Arrangement.spacedBy(Space.gap)) {
         cards.chunked(2).forEach { row ->
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(Space.gap)) {
                 row.forEach { c ->
-                    Column(Modifier.weight(1f).bouncy { app.go(Route.Status) }.clip(androidx.compose.foundation.shape.RoundedCornerShape(24.dp))
-                        .background(N.card).padding(16.dp)) {
+                    Column(Modifier.weight(1f).bouncy { app.go(Route.Status) }.glassCard(androidx.compose.foundation.shape.RoundedCornerShape(24.dp))
+                        .padding(horizontal = 18.dp, vertical = 16.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(c.icon, null, tint = c.color, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(6.dp))
                             Text(c.label, color = N.sub, fontSize = 13.sp)
