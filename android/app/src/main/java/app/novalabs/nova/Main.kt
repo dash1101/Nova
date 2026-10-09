@@ -51,7 +51,7 @@ sealed class Route {
     data object QuickPanel : Route(); data object EditQuick : Route(); data object Status : Route()
     data object Ssh : Route(); data object SshTerm : Route()
     data object Servers : Route(); data object ServerSettings : Route(); data object Dashboard : Route(); data object Approvals : Route()
-    data object Appearance : Route(); data object SetupGuide : Route(); data object EditShortcuts : Route(); data object EditHome : Route(); data object EditTabs : Route()
+    data object Appearance : Route(); data object SetupGuide : Route(); data object EditShortcuts : Route(); data object EditHome : Route(); data object EditTabs : Route(); data object Archive : Route()
     data object Settings : Route(); data object Devices : Route(); data object About : Route()
 }
 
@@ -67,6 +67,8 @@ class AppState(val activity: Activity, val pairing: Pairing, val scope: Coroutin
     var reconnecting by mutableStateOf(false)
     var unread by mutableIntStateOf(0)
     var lastContact by mutableLongStateOf(0L)         // last successful refresh (ms)
+    /** server clock − this phone's clock (ms), from the overview's time stamp (half the round trip allowed for) */
+    var clockSkew by mutableLongStateOf(0L)
     /** Last live numbers (CPU, memory…) from any screen, so a freshly drawn page never shows "—". */
     var lastNow by mutableStateOf<JSONObject?>(null)
     var paired by mutableStateOf(pairing.paired)
@@ -105,7 +107,10 @@ class AppState(val activity: Activity, val pairing: Pairing, val scope: Coroutin
 
     suspend fun refresh() {
         try {
+            val t0 = System.currentTimeMillis()
             val o = api.get("/api/v1/overview"); overview = o
+            val t1 = System.currentTimeMillis()
+            o.optDouble("time").takeIf { !it.isNaN() && t1 - t0 < 3000 }?.let { clockSkew = (it * 1000 - (t0 + t1) / 2.0).toLong() }
             o.optJSONObject("server")?.let { srv -> pairing.label = srv.optString("display_name").ifEmpty { srv.optString("name") } }
             if (fanInFlight == 0) o.optJSONObject("fan")?.let { f -> fan = JSONObject(fan?.toString() ?: "{}").also { m -> f.keys().forEach { k -> m.put(k, f.get(k)) } } }
             error = null; reconnecting = false; failures = 0; notAuthorized = false; lastContact = System.currentTimeMillis()
@@ -283,7 +288,9 @@ class MainActivity : ComponentActivity() {
                     val p = backP.value; val x = backExit.value
                     // ease-out so the first part of the swipe already shows clearly
                     val e = 1f - (1f - p) * (1f - p)
-                    val dirX = if (backEdge == androidx.activity.BackEventCompat.EDGE_LEFT) 1 else -1
+                    // Pages come in from the right, so going back always moves them to the right and brings the
+                    // one underneath in from the left — whichever edge you swipe from (like One UI's Settings).
+                    val dirX = 1
                     Box(Modifier.fillMaxSize().hazeSource(rootHaze)) {
                     val under = app.backTarget
                     if (p > 0.001f && under != null) Box(Modifier.fillMaxSize().graphicsLayer {
@@ -398,6 +405,7 @@ private fun Modifier.paneTouch(app: AppState, left: Boolean) = pointerInput(left
         Route.EditShortcuts -> EditShortcutsScreen(app)
         Route.EditHome -> EditHomeScreen(app)
         Route.EditTabs -> EditTabsScreen(app)
+        Route.Archive -> ArchiveScreen(app)
         Route.Status -> StatusScreen(app)
         Route.Ssh -> SshScreen(app)
         Route.SshTerm -> SshTermScreen(app)

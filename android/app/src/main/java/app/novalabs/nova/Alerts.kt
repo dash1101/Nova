@@ -37,6 +37,7 @@ object Alerts {
      *  the service and the worker can't both notify the same event. */
     @Synchronized fun handle(ctx: Context, pairing: Pairing, ev: JSONArray?) {
         if (ev == null) return
+        runCatching { InboxArchive.merge(ctx, pairing.profile, ev) }     // the phone's permanent history
         val since = pairing.lastEventSeen
         val many = Servers.all(ctx).count { Pairing(ctx, it).paired } > 1
         val name = pairing.label.ifEmpty { "Nova" }

@@ -83,7 +83,8 @@ import org.json.JSONObject
         Box(Modifier.fillMaxWidth().height(h).then(if (app.has("lighting"))
             Modifier.clickable(interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }, indication = null) { app.go(Route.Lighting) }
             else Modifier)) {
-            ServerHero(app.fan, levelColor(level, N), Modifier.fillMaxSize())
+            val drives = st?.optJSONObject("metrics")?.optJSONArray("drive_states")?.let { a -> (0 until a.length()).map { a.getJSONObject(it) } }
+            ServerHero(app.fan, levelColor(level, N), drives, app.clockSkew, Modifier.fillMaxSize())
         }
     }
     val pills: @Composable () -> Unit = {

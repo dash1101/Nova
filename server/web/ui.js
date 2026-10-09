@@ -297,3 +297,35 @@ export function swipeable(root, { onRight, onLeft } = {}) {
     el.addEventListener("pointerup", end); el.addEventListener("pointercancel", end);
   });
 }
+
+/** Custom colour: hue / saturation / brightness, exact R G B values, or a hex code. Resolves "#rrggbb" or null. */
+export function colorPicker(initial = "#3e91ff") {
+  const toHsv = ([r, g, b]) => { r /= 255; g /= 255; b /= 255; const mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn;
+    let h = 0; if (d) h = mx === r ? ((g - b) / d) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4; return [(h * 60 + 360) % 360, mx ? d / mx : 0, mx]; };
+  const fromHsv = (h, s, v) => { const f = n => { const k = (n + h / 60) % 6; return Math.round(255 * (v - v * s * Math.max(0, Math.min(k, 4 - k, 1)))); }; return [f(5), f(3), f(1)]; };
+  const hx = rgb => "#" + rgb.map(x => x.toString(16).padStart(2, "0")).join("");
+  let rgb = [1, 3, 5].map(i => parseInt((initial || "#3e91ff").slice(i, i + 2), 16) || 0), hue = toHsv(rgb)[0];
+  return new Promise(res => {
+    const box = sheet(`<h2>Custom colour</h2><div class="pad">
+      <div id="cp-prev" style="height:56px;border-radius:18px;margin-bottom:12px"></div>
+      ${["Hue:h:0:360", "Saturation:s:0:100", "Brightness:v:0:100"].map(x => { const [l, k, a, b] = x.split(":"); return `<div class="muted" style="font-size:13px;margin-top:6px">${l}</div><input type="range" min="${a}" max="${b}" data-cp="${k}">`; }).join("")}
+      ${["R:#ff453a", "G:#32d74b", "B:#0a84ff"].map((x, i) => { const [l, c] = x.split(":"); return `<div style="display:flex;align-items:center;gap:10px;margin-top:10px"><b style="color:${c};width:16px">${l}</b><input type="range" min="0" max="255" data-ch="${i}" style="flex:1"><input class="field" data-num="${i}" inputmode="numeric" maxlength="3" style="width:76px;padding:10px 12px;font-family:ui-monospace,monospace"></div>`; }).join("")}
+      <input class="field" id="cp-hex" maxlength="7" style="margin-top:12px;font-family:ui-monospace,monospace" placeholder="#rrggbb"></div>
+      <div class="acts"><button data-b="0">Cancel</button><i></i><button data-b="1" style="color:var(--blue)">Done</button></div>`, () => res(null));
+    const sync = (from) => {
+      const [h0, s, v] = toHsv(rgb); if (s > 0) hue = h0;
+      $("#cp-prev", box).style.background = hx(rgb);
+      if (from !== "hsv") { const set = (k, val) => { const e = $(`[data-cp="${k}"]`, box); e.value = val; e.style.setProperty("--p", val / e.max * 100 + "%"); };
+        set("h", Math.round(hue)); set("s", Math.round(s * 100)); set("v", Math.round(v * 100)); }
+      rgb.forEach((x, i) => { const e = $(`[data-ch="${i}"]`, box); e.value = x; e.style.setProperty("--p", x / 255 * 100 + "%"); if (from !== "num" + i) $(`[data-num="${i}"]`, box).value = x; });
+      if (from !== "hex") $("#cp-hex", box).value = hx(rgb);
+    };
+    $$("[data-cp]", box).forEach(e => e.oninput = () => { e.style.setProperty("--p", e.value / e.max * 100 + "%");
+      const g = k => +$(`[data-cp="${k}"]`, box).value; hue = g("h"); rgb = fromHsv(hue, g("s") / 100, g("v") / 100); sync("hsv"); });
+    $$("[data-ch]", box).forEach(e => e.oninput = () => { rgb[+e.dataset.ch] = +e.value; sync(); });
+    $$("[data-num]", box).forEach(e => e.oninput = () => { const n = parseInt(e.value.replace(/\D/g, ""), 10); if (!isNaN(n)) { rgb[+e.dataset.num] = Math.max(0, Math.min(255, n)); sync("num" + e.dataset.num); } });
+    $("#cp-hex", box).oninput = e => { const v = e.target.value.startsWith("#") ? e.target.value : "#" + e.target.value; if (/^#[0-9a-f]{6}$/i.test(v)) { rgb = [1, 3, 5].map(i => parseInt(v.slice(i, i + 2), 16)); sync("hex"); } };
+    $$("[data-b]", box).forEach(b => b.onclick = () => { closeSheet(); res(b.dataset.b === "1" ? hx(rgb) : null); });
+    sync();
+  });
+}

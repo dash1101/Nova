@@ -36,7 +36,8 @@ APP_NOTIFY_KEYS = {"push_min_level": ("info", "warning", "critical"), "push_logi
 _DIR = os.environ.get("NOVA_ALERTS_DIR", "/var/lib/nova-alerts")      # (overridable for testing)
 STATE_FILE  = f"{_DIR}/state.json"
 STATUS_FILE = f"{_DIR}/www/status.json"
-SPOOL_DIR   = f"{_DIR}/spool"          # nova-alert drops messages here
+SPOOL_DIR   = f"{_DIR}/spool"
+ARCHIVE     = f"{_DIR}/www/archive.jsonl"        # permanent history: archived + aged-out events, one JSON per line          # nova-alert drops messages here
 LOCK_FILE   = os.environ.get("NOVA_ALERTS_LOCK", "/run/nova-alerts.lock")
 LEVELS = {"info": 0, "warning": 1, "critical": 2}
 COLORS = {"info": 0x3B82F6, "warning": 0xF5A524, "critical": 0xE5484D, "resolved": 0x30A46C}
@@ -99,6 +100,22 @@ def write_json_atomic(path, data, mode=0o644):
     tmp = f"{path}.tmp{os.getpid()}"
     with open(tmp, "w") as f: json.dump(data, f, indent=1, default=str)
     os.chmod(tmp, mode); os.replace(tmp, path)
+
+def archive_append(events, archived=False):
+    """Keep events forever (well — the newest 50 000): ones archived from the Inbox and ones that age
+    out of its 200-entry window. Any device can read them (Inbox → Archive)."""
+    if not events: return
+    try:
+        os.makedirs(os.path.dirname(ARCHIVE), exist_ok=True)
+        with open(ARCHIVE, "a") as f:
+            for e in events:
+                f.write(json.dumps({"t": e["t"], "time": e.get("time", ""), "level": e.get("level"), "title": e.get("title", ""),
+                                    "detail": e.get("detail", ""), "category": e.get("category", ""), **({"archived": True} if archived else {})}) + "\n")
+        os.chmod(ARCHIVE, 0o644)
+        if os.path.getsize(ARCHIVE) > 25_000_000:                  # trim the oldest
+            lines = open(ARCHIVE).readlines()[-50_000:]
+            tmp = ARCHIVE + ".tmp"; open(tmp, "w").writelines(lines); os.chmod(tmp, 0o644); os.replace(tmp, ARCHIVE)
+    except Exception: pass
 
 def human_age(seconds):
     s = int(max(0, seconds))
@@ -209,6 +226,7 @@ class Monitor:
     def _record(self, level, title, detail, category):
         self.st["recent"].insert(0, {"t": now(), "time": local_hm(), "level": level,
                                      "title": title, "detail": detail, "category": category})
+        archive_append(self.st["recent"][200:])          # aged out of the Inbox: into the permanent history
         del self.st["recent"][200:]
 
     def _push(self, level, title, detail):
@@ -471,6 +489,18 @@ class Monitor:
                                "CRC = cable/connection; the others mean the drive itself is degrading.", "disk")
                 b[k] = v
         if temps: self.metrics["drive_temps"] = f"{min(temps)}–{max(temps)}°C"
+        # One light per drive on the app's server picture: green, amber (warning), red (missing/failing).
+        conds, states = self.st["conditions"], []
+        for serial, d in known.items():
+            sm = cache.get(serial, {}); lvl, why = "ok", ""
+            if f"drive:{serial}" in conds: lvl, why = "critical", "missing"
+            elif sm.get("passed") is False: lvl, why = "critical", "SMART failed"
+            elif f"temp:{serial}" in conds: lvl, why = conds[f"temp:{serial}"]["level"], "hot"
+            elif any((sm.get(k) or 0) > 0 for k in ("realloc", "pending", "uncorrect", "media_errors")): lvl, why = "warning", "worn"
+            states.append({"name": d.get("name"), "model": d.get("model"), "serial": serial, "level": lvl, "why": why,
+                           "boot": (d.get("name") or "").startswith("nvme") or (d.get("tran") or "") == "nvme"})
+        states.sort(key=lambda x: (not x["boot"], x["name"] or ""))
+        self.metrics["drive_states"] = states
 
     def check_services(self):
         down = []
@@ -714,10 +744,12 @@ def main():
         if len(sys.argv) > 2 and sys.argv[1] == "delete-event":
             # Swiped away in the Inbox. "all" clears the history; otherwise the event's timestamp(s).
             m = Monitor(); before = len(m.st["recent"])
-            if sys.argv[2] == "all": m.st["recent"] = []
+            if sys.argv[2] == "all": gone, m.st["recent"] = m.st["recent"], []
             else:
                 ts = [float(x) for x in sys.argv[2].split(",")[:200]]
-                m.st["recent"] = [r for r in m.st["recent"] if not any(abs(r["t"] - t) < 0.0005 for t in ts)]
+                hit = lambda r: any(abs(r["t"] - t) < 0.0005 for t in ts)
+                gone = [r for r in m.st["recent"] if hit(r)]; m.st["recent"] = [r for r in m.st["recent"] if not hit(r)]
+            archive_append(gone, archived=True)              # archived, not destroyed: Inbox → Archive
             m.first_run = False; m.metrics = m.st.get("last_metrics", {}); m.write_status()
             write_json_atomic(STATE_FILE, m.st, 0o600)
             print(json.dumps({"ok": True, "deleted": before - len(m.st["recent"])}))

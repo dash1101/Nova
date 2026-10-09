@@ -31,6 +31,7 @@ object AppPrefs {
     var homeChips by mutableStateOf(DEFAULT_SHORTCUTS); private set        // Home shortcut bar, in order
     var homeOrder by mutableStateOf(HOME_SECTIONS); private set            // Home sections, top to bottom
     var navTabs by mutableStateOf(DEFAULT_TABS); private set               // bottom bar, left to right
+    var fanReverse by mutableStateOf(false); private set                   // the picture's wave runs the other way round
 
     fun init(ctx: Context) {
         if (::sp.isInitialized) return
@@ -39,6 +40,7 @@ object AppPrefs {
         appLock = sp.getBoolean("app_lock", false); hideInRecents = sp.getBoolean("hide_recents", false)
         homeHero = sp.getBoolean("home_hero", true); homeShortcuts = sp.getBoolean("home_shortcuts", true); homeStats = sp.getBoolean("home_stats", true)
         homeOrder = sp.getString("home_order", null)?.split(",")?.filter { it in HOME_SECTIONS }?.let { it + (HOME_SECTIONS - it.toSet()) } ?: HOME_SECTIONS
+        fanReverse = sp.getBoolean("fan_reverse", false)
         navTabs = sp.getString("nav_tabs", null)?.split(",")?.filter { it.isNotBlank() } ?: DEFAULT_TABS
         homeChips = sp.getString("home_chips", null)?.let { s -> s.split(",").filter { it.isNotBlank() } } ?: DEFAULT_SHORTCUTS
     }
@@ -48,6 +50,7 @@ object AppPrefs {
             "hide_recents" -> hideInRecents = v as Boolean; "home_hero" -> homeHero = v as Boolean
             "home_shortcuts" -> homeShortcuts = v as Boolean; "home_stats" -> homeStats = v as Boolean
             "home_order" -> homeOrder = (v as String).split(",")
+            "fan_reverse" -> fanReverse = v as Boolean
             "nav_tabs" -> navTabs = (v as String).split(",").filter { it.isNotBlank() }
             "home_chips" -> homeChips = (v as String).split(",").filter { it.isNotBlank() }
         }

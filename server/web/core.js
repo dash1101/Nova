@@ -44,6 +44,7 @@ export const S = {
   overview: null, fan: null, cache: {},
   error: null, reconnecting: false, lastContact: 0, lastAttempt: "", failures: 0,
   lastNow: null,                 // last live numbers, so a redrawn page never shows "—"
+  skew: 0,                       // server clock − ours (ms), so the fan picture lines up with the real fan
   unread: 0,
 };
 export class ApiError extends Error {
@@ -133,7 +134,8 @@ export const hm = t => new Date(t * 1000).toTimeString().slice(0, 5);
 /** Server's live numbers: overview + lighting, with "Disconnected" bookkeeping (like the app's refresh). */
 export async function refresh() {
   try {
-    const o = await get("/api/v1/overview"); S.overview = o;
+    const t0 = Date.now(); const o = await get("/api/v1/overview"); const t1 = Date.now(); S.overview = o;
+    if (typeof o.time === "number" && t1 - t0 < 3000) S.skew = o.time * 1000 - (t0 + t1) / 2;
     if (o.fan && !fanInFlight) S.fan = { ...(S.fan || {}), ...o.fan };
     const acc = o.server?.accent;
     if (/^#[0-9a-f]{6}$/i.test(acc || "")) document.documentElement.style.setProperty("--blue", acc);
@@ -141,6 +143,7 @@ export async function refresh() {
     S.error = null; S.reconnecting = false; S.failures = 0;
     try {
       const ev = (await get("/api/v1/events?since=0")).events || [];
+      archiveMerge(ev);                 // this browser's permanent history
       if (!prefs.lastEventSeen && ev[0]) prefs.lastEventSeen = ev[0].t;
       S.unread = ev.filter(e => e.t > prefs.lastEventSeen && ["warning", "critical"].includes(e.level)).length;
     } catch {}
@@ -161,3 +164,16 @@ export async function changeFan(patch) {
   catch (e) { S.fan = before; throw e; }
   finally { fanInFlight--; }
 }
+
+// ── this browser's permanent history of server events (IndexedDB; survives the Inbox being cleared) ──
+const AKEY = () => "history:" + (S.device || "");
+export async function archiveMerge(events, markArchived = false) {
+  if (!events?.length) return;
+  const h = (await kv(AKEY()).catch(() => null)) || { events: [], archived: [] };
+  const have = new Set(h.events.map(e => e.t.toFixed(4)));
+  h.events = [...events.filter(e => !have.has(e.t.toFixed(4))), ...h.events].sort((a, b) => b.t - a.t).slice(0, 10000);
+  if (markArchived) h.archived = [...new Set([...h.archived, ...events.map(e => e.t.toFixed(4))])].slice(-10000);
+  await kv(AKEY(), h).catch(() => {});
+}
+export async function archiveAll() { return (await kv(AKEY()).catch(() => null)) || { events: [], archived: [] }; }
+export async function archiveClear() { await kv(AKEY(), null).catch(() => {}); }

@@ -1,9 +1,9 @@
 // Nova web — every screen of the app. Each view renders with ctx.show(html, options, handlers);
 // buttons carry data-act="name" or data-act="name:arg" and land in `handlers` (or the router's).
 import { S, $, $$, esc, get, post, del, api, sleep, prefs, levelColor, pct, rate, bytes, isAdmin, has, cleanTitle, cap,
-         serverName, uptime, hm, refresh, changeFan, waitJob, kv } from "./core.js";
+         serverName, uptime, hm, refresh, changeFan, waitJob, kv, archiveMerge, archiveAll, archiveClear } from "./core.js";
 import { I, row, group, sec, note, sw, radio, switchRow, links, expand, slider, segmented, bar, usageColor,
-         toast, dialog, confirm, choose, ask, wireCommon, reorderable, onHold, spark, swipeable } from "./ui.js";
+         toast, dialog, confirm, choose, ask, wireCommon, reorderable, onHold, spark, swipeable, colorPicker } from "./ui.js";
 import { animate } from "./hero.js";
 
 // ── catalogs (same ids as the app, so the two read alike) ───────────────────────
@@ -34,8 +34,6 @@ const DASH_TILES = [["clock", "Clock", "clock", 1], ["health", "Health", "okc", 
   ["net", "Network graph", "net", 1], ["storage", "Storage", "disk", 2], ["containers", "Containers", "box", 1], ["backup", "Backups", "backup", 1], ["fan", "Fan light", "bulb", 2],
   ["alerts", "Recent alerts", "bell", 2], ["uptime", "Uptime", "clock", 1]];
 const SWATCHES = ["#ffffff", "#ff3b30", "#ff9500", "#ffcc00", "#34c759", "#00c7be", "#005aff", "#3e91ff", "#5e5ce6", "#bf5af2", "#ff2d55", "#ff6b9a"];
-const EFFECTS = [["static", "Static", "One steady colour"], ["pulse", "Pulse", "Breathes in and out"], ["blink", "Blink", "Flashes on and off"], ["cycle", "Colour cycle", "Fades through colours"],
-  ["wave", "Wave", "Colour chases around the ring"], ["random", "Random", "Surprise me"], ["gradient", "Gradient", "Blends two colours across the ring"]];
 const ACCENTS = ["", "#3e91ff", "#7c5cff", "#bf5af2", "#ff2d55", "#ff9500", "#34c759", "#00c7be"];
 const viewOnly = () => { toast("This browser has view-only access"); return false; };
 
@@ -418,16 +416,18 @@ export async function inbox(ctx) {
     const all = S.cache["/api/v1/events?since=0"]?.events, ev = shown();
     const days = {}; ev.forEach(e => (days[new Date(e.t * 1000).toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" })] ||= []).push(e));
     ctx.show(`${attentionHtml()}${segmented(["All", "Issues", "Critical", "Logins"], filter, "f")}
-      ${ev.length ? `<p class="note" style="margin-top:6px">Swipe left to delete.</p>` : ""}
-      ${Object.entries(days).map(([d, l]) => sec(d) + group(l.map(e => `<div class="swipe" data-key="${e.t}" data-left="Delete"><div class="swbg"></div><div class="swfg"><div class="row" style="align-items:flex-start"><span class="dot" style="margin-top:7px;background:${levelColor(e.level)}"></span><div class="t"><b style="font-size:16px">${esc(cleanTitle(e.title))}</b>${e.detail ? `<small>${esc(e.detail)}</small>` : ""}</div><span class="end" style="font-size:13px">${hm(e.t)}</span><button class="xbtn" data-act="del:${e.t}" aria-label="Delete">${I("del")}</button></div></div></div>`).join(""))).join("")
+      ${ev.length ? `<p class="note" style="margin-top:6px">Swipe left to archive — it's kept on the server (Inbox → Archive), for every device.</p>` : ""}
+      ${Object.entries(days).map(([d, l]) => sec(d) + group(l.map(e => `<div class="swipe" data-key="${e.t}" data-left="Archive"><div class="swbg"></div><div class="swfg"><div class="row" style="align-items:flex-start"><span class="dot" style="margin-top:7px;background:${levelColor(e.level)}"></span><div class="t"><b style="font-size:16px">${esc(cleanTitle(e.title))}</b>${e.detail ? `<small>${esc(e.detail)}</small>` : ""}</div><span class="end" style="font-size:13px">${hm(e.t)}</span><button class="xbtn" data-act="del:${e.t}" aria-label="Archive">${I("down")}</button></div></div></div>`).join(""))).join("")
         || note(all ? "Nothing here — all quiet." : "Loading…")}`,
-      { title: "Inbox", actions: [{ icon: "del", label: "Clear the inbox", act: "clear" }, { icon: "gear", label: "Notification settings", act: "go:notify" }] });
+      { title: "Inbox", actions: [{ icon: "book", label: "Archive", act: "go:archive" }, { icon: "del", label: "Archive everything", act: "clear" }, { icon: "gear", label: "Notification settings", act: "go:notify" }] });
     wireCommon(ctx.root, { onSeg: (_, i) => { filter = i; draw(); } });
     swipeable(ctx.root, { onRight: key => dismissAlert(key, draw), onLeft: t => remove([+t]) });
   };
   const remove = async ts => {
     if (!isAdmin()) return viewOnly();
-    const c = S.cache["/api/v1/events?since=0"]; if (c) c.events = c.events.filter(e => !ts.some(t => Math.abs(t - e.t) < .0005));
+    const c = S.cache["/api/v1/events?since=0"];
+    await archiveMerge((c?.events || []).filter(e => ts.some(t => Math.abs(t - e.t) < .0005)), true);   // kept in this browser's history
+    if (c) c.events = c.events.filter(e => !ts.some(t => Math.abs(t - e.t) < .0005));
     draw();
     try { await post("/api/v1/events/delete", { t: ts }); } catch (e) { toast(e.message); await get("/api/v1/events?since=0").catch(() => {}); draw(); }
   };
@@ -435,15 +435,56 @@ export async function inbox(ctx) {
   ctx.handlers({
     alert: (...a) => alertMenu(keyOf(a), draw), ignore: (...a) => dismissAlert(keyOf(a), draw), del: t => remove([+t]),
     clear: async () => {
-      if (!(await confirm("Clear the inbox?", filter === 0 ? "Every past event is removed from this server's inbox (for all devices). Active alerts stay until they're fixed or ignored." : `The ${shown().length} event(s) shown are removed (for all devices).`, "Clear"))) return;
+      if (!(await confirm("Archive everything?", filter === 0 ? "The server's inbox is emptied for every device; everything stays in the server's Archive. Active alerts stay until they're fixed or ignored." : `The ${shown().length} event(s) shown leave the server's inbox; they stay in the server's Archive.`, "Archive", "var(--blue)"))) return;
       if (!isAdmin()) return viewOnly();
       if (filter !== 0) return remove(shown().map(e => e.t));
-      const c = S.cache["/api/v1/events?since=0"]; if (c) c.events = []; draw();
-      try { await post("/api/v1/events/delete", { all: true }); toast("Inbox cleared"); } catch (e) { toast(e.message); }
+      const c = S.cache["/api/v1/events?since=0"]; await archiveMerge(c?.events || [], true); if (c) c.events = []; draw();
+      try { await post("/api/v1/events/delete", { all: true }); toast("Archived — see Inbox → Archive"); } catch (e) { toast(e.message); }
     },
   });
   draw();
-  ctx.every(15000, async () => { const r = await get("/api/v1/events?since=0"); if (r.events?.[0]) { prefs.lastEventSeen = r.events[0].t; S.unread = 0; } await refresh(); draw(); }, true);
+  ctx.every(15000, async () => { const r = await get("/api/v1/events?since=0"); archiveMerge(r.events); if (r.events?.[0]) { prefs.lastEventSeen = r.events[0].t; S.unread = 0; } await refresh(); draw(); }, true);
+}
+export async function archive(ctx) {
+  // The archive lives on the server (any device can read it). This browser's own copy fills gaps
+  // from before the server kept one, and works when the server can't be reached.
+  let filter = 0, local = await archiveAll(), server = [], more = false, loading = true, failed = false;
+  const k4 = e => e.t.toFixed(4);
+  const merged = () => {
+    const by = new Map(), la = new Set(local.archived);
+    for (const e of [...server, ...(S.cache["/api/v1/events?since=0"]?.events || []), ...local.events]) {
+      const k = k4(e), was = by.get(k), a = !!(e.archived || la.has(k) || was?.archived);
+      by.set(k, { ...(was || e), archived: a });
+    }
+    return [...by.values()].sort((x, y) => y.t - x.t);
+  };
+  const load = async () => {
+    loading = true; draw();
+    try { const before = server.length ? server.at(-1).t : ""; const r = await get(`/api/v1/archive?limit=300${before ? "&before=" + before : ""}`);
+      server = [...server, ...(r.events || [])]; more = !!r.more; failed = false; } catch (e) { failed = true; toast(e.message); }
+    loading = false; if (ctx.alive()) draw();
+  };
+  const draw = () => {
+    const all = merged(), ev = all.filter(e => filter === 1 ? e.archived : filter === 2 ? ["warning", "critical"].includes(e.level) : filter === 3 ? e.category === "login" : true);
+    const days = {}; ev.slice(0, 3000).forEach(e => (days[new Date(e.t * 1000).toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric", year: "numeric" })] ||= []).push(e));
+    ctx.show(`${note(failed ? `Couldn't reach ${serverName()} — showing the copy saved in this browser.` : `Everything ${serverName()} has kept — archived from the Inbox or older than it shows. Stored on the server, so every phone and browser sees the same history.`)}
+      ${segmented(["All", "Archived", "Issues", "Logins"], filter, "f")}
+      ${Object.entries(days).map(([d, l]) => sec(d) + group(l.map(e => `<div class="row" style="align-items:flex-start"><span class="dot" style="margin-top:7px;background:${levelColor(e.level)};opacity:${e.archived ? .5 : 1}"></span><div class="t"><b style="font-size:16px;${e.archived ? "color:var(--sub)" : ""}">${esc(cleanTitle(e.title))}</b>${e.detail ? `<small>${esc(e.detail)}</small>` : ""}${e.archived ? `<small>Archived</small>` : ""}</div><span class="end" style="font-size:13px">${hm(e.t)}</span></div>`).join(""))).join("")
+        || note(loading ? "Loading…" : all.length ? "Nothing matches." : "Nothing yet.")}
+      ${more && !loading ? `<div class="center" style="padding:14px"><button class="btn" data-act="older">Load older</button></div>` : loading && all.length ? `<div class="center" style="padding:14px"><div class="spinner" style="margin:auto"></div></div>` : ""}`,
+      { title: "Archive", actions: [{ icon: "update", label: "Export", act: "export" }, { icon: "del", label: "Erase this browser's copy", act: "erase" }] });
+    wireCommon(ctx.root, { onSeg: (_, i) => { filter = i; draw(); } });
+  };
+  ctx.handlers({
+    older: load,
+    export: () => {
+      const q = v => `"${String(v || "").replace(/"/g, '""')}"`;
+      const csv = "time,level,title,detail,category,archived\n" + merged().map(e => [new Date(e.t * 1000).toISOString(), e.level, q(e.title), q(e.detail), e.category || "", e.archived ? "yes" : ""].join(",")).join("\n");
+      const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" })); a.download = `nova-history-${serverName().replace(/\W+/g, "-")}.csv`; a.click();
+    },
+    erase: async () => { if (await confirm("Erase this browser's copy?", "Only the copy saved in this browser is deleted. The server's archive — what every device sees — stays.", "Erase")) { await archiveClear(); local = await archiveAll(); draw(); toast("Erased"); } },
+  });
+  draw(); load();
 }
 export async function notify(ctx) {
   const LV = [["info", "Everything", "Includes logins and USB plug/unplug"], ["warning", "Warnings and critical"], ["critical", "Critical only"]];
@@ -569,86 +610,181 @@ export async function editQuick(ctx) {
 // ════════════════════════════════════ LIGHTING ══════════════════════════════════
 const periodMs = s => 10000 * Math.pow(.02, (Math.max(1, Math.min(100, s)) - 1) / 99);
 const speedLabel = s => { const p = periodMs(s) / 1000; return (p >= 1 ? p.toFixed(1) : p.toFixed(2)) + " s per cycle"; };
+const EFFECTS2 = [["static", "Static", "One steady colour"], ["pulse", "Pulse", "Breathes in and out"], ["blink", "Blink", "Flashes on and off"], ["cycle", "Colour cycle", "Fades through colours"],
+  ["wave", "Wave", "Colours chase around the ring"], ["comet", "Comet", "A bright head with a fading tail"], ["scanner", "Scanner", "A light sweeping back and forth"],
+  ["twinkle", "Twinkle", "LEDs fade in and out at random"], ["fire", "Fire", "A flickering flame"], ["breathe", "Breathe", "Slow breaths, one colour after another"],
+  ["random", "Random", "Surprise me"], ["gradient", "Gradient", "Blends two colours across the ring"]];
+const SOFT = new Set(["wave", "comet", "scanner", "twinkle", "fire", "breathe"]), ANIM = new Set(["pulse", "blink", "cycle", "wave", "random", "comet", "scanner", "twinkle", "fire", "breathe"]);
+const PALS = [["Ocean", ["#001a66", "#0050ff", "#00c7be", "#80f0ff"]], ["Lava", ["#200000", "#ff2000", "#ff8000", "#ffd060"]], ["Forest", ["#003300", "#20a040", "#80d000", "#004020"]],
+  ["Sunset", ["#ff5e3a", "#ff2a68", "#bf5af2", "#5e5ce6"]], ["Party", ["#ff2d55", "#ffcc00", "#34c759", "#3e91ff", "#bf5af2"]], ["Aurora", ["#00ff88", "#00c7be", "#5e5ce6", "#bf5af2"]],
+  ["Ice", ["#ffffff", "#80d8ff", "#3e91ff", "#0040a0"]], ["Candy", ["#ff6b9a", "#ffffff", "#bf5af2", "#80d8ff"]], ["Fire", ["#200000", "#ff1800", "#ff6000", "#ffb000", "#fff0a0"]]];
 const swatchRow = (sel, key, dis) => `<div class="swatches">${SWATCHES.map(h => `<button class="swatch${h.toLowerCase() === (sel || "").toLowerCase() ? " on" : ""}" style="background:${h};color:${h === "#ffffff" ? "#000" : "#fff"}" data-act="${dis ? "" : `col:${key}:${h}`}" aria-label="${h}">${h.toLowerCase() === (sel || "").toLowerCase() ? I("check") : ""}</button>`).join("")}
-  <label class="swatch custom" aria-label="Custom colour">${I("palette")}<input type="color" data-color="${key}" value="${esc(sel || "#3e91ff")}" ${dis ? "disabled" : ""}></label></div>`;
+  <button class="swatch custom" aria-label="Custom colour" data-act="${dis ? "" : `pick:${key}`}" style="${sel && !SWATCHES.includes((sel || "").toLowerCase()) ? `background:${sel};border:3px solid var(--blue)` : ""}">${I("palette")}</button></div>`;
+const lookOf = f => Object.fromEntries(["on", "effect", "color", "color2", "brightness", "speed", "rainbow", "palette"].filter(k => f?.[k] !== undefined).map(k => [k, f[k]]));
+const palBg = cols => cols.length > 1 ? `linear-gradient(90deg,${cols.join(",")})` : cols[0];
+const chip = (label, act, on) => `<button class="chip" style="font-family:inherit;font-size:14px;${on ? "background:var(--blue);color:#fff" : ""}" data-act="${act}">${esc(label)}</button>`;
 export async function lighting(ctx) {
   const draw = () => {
-    const f = S.fan || {}, lit = f.on !== false, on = lit && isAdmin(), eff = f.effect || "static", nsch = (f.schedules || []).length;
+    const f = S.fan || {}, lit = f.on !== false, on = lit && isAdmin(), eff = f.effect || "static", nsch = (f.schedules || []).length, pal = f.palette || [], rb = f.rainbow !== false;
+    const presets = f.presets || [], soft = SOFT.has(eff), mode = soft ? (eff !== "fire" && rb ? 0 : pal.length >= 2 ? 2 : 1) : -1;
     ctx.show(`<canvas class="fanhero" id="fh"></canvas>
       ${f.status_override ? `<p class="note" style="color:var(--amber);font-size:14px">Showing server status right now — your setting comes back when it's resolved.</p>` : ""}
       ${!isAdmin() ? note("View-only access — an admin can change the lighting.") : ""}
       ${group(switchRow("Fan light", lit ? "On" : "Off", lit, isAdmin() ? "set:on" : "", { dis: !isAdmin() }))}
       ${group(slider("Brightness", "brightness", f.brightness ?? 50, 0, 100, (f.brightness ?? 50) + "%", !on))}
-      ${sec("Colour")}${group(swatchRow(f.color, "color", !on) + (eff === "gradient" ? `<div class="sec" style="margin:4px 22px 0">Blend into</div>${swatchRow(f.color2, "color2", !on)}` : ""))}
-      ${sec("Effect")}${group(EFFECTS.map(([k, l, s]) => row(l, { sub: s, blue: eff === k, end: radio(eff === k), click: on ? "set:effect:" + k : "", dis: !on })).join(""))}
-      ${["pulse", "blink", "cycle", "wave", "random"].includes(eff) ? group(slider("Speed", "speed", f.speed ?? 50, 1, 100, speedLabel(f.speed ?? 50), !on)
-        + `<div style="display:flex;justify-content:space-between;padding:0 22px 12px" class="muted"><small>Slower</small><small>Faster</small></div>`
-        + (["cycle", "wave"].includes(eff) ? switchRow("Rainbow", f.rainbow !== false ? "Uses every colour" : "Uses your colour only", f.rainbow !== false, on ? "set:rainbow" : "", { dis: !on }) : "")) : ""}
-      ${["gradient", "wave"].includes(eff) ? group(slider("LEDs on the fan", "led_count", f.led_count ?? 12, 4, 40, String(f.led_count ?? 12), !on)
-        + `<p class="note" style="margin:0 22px 14px">Match this to your fan so the ${eff === "wave" ? "wave" : "blend"} fits the ring exactly (most 120 mm fans have 8–18).</p>`) : ""}
+      ${sec("Presets")}<div class="chips" style="padding:0 var(--gutter)">${presets.map(p => { const st = p.set || {}, pc = (st.palette || []).length > 1 ? st.palette : [st.color || "#3e91ff"];
+          return `<button class="tile glass press" style="height:48px;padding:0 14px;width:auto" data-act="preset:${esc(p.id)}" data-pid="${esc(p.id)}"><span style="width:22px;height:22px;border-radius:50%;background:${st.rainbow && (SOFT.has(st.effect) || st.effect === "cycle") ? "conic-gradient(red,yellow,lime,cyan,blue,magenta,red)" : palBg(pc)}"></span><b>${esc(p.name)}</b></button>`; }).join("")}
+        ${isAdmin() ? `<button class="tile glass press" style="height:48px;padding:0 14px;width:auto;color:var(--blue)" data-act="savepreset">${I("add")}<b>Save current</b></button>` : ""}</div>
+      ${presets.length ? note("Hold a preset (or right-click) to update, rename or delete it.") : note("Save the look you have now to switch back to it in one tap — or to use it in a schedule.")}
+      ${sec("Effect")}${group(EFFECTS2.map(([k, l, d]) => row(l, { sub: d, blue: eff === k, end: radio(eff === k), click: on ? "set:effect:" + k : "", dis: !on })).join(""))}
+      ${sec("Colour")}${group(soft ? segmented(eff === "fire" ? ["Flame", "One colour", "Palette"] : ["Rainbow", "One colour", "Palette"], mode, "cmode")
+          + (mode === 2 ? `<div style="padding:14px 20px"><div style="display:flex;flex-wrap:wrap;gap:12px">${pal.map((c, i) => `<button class="swatch" style="width:44px;height:44px;background:${c}" data-act="${on ? "pal:" + i : ""}" data-pi="${i}" aria-label="${c}"></button>`).join("")}
+                ${pal.length < 8 && on ? `<button class="swatch" style="width:44px;height:44px;border:1.5px dashed var(--sub)" data-act="paladd">${I("add")}</button>` : ""}</div>
+              <p class="muted" style="font-size:12px;margin:8px 0 10px">Tap a colour to change it, hold (or right-click) to remove it.</p>
+              <div style="display:flex;gap:8px;overflow-x:auto">${PALS.map(([n, c]) => `<button style="display:flex;flex-direction:column;align-items:center;gap:4px;padding:4px" data-act="${on ? "palset:" + n : ""}"><span style="width:64px;height:22px;border-radius:11px;background:${palBg(c)}"></span><small class="muted">${n}</small></button>`).join("")}</div></div>`
+            : mode === 1 ? swatchRow(f.color, "color", !on) : eff === "fire" ? `<p class="note" style="margin:14px 22px">A warm flame (dark red → orange → yellow). Pick Palette for blue or green fire.</p>` : "")
+        : swatchRow(f.color, "color", !on) + (eff === "gradient" ? `<div class="sec" style="margin:4px 22px 0">Blend into</div>${swatchRow(f.color2, "color2", !on)}` : "")
+          + (eff === "cycle" ? switchRow("Rainbow", rb ? "Uses every colour" : "Uses your colour only", rb, on ? "set:rainbow" : "", { dis: !on }) : ""))}
+      ${ANIM.has(eff) ? group(slider("Speed", "speed", f.speed ?? 50, 1, 100, speedLabel(f.speed ?? 50), !on) + `<div style="display:flex;justify-content:space-between;padding:0 22px 12px" class="muted"><small>Slower</small><small>Faster</small></div>`) : ""}
+      ${eff === "gradient" || soft ? group(slider("LEDs on the fan", "led_count", f.led_count ?? 12, 4, 40, String(f.led_count ?? 12), !on)
+        + `<p class="note" style="margin:0 22px 14px">Match this to your fan so the effect fits the ring exactly (most 120 mm fans have 8–18).</p>`
+        + switchRow("Picture spins the other way", "If the effect here goes round the opposite way to your fan", localStorage.getItem("nova.fanReverse") === "true", "rev", { blue: false })) : ""}
       ${sec("Automation")}${group(switchRow("Status light", "Turns amber for warnings and pulses red for critical alerts, then goes back to your colour", !!f.status_light, isAdmin() ? "set:status_light" : "", { blue: false, dis: !isAdmin() })
-        + row("Schedules", { sub: nsch ? `${nsch} schedule${nsch > 1 ? "s" : ""}` : "Dim at night, turn off while you sleep…", blue: nsch > 0, click: "go:schedules" }))}
+        + row("Schedules", { sub: f.schedules_paused ? "Paused" : nsch ? `${nsch} schedule${nsch > 1 ? "s" : ""}` : "Wake up gently, dim at sunset, off while you sleep…", blue: nsch > 0, click: "go:schedules" }))}
       ${links([["Notifications", "go:notify"], ["Storage & hardware", "go:hardware"]])}`, { title: "Lighting" });
     animate($("#fh"), "fan");
     wireCommon(ctx.root, {
       onRangeInput: (k, v) => { const l = $(`[data-lbl="${k}"]`); if (l) l.textContent = k === "speed" ? speedLabel(v) : k === "brightness" ? v + "%" : String(v); if (k === "brightness") S.fan = { ...S.fan, brightness: v }; },
       onRange: (k, v) => set({ [k]: v }),
+      onSeg: (_, m) => { const f2 = S.fan || {};
+        if (m === 0) set(f2.effect === "fire" ? { palette: [], rainbow: false } : { rainbow: true });
+        else if (m === 1) set({ rainbow: false, palette: [] });
+        else set({ rainbow: false, palette: (f2.palette || []).length >= 2 ? f2.palette : [f2.color || "#3e91ff", f2.color2 || "#bf5af2"] }); },
     });
-    $$("[data-color]").forEach(i => i.onchange = () => set({ [i.dataset.color]: i.value }));
+    $$("[data-pid]").forEach(b => onHold(b, () => presetMenu(b.dataset.pid)));
+    $$("[data-pi]").forEach(b => onHold(b, () => { const p = [...(S.fan.palette || [])]; if (p.length > 2) { p.splice(+b.dataset.pi, 1); set({ palette: p }); } }));
   };
   const set = async patch => { try { const p = changeFan(patch); draw(); await p; } catch (e) { toast(e.message); } if (ctx.alive()) draw(); };
+  const savePresets = list => set({ presets: list });
+  const presetMenu = async id => {
+    if (!isAdmin()) return viewOnly();
+    const list = S.fan.presets || [], p = list.find(x => x.id === id); if (!p) return;
+    const v = await choose(p.name, [["update", "Update with the current look"], ["rename", "Rename"], ["delete", "Delete"]], null);
+    if (v === "update") { savePresets(list.map(x => x.id === id ? { ...x, set: lookOf(S.fan) } : x)); toast("Updated"); }
+    if (v === "rename") { const n = await ask("Rename preset", "Name", p.name); if (n) savePresets(list.map(x => x.id === id ? { ...x, name: n } : x)); }
+    if (v === "delete") savePresets(list.filter(x => x.id !== id));
+  };
   ctx.handlers({
     set: (k, v) => { const f = S.fan || {}; set({ [k]: v !== undefined ? v : k === "on" ? f.on === false : k === "rainbow" ? f.rainbow === false : !f[k] }); },
     col: (k, h) => set({ [k]: h }),
+    pick: async k => { const c = await colorPicker(S.fan?.[k] || "#3e91ff"); if (c) set({ [k]: c }); },
+    pal: async i => { const p = [...(S.fan.palette || [])], c = await colorPicker(p[+i]); if (c) { p[+i] = c; set({ palette: p, rainbow: false }); } },
+    paladd: () => { const p = [...(S.fan.palette || [])]; p.push(p.at(-1) || "#ffffff"); set({ palette: p, rainbow: false }); },
+    palset: n => set({ palette: PALS.find(x => x[0] === n)[1], rainbow: false }),
+    preset: id => { const p = (S.fan.presets || []).find(x => x.id === id); if (!p) return; if (!isAdmin()) return viewOnly(); set({ ...p.set, on: p.set.on !== false }); toast(`${p.name} on`); },
+    savepreset: async () => { const n = await ask("Save as a preset", "e.g. Movie night", ""); if (n) savePresets([...(S.fan.presets || []), { name: n, set: lookOf(S.fan) }]); },
+    rev: () => { try { localStorage.setItem("nova.fanReverse", String(localStorage.getItem("nova.fanReverse") !== "true")); } catch {} draw(); },
   });
   draw(); try { S.fan = await get("/api/v1/fan"); if (ctx.alive()) draw(); } catch (e) { toast(e.message); }
 }
 const DAYS = ["M", "T", "W", "T", "F", "S", "S"], DAYN = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 function describeSet(s) {
   if (!s) return ""; if ("on" in s && !s.on) return "Turn off";
-  const p = []; if (s.on) p.push("Turn on"); if ("brightness" in s) p.push(`Brightness ${s.brightness}%`); if (s.effect) p.push(cap(s.effect)); if (s.color) p.push("colour");
+  const p = []; if (s.on) p.push("Turn on"); if ("brightness" in s) p.push(`${s.brightness}%`); if (s.effect) p.push((EFFECTS2.find(e => e[0] === s.effect) || [0, s.effect])[1]); if (s.color || s.palette) p.push("colour");
   return p.join(", ") || "No change";
 }
+const whenText = (trig, time, off) => { const o = off ? ` ${off > 0 ? "+" : "−"}${Math.abs(off)} min` : ""; return trig === "sunrise" ? "Sunrise" + o : trig === "sunset" ? "Sunset" + o : time; };
+const actionText = (s, presets) => s.preset ? ((presets.find(p => p.id === s.preset) || {}).name ? `Preset “${presets.find(p => p.id === s.preset).name}”` : "A deleted preset") : describeSet(s.set);
 export async function schedules(ctx) {
   const draw = () => {
-    const sch = S.fan?.schedules || [];
-    ctx.show(sch.length ? group(sch.map((s, i) => { const d = s.days || [0, 1, 2, 3, 4, 5, 6];
-        return `<div class="row click" data-act="edit:${i}"><div class="t"><b>${esc(`${s.time}  ${s.name || ""}`.trim())}</b><small class="blue">${esc(describeSet(s.set))} · ${d.length === 7 ? "Every day" : d.map(x => DAYN[x]).join(" ")}</small></div><button data-act="toggle:${i}" aria-label="On/off">${sw(s.enabled !== false)}</button></div>`; }).join(""))
-      : `${note("No schedules yet. Add one to dim the fan at night or switch it off while you sleep.")}<div class="center"><button class="btn" data-act="edit:-1">Add schedule</button></div>`,
+    const f = S.fan || {}, sch = f.schedules || [], presets = f.presets || [], paused = !!f.schedules_paused, sun = f.sun, starts = f.starts_today || {};
+    ctx.show(`${group(switchRow("Pause all schedules", paused ? "Nothing runs until you turn this off" : "Schedules run as set", paused, isAdmin() ? "pause" : "", { blue: paused, dis: !isAdmin() })
+        + row("Location for sunrise & sunset", { sub: sun ? `Today: sunrise ${sun.sunrise} · sunset ${sun.sunset}` : "Not set — needed for sunrise/sunset schedules", blue: !!sun, icon: "clock", tint: "var(--amber)", click: isAdmin() ? "loc" : "" }))}
+      ${sch.length ? group(sch.map((s, i) => { const d = s.days || [0, 1, 2, 3, 4, 5, 6], trig = s.trigger || "time", u = s.until;
+          const title = whenText(trig, s.time, s.offset) + (trig !== "time" && starts[s.id] ? ` (${starts[s.id]})` : "") + (u ? " – " + whenText(u.trigger || "time", u.time, u.offset) : "") + (s.name ? "  ·  " + s.name : "");
+          const sub = [actionText(s, presets), s.fade ? `fades over ${s.fade} min` : "", u ? "then back" : "", d.length === 7 ? "every day" : d.join() === "0,1,2,3,4" ? "weekdays" : d.join() === "5,6" ? "weekends" : d.map(x => DAYN[x]).join(" "), s.skip_next ? "skipping next time" : ""].filter(Boolean).join(" · ");
+          return `<div class="row click" data-act="menu:${i}"><div class="t"><b>${esc(title)}</b><small class="${s.enabled !== false && !paused ? "blue" : ""}">${esc(sub)}</small></div><button data-act="toggle:${i}" aria-label="On/off">${sw(s.enabled !== false)}</button></div>`; }).join(""))
+        : `${note("No schedules yet. Some ideas: wake up to a slow sunrise, dim to a warm glow at sunset, turn off while you sleep and back on in the morning.")}<div class="center"><button class="btn" data-act="edit:-1">Add schedule</button></div>`}
+      ${note("Fades change the light gradually, a step each minute. With an end time, the light goes back to how it was when the schedule started.")}`,
       { title: "Schedules", actions: [{ icon: "add", label: "Add", act: "edit:-1" }] });
   };
+  const putAll = async all => { try { const p = changeFan({ schedules: all }); draw(); await p; } catch (e) { toast(e.message); } draw(); };
   ctx.handlers({
     edit: i => isAdmin() ? ctx.go("schedule/" + i) : viewOnly(),
-    toggle: async i => { if (!isAdmin()) return viewOnly(); const all = structuredClone(S.fan?.schedules || []); all[i].enabled = all[i].enabled === false;
-      try { const p = changeFan({ schedules: all }); draw(); await p; } catch (e) { toast(e.message); } draw(); },
+    toggle: i => { if (!isAdmin()) return viewOnly(); const all = structuredClone(S.fan?.schedules || []); all[i].enabled = all[i].enabled === false; putAll(all); },
+    pause: async () => { try { await changeFan({ schedules_paused: !S.fan?.schedules_paused }); } catch (e) { toast(e.message); } draw(); },
+    menu: async i => {
+      if (!isAdmin()) return viewOnly();
+      const all = structuredClone(S.fan?.schedules || []), s = all[i]; if (!s) return;
+      const v = await choose(whenText(s.trigger || "time", s.time, s.offset), [["edit", "Edit"], ["skip", s.skip_next ? "Don't skip next time" : "Skip next time"], ["run", "Run it now"], ["dup", "Duplicate"], ["del", "Delete"]], null);
+      if (v === "edit") ctx.go("schedule/" + i);
+      if (v === "skip") { s.skip_next = !s.skip_next; putAll(all); }
+      if (v === "run") { const set = s.preset ? (S.fan.presets || []).find(p => p.id === s.preset)?.set : s.set; if (set) { try { await changeFan(set); toast("Done"); } catch (e) { toast(e.message); } } }
+      if (v === "dup") { const c = structuredClone(s); delete c.id; all.push(c); putAll(all); }
+      if (v === "del") { all.splice(i, 1); putAll(all); }
+    },
+    loc: async () => {
+      const loc = S.fan?.location || {}, typed = { lat: loc.lat ?? "", lon: loc.lon ?? "" };
+      const pending = dialog("Where is the server?", "Sunrise and sunset are worked out on the server from this. Use this device's location, or type latitude and longitude (a city is close enough).",
+        [{ label: "Cancel", value: null }, { label: "Use my location", color: "var(--blue)", value: "geo" }, { label: "Save", color: "var(--blue)", value: "save" }],
+        `<div class="pad" style="display:flex;gap:10px"><input class="field" id="lat" inputmode="decimal" placeholder="Latitude" value="${esc(typed.lat)}"><input class="field" id="lon" inputmode="decimal" placeholder="Longitude" value="${esc(typed.lon)}"></div>`);
+      $("#lat").oninput = e => typed.lat = e.target.value; $("#lon").oninput = e => typed.lon = e.target.value;
+      const v = await pending; let lat, lon;
+      if (v === "geo") { try { const p = await new Promise((ok, no) => navigator.geolocation.getCurrentPosition(ok, no, { timeout: 10000 })); lat = p.coords.latitude; lon = p.coords.longitude; } catch { return toast("Location isn't available here — type it instead"); } }
+      else if (v === "save") { lat = parseFloat(typed.lat); lon = parseFloat(typed.lon); if (isNaN(lat) || isNaN(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) return toast("Enter a latitude (−90…90) and longitude (−180…180)"); }
+      else return;
+      lat = Math.round(lat * 100) / 100; lon = Math.round(lon * 100) / 100;      // a city is enough; no need to store an exact spot
+      try { await changeFan({ location: { lat, lon } }); S.fan = await get("/api/v1/fan"); toast("Saved"); } catch (e) { toast(e.message); } draw();
+    },
   });
   draw(); try { S.fan = await get("/api/v1/fan"); if (ctx.alive()) draw(); } catch {}
 }
 export async function schedule(ctx) {
-  const index = +ctx.args[0], ex = (S.fan?.schedules || [])[index], s0 = ex?.set || {};
-  let time = ex?.time || "22:00", days = new Set(ex?.days || [0, 1, 2, 3, 4, 5, 6]), off = "on" in s0 && !s0.on, bright = s0.brightness ?? 5, color = s0.color || null;
+  const index = +ctx.args[0], ex = (S.fan?.schedules || [])[index], s0 = ex?.set || {}, presets = S.fan?.presets || [];
+  const v = { name: ex?.name || "", trig: ex?.trigger || "time", time: ex?.time || "22:00", offset: ex?.offset || 0, days: new Set(ex?.days || [0, 1, 2, 3, 4, 5, 6]),
+    action: ex?.preset ? 2 : ("on" in s0 && !s0.on) ? 0 : 1, preset: ex?.preset || presets[0]?.id || null, bright: s0.brightness ?? 30, color: s0.color || null, effect: s0.effect || null,
+    fade: ex?.fade || 0, hasEnd: !!ex?.until, endTrig: ex?.until?.trigger || "time", endTime: ex?.until?.time || "07:00", endOffset: ex?.until?.offset || 0 };
+  const sunKnown = !!S.fan?.sun;
+  const trigHtml = (pre, trig, time, off) => `${segmented(["Time", "Sunrise", "Sunset"], ["time", "sunrise", "sunset"].indexOf(trig), pre + "trig")}
+    ${trig === "time" ? `<div class="timepick"><input type="time" id="${pre}tm" value="${esc(time)}" required></div>`
+      : group(slider("Offset", pre + "off", off, -120, 120, off === 0 ? `At ${trig}` : off < 0 ? `${-off} min before` : `${off} min after`) + (sunKnown ? "" : `<p class="note" style="color:var(--amber);margin:0 22px 12px">Set the server's location in Schedules first.</p>`))}`;
   const draw = () => {
-    ctx.show(`<div class="timepick"><input type="time" id="tm" value="${esc(time)}" required></div>
-      <div class="days">${DAYS.map((d, i) => `<button class="${days.has(i) ? "on" : ""}" data-act="day:${i}">${d}</button>`).join("")}</div><div style="height:14px"></div>
-      ${group(switchRow("Turn the light off", null, off, "off"))}
-      ${off ? "" : group(slider("Brightness", "b", bright, 0, 100, bright + "%")) + sec("Colour (optional)") + group(swatchRow(color, "c", false))}
+    ctx.show(`${sec("Starts")}${trigHtml("s", v.trig, v.time, v.offset)}
+      <div class="days">${DAYS.map((d, i) => `<button class="${v.days.has(i) ? "on" : ""}" data-act="day:${i}">${d}</button>`).join("")}</div>
+      ${sec("Does")}${segmented(["Turn off", "Set the light", "A preset"], v.action, "action")}
+      ${v.action === 1 ? group(slider("Brightness", "b", v.bright, 0, 100, v.bright + "%")) + sec("Colour (optional)") + group(swatchRow(v.color, "c", false))
+          + sec("Effect (optional)") + `<div class="chips">${[[null, "Keep"], ...EFFECTS2.map(e => [e[0], e[1]])].map(([k, l]) => chip(l, "eff:" + (k || ""), v.effect === k)).join("")}</div>`
+        : v.action === 2 ? group(presets.length ? presets.map(p => row(p.name, { sub: describeSet(p.set), end: radio(v.preset === p.id), click: "pre:" + p.id })).join("") : row("No presets yet — save one on the Lighting page first.", { dis: true })) : ""}
+      ${sec("Fade")}<div class="chips">${[0, 5, 10, 15, 30, 45, 60, 90, 120].map(m => chip(m ? `${m} min` : "Instant", "fade:" + m, v.fade === m)).join("")}</div>
+      ${note(v.fade ? `Glides there over ${v.fade} minutes — a slow sunrise or a gentle fade to sleep.` : "Changes straight away.")}
+      ${sec("Ends")}${group(switchRow("Put the light back afterwards", v.hasEnd ? "At the end time it returns to how it was" : "Stays like this", v.hasEnd, "end"))}
+      ${v.hasEnd ? trigHtml("e", v.endTrig, v.endTime, v.endOffset) : ""}
+      ${sec("Name (optional)")}${group(`<div style="padding:16px"><input class="field" id="nm" maxlength="30" placeholder="e.g. Wake up" value="${esc(v.name)}"></div>`)}
       ${index >= 0 ? group(row("Delete schedule", { icon: "del", tint: "var(--red)", click: "delete" })) : ""}
-      <div style="display:flex;gap:12px;padding:18px 22px"><button class="btn" style="flex:1;background:color-mix(in srgb,var(--text) 8%,transparent);color:var(--text)" data-act="back">Cancel</button><button class="btn" style="flex:1" data-act="save" ${days.size ? "" : "disabled"}>Save</button></div>`,
+      <div style="display:flex;gap:12px;padding:18px 22px"><button class="btn" style="flex:1;background:color-mix(in srgb,var(--text) 8%,transparent);color:var(--text)" data-act="back">Cancel</button><button class="btn" style="flex:1" data-act="save" ${v.days.size && (v.action !== 2 || v.preset) ? "" : "disabled"}>Save</button></div>`,
       { title: index >= 0 ? "Edit schedule" : "New schedule" });
-    $("#tm").onchange = e => time = e.target.value || time;
-    wireCommon(ctx.root, { onRangeInput: (k, v) => { bright = v; $('[data-lbl="b"]').textContent = v + "%"; } });
-    $$("[data-color]").forEach(i => i.onchange = () => { color = i.value; draw(); });
+    $("#stm") && ($("#stm").onchange = e => v.time = e.target.value || v.time);
+    $("#etm") && ($("#etm").onchange = e => v.endTime = e.target.value || v.endTime);
+    $("#nm").oninput = e => v.name = e.target.value;
+    wireCommon(ctx.root, {
+      onSeg: (k, i) => { if (k === "strig") v.trig = ["time", "sunrise", "sunset"][i]; if (k === "etrig") v.endTrig = ["time", "sunrise", "sunset"][i]; if (k === "action") v.action = i; draw(); },
+      onRangeInput: (k, x) => { if (k === "b") { v.bright = x; $('[data-lbl="b"]').textContent = x + "%"; }
+        if (k === "soff" || k === "eoff") { x = Math.round(x / 5) * 5; if (k === "soff") v.offset = x; else v.endOffset = x; const t = k === "soff" ? v.trig : v.endTrig;
+          $(`[data-lbl="${k}"]`).textContent = x === 0 ? `At ${t}` : x < 0 ? `${-x} min before` : `${x} min after`; } },
+    });
   };
   const write = async all => { try { await changeFan({ schedules: all }); ctx.back(); toast("Saved"); } catch (e) { toast(e.message); } };
   ctx.handlers({
-    day: i => { i = +i; days.has(i) ? days.delete(i) : days.add(i); draw(); },
-    off: () => { off = !off; draw(); },
-    col: (_, h) => { color = color === h ? null : h; draw(); },
+    day: i => { i = +i; v.days.has(i) ? v.days.delete(i) : v.days.add(i); draw(); },
+    col: (_, h) => { v.color = v.color === h ? null : h; draw(); },
+    pick: async () => { const c = await colorPicker(v.color || "#3e91ff"); if (c) { v.color = c; draw(); } },
+    eff: k => { v.effect = k || null; draw(); }, pre: id => { v.preset = id; draw(); }, fade: m => { v.fade = +m; draw(); }, end: () => { v.hasEnd = !v.hasEnd; draw(); },
     delete: async () => { const all = structuredClone(S.fan?.schedules || []); all.splice(index, 1); await write(all); },
     save: async () => {
       const all = structuredClone(S.fan?.schedules || []);
-      const set = off ? { on: false } : { on: true, brightness: bright, ...(color ? { color } : {}) };
-      const s = { time, days: [...days].sort(), enabled: true, set, ...(ex?.id ? { id: ex.id } : {}) };
+      const set = v.action === 0 ? { on: false } : v.action === 1 ? { on: true, brightness: v.bright, ...(v.color ? { color: v.color } : {}), ...(v.effect ? { effect: v.effect } : {}) } : {};
+      const s = { time: v.time, days: [...v.days].sort(), enabled: true, name: v.name.trim(), trigger: v.trig, offset: v.offset, fade: v.fade, set, preset: v.action === 2 ? v.preset : "",
+        ...(v.hasEnd ? { until: { trigger: v.endTrig, time: v.endTime, offset: v.endOffset } } : {}), ...(ex?.id ? { id: ex.id, skip_next: !!ex.skip_next } : {}) };
       if (index >= 0) all[index] = s; else all.push(s); await write(all);
     },
   });

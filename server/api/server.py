@@ -34,7 +34,7 @@ try:                       # optional module: fan/case lighting (modules/fan-gig
 except ImportError:
     nova_rgb = None
 
-API_VERSION = "0.4.4-alpha.1"
+API_VERSION = "0.4.6-alpha"
 CONFIG = "/etc/nova-api/config.json"
 DATA = "/var/lib/nova-api"
 DEVICES = f"{DATA}/devices.json"
@@ -764,7 +764,8 @@ class Handler(BaseHTTPRequestHandler):
             if nova_rgb:
                 with rgb_lock: fan = nova_rgb.load()
             cfg = load_json(SETTINGS, {})
-            return 200, {"server": {"name": os.uname().nodename, "display_name": cfg.get("display_name", ""),
+            return 200, {"time": time.time(),             # lets apps line their fan animation up with the real fan
+                         "server": {"name": os.uname().nodename, "display_name": cfg.get("display_name", ""),
                                     "accent": cfg.get("accent", ""), "board": board_name(), "cpu": cpu,
                                     "ram_gb": round(mem.get("MemTotal", 0) / 1048576), "kernel": os.uname().release,
                                     "uptime_s": int(float(open("/proc/uptime").read().split()[0]))},
@@ -787,6 +788,27 @@ class Handler(BaseHTTPRequestHandler):
                 if ev or ("seen" in q and [a for a in ap if a["id"] not in seen]) or time.time() >= end:
                     return 200, {"events": ev[:50], "approvals": ap}
                 time.sleep(2)
+        if method == "GET" and parts == ["archive"]:
+            # Permanent history (archived from the Inbox, or aged out of it). Readable by every device.
+            try: before = float(q.get("before", "") or "inf")
+            except ValueError: before = float("inf")
+            try: limit = max(1, min(500, int(q.get("limit", "200") or 200)))
+            except ValueError: limit = 200
+            rows = []
+            try:
+                with open(os.path.join(os.path.dirname(EVENTS), "archive.jsonl")) as f:
+                    for line in f:
+                        try: e = json.loads(line)
+                        except ValueError: continue
+                        if e.get("t", 0) < before: rows.append(e)
+            except FileNotFoundError: pass
+            seen, out = set(), []
+            for e in sorted(rows, key=lambda e: (-e["t"], not e.get("archived"))):    # an archived copy wins
+                k = round(e["t"], 4)
+                if k in seen: continue
+                seen.add(k); out.append(e)
+                if len(out) >= limit: break
+            return 200, {"events": out, "more": len(out) == limit}
         if method == "GET" and parts == ["events"]:
             since = float(q.get("since", "0") or 0)
             ev = [e for e in load_json(EVENTS, {}).get("events", []) if e.get("t", 0) > since]
@@ -813,9 +835,22 @@ class Handler(BaseHTTPRequestHandler):
             with rgb_lock:
                 st = nova_rgb.load()
                 if method == "POST":
-                    st.update(nova_rgb.validate(data))
-                    nova_rgb.apply(st, nova_rgb.status_override(st)); nova_rgb.save(st)
-                return 200, {**st, "effects": nova_rgb.EFFECT_NAMES, "status_override": nova_rgb.status_override(st)}
+                    pid = data.pop("apply_preset", None) if isinstance(data, dict) else None
+                    patch = nova_rgb.validate(data)
+                    if pid is not None:                               # one tap: a saved look
+                        pr = next((p for p in st.get("presets", []) if p["id"] == str(pid)), None)
+                        if not pr: raise ValueError("no such preset")
+                        patch = {**pr["set"], **patch}
+                    st.update(patch)
+                    look = getattr(nova_rgb, "LOOK", nova_rgb.SETTABLE)
+                    if any(k in patch for k in look):                # a manual change wins over a schedule's fade
+                        for r in (st.get("running") or {}).values(): r.pop("fade", None)
+                        st["running"] = {k: v for k, v in (st.get("running") or {}).items() if v}
+                    if any(k in patch for k in nova_rgb.SETTABLE):   # only touch the hardware when the look changes
+                        nova_rgb.apply(st, nova_rgb.status_override(st))
+                    nova_rgb.save(st)
+                ex = nova_rgb.extras(st) if hasattr(nova_rgb, "extras") else {"effects": nova_rgb.EFFECT_NAMES}
+                return 200, {**st, **ex, "status_override": nova_rgb.status_override(st)}
 
         # ── containers ──
         if method == "GET" and parts == ["containers"]:

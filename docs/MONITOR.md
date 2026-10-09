@@ -39,7 +39,9 @@ choices (levels, logins, USB, pausing Discord) are set from the app.
 - **Removed on purpose** (for a missing drive): forgets the drive completely.
 - **Mount it now** (for a "Not mounted" alert): mounts it from `/etc/fstab` — handy for a drive
   that was plugged in after boot.
-- **Delete** (swipe left in the Inbox) removes past events for every device.
+- **Archive** (swipe left in the Inbox) takes an event out of the Inbox for every device and keeps
+  it in the server's archive (`/var/lib/nova-alerts/www/archive.jsonl`, newest 50 000 lines), along with
+  events older than the Inbox's 200. Any paired device reads it at Inbox → Archive.
 
 From a shell: `sudo nova-alert info "Title" "details"` sends an alert;
 `sudo python3 /usr/lib/nova-api/monitor/nova_alerts.py dismiss <key>` or `forget-drive <serial>`.

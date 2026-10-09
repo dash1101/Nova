@@ -23,7 +23,7 @@ const ROUTES = {
   quick: V.quick, "edit-quick": V.editQuick, lighting: V.lighting, schedules: V.schedules, schedule: V.schedule, hardware: V.hardware,
   devices: V.devices, settings: V.settings, server: V.serverSettings, appearance: V.appearance, "edit-home": V.editHome,
   "edit-shortcuts": V.editShortcuts, "edit-tabs": V.editTabs, about: V.about, guide: V.guide, terminal: V.terminal,
-  dashboard: V.dashboard, "edit-dash": V.editDash,
+  dashboard: V.dashboard, "edit-dash": V.editDash, archive: V.archive,
 };
 const RAIL = () => [["home", "dns", "Home"], ["status", "status", "Status"], ["containers", "box", "Containers"],
   ...(has("store") ? [["store", "store", "Store"]] : []), ["dashboard", "dash", "Dashboard"], ["menu", "list", "Menu"]];
