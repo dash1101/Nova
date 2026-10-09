@@ -8,10 +8,11 @@ jobs:
       - run: sudo apt-get install -y python3-cryptography
       - name: Syntax check
         run: |
-          python3 -m py_compile server/api/server.py server/api/helper.py server/api/helper-sock.py
-          python3 -c "import ast; [ast.parse(open(f).read()) for f in ('server/api/nova-api','server/api/nova-setup')]"
-          bash -n server/install.sh packaging/build-deb.sh
-          node --check server/web/app.js
+          python3 -m py_compile server/api/*.py packaging/pentest.py
+          for f in server/api/*; do head -1 "$f" | grep -q python && python3 -c "import ast,sys; ast.parse(open(sys.argv[1]).read())" "$f"; done
+          for f in server/api/*; do head -1 "$f" | grep -q bash && bash -n "$f"; done
+          bash -n server/install.sh packaging/build-deb.sh packaging/release.sh
+          for f in server/web/*.js; do node --check "$f"; done
       - name: Build package
         run: packaging/build-deb.sh
       - uses: actions/upload-artifact@v4
@@ -22,7 +23,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
         with: { distribution: temurin, java-version: 21 }
-      - uses: android-actions/setup-android@v3
+      # the runner image already has the Android SDK (ANDROID_HOME); setup-android's sdkmanager step breaks on it
       - name: Build debug APK
         working-directory: android
         run: ./gradlew --no-daemon assembleDebug
