@@ -1,0 +1,261 @@
+<title>Nova Home Server Remote</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Figtree:wght@400;500;600&family=JetBrains+Mono:wght@500&display=swap">
+<style>
+/* Layout: a left-weighted hero with a phone drawn in Nova's own UI, then plain reading sections on one column, with the drive-LED green as the single recurring mark. */
+:root {
+  --bg: #f5f3fb; --surface: #ffffff; --ink: #17151f; --muted: #5d5970; --line: #e3dfef;
+  --accent: #5b3fd0; --accent-soft: #ebe5ff; --led: #1f9e55; --code-bg: #1b1824; --code-ink: #e9e4ff;
+  --display: "Bricolage Grotesque", "Avenir Next", system-ui, sans-serif;
+  --body: "Figtree", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --measure: 64ch;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0d0b14; --surface: #17141f; --ink: #efeaff; --muted: #a49eb8; --line: #2a2538;
+  --accent: #c9b8ff; --accent-soft: #2a2145; --led: #3ecf6e; --code-bg: #07060b; --code-ink: #e9e4ff; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #0d0b14; --surface: #17141f; --ink: #efeaff; --muted: #a49eb8; --line: #2a2538;
+  --accent: #c9b8ff; --accent-soft: #2a2145; --led: #3ecf6e; --code-bg: #07060b; --code-ink: #e9e4ff; color-scheme: dark }
+
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font: 400 1.0625rem/1.6 var(--body); padding-inline: 20px; padding-block: 0 48px; }
+.wrap { max-width: 1120px; margin-inline: auto; }
+h1, h2, h3 { font-family: var(--display); line-height: 1.08; text-wrap: balance; margin: 0; }
+h2 { font-size: clamp(1.8rem, 3.6vw, 2.6rem); font-weight: 800; letter-spacing: -.02em; }
+h3 { font-size: 1.2rem; font-weight: 700; }
+p { margin: 0; max-width: var(--measure); }
+a { color: var(--accent); }
+a:focus-visible, button:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; border-radius: 6px; }
+code, .mono { font-family: var(--mono); font-size: .92em; }
+.eyebrow { font: 600 .78rem/1 var(--body); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+
+/* top bar */
+.top { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-block: 22px; }
+.brand { display: flex; align-items: center; gap: 12px; font: 800 1.35rem/1 var(--display); color: var(--ink); text-decoration: none; }
+.brand svg { width: 40px; height: 40px; border-radius: 11px; }
+.top nav { display: flex; gap: 22px; flex-wrap: wrap; }
+.top nav a { color: var(--muted); text-decoration: none; font-weight: 500; }
+.top nav a:hover { color: var(--ink); }
+
+/* hero */
+.hero { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, .85fr); gap: 56px; align-items: center; padding-block: 40px 72px; }
+.hero h1 { font-size: clamp(2.6rem, 6.4vw, 4.9rem); font-weight: 800; letter-spacing: -.035em; }
+.hero h1 em { font-style: normal; color: var(--accent); }
+.hero .lede { margin-top: 22px; font-size: 1.22rem; color: var(--muted); }
+.cmd { margin-top: 30px; display: flex; align-items: center; gap: 14px; background: var(--code-bg); color: var(--code-ink); border-radius: 14px; padding: 16px 18px; max-width: 520px; }
+.cmd .prompt { color: #8f86b3; } .cmd code { flex: 1; min-width: 0; overflow-x: auto; white-space: nowrap; }
+.copy { font: 600 .82rem/1 var(--body); color: var(--code-ink); background: rgba(255,255,255,.08); border: 0; border-radius: 9px; padding: 9px 12px; cursor: pointer; }
+.copy:hover { background: rgba(255,255,255,.16); }
+.cta { margin-top: 26px; display: flex; gap: 14px; flex-wrap: wrap; align-items: center; }
+.btn { display: inline-flex; align-items: center; gap: 8px; padding: 14px 22px; border-radius: 999px; font-weight: 600; text-decoration: none; }
+.btn.primary { background: var(--accent); color: var(--bg); }
+.btn.ghost { color: var(--ink); box-shadow: inset 0 0 0 1.5px var(--line); }
+.note { font-size: .9rem; color: var(--muted); }
+
+/* the phone, drawn in Nova's own UI */
+.phone { justify-self: center; width: min(320px, 100%); aspect-ratio: 9 / 19; border-radius: 44px; padding: 12px; background: #050409;
+  box-shadow: 0 30px 80px -30px rgba(70, 40, 160, .55), inset 0 0 0 1.5px #2b2640; }
+.screen { height: 100%; border-radius: 34px; overflow: hidden; color: #f2efff; font-family: var(--body);
+  background: radial-gradient(120% 60% at 85% 10%, #2e2560 0%, transparent 60%), radial-gradient(90% 50% at 0% 40%, #1a2550 0%, transparent 60%), #000;
+  padding: 26px 16px 16px; display: flex; flex-direction: column; gap: 12px; }
+.screen .sb { display: flex; justify-content: space-between; font-size: .7rem; opacity: .8; }
+.screen .t { font: 800 1.45rem/1.1 var(--display); }
+.screen .ok { font-size: .78rem; color: #b9b3cf; display: flex; align-items: center; gap: 6px; }
+.screen .ok i { width: 9px; height: 9px; border-radius: 50%; background: #3ecf6e; }
+.case { align-self: center; width: 46%; aspect-ratio: 3 / 4; border-radius: 12px; background: linear-gradient(#1d1b22, #121116); box-shadow: inset 0 0 0 1px #2f2c38; display: grid; place-items: center; padding: 10px; gap: 6px; }
+.fan { width: 72%; aspect-ratio: 1; border-radius: 50%; background: conic-gradient(from 0deg, #3e91ff, #7c5cff, #bf5af2, #3e91ff); padding: 4px; animation: spin 6s linear infinite; }
+.fan::after { content: ""; display: block; width: 100%; height: 100%; border-radius: 50%; background: radial-gradient(circle, #2a2830 18%, #141318 19% 60%, #1c1b21 61%); }
+.leds { display: flex; gap: 5px; } .leds b { width: 5px; height: 5px; border-radius: 50%; background: #3ecf6e; opacity: .9; }
+.leds b:nth-child(3) { animation: blink 1.6s steps(2) infinite; }
+.chips { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; background: #1e1d23; border-radius: 18px; padding: 10px 6px; font-size: .62rem; text-align: center; color: #e6e2f3; }
+.chips span::before { content: ""; display: block; width: 16px; height: 16px; margin: 0 auto 4px; border-radius: 5px; background: #4b4560; }
+.tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.tile { background: #1e1d23; border-radius: 16px; padding: 10px 12px; font-size: .65rem; color: #a6a1b9; }
+.tile b { display: block; font: 700 1.15rem/1.2 var(--display); color: #fff; font-variant-numeric: tabular-nums; }
+.bar { height: 4px; border-radius: 2px; background: #2f2c38; margin-top: 6px; overflow: hidden; } .bar i { display: block; height: 100%; border-radius: 2px; }
+.pill { margin-top: auto; align-self: center; display: flex; gap: 6px; background: rgba(40,38,48,.92); border-radius: 30px; padding: 5px; }
+.pill span { width: 46px; height: 32px; border-radius: 16px; } .pill span.on { background: rgba(255,255,255,.12); }
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes blink { 50% { opacity: .25; } }
+@media (prefers-reduced-motion: reduce) { .fan, .leds b { animation: none; } }
+
+/* sections */
+section { padding-block: 64px; border-top: 1px solid var(--line); }
+.sec-head { display: grid; gap: 12px; margin-bottom: 36px; }
+.sec-head p { color: var(--muted); font-size: 1.1rem; }
+.features { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 34px 40px; }
+.feature { display: grid; gap: 8px; align-content: start; }
+.feature h3 { display: flex; align-items: center; gap: 10px; }
+.feature h3::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--led); box-shadow: 0 0 0 4px color-mix(in srgb, var(--led) 18%, transparent); flex: none; }
+.feature p { color: var(--muted); font-size: 1rem; }
+
+.flow { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; counter-reset: s; }
+.step { background: var(--surface); border: 1px solid var(--line); border-radius: 18px; padding: 20px; display: grid; gap: 8px; align-content: start; counter-increment: s; }
+.step::before { content: counter(s); font: 800 1.6rem/1 var(--display); color: var(--accent); }
+.step p { font-size: .97rem; color: var(--muted); }
+.sig { margin-top: 26px; overflow-x: auto; background: var(--code-bg); color: var(--code-ink); border-radius: 14px; padding: 18px 20px; font: 500 .9rem/1.7 var(--mono); }
+.sig .k { color: #8f86b3; }
+
+.install { display: grid; gap: 14px; max-width: 760px; }
+.line { display: grid; grid-template-columns: 2.2rem minmax(0, 1fr); gap: 14px; align-items: start; }
+.line .n { font: 800 1.35rem/1.7 var(--display); color: var(--accent); }
+.line .cmd { margin-top: 8px; max-width: none; }
+.line p { color: var(--muted); }
+
+.looks { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+.look { border-radius: 22px; padding: 22px; display: grid; gap: 10px; border: 1px solid var(--line); background: var(--surface); }
+.look .sw { display: flex; gap: 8px; } .look .sw i { width: 28px; height: 28px; border-radius: 50%; }
+.look p { color: var(--muted); font-size: .98rem; }
+
+.cli { background: var(--code-bg); color: var(--code-ink); border-radius: 16px; padding: 22px; overflow-x: auto; font: 500 .9rem/1.8 var(--mono); }
+.cli span { color: #8f86b3; }
+
+details { border-bottom: 1px solid var(--line); padding-block: 16px; }
+summary { cursor: pointer; font: 700 1.08rem/1.4 var(--display); list-style: none; display: flex; justify-content: space-between; gap: 16px; }
+summary::after { content: "+"; color: var(--accent); font-size: 1.4rem; line-height: 1; } details[open] summary::after { content: "–"; }
+details p { margin-top: 10px; color: var(--muted); }
+footer { padding-block: 40px 10px; border-top: 1px solid var(--line); display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; color: var(--muted); font-size: .92rem; }
+
+@media (max-width: 900px) {
+  .hero { grid-template-columns: minmax(0, 1fr); gap: 40px; }
+  .features { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .flow { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 600px) {
+  .features, .flow, .looks { grid-template-columns: minmax(0, 1fr); }
+  .top nav { display: none; }
+  section { padding-block: 48px; }
+}
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <a class="brand" href="#top" aria-label="Nova home">
+      <svg viewBox="18 18 72 72" aria-hidden="true"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#EADDFF"/><stop offset="1" stop-color="#CBB6F7"/></linearGradient></defs>
+        <rect x="18" y="18" width="72" height="72" fill="url(#g)"/><g transform="translate(54 54) scale(0.93) translate(-51 -57)"><rect x="30" y="36" width="42" height="42" rx="10" fill="#1D1B20"/>
+        <g fill="#2B2930"><rect x="35" y="41" width="32" height="8.7" rx="3.4"/><rect x="35" y="52.65" width="32" height="8.7" rx="3.4"/><rect x="35" y="64.3" width="32" height="8.7" rx="3.4"/></g>
+        <g fill="#D0BCFF"><circle cx="52" cy="45.35" r="1.35"/><circle cx="52" cy="57" r="1.35"/><circle cx="52" cy="68.65" r="1.35"/></g>
+        <circle cx="70" cy="38" r="11.2" fill="#1D1B20"/><circle cx="70" cy="38" r="9.2" fill="#381E72"/>
+        <path fill="#EADDFF" d="M68.6,31.2C69,35 70.2,36.3 74,36.8C70.2,37.3 69,38.6 68.6,42.4C68.2,38.6 67,37.3 63.2,36.8C67,36.3 68.2,35 68.6,31.2Z"/></g></svg>
+      Nova
+    </a>
+    <nav aria-label="Sections"><a href="#features">Features</a><a href="#security">Security</a><a href="#install">Install</a><a href="#faq">FAQ</a></nav>
+  </header>
+
+  <main id="top">
+    <div class="hero">
+      <div>
+        <p class="eyebrow">Open source · Debian &amp; Ubuntu · Android + any browser</p>
+        <h1>Your home server, <em>in your pocket.</em></h1>
+        <p class="lede">Nova is a remote for the Linux box in your closet. Check its health, restart a container, set up drives and backups, and get alerts the moment something breaks. Every request is signed by a key that never leaves your phone's secure chip.</p>
+        <div class="cmd" role="group" aria-label="Pair your phone">
+          <span class="prompt">$</span><code id="c-add">sudo nova add</code><button class="copy" data-copy="c-add" type="button">Copy</button>
+        </div>
+        <div class="cta">
+          <a class="btn primary" href="#install">Install Nova</a>
+          <a class="btn ghost" href="#security">How it stays safe</a>
+        </div>
+        <p class="note" style="margin-top:16px">Free and MIT-licensed. Your data stays on your server; there's no Nova account and no cloud service in the middle.</p>
+      </div>
+      <div class="phone" aria-label="The Nova app's home screen">
+        <div class="screen">
+          <div class="sb"><span>9:41</span><span>●●●</span></div>
+          <div><div class="t">Nova Homelab</div><div class="ok"><i></i>All systems normal · 13/13 running</div></div>
+          <div class="case"><div class="fan"></div><div class="leds"><b></b><b></b><b></b><b></b><b></b><b></b></div></div>
+          <div class="chips"><span>Inbox</span><span>Quick</span><span>Apps</span><span>Storage</span></div>
+          <div class="tiles">
+            <div class="tile">CPU<b>6%</b>42 °C<div class="bar"><i style="width:8%;background:#a8c4ff"></i></div></div>
+            <div class="tile">Memory<b>58%</b>13.2 / 22.6 GB<div class="bar"><i style="width:58%;background:#bf5af2"></i></div></div>
+          </div>
+          <div class="pill"><span></span><span class="on"></span><span></span></div>
+        </div>
+      </div>
+    </div>
+
+    <section id="features">
+      <div class="sec-head"><p class="eyebrow">What you get</p><h2>Everything you'd SSH in for, without SSHing in.</h2></div>
+      <div class="features">
+        <div class="feature"><h3>Health at a glance</h3><p>CPU, memory, temperatures and network as live one-second graphs, plus drive health from SMART. One line tells you if anything needs attention.</p></div>
+        <div class="feature"><h3>Containers</h3><p>Every Docker Compose app with logs, a shell inside it, start, stop, restart, update and restart policy. An app store installs popular self-hosted apps in a tap.</p></div>
+        <div class="feature"><h3>Drives and pools</h3><p>A map of every drive and what it's for. A guided setup combines drives into one big folder, builds RAID 1, 5, 6 or 10, or makes a backup drive, with a "?" explaining each choice.</p></div>
+        <div class="feature"><h3>Backups</h3><p>Scheduled, versioned snapshots to another drive or a NAS over SMB or NFS. A folder that suddenly loses most of its files isn't backed up over your good copy. Browse and restore from the app.</p></div>
+        <div class="feature"><h3>Alerts that reach you</h3><p>A full drive, a container that died, a login from somewhere new. Instant notifications on your phone and watch without Google's push service, plus Discord if you like.</p></div>
+        <div class="feature"><h3>Diagnostics</h3><p>Internet speed with ping and jitter, drive speed, a CPU stress test with live temperature and power, a memory test, and ping, traceroute and DNS tools.</p></div>
+        <div class="feature"><h3>Terminal</h3><p>Real SSH to the server, with a key made inside the phone. One tap installs it on the server, after your fingerprint.</p></div>
+        <div class="feature"><h3>Several servers, several people</h3><p>Pair with as many machines as you like. Invite family as Admin or View only, and approve browsers from your phone.</p></div>
+        <div class="feature"><h3>Nova web</h3><p>The same app in any browser at <code>https://your-server:8495</code>. Anything risky asks your phone (or your watch) first.</p></div>
+      </div>
+    </section>
+
+    <section id="security">
+      <div class="sec-head"><p class="eyebrow">Security</p><h2>Built so a stolen password gets nobody in.</h2>
+        <p>Nova has no passwords. Each phone and browser makes its own signing key, and the server only accepts requests that key signed.</p></div>
+      <div class="flow">
+        <div class="step"><h3>Pair on your home Wi-Fi</h3><p>Run <code>sudo nova add</code> and scan the code. Pairing only works from your home network, and each code works once.</p></div>
+        <div class="step"><h3>Sign every request</h3><p>The phone signs each request with a key in its secure chip, stamped with the time and a one-time number, so a recorded request can't be replayed.</p></div>
+        <div class="step"><h3>Fingerprint for the risky stuff</h3><p>Restarting, erasing drives or opening a terminal also needs a second key that only unlocks with your fingerprint.</p></div>
+        <div class="step"><h3>Least privilege on the server</h3><p>The API runs unprivileged in a systemd sandbox. The only root code is a helper with a fixed list of commands.</p></div>
+      </div>
+      <div class="sig" aria-label="What each request signs"><span class="k">signed message =</span> METHOD ␤ PATH ␤ TIME_MS ␤ NONCE ␤ sha256(BODY)<br><span class="k">key =</span> EC P-256 in the Android Keystore (StrongBox when the phone has one), never exportable</div>
+      <p class="note" style="margin-top:14px">Every release is checked with a 142-point security test, and update packages are signed. Remote access goes through Cloudflare Access, so nothing is open to the internet.</p>
+    </section>
+
+    <section id="install">
+      <div class="sec-head"><p class="eyebrow">Install</p><h2>Three commands and a QR code.</h2>
+        <p>Nova runs on Debian 12 or 13 and Ubuntu 22.04 or newer, on anything from a mini PC to a Raspberry Pi.</p></div>
+      <div class="install">
+        <div class="line"><span class="n">1</span><div><p>Install the server package from the latest release.</p>
+          <div class="cmd"><span class="prompt">$</span><code id="c-1">sudo apt install ./nova-server_*_all.deb</code><button class="copy" data-copy="c-1" type="button">Copy</button></div></div></div>
+        <div class="line"><span class="n">2</span><div><p>Answer a few questions: your network, remote access (optional), where the server is, which tools to install.</p>
+          <div class="cmd"><span class="prompt">$</span><code id="c-2">sudo nova setup</code><button class="copy" data-copy="c-2" type="button">Copy</button></div></div></div>
+        <div class="line"><span class="n">3</span><div><p>Install the Android app, then pair it. You can also open Nova web in a browser and approve it with <code>sudo nova approve CODE</code>.</p>
+          <div class="cmd"><span class="prompt">$</span><code id="c-3">sudo nova add</code><button class="copy" data-copy="c-3" type="button">Copy</button></div></div></div>
+      </div>
+    </section>
+
+    <section id="cli">
+      <div class="sec-head"><p class="eyebrow">On the server</p><h2>One command for everything.</h2></div>
+<pre class="cli">sudo nova                 <span># every command, explained</span>
+sudo nova add             <span># pair a phone or tablet (with a countdown)</span>
+sudo nova approve CODE    <span># approve a browser, or something it's waiting on</span>
+sudo nova devices         <span># who has access</span>
+sudo nova remove NAME     <span># take it away</span>
+sudo nova status          <span># version, services, addresses</span>
+sudo nova update          <span># install the newest signed release</span>
+sudo nova backup now      <span># back up right away</span></pre>
+    </section>
+
+    <section id="looks">
+      <div class="sec-head"><p class="eyebrow">Design</p><h2>Looks like it belongs on your phone.</h2>
+        <p>On Samsung phones Nova uses its default One UI-style look. On Pixel and most other phones it switches to Material You, with colours from your wallpaper. You can pick either in Appearance.</p></div>
+      <div class="looks">
+        <div class="look"><div class="sw"><i style="background:#000"></i><i style="background:#2e2560"></i><i style="background:#3e91ff"></i><i style="background:#3ecf6e"></i></div><h3>Default</h3><p>Frosted glass, a soft glow behind every page, and a floating navigation pill that slides between tabs.</p></div>
+        <div class="look"><div class="sw"><i style="background:#1d1f24"></i><i style="background:#d0bcff"></i><i style="background:#381e72"></i><i style="background:#eaddff"></i></div><h3>Material You</h3><p>Tonal surfaces, segmented lists, large titles and springy motion, following Google's Material 3 Expressive.</p></div>
+      </div>
+    </section>
+
+    <section id="faq">
+      <div class="sec-head"><p class="eyebrow">Questions</p><h2>Good to know</h2></div>
+      <details><summary>Do I need to open ports on my router?</summary><p>No. At home the app talks to the server directly. For access from anywhere, Nova uses a Cloudflare Tunnel with Cloudflare Access in front, or Tailscale if you already use it.</p></details>
+      <details><summary>Is there an iPhone app?</summary><p>Not yet. iPhone users can use Nova web in Safari. Risky actions are approved on an Android phone, a watch paired with it, or with <code>sudo nova approve</code> on the server.</p></details>
+      <details><summary>What happens if I lose my phone?</summary><p>Run <code>sudo nova remove NAME</code> on the server, or remove it from another phone. Its keys can never be used again.</p></details>
+      <details><summary>Does it work without Docker?</summary><p>Yes. Containers and the app store need Docker; status, drives, backups, alerts, diagnostics and the terminal don't.</p></details>
+      <details><summary>Can Nova erase the wrong drive?</summary><p>The server never offers the system drive, swap, or anything mounted or already in a pool. You type ERASE, confirm with your fingerprint, and the server re-checks the exact drives before it starts.</p></details>
+      <details><summary>Is it free?</summary><p>Yes, MIT-licensed. The source, the server package and the Android app are all in the repository.</p></details>
+    </section>
+  </main>
+
+  <footer><span>Nova · MIT licence · made for homelabs</span><span>Source and releases on GitHub (link coming soon)</span></footer>
+</div>
+
+<script>
+document.querySelectorAll(".copy").forEach(b => b.addEventListener("click", () => {
+  const el = document.getElementById(b.dataset.copy), text = el.textContent;
+  const done = () => { b.textContent = "Copied"; setTimeout(() => b.textContent = "Copy", 1400); };
+  (navigator.clipboard ? navigator.clipboard.writeText(text) : Promise.reject()).then(done).catch(() => {
+    const r = document.createRange(); r.selectNodeContents(el); const s = getSelection(); s.removeAllRanges(); s.addRange(r); b.textContent = "Selected";
+  });
+}));
+</script>
