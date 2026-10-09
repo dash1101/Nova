@@ -433,3 +433,6 @@ html.material .alertcard { border-radius: 16px; background: var(--card); backdro
 .hact { display: inline-flex; gap: 2px; } .hact .xbtn { position: static; }
 .rmbtn { flex: none; display: grid; place-items: center; width: 38px; height: 38px; border: 0; border-radius: 50%; background: transparent; color: var(--sub); cursor: pointer; transition: background-color .18s ease, color .18s ease; }
 .rmbtn:hover { background: color-mix(in srgb, var(--red) 14%, transparent); color: var(--red); } .rmbtn .i { width: 20px; height: 20px; }
+.rguide ol { padding-left: 4px; list-style: none; display: grid; gap: 10px; margin: 12px 0 0; } .rguide li { line-height: 1.45; } .rguide .cmdcopy { margin: 6px 0 0; }
+.rcheck { display: flex; gap: 10px; align-items: flex-start; padding: 12px 14px; border-radius: 16px; margin-bottom: 10px; background: var(--pill); }
+.rcheck.protected { color: var(--green); } .rcheck.open, .rcheck.bad { color: var(--amber); } .rcheck span { color: var(--text); } .rcheck .i { flex: none; }

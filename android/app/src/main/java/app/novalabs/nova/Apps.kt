@@ -7,6 +7,8 @@ import android.webkit.*
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -59,7 +61,7 @@ object AppSessions {
 fun dockTap(app: AppState, id: String) {
     if (AppSessions.get(id) != null) { app.tab(Route.AppFrame(id)); return }
     val a = Cache["/api/v1/apps"]?.optJSONArray("apps").objs().firstOrNull { it.optString("id") == id } ?: return
-    if (appUrl(app, a) == null) { app.toast("This app is only on your home network or Tailscale — hold it in Apps to add a remote link"); return }
+    if (appUrl(app, a) == null) { app.toast("Away from home this app needs its own link — hold it in Apps → Open it from anywhere"); return }
     AppSessions.open(a); app.tab(Route.AppFrame(id))
 }
 
@@ -125,11 +127,13 @@ fun appUrl(app: AppState, a: JSONObject): String? {
 }
 
 fun openApp(app: AppState, a: JSONObject) {
-    if (appUrl(app, a) == null) { app.toast("This app is only on your home network or Tailscale — hold it to add a remote link"); return }
+    if (appUrl(app, a) == null) { app.toast("Away from home this app needs its own link — hold it → Open it from anywhere"); return }
     AppSessions.open(a); app.go(Route.AppFrame(a.optString("id")))
 }
 
 @Composable private fun AppEditDialog(app: AppState, a: JSONObject?, onDone: (JSONObject?) -> Unit) {
+    var anywhere by remember { mutableStateOf(false) }
+    if (anywhere && a != null) { AppRemoteDialog(app, a) { anywhere = false }; return }
     var name by remember { mutableStateOf(a?.optString("name") ?: "") }
     var url by remember { mutableStateOf(a?.optString("url") ?: "") }
     var remote by remember { mutableStateOf(a?.optString("remote_url") ?: "") }
@@ -151,6 +155,57 @@ fun openApp(app: AppState, a: JSONObject) {
             OneTextField(url, { url = it.trim().take(300) }, if (a == null) "Link (http://…)" else "Link at home (optional)", Modifier.fillMaxWidth())
             OneTextField(remote, { remote = it.trim().take(300) }, "Remote link, e.g. https://photos.example.com (optional)", Modifier.fillMaxWidth())
             OneTextField(icon, { icon = it.trim().lowercase().take(60) }, "Icon name from dashboard-icons, e.g. jellyfin", Modifier.fillMaxWidth())
+            if (a != null) Text("Open it from anywhere…", color = N.blue, fontSize = 15.sp, fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.clip(RoundedCornerShape(12.dp)).clickable { anywhere = true }.padding(vertical = 8.dp))
+        }
+    }
+}
+
+/** Opening an app away from home: its own address on your Cloudflare tunnel, behind Cloudflare Access.
+ *  Shows what to type in Cloudflare, and checks that the remote link really asks for a login first. */
+@Composable private fun AppRemoteDialog(app: AppState, a: JSONObject, onDone: () -> Unit) {
+    val id = a.optString("id")
+    var g by remember { mutableStateOf<JSONObject?>(null) }
+    var tick by remember { mutableIntStateOf(0) }
+    var editing by remember { mutableStateOf(false) }
+    var link by remember { mutableStateOf(a.optString("remote_url")) }
+    LaunchedEffect(tick) { g = runCatching { app.api.get("/api/v1/apps/$id/remote") }.getOrNull() }
+    val clip = androidx.compose.ui.platform.LocalClipboardManager.current
+    @Composable fun copyRow(label: String, v: String) {
+        if (v.isEmpty()) return
+        Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(N.pill).clickable { clip.setText(androidx.compose.ui.text.AnnotatedString(v)); app.toast("Copied") }
+            .padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) { Text(label, color = N.sub, fontSize = 12.sp); Text(v, color = N.text, fontSize = 14.sp, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace) }
+            Icon(Icons.Rounded.ContentCopy, "Copy", tint = N.blue, modifier = Modifier.size(18.dp))
+        }
+    }
+    val chk = g?.optJSONObject("check")
+    val host = g?.optString("remote_url")?.takeIf { it.isNotEmpty() }?.let { android.net.Uri.parse(it).host } ?: g?.optString("suggested").orEmpty()
+    OneDialog(onDone, "${a.optString("name")} from anywhere", null, listOfNotNull(
+        DialogButton("Close") { onDone() },
+        if (g?.optString("remote_url")?.isNotEmpty() == true) DialogButton("Check again") { tick++ } else null,
+        if (editing) DialogButton("Save and check", N.blue, enabled = link.startsWith("https://")) {
+            app.act { app.api.post("/api/v1/apps", JSONObject().put("id", id).put("remote_url", link.trim())); Cache.put("/api/v1/apps", app.api.get("/api/v1/apps")); editing = false; tick++ } }
+        else DialogButton(if (g?.optString("remote_url")?.isNotEmpty() == true) "Change link" else "Set the link", N.blue) { if (link.isEmpty() && host.isNotEmpty()) link = "https://$host"; editing = true })) {
+        Column(Modifier.padding(horizontal = 22.dp).heightIn(max = 520.dp).verticalScroll(androidx.compose.foundation.rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            if (chk != null) {
+                val st = chk.optString("state"); val col = if (st == "protected") N.green else N.amber
+                Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(col.copy(alpha = 0.14f)).padding(12.dp)) {
+                    Icon(if (st == "protected") Icons.Rounded.Shield else Icons.Rounded.Warning, null, tint = col, modifier = Modifier.size(20.dp)); Spacer(Modifier.width(10.dp))
+                    Text(chk.optString("message"), color = N.text, fontSize = 14.sp)
+                }
+            }
+            if (editing) OneTextField(link, { link = it.trim().take(300) }, "https://photos.example.com", Modifier.fillMaxWidth())
+            else if (g == null) Text("Loading…", color = N.sub)
+            else {
+                Text("Your server already has a Cloudflare tunnel. Give this app its own address on it, protected by the same Cloudflare login as Nova — nothing reaches the app until you've signed in.", color = N.sub, fontSize = 14.sp)
+                Text("1. Cloudflare Zero Trust → Networks → Tunnels → your tunnel → Public hostnames → Add a public hostname.", color = N.text, fontSize = 14.sp)
+                Text("2. Use this address:", color = N.text, fontSize = 14.sp); copyRow("Subdomain + domain", host)
+                Text("3. Service:", color = N.text, fontSize = 14.sp); copyRow("Service", g?.optString("service").orEmpty())
+                if (g?.optString("service")?.startsWith("https") == true) Text("It uses its own certificate: under TLS, turn on No TLS Verify.", color = N.sub, fontSize = 13.sp)
+                Text("4. Access → Applications: add the same address to the application that protects Nova (or a wildcard like *.${g?.optString("domain")?.ifEmpty { "yourdomain.com" }}), with your Allow policy.", color = N.text, fontSize = 14.sp)
+                Text("5. Set it as the app's remote link — Nova checks that Cloudflare asks for a login first.", color = N.text, fontSize = 14.sp)
+            }
         }
     }
 }

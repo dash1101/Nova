@@ -19,7 +19,7 @@ against your team's public keys — so the edge rejects strangers before they re
 and if Access is ever switched off by mistake, remote access fails closed.
 Pairing is only possible from the home LAN, with a one-time code shown by `sudo nova add`.
 """
-import base64, hashlib, hmac, ipaddress, json, os, re, secrets, subprocess, sys, threading, time, urllib.parse, urllib.request
+import base64, hashlib, hmac, ipaddress, json, os, re, secrets, subprocess, sys, threading, time, urllib.error, urllib.parse, urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from cryptography.exceptions import InvalidSignature
@@ -36,7 +36,7 @@ try:                       # optional module: fan/case lighting (modules/fan-gig
 except ImportError:
     nova_rgb = None
 
-API_VERSION = "0.5.6-alpha"
+API_VERSION = "0.5.7-alpha~dev1"
 CONFIG = "/etc/nova-api/config.json"
 DATA = "/var/lib/nova-api"
 DEVICES = f"{DATA}/devices.json"
@@ -93,6 +93,42 @@ def app_list():
         out.append({"id": c["id"], "name": c["name"], "slug": c.get("icon") or "", "url": c["url"], "remote_url": c.get("remote_url", ""),
                     "hidden": bool(c.get("hidden")), "source": "custom", "port": None, "scheme": "", "path": "", "host_ip": ""})
     return out
+
+def app_remote(aid):
+    """Help putting an app on the internet safely through your Cloudflare tunnel: what to type in the
+    Cloudflare dashboard, and (if a remote link is set) whether that link really asks for a login
+    (Cloudflare Access) before anything reaches the app."""
+    a = next((x for x in app_list() if x["id"] == aid), None)
+    if not a: return 404, {"error": "no such app"}
+    nova = urllib.parse.urlparse(CFG.get("remote_url", "")).hostname or ""
+    domain = ".".join(nova.split(".")[-2:]) if nova.count(".") >= 1 else ""
+    service = f"{a.get('scheme') or 'http'}://localhost:{a['port']}" if a.get("port") else (a.get("url") or "")
+    out = {"service": service, "suggested": f"{(a.get('slug') or re.sub(r'[^a-z0-9]+', '-', a['name'].lower())).strip('-')[:30]}.{domain}" if domain else "",
+           "domain": domain, "nova_host": nova, "remote_url": a.get("remote_url", "")}
+    u = urllib.parse.urlparse(a.get("remote_url", ""))
+    if not a.get("remote_url"): return 200, out
+    host = u.hostname or ""
+    if u.scheme != "https" or not host or re.fullmatch(r"[\d.]+|\[?[0-9a-f:]+\]?", host) or host in ("localhost",) or host.endswith((".local", ".lan", ".internal")):
+        out["check"] = {"state": "bad", "message": "The remote link should be an https:// address on your own domain"}; return 200, out
+    class NoFollow(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, *a, **k): return None
+    try:
+        req = urllib.request.Request(urllib.parse.urlunparse(u._replace(path=u.path or "/")), headers={"User-Agent": "Nova remote check"})
+        try: r = urllib.request.build_opener(NoFollow).open(req, timeout=8); code, loc = r.status, ""
+        except urllib.error.HTTPError as e: code, loc = e.code, e.headers.get("Location", "")
+        lh = urllib.parse.urlparse(loc).hostname or ""
+        if code in (301, 302, 303, 307, 308) and lh.endswith(".cloudflareaccess.com"):
+            out["check"] = {"state": "protected", "message": "Protected: Cloudflare asks for your login before anything reaches the app"}
+        elif 200 <= code < 300:
+            out["check"] = {"state": "open", "message": "Open to the internet: the app answered without Cloudflare asking anyone to log in. Add this address to your Cloudflare Access application (or a wildcard for your domain) before using it."}
+        elif code in (301, 302, 303, 307, 308):
+            out["check"] = {"state": "open", "message": f"It redirects to {lh or 'another page'} instead of a Cloudflare login — check that the address is covered by Cloudflare Access."}
+        elif code in (502, 503, 530):
+            out["check"] = {"state": "down", "message": "Cloudflare answered, but couldn't reach the app — check the service in the tunnel's public hostname"}
+        else: out["check"] = {"state": "unknown", "message": f"Answered with HTTP {code}"}
+    except Exception as e:
+        out["check"] = {"state": "down", "message": "Can't reach that address yet (the DNS record may still be on its way)"}
+    return 200, out
 
 def app_icon(aid):
     a = next((x for x in app_list() if x["id"] == aid), None)
@@ -1098,6 +1134,9 @@ class Handler(BaseHTTPRequestHandler):
         # ── apps (web apps on this server, for the Apps grid) ──
         if method == "GET" and parts == ["apps"]:
             return 200, {"apps": app_list()}
+        if method == "GET" and len(parts) == 3 and parts[0] == "apps" and parts[2] == "remote" and re.fullmatch(r"[A-Za-z0-9_.-]{1,64}", parts[1]):
+            if role_of(dev) != "admin" or dev.get("type") == "watch": return 403, {"error": "admins only"}
+            return app_remote(parts[1])
         if method == "POST" and parts == ["apps"]:
             # change how an app shows (name, icon, hidden, links), or add your own (no id yet)
             aid = str(data.get("id") or "")

@@ -356,7 +356,7 @@ class MainActivity : ComponentActivity() {
                     if (tabIndex >= 0 || openApp != null) FloatingNav(tabIndex, tabs.map { it.icon }, tabs.map { it.label }, { i -> app.tab(tabs[i].route) },
                         Modifier.align(Alignment.BottomCenter), onLongClick = { app.go(Route.EditTabs) },
                         apps = AppSessions.dock(), selectedApp = openApp, onApp = { id -> dockTap(app, id) })
-                } else WideLayout(app, maxWidth)
+                } else WideLayout(app, maxWidth, { backP.value }, { backExit.value })
             }
             CompositionLocalProvider(LocalRootHaze provides rootHaze) {        // so the toast is real frosted glass
                 AlertBanner(app, Modifier.align(Alignment.TopCenter))
@@ -384,10 +384,10 @@ private fun Modifier.paneTouch(app: AppState, left: Boolean) = pointerInput(left
 }
 
 /** Tablets & unfolded foldables: navigation rail + list/detail side by side (One UI tablet style). */
-@Composable private fun WideLayout(app: AppState, width: androidx.compose.ui.unit.Dp) {
+@Composable private fun WideLayout(app: AppState, width: androidx.compose.ui.unit.Dp, backP: () -> Float = { 0f }, backExit: () -> Float = { 0f }) {
     val tabs = navTabs(app)
     val root = app.stack.first()
-    Row(Modifier.fillMaxSize()) {
+    GlowBackground { Row(Modifier.fillMaxSize()) {        // one glow behind the side pill and both panes
         // The bottom bar's pill, turned on its side: same tabs, same glass (hold it to choose the tabs)
         if (app.top != Route.Dashboard)        // the always-on dashboard gets the whole screen
             Box(Modifier.fillMaxHeight().statusBarsPadding().navigationBarsPadding().padding(start = 12.dp, end = 4.dp), contentAlignment = Alignment.Center) {
@@ -395,25 +395,45 @@ private fun Modifier.paneTouch(app: AppState, left: Boolean) = pointerInput(left
                     onLongClick = { app.go(Route.EditTabs) }, apps = AppSessions.dock(), selectedApp = (root as? Route.AppFrame)?.id, onApp = { id -> dockTap(app, id) })
             }
         val parent = app.stack.getOrNull(app.stack.size - 2)
+        val split = parent != null && width >= 900.dp
+        var lastParent by remember { mutableStateOf<Route?>(null) }
+        if (split) lastParent = parent
+        val p = backP(); val x = backExit(); val e = 1f - (1f - p) * (1f - p)
         Box(Modifier.weight(1f).fillMaxHeight()) {
-            if (parent != null && width >= 900.dp) Row(Modifier.fillMaxSize()) {
+            Row(Modifier.fillMaxSize()) {
                 // The list on the left stays put; picking something in it replaces the detail on the right.
-                Box(Modifier.width(400.dp).fillMaxHeight().paneTouch(app, true)) {
-                    CompositionLocalProvider(LocalWide provides false) { Screen(app, parent) }   // the list pane is phone-width
+                // It opens and closes smoothly when you go a level deeper or come back.
+                androidx.compose.animation.AnimatedVisibility(split,
+                    enter = if (reduceMotion()) fadeIn() else androidx.compose.animation.expandHorizontally(androidx.compose.animation.core.tween(320)) + fadeIn(),
+                    exit = if (reduceMotion()) fadeOut() else androidx.compose.animation.shrinkHorizontally(androidx.compose.animation.core.tween(280)) + fadeOut()) {
+                    Row {
+                        Box(Modifier.width(400.dp).fillMaxHeight().paneTouch(app, true)) {
+                            CompositionLocalProvider(LocalWide provides false) { lastParent?.let { Screen(app, it) } }   // the list pane is phone-width
+                        }
+                        Box(Modifier.width(1.dp).fillMaxHeight().background(N.divider))
+                    }
                 }
-                Box(Modifier.width(1.dp).fillMaxHeight().background(N.divider))
-                Box(Modifier.weight(1f).fillMaxHeight().paneTouch(app, false)) {
-                    AnimatedContent(app.top, transitionSpec = { fadeIn() togetherWith fadeOut() }, label = "detail") { r -> Box(Modifier.fillMaxSize()) { Screen(app, r) } }
-                }
-            } else Box(Modifier.fillMaxSize().paneTouch(app, false), contentAlignment = Alignment.TopCenter) {
-                val full = app.top == Route.Home || app.top == Route.Dashboard || app.top == Route.Status
-                Box((if (full) Modifier.fillMaxSize() else Modifier.widthIn(max = 760.dp).fillMaxHeight()).then(LocalRootHaze.current?.let { Modifier.hazeSource(it) } ?: Modifier)) {
-                    AnimatedContent(app.top, transitionSpec = { fadeIn() togetherWith fadeOut() }, label = "nav") { r -> Box(Modifier.fillMaxSize()) { Screen(app, r) } }
+                val full = !split && (app.top == Route.Home || app.top == Route.Dashboard || app.top == Route.Status)
+                Box(Modifier.weight(1f).fillMaxHeight().paneTouch(app, false), contentAlignment = Alignment.TopCenter) {
+                    Box((if (full || split) Modifier.fillMaxSize() else Modifier.widthIn(max = 760.dp).fillMaxHeight())
+                        .then(LocalRootHaze.current?.let { Modifier.hazeSource(it) } ?: Modifier)) {
+                        // predictive back: the page follows your thumb, as on a phone
+                        AnimatedContent(app.top, modifier = Modifier.fillMaxSize().graphicsLayer {
+                                if (p > 0.001f) {
+                                    val sc = 1f - 0.12f * e; scaleX = sc; scaleY = sc
+                                    translationX = 72.dp.toPx() * e + size.width * 0.3f * x
+                                    shape = androidx.compose.foundation.shape.RoundedCornerShape(36.dp * e); clip = true
+                                    alpha = 1f - x
+                                } },
+                            transitionSpec = { navTransition(app.navDir, reduceMotion()) }, label = "wide") { r ->
+                            Box(Modifier.fillMaxSize().graphicsLayer { alpha = if (app.navDir == 2 && r != app.top) 0f else 1f }) { Screen(app, r) }
+                        }
+                    }
                 }
             }
             StatusBarScrim(Modifier.align(Alignment.TopCenter))
         }
-    }
+    } }
 }
 
 @Composable fun Screen(app: AppState, r: Route) = CompositionLocalProvider(LocalRouteScroll provides app.scrollFor(r),

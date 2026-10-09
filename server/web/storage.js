@@ -1,7 +1,7 @@
 // Nova web — storage map, drive setup wizard, pools, background tasks, backups, diagnostics.
 // Mirrors the app's Storage.kt / Backups.kt / Diagnostics.kt.
 import { S, $, $$, esc, get, post, del, bytes, isAdmin, signedFetch } from "./core.js";
-import { I, row, group, sec, note, radio, switchRow, segmented, bar, usageColor, toast, dialog, confirm, wireCommon, sheet, closeSheet } from "./ui.js";
+import { I, row, group, sec, note, radio, switchRow, segmented, bar, usageColor, toast, dialog, confirm, wireCommon, sheet, closeSheet, copyCmd } from "./ui.js";
 
 const enc = encodeURIComponent;
 const viewOnly = () => toast("This browser has view-only access");
@@ -484,7 +484,9 @@ async function appIcon(id) {
   return iconCache[id];
 }
 const appHref = a => {
-  const ip = /^(\d+\.){3}\d+$|^\[/.test(location.hostname), remote = !ip && !/\.local$/.test(location.hostname);
+  // away from home = came in through Cloudflare (the server says so); a home or Tailscale address works directly
+  const ip = /^(\d+\.){3}\d+$|^\[/.test(location.hostname);
+  const remote = S.me?.via ? S.me.via === "remote" : !ip && !/\.local$/.test(location.hostname);
   if (remote) return a.remote_url || null;
   if (a.url) return a.url;
   if (!a.port) return null;
@@ -508,19 +510,43 @@ export async function apps(ctx) {
     if (!isAdmin()) return viewOnly();
     const v = { name: a?.name || "", url: a?.url || "", remote_url: a?.remote_url || "", icon: a?.slug || "" };
     const f = (id, ph) => `<input class="field" id="ap-${id}" placeholder="${esc(ph)}" value="${esc(v[id])}" style="margin-top:8px">`;
-    const btns = [{ label: "Cancel", value: null }, ...(a && a.source !== "custom" ? [{ label: a.hidden ? "Show" : "Hide", value: "hide" }] : []), ...(a?.source === "custom" ? [{ label: "Delete", color: "var(--red)", value: "del" }] : []), { label: "Save", color: "var(--blue)", value: "save" }];
+    const btns = [{ label: "Cancel", value: null }, ...(a ? [{ label: "From anywhere…", value: "remote" }] : []), ...(a && a.source !== "custom" ? [{ label: a.hidden ? "Show" : "Hide", value: "hide" }] : []), ...(a?.source === "custom" ? [{ label: "Delete", color: "var(--red)", value: "del" }] : []), { label: "Save", color: "var(--blue)", value: "save" }];
     const p = dialog(a ? a.name : "Add an app", a ? "Leave the link empty to use the one Nova found." : "Any web page on your network, like http://192.168.1.20:8096",
       btns, `<div class="pad">${f("name", "Name")}${f("url", a ? "Link at home (optional)" : "Link (http://…)")}${f("remote_url", "Remote link, e.g. https://photos.example.com (optional)")}${f("icon", "Icon name from dashboard-icons, e.g. jellyfin")}</div>`);
     for (const k of Object.keys(v)) $("#ap-" + k).oninput = e => v[k] = e.target.value.trim();
     const r = await p; if (!r) return;
+    if (r === "remote") return remoteSetup(a);
     try {
       if (r === "del") await del(`/api/v1/apps/${enc(a.id)}`);
       else await post("/api/v1/apps", { ...(a ? { id: a.id } : {}), ...(r === "hide" ? { hidden: !a.hidden } : v) });
       delete iconCache[a?.id]; await get("/api/v1/apps"); draw();
     } catch (e) { toast(e.message); }
   };
+  // Open an app from anywhere: a public hostname on your Cloudflare tunnel, behind Cloudflare Access
+  const remoteSetup = async a => {
+    let g; try { g = await get(`/api/v1/apps/${enc(a.id)}/remote`); } catch (e) { return toast(e.message); }
+    const chk = g.check ? `<div class="rcheck ${esc(g.check.state)}">${I(g.check.state === "protected" ? "shield" : g.check.state === "open" ? "warn" : "info")}<span>${esc(g.check.message)}</span></div>` : "";
+    const step = (n, t) => `<li><b>${n}.</b> ${t}</li>`;
+    const host = g.remote_url ? new URL(g.remote_url).hostname : g.suggested;
+    const r = await dialog(`${a.name} from anywhere`, "", [{ label: "Close", value: null }, ...(g.remote_url ? [{ label: "Check again", value: "check" }] : []), { label: g.remote_url ? "Change link" : "Set the link", color: "var(--blue)", value: "set" }],
+      `<div class="pad rguide">${chk}<p class="muted">Your server already has a Cloudflare tunnel. Give this app its own address on it, protected by the same Cloudflare login as Nova — nothing reaches the app until you've signed in.</p>
+        <ol>${step(1, "Cloudflare Zero Trust → <b>Networks → Tunnels</b> → your tunnel → <b>Public hostnames</b> → <b>Add a public hostname</b>.")}
+        ${step(2, `Subdomain and domain: ${host ? copyCmd(host) : "e.g. photos.yourdomain.com"}`)}
+        ${step(3, `Service: ${g.service ? copyCmd(g.service) : "the app's address on the server"}${/^https:/.test(g.service || "") ? `<br><small class="muted">It uses its own certificate: under <b>Additional application settings → TLS</b>, turn on <b>No TLS Verify</b>.</small>` : ""}`)}
+        ${step(4, "<b>Access → Applications</b>: add the same address to the application that protects Nova (or use a wildcard like <code>*." + esc(g.domain || "yourdomain.com") + "</code>), with your Allow policy.")}
+        ${step(5, "Set it below as the app's remote link, then <b>Check</b> — Nova makes sure Cloudflare asks for a login first.")}</ol></div>`);
+    if (r === "check") return remoteSetup(a);
+    if (r === "set") {
+      let v = a.remote_url || (host ? "https://" + host : "");
+      const p2 = dialog("Remote link", "The https:// address you added in Cloudflare.", [{ label: "Cancel", value: null }, { label: "Save and check", color: "var(--blue)", value: "save" }],
+        `<div class="pad"><input class="field" id="rl" value="${esc(v)}" placeholder="https://photos.example.com"></div>`);
+      $("#rl").oninput = e => v = e.target.value.trim();
+      if ((await p2) !== "save") return;
+      try { await post("/api/v1/apps", { id: a.id, remote_url: v }); await get("/api/v1/apps"); draw(); return remoteSetup({ ...a, remote_url: v }); } catch (e) { toast(e.message); }
+    }
+  };
   ctx.handlers({ add: () => edit(null), hid: () => { showHidden = !showHidden; draw(); },
-    noreach: () => toast("This app is only on your home network or Tailscale — right-click it to add a remote link") });
+    noreach: () => toast("Away from home this app needs its own link — right-click it → From anywhere…") });
   draw(); ctx.every(30000, async () => { await get("/api/v1/apps"); draw(); }, true);
 }
 
