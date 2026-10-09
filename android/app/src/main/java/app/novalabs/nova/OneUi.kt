@@ -328,8 +328,9 @@ data class DialogButton(val label: String, val color: Color? = null, val enabled
 @Composable fun OneTextField(value: String, onChange: (String) -> Unit, placeholder: String, modifier: Modifier = Modifier,
                              mono: Boolean = false, keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
                              keyboardActions: KeyboardActions = KeyboardActions.Default,
-                             visualTransformation: androidx.compose.ui.text.input.VisualTransformation = androidx.compose.ui.text.input.VisualTransformation.None) {
-    BasicTextField(value, onChange, modifier, singleLine = true, keyboardOptions = keyboardOptions, keyboardActions = keyboardActions,
+                             visualTransformation: androidx.compose.ui.text.input.VisualTransformation = androidx.compose.ui.text.input.VisualTransformation.None,
+                             singleLine: Boolean = true) {
+    BasicTextField(value, onChange, modifier, singleLine = singleLine, minLines = if (singleLine) 1 else 3, keyboardOptions = keyboardOptions, keyboardActions = keyboardActions,
         visualTransformation = visualTransformation,
         textStyle = TextStyle(color = N.text, fontSize = 17.sp, fontFamily = if (mono) FontFamily.Monospace else null),
         cursorBrush = SolidColor(N.blue),

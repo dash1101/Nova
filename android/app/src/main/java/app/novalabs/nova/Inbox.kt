@@ -1,6 +1,8 @@
 package app.novalabs.nova
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -21,11 +23,17 @@ import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.*
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable fun InboxScreen(app: AppState) {
     var filter by remember { mutableIntStateOf(0) }
     val dataLive = live(app, "/api/v1/events?since=0", 15_000)
     val data by dataLive
     var clearAll by remember { mutableStateOf(false) }
+    var picked by remember { mutableStateOf(setOf<Double>()) }       // hold an event to start selecting
+    val selecting = picked.isNotEmpty()
+    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
+    LaunchedEffect(Unit) { app.banner = null }                         // you're looking at them now
+    androidx.activity.compose.BackHandler(enabled = selecting) { picked = emptySet() }
     LaunchedEffect(data) { data?.optJSONArray("events")?.let { InboxArchive.merge(app.activity, app.pairing.profile, it) } }
     /** Archive: gone from the server's inbox (every device), kept in this phone's history (Inbox → Archive). */
     fun delete(ts: List<Double>) {
@@ -48,21 +56,52 @@ import java.util.*
     val shown = events.filter { e -> when (filter) { 1 -> e.optString("level") in listOf("warning", "critical"); 2 -> e.optString("level") == "critical"
         3 -> e.optString("category") == "login"; else -> true } }
     val day = SimpleDateFormat("EEEE, MMM d", Locale.getDefault()); val hm = SimpleDateFormat("HH:mm", Locale.getDefault())
+    val today = day.format(Date()); val yesterday = day.format(Date(System.currentTimeMillis() - 86_400_000L))
+    fun dayLabel(t: Double) = day.format(Date((t * 1000).toLong())).let { when (it) { today -> "Today"; yesterday -> "Yesterday"; else -> it } }
+    LaunchedEffect(shown.map { it.optDouble("t") }) { picked = picked.filter { t -> shown.any { it.optDouble("t") == t } }.toSet() }
     Page("Inbox", app::back, listOf(TopAction(Icons.Rounded.Inventory2, "Archive") { app.go(Route.Archive) },
             TopAction(Icons.Rounded.DeleteSweep, "Archive everything") { clearAll = true },
             TopAction(Icons.Rounded.Settings, "Notification settings") { app.go(Route.NotifySettings) })) {
         AttentionList(app)
         Segmented(listOf("All", "Issues", "Critical", "Logins"), filter) { filter = it }
         if (shown.isEmpty()) Text(if (data == null) "Loading…" else "Nothing here — all quiet.", color = N.sub, modifier = Modifier.padding(30.dp))
-        if (shown.isNotEmpty()) Text("Swipe left to archive — it moves to the Archive (kept on the server, for every device).", color = N.sub, fontSize = 12.sp, modifier = Modifier.padding(start = 30.dp, top = 4.dp))
-        shown.groupBy { day.format(Date((it.optDouble("t") * 1000).toLong())) }.forEach { (d, list) ->
+        if (shown.isNotEmpty()) Text(if (selecting) "Tap to add or remove · back to stop selecting" else "Swipe left to archive, or hold to select several — they move to the Archive (kept on the server, for every device).",
+            color = N.sub, fontSize = 12.sp, modifier = Modifier.padding(start = 30.dp, end = 24.dp, top = 4.dp))
+        // selection bar: slides in while selecting
+        androidx.compose.animation.AnimatedVisibility(selecting,
+            enter = if (reduceMotion()) androidx.compose.animation.fadeIn() else androidx.compose.animation.expandVertically() + androidx.compose.animation.fadeIn(),
+            exit = if (reduceMotion()) androidx.compose.animation.fadeOut() else androidx.compose.animation.shrinkVertically() + androidx.compose.animation.fadeOut()) {
+            Row(Modifier.padding(horizontal = Space.gutter, vertical = 6.dp).fillMaxWidth().glassCard(androidx.compose.foundation.shape.RoundedCornerShape(26.dp))
+                .padding(start = 18.dp, end = 8.dp, top = 6.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("${picked.size} selected", color = N.text, fontWeight = FontWeight.Bold, fontSize = 16.sp, modifier = Modifier.weight(1f))
+                val all = picked.size == shown.size
+                TextButton({ picked = if (all) emptySet() else shown.map { it.optDouble("t") }.toSet() }) { Text(if (all) "Clear" else "Select all", color = N.blue, fontWeight = FontWeight.SemiBold) }
+                TextButton({ val ts = picked.toList(); picked = emptySet(); delete(ts) }) {
+                    Icon(Icons.Rounded.Inventory2, null, tint = N.blue, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(6.dp))
+                    Text("Archive", color = N.blue, fontWeight = FontWeight.SemiBold)
+                }
+            }
+        }
+        shown.groupBy { dayLabel(it.optDouble("t")) }.forEach { (d, list) ->
             SectionLabel(d)
             Group {
                 list.forEachIndexed { i, e ->
                     if (i > 0) RowDivider()
-                    val lvl = e.optString("level")
-                    key(e.optDouble("t")) { SwipeRow(end = SwipeAction("Archive", Icons.Rounded.Inventory2, N.blue) { delete(listOf(e.optDouble("t"))) }) {
-                    Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 14.dp)) {
+                    val lvl = e.optString("level"); val t = e.optDouble("t"); val on = t in picked
+                    val bg by androidx.compose.animation.animateColorAsState(if (on) N.blue.copy(alpha = 0.14f) else androidx.compose.ui.graphics.Color.Transparent, label = "pick")
+                    key(t) { SwipeRow(end = if (selecting) null else SwipeAction("Archive", Icons.Rounded.Inventory2, N.blue) { delete(listOf(t)) }) {
+                    Row(Modifier.fillMaxWidth().background(bg)
+                        .combinedClickable(onClick = { if (selecting) picked = if (on) picked - t else picked + t },
+                            onLongClick = { haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress); picked = if (on) picked - t else picked + t })
+                        .padding(horizontal = 20.dp, vertical = 14.dp)) {
+                        androidx.compose.animation.AnimatedVisibility(selecting,
+                            enter = androidx.compose.animation.expandHorizontally() + androidx.compose.animation.fadeIn(), exit = androidx.compose.animation.shrinkHorizontally() + androidx.compose.animation.fadeOut()) {
+                            Box(Modifier.padding(end = 14.dp, top = 1.dp).size(22.dp).clip(CircleShape)
+                                .background(if (on) N.blue else androidx.compose.ui.graphics.Color.Transparent)
+                                .then(if (on) Modifier else Modifier.border(2.dp, N.sub, CircleShape)), contentAlignment = Alignment.Center) {
+                                if (on) Icon(Icons.Rounded.Check, null, tint = androidx.compose.ui.graphics.Color.White, modifier = Modifier.size(16.dp))
+                            }
+                        }
                         Box(Modifier.padding(top = 6.dp).size(10.dp).clip(CircleShape).background(levelColor(lvl, N)))
                         Spacer(Modifier.width(14.dp))
                         Column(Modifier.weight(1f)) {

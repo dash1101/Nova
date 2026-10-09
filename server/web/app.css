@@ -448,3 +448,7 @@ html.material .alertcard { border-radius: 16px; background: var(--card); backdro
 .srv.add { border: 0; cursor: pointer; color: var(--text); font: inherit; align-items: center; justify-content: center; text-align: center; min-height: 180px; }
 .srv.add .i { width: 34px; height: 34px; color: var(--blue); } .srv.add small { color: var(--sub); }
 .pinbox { font: 600 22px ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .12em; text-align: center; padding: 14px; border-radius: 16px; background: var(--pill); margin: 8px 0; }
+.cform { padding: 12px; display: grid; gap: 10px; } .crow { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; } .crow .field { flex: 1 1 140px; min-width: 0; }
+.chk { display: inline-flex; gap: 6px; align-items: center; color: var(--sub); font-size: 14px; } textarea.field { font-family: ui-monospace, monospace; font-size: 15px; resize: vertical; }
+.cact { display: flex; gap: 10px; justify-content: flex-end; padding: 12px var(--gutter) 30px; } .cact .btn { height: 46px; padding: 0 22px; display: inline-flex; gap: 8px; align-items: center; }
+.appcell.addapp { border: 0; background: none; font: inherit; color: var(--text); cursor: pointer; } .appcell.addapp .appic { color: var(--blue); border: 1.5px dashed color-mix(in srgb, var(--sub) 60%, transparent); background: transparent; } .appcell.addapp .appic .i { width: 26px; height: 26px; }

@@ -46,7 +46,12 @@ fun localTime(utc: String): String = runCatching {
     val data by live(app, "/api/v1/containers", 10_000)
     val list = data?.optJSONArray("containers")
     val items = list?.let { a -> (0 until a.length()).map { a.getJSONObject(it) } } ?: emptyList()
-    Page("Containers", app::back, listOf(TopAction(Icons.Rounded.AddCircleOutline, "Install more") { app.tab(Route.Store) })) {
+    var addMenu by remember { mutableStateOf(false) }
+    if (addMenu) OneDialog({ addMenu = false }, "Add a container", "Pick a ready-made app from the store, or run any image you like.", listOfNotNull(
+        DialogButton("Cancel") { addMenu = false },
+        if (app.has("store")) DialogButton("From the store") { addMenu = false; app.tab(Route.Store) } else null,
+        DialogButton("Your own", N.blue) { addMenu = false; app.go(Route.NewContainer) }))
+    Page("Containers", app::back, listOf(TopAction(Icons.Rounded.AddCircleOutline, "Add a container") { if (app.isAdmin) addMenu = true else app.toast("View-only access") })) {
         Row(Modifier.padding(start = 30.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             val up = items.count { it.optString("state") == "running" }
             Box(Modifier.size(10.dp).clip(CircleShape).background(if (up == items.size) N.green else N.amber))
@@ -78,6 +83,11 @@ fun localTime(utc: String): String = runCatching {
     var c by cs
     var job by remember { mutableStateOf<String?>(null) }
     var policyDialog by remember { mutableStateOf(false) }
+    var removeAsk by remember { mutableStateOf(false) }
+    if (removeAsk) OneDialog({ removeAsk = false }, "Remove $name?", "It stops, and its folder is kept in /opt/.nova-uninstalled (nothing is deleted).", listOf(
+        DialogButton("Cancel") { removeAsk = false },
+        DialogButton("Remove", N.red) { removeAsk = false
+            app.act { job = "Removing…"; try { app.stepUp("Remove $name", "POST", "/api/v1/containers/$name/remove-custom"); app.toast("Removing $name…"); app.back() } finally { job = null } } }))
     suspend fun load() { runCatching { c = app.api.get("/api/v1/containers/$name") } }
     val state = c?.optString("state") ?: ""
     val running = state == "running"
@@ -136,6 +146,9 @@ fun localTime(utc: String): String = runCatching {
                 RowDivider()
                 Row1("Stack", "${c.optString("stack")} · ${c.optString("compose_dir")}")
                 if (c.optBoolean("privileged")) { RowDivider(); Row1("Privileged", "Has full access to the host", false) { Icon(Icons.Rounded.Warning, null, tint = N.amber) } }
+            }
+            if (app.isAdmin && c.optBoolean("custom")) Group {
+                Row1("Remove this container", "Stops it and keeps its folder in /opt/.nova-uninstalled", false, Icons.Rounded.Delete, N.red, onClick = { removeAsk = true })
             }
             val ports = c.optJSONArray("ports")
             if (ports != null && ports.length() > 0) { SectionLabel("Ports"); Group {

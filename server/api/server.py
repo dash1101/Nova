@@ -38,7 +38,7 @@ try:                       # optional module: fan/case lighting (modules/fan-gig
 except ImportError:
     nova_rgb = None
 
-API_VERSION = "0.5.7-alpha"
+API_VERSION = "0.5.8-alpha"
 CONFIG = "/etc/nova-api/config.json"
 DATA = "/var/lib/nova-api"
 DEVICES = f"{DATA}/devices.json"
@@ -404,6 +404,8 @@ def shell_approval(code):
 
 def describe_action(a):
     p = [x for x in a["path"].split("/") if x][2:]
+    if p == ["containers", "custom"]: return f"Add your own container “{a.get('data', {}).get('spec', {}).get('name', '?')}” ({a.get('data', {}).get('spec', {}).get('image', '?')})"
+    if p[:1] == ["containers"] and p[-1:] == ["remove-custom"]: return f"Remove the container {p[1]} (its data is kept)"
     if p[:1] == ["containers"] and len(p) == 3: return f"{p[2].title()} the container {p[1]}"
     if p[:1] == ["store"]: return f"{p[2].title()} {p[1]} from the app store"
     if p[:1] == ["programs"]: return f"{p[2].title()} the program {p[1]}"
@@ -496,6 +498,8 @@ def needs_stepup(method, parts):
     if parts == ["ssh", "authorize"]: return True
     if parts[:2] == ["storage", "task"] and len(parts) == 3 and parts[2] in STORAGE_DESTRUCTIVE: return True
     if parts in (["updates", "packages"], ["updates", "containers"]): return True
+    if parts == ["containers", "custom"]: return True                      # new container: fingerprint
+    if parts[:1] == ["containers"] and parts[-1:] == ["remove-custom"]: return True
     if parts == ["notify", "discord"]: return True                         # where alerts get sent: fingerprint
     if parts[:1] == ["backups"] and len(parts) == 3 and parts[2] == "restore": return True
     return False
@@ -1253,6 +1257,18 @@ class Handler(BaseHTTPRequestHandler):
         # ── containers ──
         if method == "GET" and parts == ["containers"]:
             rc, res = helper("containers"); return (200 if rc == 0 else 502), res
+        # your own container, from a form (helper.py checks every field; risky options can't be expressed)
+        if method == "POST" and parts == ["containers", "custom", "check"]:
+            if role_of(dev) != "admin": return 403, {"error": "admins only"}
+            raw = json.dumps(data.get("spec") or {})
+            if len(raw) > 7000: raise ValueError("that's too much for one container")
+            rc, res = helper("custom-check", raw, timeout=40); return (200 if rc == 0 else 400), res
+        if method == "POST" and parts == ["containers", "custom"]:
+            raw = json.dumps(data.get("spec") or {})
+            if len(raw) > 7000: raise ValueError("that's too much for one container")
+            rc, res = helper("custom-check", raw, timeout=40)
+            if rc != 0: return 400, res
+            return 202, {"job": start_job(f"Add {str((data.get('spec') or {}).get('name', ''))[:40]}", ["custom-install", raw], timeout=1800)}
         if len(parts) >= 2 and parts[0] == "containers":
             name = parts[1]
             if method == "GET" and len(parts) == 2:
@@ -1262,6 +1278,8 @@ class Handler(BaseHTTPRequestHandler):
                 return (200 if rc == 0 else 400), res
             if method == "POST" and len(parts) == 3 and parts[2] in ("start", "stop", "restart"):
                 rc, res = helper("container", parts[2], name, timeout=180); return (200 if rc == 0 else 400), res
+            if method == "POST" and parts[2:] == ["remove-custom"]:
+                return 202, {"job": start_job(f"Remove {name}", ["custom-uninstall", name], timeout=900)}
             if method == "POST" and parts[2:] == ["update"]:
                 return 202, {"job": start_job(f"Update {name}", ["container-update", name])}
             if method == "POST" and parts[2:] == ["policy"]:

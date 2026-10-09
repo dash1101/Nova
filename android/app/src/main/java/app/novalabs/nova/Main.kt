@@ -59,7 +59,7 @@ sealed class Route {
     data class BackupWizard(val id: String?, val sources: List<String> = emptyList(), val dest: String? = null) : Route()
     data class BackupBrowse(val id: String, val snap: String = "", val path: String = "") : Route()
     data object Diagnostics : Route()
-    data object Apps : Route(); data class AppFrame(val id: String) : Route(); data object Updates : Route(); data object Search : Route(); data object Start : Route(); data object StartEdit : Route(); data object EditFavorites : Route()
+    data object Apps : Route(); data class AppFrame(val id: String) : Route(); data object Updates : Route(); data object Search : Route(); data object Start : Route(); data object StartEdit : Route(); data object EditFavorites : Route(); data object NewContainer : Route()
 }
 
 /** Shared app state: the API, live data, navigation, messages. */
@@ -474,6 +474,7 @@ private fun Modifier.paneTouch(app: AppState, left: Boolean) = pointerInput(left
         Route.Start -> StartScreen(app)
         Route.StartEdit -> StartEditScreen(app)
         Route.EditFavorites -> EditFavoritesScreen(app)
+        Route.NewContainer -> NewContainerScreen(app)
         is Route.AppFrame -> AppFrameScreen(app, r.id)
         Route.Status -> StatusScreen(app)
         Route.Ssh -> SshScreen(app)

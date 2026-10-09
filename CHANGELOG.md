@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.8-alpha (app and server)
+- **Inbox on the phone:** grouped as Today, Yesterday and then by date; **hold** an event to start selecting, tap to add more, **Select all** / **Clear**, and **Archive** the selection in one go (back stops selecting). The new-alert banner goes away when you open the Inbox.
+- **Add your own container:** Containers → **+** → *Your own*: name, image, ports, folders (with a folder browser), settings and restart policy — Nova checks everything and shows the compose file it will run (*Preview*). For safety it can't be privileged, use the host network or devices, or reach system folders or the Docker socket; your files can be shared from /mnt, /srv, /media or /home. Adding one needs your fingerprint. Containers you added this way can be removed from their page (their folder is kept in /opt/.nova-uninstalled).
+- **Apps:** an **Add** tile at the end of the grid (app and web), for any link on your network.
+- Security test: 216 checks, all passing.
+
 ## 0.5.7-alpha (app and server)
 - **Servers (Nova web):** see all your Nova servers on one page — health, CPU, memory, containers, uptime — and add more with **+** (the server's address, then the code from `sudo nova add` on it, after checking its certificate). This server reads the others through a special read-only pairing: it can see their overview, live numbers and events, and nothing else. "Open its Nova web" takes you to that server to manage it. Adding or removing a server is approved with your fingerprint (or `sudo nova approve`).
 - **Apps from anywhere:** hold an app → *Open it from anywhere* shows exactly what to add to your Cloudflare tunnel (address and service, with copy buttons), and checks that the app's remote link really asks for a Cloudflare login before anything reaches the app — and warns if it's open to the internet.

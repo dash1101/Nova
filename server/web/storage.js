@@ -499,7 +499,7 @@ export async function apps(ctx) {
     const all = S.cache["/api/v1/apps"]?.apps || [], list = all.filter(a => showHidden || !a.hidden);
     ctx.show(note("The web apps on your server. Each opens in its own tab. Right-click (or hold) an app to rename, hide it or set a remote link.")
       + (S.cache["/api/v1/apps"] ? (list.length ? `<div class="appgrid">${list.map((a, i) => { const h = appHref(a);
-          return `<a class="appcell${a.hidden ? " dim" : ""}" ${h ? `href="${esc(h)}" target="_blank" rel="noopener noreferrer"` : `data-act="noreach"`} data-i="${i}"><span class="appic" data-id="${esc(a.id)}">${esc((a.name || "?")[0].toUpperCase())}</span><span class="appname">${esc(a.name)}</span></a>`; }).join("")}</div>`
+          return `<a class="appcell${a.hidden ? " dim" : ""}" ${h ? `href="${esc(h)}" target="_blank" rel="noopener noreferrer"` : `data-act="noreach"`} data-i="${i}"><span class="appic" data-id="${esc(a.id)}">${esc((a.name || "?")[0].toUpperCase())}</span><span class="appname">${esc(a.name)}</span></a>`; }).join("")}${isAdmin() ? `<button class="appcell addapp press" data-act="add"><span class="appic">${I("add")}</span><span class="appname">Add</span></button>` : ""}</div>`
         : group(row("No web apps found", { sub: "Install one from the Store, or add a link with +", icon: "apps" }))) : note("Looking for apps…"))
       + (all.some(a => a.hidden) ? group(switchRow("Show hidden apps", null, showHidden, "hid")) : ""),
       { title: "Apps", actions: [{ icon: "add", label: "Add an app", act: "add" }] });
@@ -605,4 +605,52 @@ export async function updates(ctx) {
     doCs: () => startTask(ctx, "/api/v1/updates/containers", { containers: [...cs] }),
   });
   draw(); ctx.every(5000, async () => { await Promise.all([get("/api/v1/updates"), get("/api/v1/tasks")]); draw(); }, true);
+}
+
+
+// ── your own container: a simple form (the server checks every field) ──────────────────────
+export async function containerNew(ctx) {
+  const v = { name: "", image: "", restart: "unless-stopped", ports: [{ host: "", container: "" }], volumes: [], env: "" };
+  const spec = () => ({ name: v.name.trim().toLowerCase(), image: v.image.trim(), restart: v.restart,
+    ports: v.ports.filter(p => p.host && p.container).map(p => ({ host: +p.host, container: +p.container, proto: p.udp ? "udp" : "tcp" })),
+    volumes: v.volumes.filter(x => x.host && x.container).map(x => ({ host: x.host, container: x.container, ro: !!x.ro })),
+    env: Object.fromEntries(v.env.split("\n").map(l => l.trim()).filter(l => l && l.includes("=")).map(l => [l.slice(0, l.indexOf("=")).trim(), l.slice(l.indexOf("=") + 1)])) });
+  const field = (id, ph, val, extra = "") => `<input class="field" data-f="${id}" placeholder="${esc(ph)}" value="${esc(val)}" autocomplete="off" autocapitalize="off" spellcheck="false" ${extra}>`;
+  const draw = () => {
+    ctx.show(`${note("Run any image from Docker Hub or another registry. It gets its own folder in /opt, starts with the server, and shows up in Containers and Apps. For safety it can't be given full control of the server (no privileged mode, host network, devices or system folders).")}
+      ${sec("Container")}<div class="group glass cform">${field("name", "Name, e.g. my-web", v.name)}${field("image", "Image, e.g. nginx:latest or ghcr.io/owner/app:1.2", v.image)}</div>
+      ${sec("Ports · server → container")}<div class="group glass cform">${v.ports.map((p, i) => `<div class="crow">${field("ph" + i, "8080", p.host, 'inputmode="numeric"')}<span class="muted">→</span>${field("pc" + i, "80", p.container, 'inputmode="numeric"')}
+          <label class="chk"><input type="checkbox" data-f="pu${i}" ${p.udp ? "checked" : ""}> UDP</label><button class="rmbtn press" data-act="rmport:${i}" aria-label="Remove">${I("del")}</button></div>`).join("")}
+        <button class="pillbtn press" data-act="addport">${I("add")} Add a port</button></div>
+      ${sec("Folders · server → container")}<div class="group glass cform">${v.volumes.map((x, i) => `<div class="crow">${field("vh" + i, "/mnt/media, or a name for its own data", x.host)}<button class="pillbtn press" data-act="browse:${i}">Browse…</button><span class="muted">→</span>${field("vc" + i, "/data", x.container)}
+          <label class="chk"><input type="checkbox" data-f="vr${i}" ${x.ro ? "checked" : ""}> Read-only</label><button class="rmbtn press" data-act="rmvol:${i}" aria-label="Remove">${I("del")}</button></div>`).join("") || `<p class="muted" style="margin:4px 4px 8px">A name like <b>config</b> keeps it in the container's own folder; your files can be shared from /mnt, /srv, /media or /home.</p>`}
+        <button class="pillbtn press" data-act="addvol">${I("add")} Add a folder</button></div>
+      ${sec("Settings · one per line, NAME=value")}<div class="group glass cform"><textarea class="field" data-f="env" rows="4" placeholder="TZ=America/New_York&#10;PUID=1000" spellcheck="false">${esc(v.env)}</textarea></div>
+      ${sec("Restart")}${group(["unless-stopped", "always", "on-failure", "no"].map(r => row({ "unless-stopped": "Unless I stop it", always: "Always", "on-failure": "Only if it crashes", no: "Never" }[r], { end: radio(v.restart === r), click: "restart:" + r })).join(""))}
+      <div class="cact"><button class="pillbtn press" data-act="preview">Preview</button><button class="btn" data-act="create">${I("play")} Add and start</button></div>`, { title: "New container" });
+    $$("[data-f]", ctx.root).forEach(el => el.oninput = el.onchange = () => {
+      const k = el.dataset.f, val = el.type === "checkbox" ? el.checked : el.value;
+      if (k === "name" || k === "image" || k === "env") v[k] = val;
+      else { const i = +k.slice(2), t = k.slice(0, 2); if (t === "ph") v.ports[i].host = val; if (t === "pc") v.ports[i].container = val; if (t === "pu") v.ports[i].udp = val;
+        if (t === "vh") v.volumes[i].host = val; if (t === "vc") v.volumes[i].container = val; if (t === "vr") v.volumes[i].ro = val; }
+    });
+  };
+  ctx.handlers({
+    addport: () => { v.ports.push({ host: "", container: "" }); draw(); }, rmport: i => { v.ports.splice(+i, 1); draw(); },
+    addvol: () => { v.volumes.push({ host: "", container: "" }); draw(); }, rmvol: i => { v.volumes.splice(+i, 1); draw(); },
+    browse: async i => { const f = await pickFolder("/mnt"); if (f) { v.volumes[+i].host = f; draw(); } },
+    restart: r => { v.restart = r; draw(); },
+    preview: async () => {
+      try { const r = await post("/api/v1/containers/custom/check", { spec: spec() });
+        await dialog("What Nova will run", "", [{ label: "Close", value: null }], `<pre class="code-block" style="white-space:pre-wrap;margin:0 16px">${esc(r.compose)}</pre>`); }
+      catch (e) { toast(e.message); }
+    },
+    create: async () => {
+      if (!isAdmin()) return viewOnly();
+      try { const r = await post("/api/v1/containers/custom", { spec: spec() });
+        if (r?.job) { toast("Pulling the image and starting it…"); ctx.go("containers"); } }
+      catch (e) { toast(e.message); }
+    },
+  });
+  draw();
 }

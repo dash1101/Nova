@@ -67,7 +67,8 @@ def summary(c):
             "image": c["Config"]["Image"].split("@")[0], "state": c["State"]["Status"],
             "health": (c["State"].get("Health") or {}).get("Status", ""),
             "started": c["State"].get("StartedAt", "")[:19],
-            "store": os.path.exists(f"/opt/{lab['com.docker.compose.project']}/.nova-store")}
+            "store": os.path.exists(f"/opt/{lab['com.docker.compose.project']}/.nova-store"),
+            "custom": os.path.exists(f"/opt/{lab['com.docker.compose.project']}/.nova-custom")}
 
 def find(name):
     if not re.fullmatch(NAME_RE, name or ""): fail("bad name", 2)
@@ -377,6 +378,85 @@ if verb == "store-install" and len(args) == 1:
     host = SITE.get("lan_host") or "localhost"
     notify("info", f"Installed {t['name']}", f"http://{host}:{t['port']}{t.get('path', '')}")
     out({"ok": True, "url": f"http://{host}:{t['port']}{t.get('path', '')}"})
+
+# ── your own containers: a form, not free-form compose, so risky options can't be expressed ──
+CUSTOM_NAME = r"[a-z0-9][a-z0-9_-]{0,39}"
+IMAGE_RE = r"[a-z0-9]+(?:[._-][a-z0-9]+)*(?::[0-9]{1,5})?(?:/[a-z0-9]+(?:[._-][a-z0-9]+)*)*(?::[A-Za-z0-9_][A-Za-z0-9_.-]{0,127})?(?:@sha256:[0-9a-f]{64})?"
+VOLUME_ROOTS = ("/mnt/", "/srv/", "/media/", "/home/")          # where your own files may be shared from (plus the app's own data folder)
+NOVA_PORTS = {8095, 8495, 8496}
+
+def custom_spec(raw):
+    """Check every field of a custom container and return the compose file for it."""
+    try: sp = json.loads(raw)
+    except ValueError: fail("bad request", 2)
+    name = str(sp.get("name", "")).strip().lower()
+    if not re.fullmatch(CUSTOM_NAME, name): fail("name: lowercase letters, digits, - and _ (up to 40)")
+    image = str(sp.get("image", "")).strip()
+    if not re.fullmatch(IMAGE_RE, image) or len(image) > 255: fail("image: like nginx:latest or ghcr.io/owner/app:1.2")
+    d = f"/opt/{name}"
+    ports, vols, env = [], [], {}
+    for p in (sp.get("ports") or [])[:12]:
+        try: h, c = int(p.get("host")), int(p.get("container"))
+        except (TypeError, ValueError, AttributeError): fail("ports: numbers, like 8080 → 80")
+        proto = p.get("proto", "tcp") if p.get("proto", "tcp") in ("tcp", "udp") else fail("ports: tcp or udp")
+        if not (1 <= h <= 65535 and 1 <= c <= 65535): fail("ports: 1–65535")
+        if h in NOVA_PORTS: fail(f"port {h} is Nova's own")
+        if proto == "tcp" and not port_free(h): fail(f"port {h} is already in use")
+        ports.append(f"{h}:{c}" + ("/udp" if proto == "udp" else ""))
+    for v in (sp.get("volumes") or [])[:12]:
+        host, cont = str((v or {}).get("host", "")).strip(), str((v or {}).get("container", "")).strip()
+        if not host or not cont.startswith("/") or ".." in host.split("/") or ".." in cont.split("/") or any(ch in host + cont for ch in ":\n\r\"'"):
+            fail("folders: a folder on the server and a path inside the container, like /mnt/media → /media")
+        if not host.startswith("/"): host = f"{d}/data/{host.lstrip('./')}"                 # relative: inside its own data folder
+        real = os.path.realpath(host) if os.path.exists(host) else os.path.normpath(host)
+        if not (real.startswith(f"{d}/data") or real.startswith(VOLUME_ROOTS)) or real.rstrip("/") in [r.rstrip("/") for r in VOLUME_ROOTS]:
+            fail(f"{host}: share a folder inside {', '.join(VOLUME_ROOTS)} or the app's own data folder")
+        vols.append((real, cont, bool((v or {}).get("ro"))))
+    for k, val in list((sp.get("env") or {}).items())[:40]:
+        if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,63}", str(k)) or len(str(val)) > 2000 or "\n" in str(val): fail(f"setting {str(k)[:20]}: letters, digits and _ ; one line")
+        env[str(k)] = str(val)
+    restart = sp.get("restart", "unless-stopped")
+    if restart not in ("no", "always", "unless-stopped", "on-failure"): fail("restart: no, always, unless-stopped or on-failure")
+    q = json.dumps                                       # JSON strings are valid YAML strings: no injection
+    lines = ["services:", f"  {name}:", f"    image: {q(image)}", f"    container_name: {q(name)}", f"    restart: {q(restart)}",
+             "    security_opt:", "      - \"no-new-privileges:true\"", "    labels:", f"      nova.custom: \"true\""]
+    if ports: lines += ["    ports:"] + [f"      - {q(p)}" for p in ports]
+    if vols: lines += ["    volumes:"] + [f"      - {q(h + ':' + c + (':ro' if ro else ''))}" for h, c, ro in vols]
+    if env: lines += ["    environment:"] + [f"      {k}: {q(v)}" for k, v in env.items()]
+    return name, d, "\n".join(lines) + "\n", vols
+
+if verb == "custom-check" and len(args) == 1:
+    name, d, compose, _ = custom_spec(args[0])
+    if os.path.exists(d): fail(f"{d} already exists — pick another name")
+    out({"ok": True, "compose": compose})
+
+if verb == "custom-install" and len(args) == 1:
+    name, d, compose, vols = custom_spec(args[0])
+    if os.path.exists(d): fail(f"{d} already exists — pick another name")
+    os.makedirs(f"{d}/data", exist_ok=True)
+    for h, _, _ in vols:
+        if h.startswith(f"{d}/data"): os.makedirs(h, exist_ok=True)
+    with open(f"{d}/docker-compose.yml", "w") as f: f.write(compose)
+    rc, so, se = run(["docker", "compose", "up", "-d"], cwd=d, timeout=1800)
+    if rc != 0:
+        run(["docker", "compose", "down"], cwd=d, timeout=300); shutil.rmtree(d, ignore_errors=True)
+        fail("couldn't start it: " + se.strip()[-300:])
+    with open(f"{d}/.nova-custom", "w") as f: json.dump({"name": name, "installed": time.strftime("%F %T")}, f)
+    changelog(f"Added custom container {name} ({json.loads(args[0]).get('image')}) → {d} (from the Nova app)")
+    notify("info", f"Added container {name}", "Your own container, set up from Nova")
+    out({"ok": True, "name": name})
+
+if verb == "custom-uninstall" and len(args) == 1:
+    name = args[0]
+    if not re.fullmatch(CUSTOM_NAME, name): fail("bad name", 2)
+    d = f"/opt/{name}"
+    if not os.path.exists(f"{d}/.nova-custom"): fail("that container wasn't added in Nova")
+    rc, so, se = run(["docker", "compose", "down"], cwd=d, timeout=600)
+    if rc != 0: fail("couldn't stop it: " + se.strip()[-200:])
+    keep = f"/opt/.nova-uninstalled/{name}-{time.strftime('%Y%m%d-%H%M%S')}"
+    os.makedirs(os.path.dirname(keep), exist_ok=True); shutil.move(d, keep)
+    changelog(f"Removed custom container {name} (data kept in {keep})")
+    out({"ok": True, "kept": keep})
 
 if verb == "store-uninstall" and len(args) == 1:
     t = catalog().get(args[0]) or fail("not in the catalog", 2)

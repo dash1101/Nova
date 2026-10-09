@@ -278,9 +278,12 @@ export async function containers(ctx) {
     const up = items.filter(x => x.state === "running").length;
     ctx.show(`<div class="statusline" style="cursor:default"><span class="dot" style="background:${up === items.length ? "var(--green)" : "var(--amber)"}"></span>${S.cache["/api/v1/containers"] ? `${up} of ${items.length} running` : "Loading…"}</div>
       ${groups.map(([g, cs]) => sec(cap(g)) + group(cs.map(x => row(x.name, { sub: `${x.image.split("/").pop()} · ${x.health ? x.state + ", " + x.health : x.state}`, click: "open:" + x.name, end: `<span class="dot" style="background:${stateColor(x.state, x.health)}"></span>` })).join(""))).join("")}`,
-      { title: "Containers" });
+      { title: "Containers", actions: isAdmin() ? [{ icon: "add", label: "Add a container", act: "addc" }] : [] });
   };
-  ctx.handlers({ open: n => ctx.go("containers/" + encodeURIComponent(n)) });
+  ctx.handlers({ open: n => ctx.go("containers/" + encodeURIComponent(n)),
+    addc: async () => { const r = await dialog("Add a container", "", [{ label: "Cancel", value: null }, ...(has("store") ? [{ label: "From the app store", value: "store" }] : []), { label: "Your own", color: "var(--blue)", value: "own" }],
+      `<div class="pad"><p class="muted" style="margin:0">Pick a ready-made app from the store, or run any image you like.</p></div>`);
+      if (r === "store") ctx.go("store"); else if (r === "own") ctx.go("container-new"); } });
   draw(); ctx.every(10000, async () => { await get("/api/v1/containers"); draw(); }, true);
 }
 async function container(ctx, name) {
@@ -299,7 +302,8 @@ async function container(ctx, name) {
           + row("Stack", { sub: `${c.stack || "—"} · ${c.compose_dir || ""}` }) + (c.privileged ? row("Privileged", { sub: "Has full access to the host", end: `<span style="color:var(--amber)">${I("warn")}</span>` }) : ""))}
         ${(c.ports || []).length ? sec("Ports") + group(c.ports.map(p => row(p)).join("")) : ""}
         ${(c.mounts || []).length ? sec("Folders") + group(c.mounts.map(m => row(m.target, { sub: m.source + (m.rw === false ? " · read-only" : "") })).join("")) : ""}
-        ${(c.env || []).length ? sec("Environment") + group(c.env.map(e => row(e.key, { sub: e.value })).join("")) : ""}` : ""}`,
+        ${(c.env || []).length ? sec("Environment") + group(c.env.map(e => row(e.key, { sub: e.value })).join("")) : ""}
+        ${isAdmin() && c.custom ? group(row("Remove this container", { sub: "Stops it and moves its folder to /opt/.nova-uninstalled (nothing is deleted)", icon: "del", tint: "var(--red)", click: "rmcustom" })) : ""}` : ""}`,
       { title: name });
   };
   const load = async () => { try { await get(path); } catch (e) { toast(e.message); } if (ctx.alive()) draw(); };
@@ -316,6 +320,12 @@ async function container(ctx, name) {
     },
     shell: () => S.cache[path]?.state === "running" ? ctx.go(`containers/${encodeURIComponent(name)}/shell`) : toast("Start it first"),
     logs: () => ctx.go(`containers/${encodeURIComponent(name)}/logs`),
+    rmcustom: async () => {
+      if (!(await confirm(`Remove ${name}?`, "It stops, and its folder is kept in /opt/.nova-uninstalled. Your phone will ask for your fingerprint.", "Remove"))) return;
+      job = "Removing…"; draw();
+      try { const j = await waitJob((await post(`${path}/remove-custom`)).job); if (j.state === "done") { toast(`Removed ${name}`); await get("/api/v1/containers").catch(() => {}); return ctx.go("containers"); } toast(`Couldn't remove it: ${j.result?.error || ""}`); }
+      catch (e) { toast(e.message); } finally { job = null; if (ctx.alive()) await load(); }
+    },
     policy: async () => {
       if (!isAdmin()) return viewOnly();
       const v = await choose("Restart automatically", POLICIES.map(([k, l]) => [k, l]), S.cache[path]?.restart_policy); if (!v) return;

@@ -7,6 +7,7 @@ import android.webkit.*
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
@@ -105,10 +106,16 @@ fun appUrl(app: AppState, a: JSONObject): String? {
         if (live.value == null) Text("Looking for apps…", color = N.sub, modifier = Modifier.padding(30.dp))
         else if (shown.isEmpty()) Group { Row1("No web apps found", "Install one from the Store, or add a link with +", false, Icons.Rounded.Apps, N.blue) }
         val cols = if (LocalWide.current) 6 else 4
-        shown.chunked(cols).forEach { rowApps ->
+        val cells: List<JSONObject?> = shown + if (app.isAdmin && live.value != null) listOf(null) else emptyList()     // null: the Add tile
+        cells.chunked(cols).forEach { rowApps ->
             Row(Modifier.fillMaxWidth().padding(horizontal = Space.gutter, vertical = 6.dp)) {
                 rowApps.forEach { a ->
-                    Column(Modifier.weight(1f).clip(RoundedCornerShape(18.dp)).combinedClickable(onLongClick = { if (app.isAdmin) editing = a }) { openApp(app, a) }
+                    if (a == null) Column(Modifier.weight(1f).clip(RoundedCornerShape(18.dp)).clickable { adding = true }.padding(vertical = 10.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally) {
+                        Box(Modifier.size(60.dp).clip(RoundedCornerShape(16.dp)).border(1.5.dp, N.sub.copy(alpha = 0.5f), RoundedCornerShape(16.dp)), contentAlignment = Alignment.Center) {
+                            Icon(Icons.Rounded.Add, null, tint = N.blue, modifier = Modifier.size(28.dp)) }
+                        Text("Add", color = N.text, fontSize = 13.sp, modifier = Modifier.padding(top = 6.dp))
+                    } else Column(Modifier.weight(1f).clip(RoundedCornerShape(18.dp)).combinedClickable(onLongClick = { if (app.isAdmin) editing = a }) { openApp(app, a) }
                         .padding(vertical = 10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                         Box { AppIcon(app, a, 60.dp); if (AppSessions.get(a.optString("id")) != null) Box(Modifier.align(Alignment.BottomEnd).size(12.dp).clip(CircleShape).background(N.green)) }
                         Text(a.optString("name"), color = if (a.optBoolean("hidden")) N.sub else N.text, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
