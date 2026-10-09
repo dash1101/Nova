@@ -37,6 +37,7 @@ fun labelOf(app: AppState, id: String) = Pairing(app.activity, id).let { p ->
 private fun formLabel(d: JSONObject): String {
     val f = d.optString("form").ifEmpty { if (d.optString("type") == "browser") "desktop" else "phone" }
     if (d.optString("type") == "watch") return "Approves from notifications"
+    if (d.optString("type") == "head") return "Another Nova server's web · read-only"
     val n = when (f) { "tablet" -> "Tablet"; "desktop" -> "Computer"; else -> "Phone" }
     return if (d.optString("type") == "browser") "Browser · $n" else n
 }

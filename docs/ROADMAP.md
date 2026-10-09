@@ -46,7 +46,7 @@ The Android app can be published on Google Play (the developer account exists). 
 ## Also planned
 
 - A terminal for the server itself in Nova web (the phone app already has SSH).
-- Several servers under one Nova web, with a + button to add more.
-- Opening your server's web apps from anywhere, not only at home or over Tailscale.
+- Servers page, next step: manage another server right from this one's Nova web (a signed relay, so each server still checks your browser's own key and approvals), instead of opening its own Nova web.
+- Apps from anywhere, next step: create the Cloudflare hostname and Access rule automatically (needs a scoped Cloudflare API token on the server).
 - A Wear OS app with its own sign-in, approvals and a glanceable status.
 - A reworked app store with categories, search and one-tap installs.

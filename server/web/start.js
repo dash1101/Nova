@@ -10,7 +10,7 @@ const enc = encodeURIComponent;
 export const PLACES = [
   ["Home", "overview start", "dns", "home"], ["Start page", "new tab homepage search bookmarks", "home", "start"],
   ["Status", "graphs cpu memory ram temperature network live", "status", "status"], ["Containers", "docker compose logs shell restart stop", "box", "containers"],
-  ["Apps", "web apps open launch", "apps", "apps"], ["App store", "install store programs", "store", "store"],
+  ["Apps", "web apps open launch", "apps", "apps"], ["Servers", "servers nodes machines other computers add server multiple", "dns", "servers"], ["App store", "install store programs", "store", "store"],
   ["Storage & hardware", "drives disks pools raid smart mount unmount temperature fans", "disk", "hardware"],
   ["Set up drives", "format raid mirror combine pool mergerfs mdadm new drive", "addc", "setup"], ["Backups", "backup restore snapshot nas smb nfs schedule", "backup", "backups"],
   ["Diagnostics", "speed test internet ping traceroute dns port cpu stress memory test disk speed", "speed", "diag"],

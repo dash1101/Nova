@@ -21,6 +21,8 @@ Pairing is only possible from the home LAN, with a one-time code shown by `sudo 
 """
 import base64, hashlib, hmac, ipaddress, json, os, re, secrets, subprocess, sys, threading, time, urllib.error, urllib.parse, urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+import nodes
 
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import hashes, serialization
@@ -36,7 +38,7 @@ try:                       # optional module: fan/case lighting (modules/fan-gig
 except ImportError:
     nova_rgb = None
 
-API_VERSION = "0.5.7-alpha~dev1"
+API_VERSION = "0.5.7-alpha"
 CONFIG = "/etc/nova-api/config.json"
 DATA = "/var/lib/nova-api"
 DEVICES = f"{DATA}/devices.json"
@@ -343,6 +345,7 @@ def stats_sampler():
         except Exception:
             pass
 threading.Thread(target=stats_sampler, daemon=True).start()
+nodes.start()                          # other Nova servers shown in this web (polled read-only)
 
 WEB_DIR = next((d for d in (os.path.join(os.path.dirname(os.path.abspath(__file__)), "web"),
                              os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "web")) if os.path.isdir(d)),
@@ -410,6 +413,8 @@ def describe_action(a):
         d = load_json(DEVICES, {}).get(p[1], {})
         return f"Remove “{d.get('name', 'a device')}” from this server" if d else "Remove a device"
     if p[:1] == ["devices"]: return "Change paired devices"
+    if p == ["nodes"]: return f"Show the server at {a.get('data', {}).get('host', '?')} in this Nova web"
+    if p[:1] == ["nodes"]: return "Remove a server from this Nova web"
     if p[:1] == ["ssh"]: return "Let this phone log in over SSH"
     if p == ["alerts", "dismiss"]: return f"Ignore the alert “{a.get('data', {}).get('key', '')}”"
     if p == ["events", "delete"]: return "Clear the whole inbox" if a.get("data", {}).get("all") else "Delete from the inbox"
@@ -477,6 +482,8 @@ def needs_stepup(method, parts):
     if method == "DELETE" and parts[:1] == ["devices"]: return True
     if method == "POST" and parts == ["devices", "remove-all"]: return True
     if method == "POST" and parts == ["devices", "watch"]: return True
+    if method == "POST" and parts == ["nodes"]: return True                        # add a server here
+    if method == "DELETE" and parts[:1] == ["nodes"]: return True
     if method == "POST" and parts == ["browser", "approve"]: return True
     if method == "POST" and parts == ["server", "update"]: return True
     if method == "POST" and parts[:1] == ["approvals"] and parts[-1:] == ["approve"]: return True
@@ -653,6 +660,14 @@ class Handler(BaseHTTPRequestHandler):
         if not isinstance(data, dict): return self.send(400, {"error": "expected an object"})
 
         parts = [p for p in path.split("/") if p][2:]
+        if dev.get("type") == "head":
+            # Another Nova server's web showing this one: it reads the overview, live numbers and events,
+            # and can unpair itself. Nothing else — no changes, no devices, no logs, no approvals.
+            ok = (method == "GET" and parts in (["whoami"], ["overview"], ["stats"], ["events"])) \
+                or (method == "DELETE" and parts == ["devices", dev.get("id")])
+            if not ok:
+                audit(device=dev["name"], path=path, result=403, why="head is read-only")
+                return self.send(403, {"error": "read_only_head"})
         if dev.get("type") == "watch":
             # A watch is an approver and nothing else: it lists what's waiting and approves or denies it.
             # Its key lives in the watch's hardware and only works while the watch is unlocked (on the wrist),
@@ -669,10 +684,10 @@ class Handler(BaseHTTPRequestHandler):
         if dev.get("type") == "browser" and browser_forbidden(method, parts, dev):
             audit(device=dev["name"], path=path, result=403, why="phones only")
             return self.send(403, {"error": "phones_only", "message": "Do this from the Nova app on an admin phone."})
-        if dev.get("type") == "browser" and method == "DELETE" and parts == ["devices", dev["id"]]:
+        if dev.get("type") in ("browser", "head") and method == "DELETE" and parts == ["devices", dev["id"]]:
             with lock:
                 devs = load_json(DEVICES, {}); devs.pop(dev["id"], None); save_json(DEVICES, devs)
-            audit(device=dev["name"], path=path, result=200, why="browser removed itself")
+            audit(device=dev["name"], path=path, result=200, why=f"{dev.get('type')} removed itself")
             return self.send(200, {"ok": True})
         if (needs_stepup(method, parts) or browser_needs_phone(method, parts)) and not dev.get("stepup_ok") and dev.get("type") == "browser" and role_of(dev) == "admin":
             try: data0 = json.loads(body) if body else {}
@@ -1132,6 +1147,19 @@ class Handler(BaseHTTPRequestHandler):
             rc, res = helper("task-start", "containers-update", json.dumps({"containers": cs})); return (200 if rc == 0 else 400), res
 
         # ── apps (web apps on this server, for the Apps grid) ──
+        # ── other Nova servers shown here (read-only, see nodes.py) ──
+        if method == "GET" and parts == ["nodes"]:
+            return 200, {"nodes": nodes.status()}
+        if method == "POST" and parts == ["nodes", "probe"]:
+            if role_of(dev) != "admin": return 403, {"error": "admins only"}
+            return 200, nodes.probe(str(data.get("host", "")))
+        if method == "POST" and parts == ["nodes"]:
+            if role_of(dev) != "admin": return 403, {"error": "admins only"}
+            head = load_json(SETTINGS, {}).get("display_name") or os.uname().nodename
+            return 200, nodes.pair(str(data.get("host", "")), str(data.get("code", "")), str(data.get("pin", "")), head)
+        if method == "DELETE" and len(parts) == 2 and parts[0] == "nodes" and re.fullmatch(r"[0-9a-f]{12}", parts[1]):
+            if role_of(dev) != "admin": return 403, {"error": "admins only"}
+            return (200, {"ok": True}) if nodes.remove(parts[1]) else (404, {"error": "no such server"})
         if method == "GET" and parts == ["apps"]:
             return 200, {"apps": app_list()}
         if method == "GET" and len(parts) == 3 and parts[0] == "apps" and parts[2] == "remote" and re.fullmatch(r"[A-Za-z0-9_.-]{1,64}", parts[1]):
@@ -1362,13 +1390,19 @@ class Handler(BaseHTTPRequestHandler):
             dev_id = secrets.token_urlsafe(12)
             devs = load_json(DEVICES, {})
             role = p.get("role") if p.get("role") in ROLES else "admin"
+            head = d.get("kind") == "head"           # another Nova server's web, showing this one read-only
             devs[dev_id] = {"name": name, "public_key": pem, "created": time.strftime("%Y-%m-%d %H:%M"),
-                            "paired_from": ip, "role": role, "user": str(p.get("user", ""))[:40],
-                            **({"form": d["form"]} if d.get("form") in FORMS else {})}
+                            "paired_from": ip, "role": "viewer" if head else role, "user": str(p.get("user", ""))[:40],
+                            **({"type": "head"} if head else {}),
+                            **({"form": d["form"]} if d.get("form") in FORMS and not head else {})}
             save_json(DEVICES, devs)
         audit(ip=ip, path="/api/v1/pair", result=200, device=name)
         helper("notify-paired", "".join(c for c in name if c.isalnum() or c in " -_")[:40] or "device")
         tls = lan_tls()
+        if head:                                      # read-only window: no Cloudflare service token for it
+            return self.send(200, {"device_id": dev_id, "server": "Nova", "api": API_VERSION, "role": "viewer", "kind": "head",
+                                   "name": load_json(SETTINGS, {}).get("display_name") or os.uname().nodename,
+                                   "lan_url": tls.get("url") or CFG.get("lan_url", ""), "remote_url": CFG.get("remote_url", "")})
         return self.send(200, {"device_id": dev_id, "server": "Nova", "api": API_VERSION, "role": role,
                                "name": load_json(SETTINGS, {}).get("display_name") or os.uname().nodename,
                                "lan_url": tls.get("url") or CFG.get("lan_url", ""), "lan_pin": tls.get("pin", ""),

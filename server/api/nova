@@ -128,6 +128,7 @@ def devices(args):
     for k, d in sorted(devs.items(), key=lambda kv: kv[1].get("created", "")):
         kind = d.get("form") or ("desktop" if d.get("type") == "browser" else "phone")
         kind = {"desktop": "computer"}.get(kind, kind) + (" (browser)" if d.get("type") == "browser" else "")
+        if d.get("type") in ("watch", "head"): kind = {"watch": "watch", "head": "Nova web (other server)"}[d["type"]]
         print(f"  {B}{d['name'][:26]:26}{X} {kind:20} {'Admin' if d.get('role', 'admin') == 'admin' else 'View only':10} "
               f"{D}{d.get('user') or '':12} last seen {d.get('last_seen') or 'never'} {('via ' + d['last_via']) if d.get('last_via') else ''}  id {k}{X}")
 

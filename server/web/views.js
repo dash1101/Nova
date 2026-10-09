@@ -10,14 +10,14 @@ import { favoritesHtml } from "./start.js";
 
 // ── catalogs (same ids as the app, so the two read alike) ───────────────────────
 export const SHORTCUTS = [
-  ["inbox", "bell", "Inbox", "inbox"], ["apps", "apps", "Apps", "apps"], ["start", "home", "Start page", "start", null, "Start"], ["search", "search", "Search", "search"], ["quick", "widgets", "Quick panel", "quick", null, "Quick"], ["containers", "box", "Containers", "containers"],
+  ["inbox", "bell", "Inbox", "inbox"], ["apps", "apps", "Apps", "apps"], ["servers", "dns", "Servers", "servers"], ["start", "home", "Start page", "start", null, "Start"], ["search", "search", "Search", "search"], ["quick", "widgets", "Quick panel", "quick", null, "Quick"], ["containers", "box", "Containers", "containers"],
   ["storage", "disk", "Storage", "hardware"], ["status", "status", "Status", "status"], ["lighting", "bulb", "Lighting", "lighting", "lighting"],
   ["terminal", "term", "Terminal", "terminal", "ssh"], ["store", "store", "Store", "store", "store"], ["dashboard", "dash", "Dashboard", "dashboard"],
   ["schedules", "clock", "Schedules", "schedules", "lighting"], ["devices", "group", "Devices", "devices"], ["settings", "gear", "Settings", "settings"],
 ].map(([id, icon, label, route, feature, short]) => ({ id, icon, label, route, feature, short: short || label }));
 const sc = id => SHORTCUTS.find(s => s.id === id);
 export const NAV_TABS = [{ id: "home", icon: "dns", label: "Home", route: "home" }, { id: "store", icon: "store", label: "Store", route: "store", feature: "store" },
-  { id: "menu", icon: "list", label: "Menu", route: "menu" }, ...["start", "apps", "search", "status", "containers", "storage", "inbox", "quick", "lighting"].map(sc)];
+  { id: "menu", icon: "list", label: "Menu", route: "menu" }, ...["start", "apps", "servers", "search", "status", "containers", "storage", "inbox", "quick", "lighting"].map(sc)];
 export const navTabs = () => {
   const t = prefs.navTabs.map(id => NAV_TABS.find(x => x.id === id)).filter(x => x && (!x.feature || has(x.feature)));
   return t.some(x => x.id === "home") ? t : [NAV_TABS[0], ...t];
@@ -167,6 +167,7 @@ export async function menu(ctx) {
         + row("Backups", { sub: "What's backed up, restore files", blue: true, icon: "backup", click: "go:backups" })
         + row("Diagnostics", { sub: "Speed, stress and network tests", blue: true, icon: "speed", tint: "#64d2ff", click: "go:diag" })
         + row("Updates", { sub: "Packages, containers and Nova", blue: true, icon: "update", tint: "#3ecf6e", click: "go:updates" })
+        + row("Servers", { sub: (S.cache["/api/v1/nodes"]?.nodes || []).length ? `${S.cache["/api/v1/nodes"].nodes.length + 1} servers, at a glance` : "Your other Nova servers in one place — add one with +", blue: true, icon: "dns", tint: "#64d2ff", click: "go:servers" })
         + row("Quick panel", { sub: "Your shortcuts — tap ✎ to customize", blue: true, icon: "widgets", click: "go:quick" })
         + row("Server status", { sub: "Live graphs, storage, backups", blue: true, icon: "status", tint: "#3ecf6e", click: "go:status" })
         + row("Dashboard mode", { sub: "Always-on screen for a tablet or spare screen", blue: true, icon: "dash", tint: "#64d2ff", click: "go:dashboard" })
@@ -951,14 +952,14 @@ async function drive(ctx, serial) {
 
 // ════════════════════════════ DEVICES, SETTINGS, ABOUT ═════════════════════════
 const formOf = d => d.form || (d.type === "browser" ? "desktop" : "phone");
-const formLabel = d => { if (d.type === "watch") return "Approves from notifications"; const n = { tablet: "Tablet", desktop: "Computer" }[formOf(d)] || "Phone"; return d.type === "browser" ? "Browser · " + n : n; };
+const formLabel = d => { if (d.type === "watch") return "Approves from notifications"; if (d.type === "head") return "Another Nova server's web · read-only"; const n = { tablet: "Tablet", desktop: "Computer" }[formOf(d)] || "Phone"; return d.type === "browser" ? "Browser · " + n : n; };
 export async function devices(ctx) {
   const draw = () => {
     const l = S.cache["/api/v1/devices"]?.devices || [], by = {};
     l.forEach(d => (by[d.user || "No name yet"] ||= []).push(d));
     ctx.show(`${Object.entries(by).sort(([a], [b]) => (a === "No name yet") - (b === "No name yet") || a.localeCompare(b)).map(([u, ds]) => sec(u) + group(ds.map(d => row(d.name + (d.current ? "  ·  this browser" : ""), {
         sub: `${formLabel(d)} · ${d.role === "viewer" ? "View only" : "Admin"} · last seen ${d.last_seen || "never"}${d.via ? " via " + d.via : ""}${d.type === "browser" ? " · risky actions approved on a phone" : ""}`,
-        icon: { tablet: "tablet", desktop: "computer" }[formOf(d)] || "phone", tint: d.current ? "var(--green)" : d.role === "viewer" ? "var(--sub)" : "var(--blue)",
+        icon: d.type === "head" ? "dns" : { tablet: "tablet", desktop: "computer" }[formOf(d)] || "phone", tint: d.current ? "var(--green)" : d.role === "viewer" ? "var(--sub)" : "var(--blue)",
         click: !d.current && isAdmin() ? "rm:" + d.id : "", end: !d.current && isAdmin() ? `<button class="rmbtn press" data-act="rm:${esc(d.id)}" aria-label="Remove ${esc(d.name)}" title="Remove">${I("del")}</button>` : "" })).join(""))).join("") || note("Loading…")}
       ${group(row("Remove this browser", { sub: "Erases its key here and its access on the server", icon: "del", tint: "var(--red)", click: "forget" }))}
       ${note("Removing a device here is approved on an admin phone with your fingerprint. Inviting phones, approving browsers and changing roles happen in the Nova app on an admin phone (they need its fingerprint key). Admins can do everything; view-only devices see the same screens but can't change anything.")}`,

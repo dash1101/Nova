@@ -436,3 +436,15 @@ html.material .alertcard { border-radius: 16px; background: var(--card); backdro
 .rguide ol { padding-left: 4px; list-style: none; display: grid; gap: 10px; margin: 12px 0 0; } .rguide li { line-height: 1.45; } .rguide .cmdcopy { margin: 6px 0 0; }
 .rcheck { display: flex; gap: 10px; align-items: flex-start; padding: 12px 14px; border-radius: 16px; margin-bottom: 10px; background: var(--pill); }
 .rcheck.protected { color: var(--green); } .rcheck.open, .rcheck.bad { color: var(--amber); } .rcheck span { color: var(--text); } .rcheck .i { flex: none; }
+/* Servers: one card per Nova server */
+.srvgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr)); gap: 12px; padding: 0 var(--gutter); }
+.srv { border-radius: 26px; padding: 18px; display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.srv.here { box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--blue) 40%, transparent); }
+.srvhead { display: flex; align-items: center; gap: 12px; } .srvhead .t { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.srvhead .t b { font-size: 17px; } .srvhead .t small { color: var(--sub); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.srvstats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; } .srvstats span { display: flex; flex-direction: column; gap: 2px; }
+.srvstats small { color: var(--sub); font-size: 12px; } .srvstats b { font-size: 18px; font-variant-numeric: tabular-nums; }
+.srvopen { align-self: flex-start; height: 40px; padding: 0 16px; font-size: 15px; display: inline-flex; align-items: center; gap: 8px; text-decoration: none; }
+.srv.add { border: 0; cursor: pointer; color: var(--text); font: inherit; align-items: center; justify-content: center; text-align: center; min-height: 180px; }
+.srv.add .i { width: 34px; height: 34px; color: var(--blue); } .srv.add small { color: var(--sub); }
+.pinbox { font: 600 22px ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .12em; text-align: center; padding: 14px; border-radius: 16px; background: var(--pill); margin: 8px 0; }

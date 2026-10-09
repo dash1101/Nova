@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.7-alpha (app and server)
+- **Servers (Nova web):** see all your Nova servers on one page — health, CPU, memory, containers, uptime — and add more with **+** (the server's address, then the code from `sudo nova add` on it, after checking its certificate). This server reads the others through a special read-only pairing: it can see their overview, live numbers and events, and nothing else. "Open its Nova web" takes you to that server to manage it. Adding or removing a server is approved with your fingerprint (or `sudo nova approve`).
+- **Apps from anywhere:** hold an app → *Open it from anywhere* shows exactly what to add to your Cloudflare tunnel (address and service, with copy buttons), and checks that the app's remote link really asks for a Cloudflare login before anything reaches the app — and warns if it's open to the internet.
+- Away from home is now decided by the server (Cloudflare or not), so apps open directly at home and over Tailscale without the "home network only" message.
+- **Tablets:** pages slide the right way, the list pane opens and closes smoothly, predictive back follows your thumb, and one glow sits behind the side pill and both panes.
+- `docs/ROADMAP.md`: a Windows version, an iOS app, Google Play, and what's next.
+- Security test: 201 checks, all passing.
+
 ## 0.5.6-alpha (app and server)
 - **New-alert banners:** while Nova is open, a new alert slides in at the top (tap it for the Inbox), in the app and on the web.
 - **Browser notifications:** Nova web can pop up new alerts on your computer while a tab is open (Notifications → This browser, or the prompt in the Inbox).
