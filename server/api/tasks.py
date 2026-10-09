@@ -21,12 +21,15 @@ DIR = "/run/nova-tasks"
 STORAGE_KINDS = {"format", "combine", "raid", "pool-remove", "pool-add", "fstab-nofail", "fstab-add"}
 DIAG_KINDS = {"net-internet", "disk-speed", "cpu-stress", "mem-test"}
 BACKUP_KINDS = {"backup-run", "restore", "tools"}
-KINDS = STORAGE_KINDS | DIAG_KINDS | BACKUP_KINDS
+UPDATE_KINDS = {"updates-check", "apt-upgrade", "containers-update"}
+KINDS = STORAGE_KINDS | DIAG_KINDS | BACKUP_KINDS | UPDATE_KINDS
 TITLES = {"format": "Set up a drive", "combine": "Combine drives", "raid": "Create a RAID array", "pool-remove": "Remove a pool",
           "pool-add": "Add a drive", "fstab-nofail": "Boot without missing drives", "fstab-add": "Keep a drive mounted",
           "net-internet": "Internet speed test", "disk-speed": "Drive speed test", "cpu-stress": "CPU stress test", "mem-test": "Memory test",
-          "backup-run": "Backup", "restore": "Restore from backup", "tools": "Install tools"}
-GROUP = {**{k: "storage" for k in STORAGE_KINDS}, **{k: "diag" for k in DIAG_KINDS}, "restore": "storage", "tools": "storage"}
+          "backup-run": "Backup", "restore": "Restore from backup", "tools": "Install tools",
+          "updates-check": "Check for updates", "apt-upgrade": "Update packages", "containers-update": "Update containers"}
+GROUP = {**{k: "storage" for k in STORAGE_KINDS}, **{k: "diag" for k in DIAG_KINDS}, "restore": "storage", "tools": "storage",
+         **{k: "updates" for k in UPDATE_KINDS}}
 
 
 def path(tid, ext="json"): return f"{DIR}/{tid}.{ext}"
@@ -127,6 +130,10 @@ def execute(tid):
             j = next((x for x in backups.load_jobs() if x["id"] == spec["job"]), None)
             if not j: raise ValueError("no such backup")
             res = backups.restore(j, str(spec.get("snapshot", "")), str(spec.get("path", "")), str(spec.get("to", "beside")), log, progress)
+        elif kind in UPDATE_KINDS:
+            import updates
+            res = {"updates-check": updates.check, "apt-upgrade": updates.apt_upgrade, "containers-update": updates.containers}[kind](spec, log, progress)
+            if kind != "updates-check": changelog(f"{t['title']}: {json.dumps(spec)[:200]} (from the Nova app)")
         elif kind == "tools":
             import storage
             storage.ensure_tools(spec["tools"], log); res = {"installed": spec["tools"]}

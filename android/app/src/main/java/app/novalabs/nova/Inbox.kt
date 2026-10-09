@@ -98,6 +98,22 @@ import java.util.*
     }
     val levels = listOf("info" to "Everything", "warning" to "Warnings and critical", "critical" to "Critical only")
     var levelDialog by remember { mutableStateOf(false) }
+    val discord = if (app.isAdmin) live(app, "/api/v1/notify/discord") else remember { mutableStateOf<JSONObject?>(null) }
+    var discordDialog by remember { mutableStateOf(false) }
+    if (discordDialog) {
+        var url by remember { mutableStateOf("") }
+        OneDialog({ discordDialog = false }, "Discord alerts",
+            "In Discord: open the channel's settings → Integrations → Webhooks → New Webhook → Copy Webhook URL, and paste it here. Nova never shows the link again.",
+            listOfNotNull(
+                if (discord.value?.optBoolean("configured") == true) DialogButton("Send a test") { app.act("Sent — check the channel") { app.api.post("/api/v1/notify/discord/test") } } else null,
+                if (discord.value?.optBoolean("configured") == true) DialogButton("Turn off", N.red) { discordDialog = false
+                    app.act("Discord alerts off") { app.stepUp("Turn off Discord alerts", "POST", "/api/v1/notify/discord", JSONObject().put("webhook", "")); discord.value = app.api.get("/api/v1/notify/discord") } } else null,
+                DialogButton("Save", N.blue, enabled = url.startsWith("https://")) { discordDialog = false
+                    app.act("Saved — sending a test") { app.stepUp("Send alerts to Discord", "POST", "/api/v1/notify/discord", JSONObject().put("webhook", url.trim()))
+                        discord.value = app.api.get("/api/v1/notify/discord"); app.api.post("/api/v1/notify/discord/test") } })) {
+            Box(Modifier.padding(horizontal = 22.dp)) { OneTextField(url, { url = it.trim().take(300) }, "https://discord.com/api/webhooks/…", Modifier.fillMaxWidth()) }
+        }
+    }
     Page("Notifications", app::back) {
         Row(Modifier.fillMaxWidth().padding(vertical = 26.dp), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Rounded.PhoneAndroid, null, tint = N.text, modifier = Modifier.size(64.dp))
@@ -119,6 +135,12 @@ import java.util.*
         s?.let { s ->
             SectionLabel("Discord")
             Group {
+                val dis = discord.value
+                if (app.isAdmin) Row1(if (dis?.optBoolean("configured") == true) "Discord channel" else "Set up Discord",
+                    if (dis?.optBoolean("configured") == true) "Sending to ${dis.optString("hint")} · tap to change or test" else "Get alerts in a Discord channel too — paste its webhook link",
+                    dis?.optBoolean("configured") == true, Icons.Rounded.Forum, androidx.compose.ui.graphics.Color(0xFF5865F2),
+                    onClick = { discordDialog = true })
+                if (app.isAdmin) RowDivider()
                 SwitchRow("Discord pings", if (s.optBoolean("discord_paused")) "Paused — alerts still show here" else "On",
                     !s.optBoolean("discord_paused"), subtitleBlue = !s.optBoolean("discord_paused")) { set("discord_paused", !it) }
                 RowDivider()
@@ -151,6 +173,8 @@ import java.util.*
     Page("Settings", app::back) {
         SectionLabel("Software update")
         Group {
+            Row1("Updates for the server", "System packages, containers and Nova", true, Icons.Rounded.Update, N.green, onClick = { app.go(Route.Updates) })
+            RowDivider()
             Row1(if (newer) "Update to ${update!!.optString("version_name")}" else "Nova is up to date",
                 when { checking -> "Checking…"; installing -> "Downloading…"; newer -> update!!.optString("notes").ifEmpty { "Tap to install" }
                        else -> "Version $APP_VERSION" }, newer, Icons.Rounded.SystemUpdate, onClick = {
@@ -238,8 +262,10 @@ import java.util.*
     Page("About", app::back) {
         Column(Modifier.fillMaxWidth().padding(vertical = 26.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Text("Nova", fontSize = 34.sp, fontWeight = FontWeight.Bold, color = N.text)
-            Text("Version $APP_VERSION", color = N.sub)
         }
+        val serverVer = live(app, "/api/v1/whoami", 0).value?.optString("api").orEmpty()
+        Group { Row1("Version", "App $APP_VERSION${if (serverVer.isNotEmpty()) " · server $serverVer" else ""} · check for updates", true,
+            Icons.Rounded.Update, onClick = { app.go(Route.Updates) }) }
         SectionLabel("Server")
         Group {
             Row1("Name", s?.optString("name")); RowDivider()
@@ -256,6 +282,10 @@ import java.util.*
             Row1("At home: encrypted, pinned", "HTTPS to the server's own certificate, checked on every connection", false); RowDivider()
             Row1("Outside home: Cloudflare Access", "Strangers are stopped before they reach the server", false)
         }
+        SectionLabel("Project")
+        val ctx = androidx.compose.ui.platform.LocalContext.current
+        Group { Row1("Nova by dash1101", "Open source · AGPL-3.0 · github.com/dash1101/Nova", true, onClick = {
+            runCatching { ctx.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://github.com/dash1101/Nova"))) } }) }
     }
 }
 

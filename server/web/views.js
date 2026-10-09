@@ -9,14 +9,14 @@ import * as ST from "./storage.js";
 
 // ── catalogs (same ids as the app, so the two read alike) ───────────────────────
 export const SHORTCUTS = [
-  ["inbox", "bell", "Inbox", "inbox"], ["apps", "apps", "Apps", "apps"], ["quick", "widgets", "Quick panel", "quick", null, "Quick"], ["containers", "box", "Containers", "containers"],
+  ["inbox", "bell", "Inbox", "inbox"], ["apps", "apps", "Apps", "apps"], ["start", "home", "Start page", "start", null, "Start"], ["search", "search", "Search", "search"], ["quick", "widgets", "Quick panel", "quick", null, "Quick"], ["containers", "box", "Containers", "containers"],
   ["storage", "disk", "Storage", "hardware"], ["status", "status", "Status", "status"], ["lighting", "bulb", "Lighting", "lighting", "lighting"],
   ["terminal", "term", "Terminal", "terminal", "ssh"], ["store", "store", "Store", "store", "store"], ["dashboard", "dash", "Dashboard", "dashboard"],
   ["schedules", "clock", "Schedules", "schedules", "lighting"], ["devices", "group", "Devices", "devices"], ["settings", "gear", "Settings", "settings"],
 ].map(([id, icon, label, route, feature, short]) => ({ id, icon, label, route, feature, short: short || label }));
 const sc = id => SHORTCUTS.find(s => s.id === id);
 export const NAV_TABS = [{ id: "home", icon: "dns", label: "Home", route: "home" }, { id: "store", icon: "store", label: "Store", route: "store", feature: "store" },
-  { id: "menu", icon: "list", label: "Menu", route: "menu" }, ...["apps", "status", "containers", "storage", "inbox", "quick", "lighting"].map(sc)];
+  { id: "menu", icon: "list", label: "Menu", route: "menu" }, ...["start", "apps", "search", "status", "containers", "storage", "inbox", "quick", "lighting"].map(sc)];
 export const navTabs = () => {
   const t = prefs.navTabs.map(id => NAV_TABS.find(x => x.id === id)).filter(x => x && (!x.feature || has(x.feature)));
   return t.some(x => x.id === "home") ? t : [NAV_TABS[0], ...t];
@@ -129,7 +129,7 @@ export async function home(ctx) {
     const head = S.error ? "Disconnected" : S.reconnecting ? "Reconnecting…" : !st ? "Connecting…" : lvl === "ok" ? "All systems normal" : `${st.active_count} need${st.active_count === 1 ? "s" : ""} attention`;
     const icon = S.error || S.reconnecting ? "sync" : lvl === "ok" ? "okc" : "err";
     const top = `<div class="home-title"><h1><span>${esc(serverName())}</span></h1><span class="sp"></span>
-        <button class="circle" data-act="refresh" aria-label="Refresh">${I("refresh")}</button><button class="circle" data-act="more" aria-label="More">${I("more")}</button></div>
+        <button class="circle" data-act="search" aria-label="Search (press /)">${I("search")}</button><button class="circle" data-act="refresh" aria-label="Refresh">${I("refresh")}</button><button class="circle" data-act="more" aria-label="More">${I("more")}</button></div>
       <div class="statusline" data-act="go:status"><span style="color:${S.error || S.reconnecting ? "var(--sub)" : levelColor(lvl)};display:flex">${I(icon)}</span>${esc(head)}${cs ? `<span class="sep"></span>${cs.running}/${cs.total} running` : ""}</div>
       <div style="height:14px"></div>${topBanner()}`;
     const order = prefs.homeOrder.filter(id => prefs[HOME_SECTIONS.find(s => s[0] === id)?.[3]]);
@@ -158,12 +158,13 @@ export async function home(ctx) {
 export async function menu(ctx) {
   const draw = () => {
     const m = S.overview?.status?.metrics || {}, cs = S.overview?.containers, f = S.fan;
-    ctx.show(`
+    ctx.show(`<button class="searchbox glass" data-act="search" style="width:calc(100% - 2*var(--gutter));text-align:left">${I("search")}<span class="muted" style="font-size:17px">Search Nova</span><span class="muted" style="margin-left:auto;font-size:13px">/</span></button>
       ${group(row("Containers", { sub: cs ? `${cs.running} of ${cs.total} running` : null, blue: true, icon: "box", click: "go:containers" })
         + (has("lighting") ? row("Lighting", { sub: f ? (f.on !== false ? `${cap(f.effect)} · ${f.brightness}%` : "Off") : null, blue: true, icon: "bulb", tint: "#ffb020", click: "go:lighting" }) : ""))}
       ${group(row("Storage & hardware", { sub: "Drives, pools, set up drives" + (storageList(m).length ? " · " + storageList(m).map(x => `${x.name} ${Math.round(x.pct)}%`).slice(0, 2).join(" · ") : ""), blue: true, icon: "disk", tint: "#3ecf6e", click: "go:hardware" })
         + row("Backups", { sub: "What's backed up, restore files", blue: true, icon: "backup", click: "go:backups" })
         + row("Diagnostics", { sub: "Speed, stress and network tests", blue: true, icon: "speed", tint: "#64d2ff", click: "go:diag" })
+        + row("Updates", { sub: "Packages, containers and Nova", blue: true, icon: "update", tint: "#3ecf6e", click: "go:updates" })
         + row("Quick panel", { sub: "Your shortcuts — tap ✎ to customise", blue: true, icon: "widgets", click: "go:quick" })
         + row("Server status", { sub: "Live graphs, storage, backups", blue: true, icon: "status", tint: "#3ecf6e", click: "go:status" })
         + row("Dashboard mode", { sub: "Always-on screen for a tablet or spare screen", blue: true, icon: "dash", tint: "#64d2ff", click: "go:dashboard" })
@@ -528,7 +529,8 @@ export async function notify(ctx) {
     const s = S.cache["/api/v1/notify"];
     ctx.show(`<div style="display:flex;justify-content:space-evenly;align-items:center;padding:22px 0;color:var(--text)">${I("computer").replace('class="i ', 'style="width:64px;height:64px" class="i ')}<b style="color:var(--blue);font-size:26px">•••</b>${I("dns").replace('class="i ', 'style="width:64px;height:64px" class="i ')}</div>
       ${note("Alerts land in the Inbox here. Your phone gets them as notifications (Nova app → Notifications). These settings are the server's, shared by every device.")}
-      ${s ? `${sec("Discord")}${group(switchRow("Discord pings", s.discord_paused ? "Paused — alerts still show in the Inbox" : "On", !s.discord_paused, "set:discord_paused")
+      ${s ? `${sec("Discord")}${group((isAdmin() ? row(S.cache["/api/v1/notify/discord"]?.configured ? "Discord channel" : "Set up Discord", { sub: S.cache["/api/v1/notify/discord"]?.configured ? `Sending to ${S.cache["/api/v1/notify/discord"].hint} · click to change or test` : "Get alerts in a Discord channel too — paste its webhook link", blue: !!S.cache["/api/v1/notify/discord"]?.configured, icon: "bell", tint: "#5865f2", click: "discord" }) : "")
+          + switchRow("Discord pings", s.discord_paused ? "Paused — alerts still show in the Inbox" : "On", !s.discord_paused, "set:discord_paused")
           + row("Send to Discord", { sub: (LV.find(l => l[0] === s.push_min_level) || [0, "—"])[1], blue: true, click: "level" }))}
         ${sec("What counts")}${group(switchRow("Logins", "Someone signs in to the server", s.push_logins, "set:push_logins", { blue: false }) + switchRow("USB devices", "Plugged in or unplugged", s.push_usb, "set:push_usb", { blue: false }))}` : note("Loading…")}
       ${links([["Inbox", "go:inbox"]])}`, { title: "Notifications" });
@@ -538,11 +540,25 @@ export async function notify(ctx) {
     const before = S.cache["/api/v1/notify"]; S.cache["/api/v1/notify"] = { ...before, [k]: v }; draw();
     try { S.cache["/api/v1/notify"] = await post("/api/v1/notify", { [k]: v }); } catch (e) { S.cache["/api/v1/notify"] = before; toast(e.message); } draw();
   };
-  ctx.handlers({
+  const discordSetup = async () => {
+    const on = S.cache["/api/v1/notify/discord"]?.configured; let url = "";
+    const p = dialog("Discord alerts", "In Discord: open the channel's settings → Integrations → Webhooks → New Webhook → Copy Webhook URL, and paste it here. Nova never shows the link again.",
+      [{ label: "Cancel", value: null }, ...(on ? [{ label: "Send a test", value: "test" }, { label: "Turn off", color: "var(--red)", value: "off" }] : []), { label: "Save", color: "var(--blue)", value: "save" }],
+      `<div class="pad"><input class="field" id="dw" placeholder="https://discord.com/api/webhooks/…" autocomplete="off"></div>`);
+    $("#dw").oninput = e => url = e.target.value.trim();
+    const v = await p;
+    try {
+      if (v === "test") { await post("/api/v1/notify/discord/test"); toast("Sent — check the channel"); }
+      if (v === "off") { await post("/api/v1/notify/discord", { webhook: "" }); toast("Discord alerts off"); }
+      if (v === "save") { if (!url.startsWith("https://")) return toast("Paste the webhook link"); await post("/api/v1/notify/discord", { webhook: url }); await post("/api/v1/notify/discord/test"); toast("Saved — a test message is on its way"); }
+    } catch (e) { toast(e.message); }
+    await get("/api/v1/notify/discord").catch(() => {}); if (ctx.alive()) draw();
+  };
+  ctx.handlers({ discord: () => discordSetup(), 
     set: k => { const s = S.cache["/api/v1/notify"]; save(k, k === "discord_paused" ? !s.discord_paused : !s[k]); },
     level: async () => { const v = await choose("Send to Discord", LV.map(([k, l]) => [k, l]), S.cache["/api/v1/notify"]?.push_min_level); if (v) save("push_min_level", v); },
   });
-  draw(); try { await get("/api/v1/notify"); if (ctx.alive()) draw(); } catch (e) { toast(e.message); }
+  draw(); try { await Promise.all([get("/api/v1/notify"), isAdmin() ? get("/api/v1/notify/discord").catch(() => {}) : null]); if (ctx.alive()) draw(); } catch (e) { toast(e.message); }
 }
 
 // ══════════════════════════════════ QUICK PANEL ═════════════════════════════════
@@ -982,6 +998,7 @@ export async function appearance(ctx) {
       ${group(switchRow("Reduce motion", "Simple fades instead of slides and bounces", prefs.reduceMotion, "motion", { blue: false }))}
       ${sec("Home")}${group(row("Home layout", { sub: prefs.homeOrder.filter(id => prefs[HOME_SECTIONS.find(s => s[0] === id)[3]]).map(id => HOME_SECTIONS.find(s => s[0] === id)[1]).join(" · ") || "Just the header", blue: true, icon: "dash", click: "go:edit-home" })
         + row("Choose shortcuts", { sub: homeChips().map(s => s.label).join(", ") || "None", blue: true, icon: "tune", click: "go:edit-shortcuts" })
+        + row("Start page", { sub: `Search, stats, apps and bookmarks · Nova opens on ${({ home: "Home", start: "the start page", status: "Status", apps: "Apps", inbox: "the Inbox", dashboard: "the dashboard" })[prefs.startRoute || "home"]}`, blue: true, icon: "home", click: "go:start-edit" })
         + row("Navigation pill", { sub: navTabs().map(s => s.label).join(", ") + " · along the bottom, or down the left on wide screens", blue: true, icon: "viewday", click: "go:edit-tabs" }))}
       ${note("These choices are saved in this browser. Each server also has its own name and accent colour (Settings → Server).")}`, { title: "Appearance" });
   };
@@ -1029,10 +1046,12 @@ export const editTabs = ctx => {
 };
 export async function about(ctx) {
   const s = S.overview?.server || {};
-  ctx.show(`<div class="center" style="padding:20px 0"><div style="display:inline-block">${(await import("./ui.js")).logo(72)}</div><div style="font-size:34px;font-weight:700">Nova</div><div class="muted">Nova web · server ${esc(S.cache["/api/v1/server/update"]?.installed || "")}</div></div>
+  ctx.show(`<div class="center" style="padding:20px 0"><div style="display:inline-block">${(await import("./ui.js")).logo(72)}</div><div style="font-size:34px;font-weight:700">Nova</div><div class="muted">Nova web</div></div>
+    ${group(row("Version", { sub: `Nova ${S.me?.api || S.cache["/api/v1/server/update"]?.installed || ""} · check for updates`, blue: true, icon: "restart", click: "go:updates" }))}
     ${sec("Server")}${group(row("Name", { sub: s.name }) + row("Board", { sub: s.board }) + row("CPU", { sub: s.cpu }) + row("Memory", { sub: s.ram_gb ? s.ram_gb + " GB" : "" }) + row("Kernel", { sub: s.kernel }) + row("Up for", { sub: s.uptime_s ? uptime(s.uptime_s) : "" }))}
     ${sec("Security")}${group(row("Every request is signed", { sub: "By this browser's own key — it can't be copied out — time-stamped and single-use" }) + row("Risky actions need your phone", { sub: "Shells, stopping things, installs, unmounting, power — approved with your fingerprint" })
-      + row("At home: encrypted", { sub: "HTTPS to the server's own certificate" }) + row("Outside home: Cloudflare Access", { sub: "Strangers are stopped before they reach the server" }))}`, { title: "About" });
+      + row("At home: encrypted", { sub: "HTTPS to the server's own certificate" }) + row("Outside home: Cloudflare Access", { sub: "Strangers are stopped before they reach the server" }))}
+    ${sec("Project")}${group(`<a class="row click" href="https://github.com/dash1101/Nova" target="_blank" rel="noopener" style="color:inherit;text-decoration:none"><div class="t"><b>Nova by dash1101</b><small>Open source · AGPL-3.0 · github.com/dash1101/Nova</small></div></a>`)}`, { title: "About" });
 }
 export async function guide(ctx) {
   const step = (n, t, b, cmd) => group(`<div style="padding:20px"><div style="display:flex;align-items:center;gap:12px"><span style="width:30px;height:30px;border-radius:50%;background:var(--blue);color:#fff;display:grid;place-items:center;font-weight:700">${n}</span><b style="font-size:18px;font-weight:600">${t}</b></div><p class="muted" style="margin:8px 0 0;font-size:15px">${b}</p>${cmd ? `<div class="code-block">${esc(cmd)}</div>` : ""}</div>`);

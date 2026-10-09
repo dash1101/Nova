@@ -23,7 +23,7 @@ import java.io.File
 import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
 
-const val APP_VERSION = "0.5.4-alpha"
+val APP_VERSION: String = BuildConfig.VERSION_NAME
 
 class NovaApp : Application() {
     override fun onCreate() {

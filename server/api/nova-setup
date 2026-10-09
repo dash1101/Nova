@@ -138,7 +138,21 @@ def main():
         os.chmod(tmp, 0o640); os.replace(tmp, settings_f)
         print(f"  {G}✓{X} Saved — change it any time in the app (Settings → Server, or Lighting → Schedules)")
 
-    step(8, "Tools for drives, backups and tests")
+    step(8, "Alerts on Discord (optional)")
+    print(f"  {D}Alerts always show in the app. Discord is extra: in a channel's settings → Integrations → Webhooks → Copy URL.{X}")
+    ap = "/etc/nova-alerts/config.json"
+    try: ac = json.load(open(ap))
+    except Exception: ac = {}
+    have = bool(ac.get("discord_webhook"))
+    w = ask("Discord webhook link (Enter to " + ("keep the current one" if have else "skip") + ")", "", secret=True)
+    if w:
+        if re.fullmatch(r"https://(discord|discordapp)\.com/api/webhooks/\d{5,25}/[A-Za-z0-9_-]{20,100}", w):
+            ac["discord_webhook"] = w; os.makedirs("/etc/nova-alerts", exist_ok=True)
+            tmp = ap + ".tmp"; json.dump(ac, open(tmp, "w"), indent=2); os.chmod(tmp, 0o600); os.replace(tmp, ap)
+            print(f"  {G}✓{X} Saved — change it any time in the app (Notifications → Discord)")
+        else: print(f"  {Y}That isn't a Discord webhook link — skipped.{X}")
+
+    step(9, "Tools for drives, backups and tests")
     try:
         from storage import missing_packages, TOOLS
         miss = missing_packages(list(TOOLS))
@@ -152,12 +166,12 @@ def main():
             r = subprocess.run(["apt-get", "install", "-y", "--no-install-recommends", *miss], env=env)
             print(f"  {G}✓{X} Installed" if r.returncode == 0 else f"  {Y}Some didn't install — run: sudo apt-get install {' '.join(miss)}{X}")
 
-    step(9, "Lighting module")
+    step(10, "Lighting module")
     lit = any("048D:00005702" in open(u).read().upper() for u in glob.glob("/sys/class/hidraw/hidraw*/device/uevent"))
     if lit: print(f"  Found a Gigabyte RGB Fusion 2 controller.  Install it with:  {B}sudo nova-setup-lighting{X}")
     else: print(f"  {D}No supported lighting controller found — skipped.{X}")
 
-    step(10, "Firewall")
+    step(11, "Firewall")
     rc, st = sh("ufw", "status")
     if rc == 0 and "Status: active" in st:
         if yes(f"Allow {subnet} to reach Nova (port 8495, encrypted)?", True):
@@ -166,7 +180,7 @@ def main():
             print(f"  {G}✓{X} Firewall rules added")
     else: print(f"  {D}ufw isn't active — make sure your firewall lets {subnet} reach tcp 8495 (and udp 8496 for discovery).{X}")
 
-    step(11, "Start Nova")
+    step(12, "Start Nova")
     sh("systemctl", "daemon-reload")
     sh("systemctl", "enable", "--now", "nova-helper.socket")
     sh("systemctl", "enable", "nova-api.service"); sh("systemctl", "restart", "nova-api.service")

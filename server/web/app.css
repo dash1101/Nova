@@ -370,3 +370,23 @@ html.material .nav.vertical button { width: 72px; }
   background: color-mix(in srgb, var(--blue) 18%, transparent) center / 76% no-repeat; }
 .appic.img { background-color: var(--card); }
 .appname { font-size: 13px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* search & start page */
+.searchbox { display: flex; align-items: center; gap: 12px; margin: 6px var(--gutter); padding: 14px 18px; border-radius: 28px; position: relative; color: var(--sub); }
+.searchbox .sq { flex: 1; min-width: 0; border: 0; outline: none; background: none; font-size: 17px; color: var(--text); }
+.searchbox.big { padding: 18px 22px; font-size: 18px; }
+.starthead { padding: 40px var(--gutter) 10px; text-align: center; }
+.starthead .clock { font-size: clamp(56px, 12vw, 96px); font-weight: 300; letter-spacing: -2px; line-height: 1; font-variant-numeric: tabular-nums; }
+.starthead .greet { color: var(--sub); font-size: 18px; margin-top: 8px; }
+.startsearch { max-width: 720px; margin: 14px auto 6px; }
+.engines { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; padding: 6px var(--gutter); }
+.eng { padding: 7px 14px; border-radius: 16px; background: color-mix(in srgb, var(--text) 7%, transparent); font-size: 14px; }
+.eng.on { background: var(--blue); color: #fff; }
+.sugg { position: absolute; left: 0; right: 0; top: calc(100% + 6px); z-index: 20; border-radius: 22px; background: var(--card); box-shadow: var(--shadow); padding: 6px; }
+.sugg button { display: flex; gap: 12px; align-items: center; width: 100%; padding: 10px 14px; border-radius: 14px; text-align: left; color: var(--text); }
+.sugg button:hover, .sugg button.on { background: color-mix(in srgb, var(--text) 8%, transparent); }
+.sugg small { display: block; color: var(--sub); font-size: 12px; }
+.stiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; padding: 4px var(--gutter); }
+.stile { border-radius: 22px; padding: 14px 16px; display: grid; gap: 2px; }
+.stile small { color: var(--sub); font-size: 13px; } .stile b { font-size: 24px; font-variant-numeric: tabular-nums; } .stile span { color: var(--sub); font-size: 12px; }
+.stile .bar { margin-top: 6px; }

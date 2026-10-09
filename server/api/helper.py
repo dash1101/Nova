@@ -314,6 +314,29 @@ if verb == "set-notify" and len(args) == 2:
     tmp = p + ".tmp"; json.dump(c, open(tmp, "w"), indent=2); os.chmod(tmp, 0o600); os.replace(tmp, p)
     out({"ok": True, k: val})
 
+DISCORD_RE = r"https://(discord|discordapp)\.com/api/webhooks/\d{5,25}/[A-Za-z0-9_-]{20,100}"
+if verb == "discord-status" and not args:
+    w = load_json("/etc/nova-alerts/config.json", {}).get("discord_webhook", "")
+    m = re.match(r"https://[^/]+/api/webhooks/(\d+)/", w or "")
+    out({"configured": bool(re.fullmatch(DISCORD_RE, w or "")), "hint": f"webhook …{m.group(1)[-4:]}" if m else ""})       # never the secret part
+
+if verb == "discord-set" and len(args) == 1:
+    w = args[0].strip()
+    if w and not re.fullmatch(DISCORD_RE, w): fail("that isn't a Discord webhook link (Channel → Edit → Integrations → Webhooks → Copy URL)")
+    p = "/etc/nova-alerts/config.json"; c = load_json(p, {}); c["discord_webhook"] = w
+    tmp = p + ".tmp"; json.dump(c, open(tmp, "w"), indent=2); os.chmod(tmp, 0o600); os.replace(tmp, p)
+    changelog("Discord alerts " + ("set up" if w else "turned off") + " (from the Nova app)")
+    out({"ok": True, "configured": bool(w)})
+
+if verb == "discord-test" and not args:
+    import urllib.request
+    w = load_json("/etc/nova-alerts/config.json", {}).get("discord_webhook", "")
+    if not re.fullmatch(DISCORD_RE, w or ""): fail("Discord isn't set up")
+    req = urllib.request.Request(w, data=json.dumps({"content": f"✅ Nova on **{socket.gethostname()}** can send alerts to this channel."}).encode(),
+                                 headers={"Content-Type": "application/json", "User-Agent": "nova"})
+    try: urllib.request.urlopen(req, timeout=15).read(); out({"ok": True})
+    except Exception as e: fail(f"Discord said no: {e}")
+
 if verb == "store-list" and not args:
     res = []
     for t in catalog().values():

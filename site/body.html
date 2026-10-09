@@ -32,12 +32,14 @@ code, .mono { font-family: var(--mono); font-size: .92em; }
 .eyebrow { font: 600 .78rem/1 var(--body); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
 
 /* top bar */
-.top { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-block: 22px; }
+.top { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-block: 22px; flex-wrap: wrap; }
 .brand { display: flex; align-items: center; gap: 12px; font: 800 1.35rem/1 var(--display); color: var(--ink); text-decoration: none; }
 .brand svg { width: 40px; height: 40px; border-radius: 11px; }
 .top nav { display: flex; gap: 22px; flex-wrap: wrap; }
 .top nav a { color: var(--muted); text-decoration: none; font-weight: 500; }
 .top nav a:hover { color: var(--ink); }
+.theme { display: inline-flex; align-items: center; gap: 8px; font: 600 .9rem/1 var(--body); color: var(--ink); background: var(--surface); border: 0; box-shadow: inset 0 0 0 1.5px var(--line); border-radius: 999px; padding: 9px 14px; cursor: pointer; }
+.theme:hover { box-shadow: inset 0 0 0 1.5px var(--accent); }
 
 /* hero */
 .hero { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, .85fr); gap: 56px; align-items: center; padding-block: 40px 72px; }
@@ -142,6 +144,7 @@ footer { padding-block: 40px 10px; border-top: 1px solid var(--line); display: f
       Nova
     </a>
     <nav aria-label="Sections"><a href="#features">Features</a><a href="#security">Security</a><a href="#install">Install</a><a href="#faq">FAQ</a></nav>
+    <button class="theme" id="theme" type="button" aria-label="Switch between light and dark"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M12 3a9 9 0 1 0 9 9 7 7 0 0 1-9-9z"/></svg><span>Dark</span></button>
   </header>
 
   <main id="top">
@@ -157,7 +160,7 @@ footer { padding-block: 40px 10px; border-top: 1px solid var(--line); display: f
           <a class="btn primary" href="#install">Install Nova</a>
           <a class="btn ghost" href="https://github.com/dash1101/Nova">View on GitHub</a>
         </div>
-        <p class="note" style="margin-top:16px">Free and MIT-licensed. Your data stays on your server; there's no Nova account and no cloud service in the middle.</p>
+        <p class="note" style="margin-top:16px">Free and open source (AGPL-3.0). Your data stays on your server; there's no Nova account and no cloud service in the middle.</p>
       </div>
       <div class="phone" aria-label="The Nova app's home screen">
         <div class="screen">
@@ -243,14 +246,24 @@ sudo nova backup now      <span># back up right away</span></pre>
       <details><summary>What happens if I lose my phone?</summary><p>Run <code>sudo nova remove NAME</code> on the server, or remove it from another phone. Its keys can never be used again.</p></details>
       <details><summary>Does it work without Docker?</summary><p>Yes. Containers and the app store need Docker; status, drives, backups, alerts, diagnostics and the terminal don't.</p></details>
       <details><summary>Can Nova erase the wrong drive?</summary><p>The server never offers the system drive, swap, or anything mounted or already in a pool. You type ERASE, confirm with your fingerprint, and the server re-checks the exact drives before it starts.</p></details>
-      <details><summary>Is it free?</summary><p>Yes, MIT-licensed. The source, the server package and the Android app are all in the repository.</p></details>
+      <details><summary>Is it free?</summary><p>Yes — it's open source under the AGPL-3.0. The source, the server package and the Android app are all in the repository.</p></details>
     </section>
   </main>
 
-  <footer><span>Nova · MIT licence · made for homelabs</span><a href="https://github.com/dash1101/Nova">Source and releases on GitHub</a></footer>
+  <footer><span>Nova · AGPL-3.0 · made for homelabs</span><a href="https://github.com/dash1101/Nova">Source and releases on GitHub</a></footer>
 </div>
 
 <script>
+(() => {
+  const root = document.documentElement, btn = document.getElementById("theme"), label = btn.querySelector("span");
+  const sys = () => matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  const cur = () => root.dataset.theme || sys();
+  const paint = () => { label.textContent = cur() === "dark" ? "Light" : "Dark"; };
+  try { const t = localStorage.getItem("nova-site-theme"); if (t === "dark" || t === "light") root.dataset.theme = t; } catch {}
+  btn.addEventListener("click", () => { const t = cur() === "dark" ? "light" : "dark"; root.dataset.theme = t; try { localStorage.setItem("nova-site-theme", t); } catch {} paint(); });
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", paint); paint();
+})();
+
 document.querySelectorAll(".copy").forEach(b => b.addEventListener("click", () => {
   const el = document.getElementById(b.dataset.copy), text = el.textContent;
   const done = () => { b.textContent = "Copied"; setTimeout(() => b.textContent = "Copy", 1400); };

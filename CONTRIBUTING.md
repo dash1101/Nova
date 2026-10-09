@@ -34,3 +34,8 @@ cd android && ./gradlew assembleDebug  # release builds need your own signing ke
 
 Test a server change against the real flow (pair a phone or the web app), not only the helper.
 Please describe how you tested in your pull request.
+
+## Licence
+
+Nova is AGPL-3.0 with a few extra terms (keep the credit, use your own name and icon for a fork) —
+see `NOTICE.md`. By sending a pull request you agree your contribution is licensed the same way.

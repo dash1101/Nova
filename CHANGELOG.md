@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.5.5-alpha (app and server)
+- **New licence: AGPL-3.0** (was MIT), with a few extra terms in `NOTICE.md`: keep the credit, and a fork you share needs its own name, icon and app ID. Still open source; pull requests welcome. Versions before 0.5.5 stay MIT.
+- **Start page** (app and web): a clock, one search box for Nova and the web (suggestions, ten search engines, shortcuts like `yt cats`, typing an address opens it), the server at a glance, your apps and your own bookmarks. Customize the sections and default engine; put it in the navigation pill; on the web it works as a browser new-tab page.
+- **Open Nova on…** your choice of Home, Start page, Status, Apps, Inbox or Containers (Settings → Appearance), app and web.
+- **Search everything:** screens and settings (by the words you'd use, like "dark mode" or "raid"), containers, apps, drives, pools and backups. Search icon on Home and in Menu; on the web press `/` or Ctrl+K.
+- **Update center:** check for and install system package and container updates from Nova (fingerprint; warns before a Docker update restarts your containers). A daily check notifies you when updates are ready.
+- **Discord alerts** can be set up, tested or turned off from the app and web (and in `nova setup`). Nova only ever shows the end of the webhook link, and only to admins.
+- About shows the app and server version; tap it to check for updates. About also links the project.
+- The website has a light/dark switch.
+- Security test: 168 checks, all passing (new: updates, Discord, apps, folder list, suggestions).
+
 ## 0.5.4-alpha (app and server)
 - **Apps:** the web apps on your server (detected from Docker: Immich, Home Assistant, Jellyfin, … with icons from dashboard-icons, cached on the server) in a grid. On Android they open inside Nova in a rounded frame with the app's name, the server's status, back, reload and close; open apps stay alive in the navigation pill until you close them. Rename, hide, add your own links, set a remote link. Nova web opens them in a new tab.
 - **Web Inbox with a mouse:** no dragging or text selection; tick boxes (Shift-click for a range), an Archive bar for the selection, a visible Archive button on each row, keys x / e / j / k.

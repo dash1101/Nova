@@ -33,6 +33,10 @@ object AppPrefs {
     var homeOrder by mutableStateOf(HOME_SECTIONS); private set            // Home sections, top to bottom
     var navTabs by mutableStateOf(DEFAULT_TABS); private set               // bottom bar, left to right
     var fanReverse by mutableStateOf(false); private set                   // the picture's wave runs the other way round
+    var startRoute by mutableStateOf("home"); private set                  // the screen Nova opens on
+    var startEngine by mutableStateOf("ddg"); private set                  // start page: web search engine
+    var startHidden by mutableStateOf(listOf<String>()); private set       // start page: hidden sections
+    var startLinks by mutableStateOf("[]"); private set                    // start page: bookmarks, JSON [{name,url}]
 
     fun init(ctx: Context) {
         if (::sp.isInitialized) return
@@ -42,6 +46,8 @@ object AppPrefs {
         homeHero = sp.getBoolean("home_hero", true); homeShortcuts = sp.getBoolean("home_shortcuts", true); homeStats = sp.getBoolean("home_stats", true)
         homeOrder = sp.getString("home_order", null)?.split(",")?.filter { it in HOME_SECTIONS }?.let { it + (HOME_SECTIONS - it.toSet()) } ?: HOME_SECTIONS
         fanReverse = sp.getBoolean("fan_reverse", false)
+        startRoute = sp.getString("start_route", "home")!!; startEngine = sp.getString("start_engine", "ddg")!!
+        startHidden = sp.getString("start_hidden", "")!!.split(",").filter { it.isNotBlank() }; startLinks = sp.getString("start_links", "[]")!!
         navTabs = sp.getString("nav_tabs", null)?.split(",")?.filter { it.isNotBlank() } ?: DEFAULT_TABS
         homeChips = sp.getString("home_chips", null)?.let { s -> s.split(",").filter { it.isNotBlank() } } ?: DEFAULT_SHORTCUTS
     }
@@ -52,6 +58,8 @@ object AppPrefs {
             "home_shortcuts" -> homeShortcuts = v as Boolean; "home_stats" -> homeStats = v as Boolean
             "home_order" -> homeOrder = (v as String).split(",")
             "fan_reverse" -> fanReverse = v as Boolean
+            "start_route" -> startRoute = v as String; "start_engine" -> startEngine = v as String
+            "start_hidden" -> startHidden = (v as String).split(",").filter { it.isNotBlank() }; "start_links" -> startLinks = v as String
             "nav_tabs" -> navTabs = (v as String).split(",").filter { it.isNotBlank() }
             "home_chips" -> homeChips = (v as String).split(",").filter { it.isNotBlank() }
         }
@@ -138,6 +146,15 @@ object AppLock {
             RowDivider()
             Row1("Navigation pill", navTabs(app).joinToString(", ") { it.label } + " · bottom, or left in landscape", true,
                 Icons.Rounded.ViewDay, onClick = { app.go(Route.EditTabs) })
+            RowDivider()
+            Row1("Start page", "Search, server stats, apps and bookmarks", true, Icons.Rounded.TravelExplore, onClick = { app.go(Route.Start) })
+        }
+        SectionLabel("Open Nova on")
+        Group {
+            START_ROUTES.forEachIndexed { i, (k, l) ->
+                if (i > 0) RowDivider()
+                Row1(l.first, null, onClick = { AppPrefs.set("start_route", k) }) { OneRadio(AppPrefs.startRoute == k) }
+            }
         }
         Text("Each server also has its own name and accent colour (Settings → Server).", color = N.sub, fontSize = 13.sp,
             modifier = Modifier.padding(horizontal = 30.dp, vertical = 4.dp))

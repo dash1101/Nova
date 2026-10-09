@@ -1,4 +1,4 @@
-# Nova  ·  0.5.4-alpha
+# Nova  ·  0.5.5-alpha
 
 **A secure remote control for your home server, from your Android phone.**
 Status and live graphs, containers (logs, shell, start/stop), a one-tap app store, drives,
@@ -11,6 +11,19 @@ network, and optionally from anywhere through Cloudflare Access, without a VPN.
         └── anywhere: Cloudflare Access ─► cloudflared ──────┘        │
                                                              fixed-verb root helper
 ```
+
+<p align="center">
+  <img src="docs/screenshots/phone-home.png" width="30%" alt="Nova's home screen on a phone: server health, live CPU, memory and disk">
+  <img src="docs/screenshots/phone-status.png" width="30%" alt="Live status graphs for CPU, memory, temperature and network">
+  <img src="docs/screenshots/phone-start.png" width="30%" alt="The start page: clock, search for Nova and the web, server at a glance">
+</p>
+<p align="center">
+  <img src="docs/screenshots/web-home.png" width="49%" alt="Nova web on a desktop browser">
+  <img src="docs/screenshots/web-start.png" width="49%" alt="The start page in a browser, usable as a new-tab page">
+</p>
+<p align="center">
+  <img src="docs/screenshots/web-apps.png" width="70%" alt="Apps: the web apps running on your server, with their icons">
+</p>
 
 ## What you get
 
@@ -112,3 +125,8 @@ app uses). See docs/REMOTE.md.
   are welcome).
 - Monitoring and alerts are built in (docs/MONITOR.md); you can still plug in your own monitor.
 - Pools use mergerfs (combined) or Linux software RAID (mdadm); ZFS isn't offered from the app yet.
+
+## Licence
+
+Nova is open source under the [GNU AGPL-3.0](LICENSE), with a few extra terms in [NOTICE.md](NOTICE.md):
+keep the credit, and give a fork you distribute its own name, icon and app ID. Pull requests are welcome.

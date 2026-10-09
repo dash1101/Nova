@@ -4,4 +4,4 @@ After=network-online.target
 
 [Service]
 Type=oneshot
-ExecStart=/usr/sbin/nova-update --check
+ExecStart=/usr/sbin/nova-update --check --all

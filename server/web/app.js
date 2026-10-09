@@ -4,6 +4,7 @@ import { S, $, $$, esc, sleep, kv, pemOf, get, post, prefs, has, refresh, onAppr
 import { I, logo, toast, waitApproval, closeSheet } from "./ui.js";
 import * as V from "./views.js";
 import * as ST from "./storage.js";
+import * as SR from "./start.js";
 
 onApproval((id, code) => waitApproval(id, get, code));
 
@@ -29,7 +30,7 @@ const ROUTES = {
   devices: V.devices, settings: V.settings, server: V.serverSettings, appearance: V.appearance, "edit-home": V.editHome,
   "edit-shortcuts": V.editShortcuts, "edit-tabs": V.editTabs, about: V.about, guide: V.guide, terminal: V.terminal,
   dashboard: V.dashboard, "edit-dash": V.editDash, archive: V.archive,
-  apps: ST.apps, setup: ST.setup, pool: ST.pool, task: ST.task, backups: ST.backups, backup: ST.backup, "backup-edit": ST.backupEdit, restore: ST.restore, diag: ST.diag,
+  apps: ST.apps, updates: ST.updates, search: SR.search, start: SR.start, "start-edit": SR.startEdit, setup: ST.setup, pool: ST.pool, task: ST.task, backups: ST.backups, backup: ST.backup, "backup-edit": ST.backupEdit, restore: ST.restore, diag: ST.diag,
 };
 // Wide screens and phones in landscape: the bottom bar's pill stands on its end down the left edge.
 const SIDE = matchMedia("(min-width: 900px), (orientation: landscape) and (max-height: 540px)");
@@ -167,6 +168,7 @@ document.addEventListener("click", e => {
   const [name, ...a] = el.dataset.act.split(":"), h = current?.handlers || {};
   if (h[name]) return h[name](...a, el);
   if (name === "help") return ST.showHelp(a[0]);
+  if (name === "search") return go("search");
   if (name === "go") return go(a.join(":"));
   if (name === "tab") return tab(a.join(":"));
   if (name === "back") return back();
@@ -239,9 +241,18 @@ async function start() {
     if (e.code === 403) { $("#app").innerHTML = `<div class="pair"><h1>Nova</h1><p class="lead">${esc(e.message)}</p></div>`; return; }
   }
   await refresh().catch(() => {});
-  ensureShell(); render(0);
+  ensureShell();
+  // "Open on start" (Appearance → Start page): where a fresh visit lands
+  if (!location.hash || location.hash === "#" || location.hash === "#/") { const r = prefs.startRoute; if (r && r !== "home") history.replaceState({ k: newKey(), d: 0 }, "", "#/" + r); }
+  render(0);
   // keep the overview fresh in the background (screens refresh what they show themselves)
   setInterval(() => { if (!document.hidden) refresh().catch(e => { if (e.code === 401) unauthorized(); }); }, 30000);
   addEventListener("resize", () => { const [r] = parse(); drawNav(r); });
 }
 start();
+
+// Press / (or Ctrl/⌘+K) anywhere to search Nova
+addEventListener("keydown", e => {
+  if (/INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName) || $("#sheet:not([hidden])")) return;
+  if (e.key === "/" || ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k")) { e.preventDefault(); if (parse()[0] !== "search") go("search"); }
+});

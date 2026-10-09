@@ -475,6 +475,8 @@ export async function diag(ctx) {
 // Nova web is HTTPS and most home-server apps are plain http on the LAN, so browsers won't show them
 // inside this page: each app opens in its own tab (the Android app opens them inside Nova).
 const iconCache = {};
+export async function appIconUrl(id) { return appIcon(id); }
+export function appHrefFor(a) { return appHref(a); }
 async function appIcon(id) {
   if (id in iconCache) return iconCache[id];
   try { const r = await signedFetch("GET", `/api/v1/apps/${enc(id)}/icon`); iconCache[id] = r.ok ? URL.createObjectURL(await r.blob()) : null; }
@@ -544,4 +546,37 @@ export function pickFolder(start = "/") {
     });
     load();
   });
+}
+
+
+// ── update center ──────────────────────────────────────────────────────────────
+export async function updates(ctx) {
+  let pk = null, cs = null, lastT = null;
+  const draw = () => {
+    const u = S.cache["/api/v1/updates"] || {}, apt = u.apt || [], cons = u.containers || [], outdated = cons.filter(c => c.status === "update");
+    if (u.t !== lastT) { lastT = u.t; pk = new Set(apt.map(p => p.name)); cs = new Set(outdated.filter(c => c.updatable).map(c => c.name)); }
+    const run = (S.cache["/api/v1/tasks"]?.tasks || []).find(t => t.state === "running" && ["updates-check", "apt-upgrade", "containers-update"].includes(t.kind));
+    ctx.show(group(run ? taskRow(run) : row("Check for updates", { sub: u.t ? `Last checked ${ago(u.t)}` : "Not checked yet", icon: "refresh", click: isAdmin() ? "check" : "" }))
+      + (u.nova ? sec("Nova") + group(row(u.nova.update ? `Nova ${u.nova.available} is ready` : "Nova is up to date", { sub: `Installed: ${u.nova.installed || "?"}`, blue: !!u.nova.update, icon: "update", click: "go:settings" })) : "")
+      + (u.t ? sec("System packages") + group((apt.length ? apt.map((p, i) => row(p.name, { sub: `${p.from} → ${p.to}${p.security ? " · security" : ""}${p.restarts === "docker" ? " · restarts Docker (every container)" : p.restarts === "server" ? " · needs a restart" : ""}`,
+            blue: p.security, end: radio(pk.has(p.name)), click: `pk:${i}` })).join("") + row(`Update ${pk.size === apt.length ? "all " + apt.length : pk.size} package${pk.size === 1 ? "" : "s"}`, { icon: "down", tint: "var(--green)", blue: true, click: pk.size && !run && isAdmin() ? "doPk" : "", dis: !pk.size || !!run })
+          : row("All packages are up to date", { icon: "okc", tint: "var(--green)" })))
+        + sec("Containers") + group((cons.length ? cons.map((c, i) => row(c.name, { sub: `${c.image} · ${c.status === "update" ? "newer image available" : c.status === "current" ? "up to date" : "couldn't check"}${c.status === "update" && !c.updatable ? " · not from a Compose file" : ""}`,
+            blue: c.status === "update", icon: "box", tint: c.status === "update" ? "var(--amber)" : "var(--sub)", end: c.status === "update" && c.updatable ? radio(cs.has(c.name)) : "", click: c.status === "update" && c.updatable ? `cs:${i}` : "" })).join("") : row("No containers", { icon: "box" }))
+          + (outdated.length ? row(`Update ${cs.size} container${cs.size === 1 ? "" : "s"}`, { sub: "Pulls the newest image and restarts each one", icon: "down", tint: "var(--green)", blue: true, click: cs.size && !run && isAdmin() ? "doCs" : "", dis: !cs.size || !!run }) : ""))
+        + note("Big apps (Immich, Nextcloud, Home Assistant…) sometimes change how they work between versions — check their release notes before a major update.") : ""),
+      { title: "Updates" });
+  };
+  ctx.handlers({
+    check: () => startTask(ctx, "/api/v1/updates/check", {}),
+    pk: i => { const n = S.cache["/api/v1/updates"].apt[+i].name; pk.has(n) ? pk.delete(n) : pk.add(n); draw(); },
+    cs: i => { const n = S.cache["/api/v1/updates"].containers[+i].name; cs.has(n) ? cs.delete(n) : cs.add(n); draw(); },
+    doPk: async () => {
+      const apt = S.cache["/api/v1/updates"].apt;
+      if (apt.some(p => pk.has(p.name) && p.restarts === "docker") && !(await confirm("This restarts Docker", "Updating Docker restarts it, so every container stops for a moment and starts again.", "Update anyway", "var(--blue)"))) return;
+      startTask(ctx, "/api/v1/updates/packages", { packages: pk.size === apt.length ? "all" : [...pk] });
+    },
+    doCs: () => startTask(ctx, "/api/v1/updates/containers", { containers: [...cs] }),
+  });
+  draw(); ctx.every(5000, async () => { await Promise.all([get("/api/v1/updates"), get("/api/v1/tasks")]); draw(); }, true);
 }

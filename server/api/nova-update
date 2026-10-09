@@ -29,6 +29,27 @@ FLAGS = {a for a in sys.argv[1:] if a.startswith("--")}
 def say(m): print(m, flush=True)
 
 
+def check_everything():
+    """The daily check: packages and containers too (Updates screen), with one notification when new ones appear."""
+    sys.path.insert(0, "/usr/lib/nova-api")
+    try:
+        import updates
+        r = updates.check(log=lambda m: None)
+    except Exception as e:
+        say(f"(couldn't check packages and containers: {e})"); return
+    prev = {}
+    try: prev = json.load(open(STATUS))
+    except Exception: pass
+    seen = prev.get("updates_notified", 0)
+    if r["count"] > seen:
+        a = shutil.which("nova-alert") or "/usr/sbin/nova-alert"
+        parts = [f"{r['apt']} package{'s' if r['apt'] != 1 else ''}" if r["apt"] else "", f"{r['containers']} container{'s' if r['containers'] != 1 else ''}" if r["containers"] else ""]
+        if os.path.exists(a) and any(parts):
+            subprocess.run([a, "info", f"{r['count']} updates ready", " and ".join(p for p in parts if p) + " can be updated — Nova → Menu → Updates."],
+                           env={**os.environ, "NOVA_ALERT_CATEGORY": "update"}, capture_output=True)
+    status(updates_notified=r["count"])
+    say(f"{r['count']} updates for packages and containers")
+
 def status(**kv):
     try: cur = json.load(open(STATUS))
     except Exception: cur = {}
@@ -145,7 +166,9 @@ def main():
                     subprocess.run([a, "info", f"Server update available: Nova {ver}", f"You have {cur}. Install it from Nova → Settings → Software update (or: sudo nova-update)."],
                                    env={**os.environ, "NOVA_ALERT_CATEGORY": "update"}, capture_output=True)
                 status(notified=ver)
-            say(f"installed {cur or 'none'} · release {ver} · {'update available' if avail_newer else 'up to date'}"); return
+            say(f"installed {cur or 'none'} · release {ver} · {'update available' if avail_newer else 'up to date'}")
+            if "--all" in FLAGS: check_everything()
+            return
         if not avail_newer and "--allow-downgrade" not in FLAGS and "--reinstall" not in FLAGS:
             say(f"✓ already up to date ({cur})"); return
         say(f"→ installing nova-server {ver} (signature and checksums verified)")

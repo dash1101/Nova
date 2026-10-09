@@ -36,7 +36,7 @@ try:                       # optional module: fan/case lighting (modules/fan-gig
 except ImportError:
     nova_rgb = None
 
-API_VERSION = "0.5.4-alpha.3"
+API_VERSION = "0.5.5-alpha"
 CONFIG = "/etc/nova-api/config.json"
 DATA = "/var/lib/nova-api"
 DEVICES = f"{DATA}/devices.json"
@@ -363,6 +363,9 @@ def describe_action(a):
         return {"format": f"Erase and set up {n} drive", "combine": f"Combine drives into “{d.get('name', '')}”" + (f" (erases {n})" if n else ""),
                 "raid": f"Create {str(d.get('level', 'RAID')).upper()} “{d.get('name', '')}” (erases {n} drives)", "pool-remove": "Remove a storage pool" + (" and erase its drives" if d.get("erase") else ""),
                 "pool-add": "Add a drive to a pool (erases it)"}.get(p[2], "Change storage")
+    if p == ["updates", "packages"]: return "Update system packages"
+    if p == ["notify", "discord"]: return "Change where Discord alerts go"
+    if p == ["updates", "containers"]: return "Update containers"
     if p[:1] == ["backups"] and p[-1:] == ["restore"]: return f"Restore {a.get('data', {}).get('path', 'files')} from a backup"
     return f"{a['method']} {a['path']}"
 
@@ -428,6 +431,8 @@ def needs_stepup(method, parts):
     if parts[:1] == ["power"]: return True
     if parts == ["ssh", "authorize"]: return True
     if parts[:2] == ["storage", "task"] and len(parts) == 3 and parts[2] in STORAGE_DESTRUCTIVE: return True
+    if parts in (["updates", "packages"], ["updates", "containers"]): return True
+    if parts == ["notify", "discord"]: return True                         # where alerts get sent: fingerprint
     if parts[:1] == ["backups"] and len(parts) == 3 and parts[2] == "restore": return True
     return False
 
@@ -992,6 +997,13 @@ class Handler(BaseHTTPRequestHandler):
             since = float(q.get("since", "0") or 0)
             ev = [e for e in load_json(EVENTS, {}).get("events", []) if e.get("t", 0) > since]
             return 200, {"events": ev[:200]}
+        if method == "GET" and parts == ["notify", "discord"]:
+            if role_of(dev) != "admin" or dev.get("type") == "watch": return 403, {"error": "admins only"}
+            rc, res = helper("discord-status"); return (200 if rc == 0 else 502), res
+        if method == "POST" and parts == ["notify", "discord"]:
+            rc, res = helper("discord-set", str(data.get("webhook", ""))[:300]); return (200 if rc == 0 else 400), res
+        if method == "POST" and parts == ["notify", "discord", "test"]:
+            rc, res = helper("discord-test", timeout=30); return (200 if rc == 0 else 400), res
         if parts == ["notify"]:
             # Saved in our own data dir (nova-alerts reads it, allowlisted keys only) — the API
             # can't and shouldn't write /etc. Base values come from the alerts config.
@@ -1034,6 +1046,33 @@ class Handler(BaseHTTPRequestHandler):
                     nova_rgb.save(st)
                 ex = nova_rgb.extras(st) if hasattr(nova_rgb, "extras") else {"effects": nova_rgb.EFFECT_NAMES}
                 return 200, {**st, **ex, "location": server_location(), "status_override": nova_rgb.status_override(st)}
+
+        # ── start page: web search suggestions (through the server, so the browser only talks to Nova) ──
+        if method == "GET" and parts == ["suggest"]:
+            text = urllib.parse.unquote_plus(q.get("q", ""))[:120].strip()
+            if not text: return 200, {"suggestions": []}
+            try:
+                req = urllib.request.Request("https://duckduckgo.com/ac/?type=list&q=" + urllib.parse.quote(text), headers={"User-Agent": "Mozilla/5.0 (Nova)"})
+                with urllib.request.urlopen(req, timeout=4) as r:
+                    j = json.loads(r.read(64 * 1024))
+                return 200, {"suggestions": [str(x)[:120] for x in (j[1] if isinstance(j, list) and len(j) > 1 else [])][:8]}
+            except Exception:
+                return 200, {"suggestions": []}
+
+        # ── update center ──
+        if method == "GET" and parts == ["updates"]:
+            return 200, load_json(f"{DATA}/updates.json", {})
+        if method == "POST" and parts == ["updates", "check"]:
+            rc, res = helper("task-start", "updates-check", "{}"); return (200 if rc == 0 else 400), res
+        if method == "POST" and parts == ["updates", "packages"]:
+            pk = data.get("packages", "all")
+            if pk != "all" and not (isinstance(pk, list) and 0 < len(pk) <= 500 and all(re.fullmatch(r"[a-z0-9][a-z0-9+.-]{0,100}", str(p)) for p in pk)):
+                raise ValueError("packages: a list of package names, or \"all\"")
+            rc, res = helper("task-start", "apt-upgrade", json.dumps({"packages": pk})); return (200 if rc == 0 else 400), res
+        if method == "POST" and parts == ["updates", "containers"]:
+            cs = data.get("containers", "all")
+            if cs != "all" and not (isinstance(cs, list) and 0 < len(cs) <= 100 and all(re.fullmatch(r"[A-Za-z0-9_.-]{1,64}", str(c)) for c in cs)): raise ValueError("containers: a list of names, or \"all\"")
+            rc, res = helper("task-start", "containers-update", json.dumps({"containers": cs})); return (200 if rc == 0 else 400), res
 
         # ── apps (web apps on this server, for the Apps grid) ──
         if method == "GET" and parts == ["apps"]:

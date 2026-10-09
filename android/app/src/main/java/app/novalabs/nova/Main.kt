@@ -59,7 +59,7 @@ sealed class Route {
     data class BackupWizard(val id: String?, val sources: List<String> = emptyList(), val dest: String? = null) : Route()
     data class BackupBrowse(val id: String, val snap: String = "", val path: String = "") : Route()
     data object Diagnostics : Route()
-    data object Apps : Route(); data class AppFrame(val id: String) : Route()
+    data object Apps : Route(); data class AppFrame(val id: String) : Route(); data object Updates : Route(); data object Search : Route(); data object Start : Route(); data object StartEdit : Route()
 }
 
 /** Shared app state: the API, live data, navigation, messages. */
@@ -247,6 +247,7 @@ class MainActivity : ComponentActivity() {
     val scope = rememberCoroutineScope()
     val pairing = remember { Pairing(activity, profile) }
     val app = remember { AppState(activity, pairing, scope, switchServer) }
+    LaunchedEffect(Unit) { START_ROUTES.firstOrNull { it.first == AppPrefs.startRoute && it.first != "home" }?.second?.second?.let { app.tab(it) } }
     if (!app.paired) {
         // Adding another server: offer a way back to the ones already paired.
         val others = Servers.all(activity).filter { it != profile && Pairing(activity, it).paired }
@@ -435,6 +436,10 @@ private fun Modifier.paneTouch(app: AppState, left: Boolean) = pointerInput(left
         is Route.BackupBrowse -> BackupBrowseScreen(app, r)
         Route.Diagnostics -> DiagnosticsScreen(app)
         Route.Apps -> AppsScreen(app)
+        Route.Updates -> UpdatesScreen(app)
+        Route.Search -> SearchScreen(app)
+        Route.Start -> StartScreen(app)
+        Route.StartEdit -> StartEditScreen(app)
         is Route.AppFrame -> AppFrameScreen(app, r.id)
         Route.Status -> StatusScreen(app)
         Route.Ssh -> SshScreen(app)

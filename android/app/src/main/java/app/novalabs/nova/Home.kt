@@ -45,6 +45,7 @@ import org.json.JSONObject
                 OneMenu(switcher, { switcher = false }, others.map { id -> Pairing(ctx, id).label.ifEmpty { "Server" } to { app.switchServer(id) } } +
                     listOf("Add a server…" to { app.switchServer(Servers.create(ctx)) }, "Manage servers" to { app.go(Route.Servers) }))
             }
+            IconButton({ app.go(Route.Search) }) { Icon(Icons.Rounded.Search, "Search", tint = N.text) }
             IconButton({ app.act { app.refresh() } }) { Icon(Icons.Rounded.Refresh, "Refresh", tint = N.text) }
             Box {
                 IconButton({ menu = true }) { Icon(Icons.Rounded.MoreVert, "More", tint = N.text) }
@@ -119,6 +120,11 @@ import org.json.JSONObject
     val m = app.overview?.optJSONObject("status")?.optJSONObject("metrics")
     val cs = app.overview?.optJSONObject("containers")
     TabOrPage(app, "Menu") {
+        Row(Modifier.fillMaxWidth().padding(horizontal = Space.gutter, vertical = 4.dp).clip(androidx.compose.foundation.shape.RoundedCornerShape(28.dp)).background(N.pill)
+            .clickable { app.go(Route.Search) }.padding(horizontal = 18.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Rounded.Search, null, tint = N.sub); Spacer(Modifier.width(12.dp))
+            Text("Search Nova", color = N.sub, fontSize = 17.sp)
+        }
         Group {
             Row1("Containers", cs?.let { "${it.optInt("running")} of ${it.optInt("total")} running" }, true,
                 Icons.Rounded.ViewInAr, onClick = { app.go(Route.Containers) })
@@ -134,6 +140,8 @@ import org.json.JSONObject
             RowDivider()
             Row1("Diagnostics", "Speed, stress and network tests", true, Icons.Rounded.Speed, androidx.compose.ui.graphics.Color(0xFF64D2FF),
                 onClick = { app.go(Route.Diagnostics) })
+            RowDivider()
+            Row1("Updates", "Packages, containers and Nova", true, Icons.Rounded.Update, androidx.compose.ui.graphics.Color(0xFF3ECF6E), onClick = { app.go(Route.Updates) })
             RowDivider()
             Row1("Quick panel", "Your shortcuts — tap ✎ to customise", true, Icons.Rounded.Widgets, onClick = { app.go(Route.QuickPanel) })
             RowDivider()
@@ -170,7 +178,7 @@ import org.json.JSONObject
 }
 
 /** Live numbers under the hero: CPU, memory, disk, services. Tap any for the full status page. */
-@Composable private fun HomeStats(app: AppState) {
+@Composable fun HomeStats(app: AppState) {
     val stats by live(app, "/api/v1/stats?since=9e12", 3_000)        // just the current numbers, every 3 s
     val fresh = stats?.optJSONObject("now")?.takeIf { it.has("cpu") }
     LaunchedEffect(fresh) { if (fresh != null) app.lastNow = fresh }
