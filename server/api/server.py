@@ -34,7 +34,7 @@ try:                       # optional module: fan/case lighting (modules/fan-gig
 except ImportError:
     nova_rgb = None
 
-API_VERSION = "0.4.3-alpha"
+API_VERSION = "0.4.4-alpha"
 CONFIG = "/etc/nova-api/config.json"
 DATA = "/var/lib/nova-api"
 DEVICES = f"{DATA}/devices.json"
@@ -895,6 +895,19 @@ class Handler(BaseHTTPRequestHandler):
             rc, res = helper("drives", timeout=60)
             res["temps"] = {k: v for k, v in (load_json(STATUS, {}).get("metrics") or {}).items() if "temp" in k}
             return 200, res
+        if method == "POST" and parts == ["alerts", "dismiss"]:
+            rc, res = helper("alerts-dismiss", str(data.get("key", ""))[:220], timeout=160); return (200 if rc == 0 else 400), res
+        if method == "POST" and parts == ["events", "delete"]:
+            ts = data.get("t"); arg = "all" if data.get("all") is True else ",".join(f"{float(x):.4f}" for x in (ts if isinstance(ts, list) else [ts])[:200])
+            rc, res = helper("events-delete", arg, timeout=160); return (200 if rc == 0 else 400), res
+        if method == "POST" and parts == ["mounts", "mount"]:
+            rc, res = helper("mount-fstab", str(data.get("mount", ""))[:200], timeout=90); return (200 if rc == 0 else 400), res
+        if len(parts) == 3 and parts[0] == "drives" and parts[2] == "test":
+            if method == "GET": rc, res = helper("smart-tests", parts[1], timeout=70); return (200 if rc == 0 else 400), res
+            if method == "POST":
+                kind = str(data.get("type", "short"))
+                if kind not in ("short", "long", "abort"): raise ValueError("type must be short, long or abort")
+                rc, res = helper("smart-test", parts[1], kind, timeout=70); return (200 if rc == 0 else 400), res
         if method == "POST" and len(parts) == 3 and parts[0] == "drives" and parts[2] in ("mount", "unmount"):
             rc, res = helper(f"drive-{parts[2]}", parts[1], timeout=120); return (200 if rc == 0 else 400), res
         if method == "POST" and len(parts) == 2 and parts[0] == "power" and parts[1] in ("reboot", "poweroff"):
@@ -1013,7 +1026,39 @@ class NovaServer(ThreadingHTTPServer):
         threading.Thread(target=run, daemon=True).start()
     def handle_error(self, request, client_address): pass
 
+DISCOVERY_PORT = int(CFG.get("discovery_port", 8496))
+
+def discovery_responder():
+    """LAN discovery: the app broadcasts "NOVA?" on UDP 8496 and every Nova server on the home
+    network answers with its name and address, so adding a server doesn't start with typing an IP.
+    Only devices inside the home subnet get an answer, at most a few a second; it reveals nothing
+    a port scan wouldn't (pairing still needs the one-time code shown on the server itself)."""
+    import socket as so
+    if not CFG.get("discovery", True) or str(LAN) == "127.0.0.1/32": return
+    try:
+        sk = so.socket(so.AF_INET, so.SOCK_DGRAM); sk.setsockopt(so.SOL_SOCKET, so.SO_REUSEADDR, 1); sk.bind(("", DISCOVERY_PORT))
+    except OSError as e:
+        print(f"no LAN discovery: {e}", flush=True); return
+    print(f"nova-api discovery on udp/{DISCOVERY_PORT} (home network only)", flush=True)
+    recent = {}
+    while True:
+        try:
+            msg, (ip, port) = sk.recvfrom(256)
+            if not msg.startswith(b"NOVA?") or ipaddress.ip_address(ip) not in LAN: continue
+            now = time.time()
+            if now - recent.get(ip, 0) < 0.3: continue
+            recent[ip] = now
+            if len(recent) > 500: recent.clear()
+            tls = lan_tls()
+            reply = {"nova": 1, "name": load_json(SETTINGS, {}).get("display_name") or os.uname().nodename,
+                     "host": os.uname().nodename, "lan_url": tls.get("url") or CFG.get("lan_url", ""), "pin": tls.get("pin", ""),
+                     "api": API_VERSION, "accent": load_json(SETTINGS, {}).get("accent", "")}
+            sk.sendto(json.dumps(reply).encode(), (ip, port))
+        except Exception:
+            time.sleep(0.2)
+
 def main():
+    threading.Thread(target=discovery_responder, daemon=True).start()
     port = int(CFG.get("port", 8095))
     binds = list(dict.fromkeys(CFG.get("bind", ["127.0.0.1", LAN_HOST])))
     servers = []

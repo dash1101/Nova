@@ -33,7 +33,9 @@ import org.json.JSONObject
  * 1-second feed of the last few minutes (only the new points are fetched each second).
  */
 class LiveStats { var now by mutableStateOf<JSONObject?>(null); var history by mutableStateOf<List<JSONObject>>(emptyList())
-    var recent by mutableStateOf<List<JSONObject>>(emptyList()); var tick by mutableIntStateOf(0) }
+    var recent by mutableStateOf<List<JSONObject>>(emptyList()); var tick by mutableIntStateOf(0)
+    /** how many 1-second points the last update added (the graph glides that many steps) */
+    var added by mutableIntStateOf(1) }
 
 @Composable fun liveStats(app: AppState, everyMs: Long = 1_000): LiveStats {
     val ls = remember { LiveStats().also { s -> Cache["/api/v1/stats"]?.let { s.load(it) } } }
@@ -42,12 +44,20 @@ class LiveStats { var now by mutableStateOf<JSONObject?>(null); var history by m
         owner.lifecycle.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.STARTED) {
             runCatching { app.api.get("/api/v1/stats") }.onSuccess { ls.load(it) }
             while (true) {
-                kotlinx.coroutines.delay(everyMs)
+                // The server samples on the second; asking ~350 ms after it means each answer carries
+                // exactly one new point (clock difference estimated from the points themselves).
+                val lastT = ls.recent.lastOrNull()?.optDouble("t")
+                val wait = if (lastT != null && everyMs == 1_000L) {
+                    val skew = lastT - System.currentTimeMillis() / 1000.0
+                    val serverNow = System.currentTimeMillis() / 1000.0 + skew
+                    (((Math.ceil(serverNow) + 0.35 - serverNow) % 1.0) * 1000).toLong().let { if (it < 200) it + 1000 else it }
+                } else everyMs
+                kotlinx.coroutines.delay(wait)
                 val since = ls.recent.lastOrNull()?.optDouble("t") ?: 0.0
                 runCatching { app.api.get("/api/v1/stats?since=$since") }.onSuccess { r ->
                     r.optJSONObject("now")?.takeIf { it.has("cpu") }?.let { ls.now = it; app.lastNow = it }
                     val add = r.optJSONArray("recent").toObjects()
-                    if (add.isNotEmpty()) { ls.recent = (ls.recent + add).takeLast(RECENT_POINTS); ls.tick++ }
+                    if (add.isNotEmpty()) { ls.recent = (ls.recent + add).takeLast(RECENT_POINTS); ls.added = add.size.coerceIn(1, 5); ls.tick++ }
                     // an older server has no 1-second feed: keep refreshing the hour instead
                     if (!r.has("recent")) runCatching { app.api.get("/api/v1/stats") }.onSuccess { ls.load(it) }
                 }
@@ -62,7 +72,7 @@ private fun LiveStats.load(j: JSONObject) {
     j.optJSONObject("now")?.takeIf { it.has("cpu") }?.let { now = it }
     history = j.optJSONArray("history").toObjects()
     j.optJSONArray("recent")?.let { recent = it.toObjects() }
-    tick++
+    added = 1; tick++
 }
 
 /**
@@ -71,12 +81,13 @@ private fun LiveStats.load(j: JSONObject) {
  * the whole line glides left by one step instead of jumping. [window] = how many steps are visible.
  */
 @Composable fun Sparkline(values: List<Float>, color: Color, modifier: Modifier = Modifier, max: Float? = null,
-                          tick: Int = 0, window: Int = 0) {
-    val glide = remember { androidx.compose.animation.core.Animatable(1f) }
-    LaunchedEffect(tick) {
-        if (reduceMotion()) glide.snapTo(1f)
-        else { glide.snapTo(0f); glide.animateTo(1f, androidx.compose.animation.core.tween(950, easing = androidx.compose.animation.core.LinearEasing)) }
-    }
+                          tick: Int = 0, window: Int = 0, added: Int = 1) {
+    // The glide is timed from the composition that brought the new values (not from an effect that
+    // starts a frame later), so the newest point never flashes at the edge and snaps back.
+    val t0 = remember(tick) { System.nanoTime() }
+    val steps0 = remember(tick) { added.coerceIn(1, 5) }
+    var frameNow by remember { mutableLongStateOf(System.nanoTime()) }
+    if (window > 0 && !reduceMotion()) LaunchedEffect(Unit) { while (true) androidx.compose.runtime.withFrameNanos { frameNow = System.nanoTime() } }
     val peak = if (max != null) max else ((values.maxOrNull() ?: 1f) * 1.15f).coerceAtLeast(1f)
     val top by androidx.compose.animation.core.animateFloatAsState(peak, label = "scale")
     Canvas(modifier.clipToBounds()) {
@@ -84,10 +95,11 @@ private fun LiveStats.load(j: JSONObject) {
         val steps = if (window > 0) window else values.size - 1
         val dx = size.width / steps
         // the newest point slides in from one step to the right
-        val shift = if (window > 0) (1f - glide.value) * dx else 0f
+        val p = if (reduceMotion()) 1f else ((frameNow - t0) / 950e6f).coerceIn(0f, 1f)
+        val shift = if (window > 0) (1f - p) * dx * steps0 else 0f
         fun x(i: Int) = size.width - (values.lastIndex - i) * dx + shift
         fun y(v: Float) = size.height - (v / top).coerceIn(0f, 1f) * size.height * 0.94f - size.height * 0.03f
-        val first = if (window > 0) (values.lastIndex - window - 1).coerceAtLeast(0) else 0
+        val first = if (window > 0) (values.lastIndex - window - 1 - steps0).coerceAtLeast(0) else 0
         val xs = (first..values.lastIndex).map { x(it) }; val ys = (first..values.lastIndex).map { y(values[it]) }
         val line = smoothPath(xs, ys)
         val fill = Path().apply { addPath(line); lineTo(xs.last(), size.height); lineTo(xs.first(), size.height); close() }
@@ -117,14 +129,25 @@ private fun smoothPath(xs: List<Float>, ys: List<Float>): Path {
 }
 
 @Composable private fun MetricCard(title: String, value: String, sub: String, color: Color, values: List<Float>, max: Float?, modifier: Modifier,
-                                   tick: Int = 0, window: Int = 0) {
+                                   tick: Int = 0, window: Int = 0, added: Int = 1) {
     Column(modifier.glassCard(RoundedCornerShape(24.dp)).padding(16.dp)) {
         Text(title, color = N.sub, fontSize = 13.sp)
         Text(value, color = N.text, fontSize = 24.sp, fontWeight = FontWeight.Bold)
         Text(sub, color = N.sub, fontSize = 12.sp, maxLines = 1)
         Spacer(Modifier.height(8.dp))
-        Sparkline(values, color, Modifier.fillMaxWidth().height(56.dp), max, tick, window)
+        Sparkline(values, color, Modifier.fillMaxWidth().height(56.dp), max, tick, window, added)
     }
+}
+
+/** Mounted storage, from the monitor's list (any machine), or the older fixed keys. (name, used 0..100, "x GB free") */
+data class StorageUse(val name: String, val pct: Float, val free: String, val mount: String)
+fun storageList(m: JSONObject?): List<StorageUse> {
+    val list = m?.optJSONArray("storage")
+    if (list != null && list.length() > 0) return (0 until list.length()).map { list.getJSONObject(it) }.map {
+        StorageUse(it.optString("name"), it.optDouble("pct").toFloat(), "${bytesHuman(it.optLong("free"))} free", it.optString("mount")) }
+    return listOf("System drive" to "root_used", "Photos" to "photo_pool_used", "Cold storage" to "cold_storage_used", "Backup drive" to "backup_drive_used")
+        .filter { m?.has(it.second) == true }.map { (label, k) -> val v = m!!.optString(k)
+            StorageUse(label, Regex("(\\d+)%").find(v)?.groupValues?.get(1)?.toFloatOrNull() ?: 0f, Regex("\\(([^)]*)\\)").find(v)?.groupValues?.get(1) ?: v, "") }
 }
 
 private fun pct(s: String?) = s?.let { Regex("(\\d+)%").find(it)?.groupValues?.get(1)?.toFloatOrNull() }
@@ -159,13 +182,7 @@ private fun uptime(s: Long) = "${s / 86400}d ${s % 86400 / 3600}h ${s % 3600 / 6
                 color = N.sub, fontSize = 14.sp)
         }
         // Active alerts
-        val active = st?.optJSONArray("active")?.let { a -> (0 until a.length()).map { a.getJSONObject(it) } }?.filter { it.optString("level") != "ok" } ?: emptyList()
-        if (active.isNotEmpty()) {
-            SectionLabel("Needs attention")
-            Group { active.forEachIndexed { i, a -> if (i > 0) RowDivider()
-                Row1(a.optString("title").replace(Regex("^[^\\p{L}\\p{N}]+\\s*"), ""), listOf(a.optString("detail"), a.optString("since").takeIf { it.isNotEmpty() }?.let { "since $it" })
-                    .filterNotNull().filter { it.isNotEmpty() }.joinToString(" · "), false, Icons.Rounded.Warning, levelColor(a.optString("level"), N)) } }
-        }
+        AttentionList(app)
         // Live graphs
         SectionLabel(if (hourView) "Last hour" else "Live · last 2 minutes")
         Segmented(listOf("Live", "Last hour"), if (hourView) 1 else 0) { hourView = it == 1 }
@@ -173,27 +190,26 @@ private fun uptime(s: Long) = "${s / 86400}d ${s % 86400 / 3600}h ${s % 3600 / 6
         Column(Modifier.padding(horizontal = Space.gutter), verticalArrangement = Arrangement.spacedBy(Space.gap)) {
             Row(horizontalArrangement = Arrangement.spacedBy(Space.gap)) {
                 MetricCard("CPU", now?.let { "%.0f%%".format(it.optDouble("cpu")) } ?: "—", now?.let { "load ${it.optDouble("load")} · ${it.optInt("cores")} cores" } ?: "",
-                    N.blue, series("cpu"), 100f, Modifier.weight(1f), tick, window)
+                    N.blue, series("cpu"), 100f, Modifier.weight(1f), tick, window, ls.added)
                 MetricCard("Memory", now?.let { "%.0f%%".format(it.optDouble("mem")) } ?: "—", now?.let { "${it.optDouble("mem_used_gb")} of ${it.optDouble("mem_total_gb")} GB" } ?: "",
-                    Color(0xFFBF5AF2), series("mem"), 100f, Modifier.weight(1f), tick, window)
+                    Color(0xFFBF5AF2), series("mem"), 100f, Modifier.weight(1f), tick, window, ls.added)
             }
             Row(horizontalArrangement = Arrangement.spacedBy(Space.gap)) {
                 MetricCard("CPU temperature", now?.optDouble("temp")?.takeIf { !it.isNaN() }?.let { "%.0f°C".format(it) } ?: m?.optString("cpu_temp") ?: "—",
-                    now?.optDouble("nvme_temp")?.takeIf { !it.isNaN() }?.let { "NVMe %.0f°C".format(it) } ?: "", N.amber, series("temp"), null, Modifier.weight(1f), tick, window)
+                    now?.optDouble("nvme_temp")?.takeIf { !it.isNaN() }?.let { "NVMe %.0f°C".format(it) } ?: "", N.amber, series("temp"), null, Modifier.weight(1f), tick, window, ls.added)
                 MetricCard("Network", now?.let { "↓ ${rate(it.optDouble("rx"))}" } ?: "—", now?.let { "↑ ${rate(it.optDouble("tx"))}" } ?: "",
-                    N.green, series("rx").zip(series("tx")) { a, b -> a + b }, null, Modifier.weight(1f), tick, window)
+                    N.green, series("rx").zip(series("tx")) { a, b -> a + b }, null, Modifier.weight(1f), tick, window, ls.added)
             }
             if (pts.size < 3 || (!hourView && !live)) Text(if (hourView) "Graphs fill in over the next few minutes." else "Connecting to the live feed…", color = N.sub, fontSize = 13.sp, modifier = Modifier.padding(start = 8.dp))
         }
         // Storage
         SectionLabel("Storage")
         Group {
-            listOf("Photos" to "photo_pool_used", "System drive" to "root_used", "Cold storage" to "cold_storage_used", "Backup drive" to "backup_drive_used")
-                .filter { m?.has(it.second) == true }.forEachIndexed { i, (label, k) ->
+            storageList(m).forEachIndexed { i, su ->
                     if (i > 0) RowDivider()
-                    val v = m!!.optString(k); val p = pct(v) ?: 0f
+                    val p = su.pct
                     Column(Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 14.dp)) {
-                        Row { Text(label, color = N.text, fontSize = 16.sp, modifier = Modifier.weight(1f)); Text(v, color = N.sub, fontSize = 14.sp) }
+                        Row { Text(su.name, color = N.text, fontSize = 16.sp, modifier = Modifier.weight(1f)); Text("${p.toInt()}% · ${su.free}", color = N.sub, fontSize = 14.sp) }
                         Spacer(Modifier.height(8.dp))
                         UsageBar(p / 100f, if (p > 95) N.red else if (p > 85) N.amber else N.blue)
                     }
@@ -201,22 +217,28 @@ private fun uptime(s: Long) = "${s / 86400}d ${s % 86400 / 3600}h ${s % 3600 / 6
             RowDivider()
             Row1("Drives", "${m?.optString("drives") ?: "—"} · ${m?.optString("drive_temps") ?: ""}", true, Icons.Rounded.Storage, onClick = { app.go(Route.Hardware) })
         }
-        // Backups
-        SectionLabel("Backups")
-        Group {
-            Row1("Data backup", if (backupRunning) backup?.let { backupLine(it) } ?: "Running now" else m?.optString("data_backup"), backupRunning, Icons.Rounded.Backup)
-            if (backupRunning && backup != null) BackupProgress(backup)
-            RowDivider(); Row1("Backup sets", m?.optString("backup_sets"))
-            RowDivider(); Row1("Photo check", m?.optString("backup_verify")?.replace("✗", "")?.trim())
-            RowDivider(); Row1("Server settings backup", m?.optString("config_backup"))
-            RowDivider(); Row1("Photo database backup", m?.optString("immich_db_backup"))
+        // Backups — only what this server actually reports (nova-backup, database dumps…)
+        val dbRows = m?.keys()?.asSequence()?.filter { it.endsWith("_db_backup") }?.map { k ->
+            (if (k == "immich_db_backup") "Photo database backup" else k.removeSuffix("_db_backup").replace('_', ' ').replaceFirstChar { it.uppercase() } + " database backup") to m.optString(k) }?.toList() ?: emptyList()
+        val rows = listOf("Backup sets" to m?.optString("backup_sets"), "Photo check" to m?.optString("backup_verify")?.replace("✗", "")?.trim(),
+            "Server settings backup" to m?.optString("config_backup")).filter { !it.second.isNullOrEmpty() } + dbRows
+        if (backupRunning || !m?.optString("data_backup").isNullOrEmpty() || rows.isNotEmpty()) {
+            SectionLabel("Backups")
+            Group {
+                if (backupRunning || !m?.optString("data_backup").isNullOrEmpty()) {
+                    Row1("Data backup", if (backupRunning) backup?.let { backupLine(it) } ?: "Running now" else m?.optString("data_backup"), backupRunning, Icons.Rounded.Backup)
+                    if (backupRunning && backup != null) BackupProgress(backup)
+                }
+                rows.forEachIndexed { i, (l, v) -> if (i > 0 || backupRunning || !m?.optString("data_backup").isNullOrEmpty()) RowDivider(); Row1(l, v) }
+            }
         }
         // Services
         SectionLabel("Services")
         Group {
-            Row1("Containers", m?.optString("containers"), true, Icons.Rounded.ViewInAr, onClick = { app.go(Route.Containers) })
-            RowDivider(); Row1("Websites", m?.optString("websites"), false, Icons.Rounded.Language)
-            RowDivider(); Row1("Swap", m?.optString("swap") ?: now?.let { "%.0f%% used".format(it.optDouble("swap")) }, false, Icons.Rounded.SwapHoriz)
+            Row1("Containers", m?.optString("containers")?.ifEmpty { null } ?: app.overview?.optJSONObject("containers")?.let { "${it.optInt("running")}/${it.optInt("total")} running" },
+                true, Icons.Rounded.ViewInAr, onClick = { app.go(Route.Containers) })
+            if (!m?.optString("websites").isNullOrEmpty()) { RowDivider(); Row1("Websites", m?.optString("websites"), false, Icons.Rounded.Language) }
+            RowDivider(); Row1("Swap", m?.optString("swap")?.ifEmpty { null } ?: now?.let { "%.0f%% used".format(it.optDouble("swap")) }, false, Icons.Rounded.SwapHoriz)
         }
     }
 }

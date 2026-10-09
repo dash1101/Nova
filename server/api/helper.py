@@ -31,11 +31,23 @@ def run(cmd, timeout=120, **kw):
     r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, **kw)
     return r.returncode, r.stdout, r.stderr
 
+def _tool(*paths):
+    return next((p for p in paths if os.path.exists(p)), None)
+
 def notify(level, title, detail=""):
-    run(["/usr/local/bin/nova-alert", level, title, detail])
+    """Queue an alert (Inbox, phones, Discord). Never fails the action if alerts aren't set up."""
+    t = _tool("/usr/sbin/nova-alert", "/usr/local/bin/nova-alert")
+    if t:
+        try: run([t, level, title, detail])
+        except Exception: pass
 
 def changelog(msg):
-    run(["/usr/local/bin/nova-log", "app", msg])
+    """A line in the server's change log (nova-log if installed, else /var/log/nova-api/changes.log)."""
+    t = _tool("/usr/local/bin/nova-log", "/usr/bin/nova-log")
+    try:
+        if t: run([t, "app", msg]); return
+        with open("/var/log/nova-api/changes.log", "a") as f: f.write(time.strftime("%Y-%m-%d %H:%M ") + msg + "\n")
+    except Exception: pass
 
 def load_json(p, d):
     try: return json.load(open(p))
@@ -233,7 +245,9 @@ if verb == "free-ram" and not args:
         for l in open("/proc/meminfo"):
             if l.startswith(k + ":"): return int(l.split()[1])
     before = mem("MemFree")      # no sync first: it can block for minutes behind a backup; only clean pages are dropped anyway
-    with open("/proc/sys/vm/drop_caches", "w") as f: f.write("1\n")
+    try:
+        with open("/proc/sys/vm/drop_caches", "w") as f: f.write("1\n")
+    except OSError as e: fail(f"this system doesn't allow dropping the cache ({e.strerror})")
     out({"ok": True, "freed_mb": max(0, (mem("MemFree") - before) // 1024), "available_mb": mem("MemAvailable") // 1024})
 
 if verb == "notify-paired" and len(args) == 1:
@@ -405,6 +419,72 @@ if verb == "power" and len(args) == 1 and args[0] in ("reboot", "poweroff"):
             if not glob.glob("/var/lib/nova-alerts/spool/*.json"): break
     rc, so, se = run(["systemd-run", "--on-active=8", "--unit=nova-app-power", "systemctl", args[0]])
     out({"ok": rc == 0, "in_seconds": 8, "error": se.strip()[:200]}, 0 if rc == 0 else 1)
+
+# ── alerts: dismiss / delete (the monitor keeps the state) ─────────────────────────
+MONITOR = _tool("/usr/lib/nova-api/monitor/nova_alerts.py", "/usr/local/lib/nova-alerts/nova_alerts.py")
+ALERT_KEY_RE = r"[a-z]+:[\w./:@+-]{1,200}"
+if verb == "alerts-dismiss" and len(args) == 1 and re.fullmatch(ALERT_KEY_RE, args[0]):
+    if not MONITOR: fail("monitoring isn't installed")
+    rc, so, se = run(["python3", MONITOR, "dismiss", args[0]], timeout=150)
+    if rc != 0: fail((se or so).strip()[-200:] or "couldn't dismiss")
+    changelog(f"Alert dismissed from the Nova app: {args[0]}")
+    out(json.loads(so.strip().splitlines()[-1]))
+if verb == "events-delete" and len(args) == 1 and re.fullmatch(r"all|[\d.]+(,[\d.]+){0,199}", args[0]):
+    if not MONITOR: fail("monitoring isn't installed")
+    rc, so, se = run(["python3", MONITOR, "delete-event", args[0]], timeout=150)
+    if rc != 0: fail((se or so).strip()[-200:] or "couldn't delete")
+    out(json.loads(so.strip().splitlines()[-1]))
+
+# ── mount a drive that's in /etc/fstab (e.g. plugged in after boot) ─────────────────
+def fstab_points():
+    pts = []
+    for line in open("/etc/fstab"):
+        f = line.split()
+        if len(f) >= 3 and not f[0].startswith("#") and f[1].startswith("/") and f[2] not in ("swap", "none"): pts.append(f[1])
+    return pts
+if verb == "mount-fstab" and len(args) == 1:
+    mp = args[0]
+    if mp not in fstab_points(): fail("that isn't a mount point in /etc/fstab")
+    if os.path.ismount(mp): out({"ok": True, "already": True})
+    rc, so, se = run(["mount", mp], timeout=60)
+    if rc != 0: fail(f"mount {mp}: {(se or so).strip()[:200]}")
+    set_unmounted([mp], False)
+    changelog(f"Mounted {mp} from the Nova app"); notify("info", f"Mounted {mp}", "From the Nova app.")
+    out({"ok": True})
+
+# ── drive health tests (SMART self-tests: read-only, safe while the drive is in use) ──
+def smart_dev(serial):
+    d = disk_by_serial(serial)
+    if not d: fail("no such drive")
+    return f"/dev/{d['name']}", d
+if verb == "smart-test" and len(args) == 2 and args[1] in ("short", "long", "abort"):
+    dev, d = smart_dev(args[0])
+    rc, so, se = run(["smartctl", "-X" if args[1] == "abort" else "-t", *([] if args[1] == "abort" else [args[1]]), dev], timeout=60)
+    if rc & 0b11: fail((so + se).strip().splitlines()[-1][:200] if (so + se).strip() else "smartctl failed")
+    m = re.search(r"Please wait (\d+) minutes", so)
+    if args[1] != "abort": changelog(f"Started a {args[1]} SMART test on {d.get('model')} ({args[0]}) from the Nova app")
+    out({"ok": True, "minutes": int(m.group(1)) if m else None})
+if verb == "smart-tests" and len(args) == 1:
+    dev, d = smart_dev(args[0])
+    rc, so, _ = run(["smartctl", "-j", "-c", "-A", "-l", "selftest", dev], timeout=60)
+    try: j = json.loads(so)
+    except Exception: fail("smartctl gave no answer")
+    st = (j.get("ata_smart_data") or {}).get("self_test", {}).get("status", {})
+    nv = j.get("nvme_self_test_log") or {}
+    running = st.get("remaining_percent") is not None and "in progress" in (st.get("string") or "").lower() \
+        or bool(nv.get("current_self_test_operation", {}).get("value"))
+    log = []
+    for t in ((j.get("ata_smart_self_test_log") or {}).get("standard") or {}).get("table", [])[:10]:
+        log.append({"type": t.get("type", {}).get("string", ""), "result": t.get("status", {}).get("string", ""),
+                    "passed": t.get("status", {}).get("passed"), "hours": t.get("lifetime_hours")})
+    for t in (nv.get("table") or [])[:10]:
+        log.append({"type": t.get("self_test_code", {}).get("string", ""), "result": t.get("self_test_result", {}).get("string", ""),
+                    "passed": t.get("self_test_result", {}).get("value") == 0, "hours": t.get("power_on_hours")})
+    caps = (j.get("ata_smart_data") or {}).get("self_test", {}).get("polling_minutes", {})
+    out({"running": running, "remaining_pct": st.get("remaining_percent") if running else None,
+         "progress_pct": nv.get("current_self_test_completion_percent") if running and nv else None,
+         "status": st.get("string") or "", "log": log, "power_on_hours": (j.get("power_on_time") or {}).get("hours"),
+         "short_minutes": caps.get("short"), "long_minutes": caps.get("extended"), "supported": bool(caps) or bool(nv)})
 
 # ── SSH: a phone's own key in the terminal user's authorized_keys ─────────────────
 # The key comes from the phone's hardware keystore over the signed, fingerprint-confirmed API,

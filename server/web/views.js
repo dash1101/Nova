@@ -3,7 +3,7 @@
 import { S, $, $$, esc, get, post, del, api, sleep, prefs, levelColor, pct, rate, bytes, isAdmin, has, cleanTitle, cap,
          serverName, uptime, hm, refresh, changeFan, waitJob, kv } from "./core.js";
 import { I, row, group, sec, note, sw, radio, switchRow, links, expand, slider, segmented, bar, usageColor,
-         toast, dialog, confirm, choose, ask, wireCommon, reorderable, onHold, spark } from "./ui.js";
+         toast, dialog, confirm, choose, ask, wireCommon, reorderable, onHold, spark, swipeable } from "./ui.js";
 import { animate } from "./hero.js";
 
 // ── catalogs (same ids as the app, so the two read alike) ───────────────────────
@@ -64,6 +64,44 @@ function topBanner() {
   if ((m.data_backup || "").includes("running")) return banner(S.cache["/api/v1/backup"] ? backupLine(S.cache["/api/v1/backup"]) : "Backing up…", "var(--blue)", "go:quick");
   return "";
 }
+/** Mounted storage: the monitor's list on any machine, or the older fixed keys. */
+function storageList(m) {
+  if (Array.isArray(m?.storage) && m.storage.length) return m.storage.map(x => ({ name: x.name, pct: x.pct, free: bytes(x.free) + " free" }));
+  return [["System drive", "root_used"], ["Photos", "photo_pool_used"], ["Cold storage", "cold_storage_used"], ["Backup drive", "backup_drive_used"]].filter(x => m?.[x[1]])
+    .map(([n, k]) => ({ name: n, pct: pct(m[k]) ?? 0, free: (/\(([^)]*)\)/.exec(m[k]) || [])[1] || m[k] }));
+}
+const activeAlerts = () => (S.overview?.status?.active || []).filter(a => a.level !== "ok");
+/** "Needs attention": swipe right to ignore (drives: removed on purpose); tap for Mount now etc. */
+function attentionHtml() {
+  const l = activeAlerts(); if (!l.length) return "";
+  return sec("Needs attention") + group(l.map(a => { const drive = (a.key || "").startsWith("drive:");
+    return `<div class="swipe" data-key="${esc(a.key || "")}" data-right="${drive ? "Removed on purpose" : "Ignore"}"><div class="swbg"></div><div class="swfg">${row(cleanTitle(a.title), { sub: [a.detail, a.since && "since " + a.since].filter(Boolean).join(" · "), icon: "warn", tint: levelColor(a.level), click: "alert:" + (a.key || ""),
+      end: a.key ? `<button class="xbtn" data-act="ignore:${esc(a.key)}" aria-label="Ignore">${I("remc")}</button>` : "" })}</div></div>`; }).join(""))
+    + note("Swipe right (or tap) to ignore an alert you've dealt with — it comes back if the problem returns after clearing.");
+}
+async function dismissAlert(key, redraw) {
+  if (!key) return toast("Update the server to dismiss alerts from here");
+  if (!isAdmin()) return viewOnly();
+  const st = S.overview?.status; if (st) { st.active = (st.active || []).filter(a => a.key !== key); if (!st.active.some(a => a.level !== "ok")) Object.assign(st, { level: "ok", headline: "All systems normal", active_count: 0 }); }
+  redraw?.();
+  try { await post("/api/v1/alerts/dismiss", { key }); toast(key.startsWith("drive:") ? "Forgotten — it won't be reported missing again" : "Ignored until it clears"); } catch (e) { toast(e.message); }
+  await refresh(); redraw?.();
+}
+async function alertMenu(key, redraw) {
+  const a = activeAlerts().find(x => x.key === key); if (!a) return;
+  const drive = key.startsWith("drive:"), opts = [];
+  if (key.startsWith("mount:")) opts.push(["mount", "Mount it now", "If the drive is plugged in, Nova mounts it from /etc/fstab"]);
+  opts.push(["ignore", drive ? "Removed on purpose" : "Ignore until it clears", drive ? "Stop reporting this drive as missing" : "No more alerts for this until it's fixed and comes back"]);
+  if (/^(drive|smart|temp):/.test(key)) opts.push(["hw", "Storage & hardware"]);
+  const v = await choose(cleanTitle(a.title), opts, null);
+  if (v === "ignore") return dismissAlert(key, redraw);
+  if (v === "hw") return location.hash = "#/hardware";
+  if (v === "mount") { if (!isAdmin()) return viewOnly(); try { await post("/api/v1/mounts/mount", { mount: key.slice(6) }); toast("Mounted"); } catch (e) { toast(e.message); } await refresh(); redraw?.(); }
+}
+function wireAttention(ctx, redraw) {
+  swipeable(ctx.root, { onRight: key => dismissAlert(key, redraw) });
+}
+
 function liveNow() { return S.cache["/api/v1/stats?now"]?.now || S.lastNow || S.cache["/api/v1/stats"]?.now || null; }
 async function fetchNow() {
   try { const r = await api("GET", "/api/v1/stats?since=9e12"); if (r.now?.cpu != null) { S.lastNow = r.now; S.cache["/api/v1/stats?now"] = r; } } catch {}
@@ -124,7 +162,7 @@ export async function menu(ctx) {
     ctx.show(`
       ${group(row("Containers", { sub: cs ? `${cs.running} of ${cs.total} running` : null, blue: true, icon: "box", click: "go:containers" })
         + (has("lighting") ? row("Lighting", { sub: f ? (f.on !== false ? `${cap(f.effect)} · ${f.brightness}%` : "Off") : null, blue: true, icon: "bulb", tint: "#ffb020", click: "go:lighting" }) : ""))}
-      ${group(row("Storage & hardware", { sub: m.photo_pool_used ? "Photos " + m.photo_pool_used : null, blue: true, icon: "disk", tint: "#3ecf6e", click: "go:hardware" })
+      ${group(row("Storage & hardware", { sub: storageList(m).map(x => `${x.name} ${Math.round(x.pct)}%`).slice(0, 3).join(" · ") || null, blue: true, icon: "disk", tint: "#3ecf6e", click: "go:hardware" })
         + row("Quick panel", { sub: "Your shortcuts — tap ✎ to customise", blue: true, icon: "widgets", click: "go:quick" })
         + row("Server status", { sub: "Live graphs, storage, backups", blue: true, icon: "status", tint: "#3ecf6e", click: "go:status" })
         + row("Dashboard mode", { sub: "Always-on screen for a tablet or spare screen", blue: true, icon: "dash", tint: "#64d2ff", click: "go:dashboard" })
@@ -150,14 +188,14 @@ export async function status(ctx) {
   const draw = () => {
     const st = S.overview?.status || {}, m = st.metrics || {}, n = L.now || liveNow(), lvl = st.level || "ok";
     const active = (st.active || []).filter(a => a.level !== "ok");
-    const storage = [["Photos", "photo_pool_used"], ["System drive", "root_used"], ["Cold storage", "cold_storage_used"], ["Backup drive", "backup_drive_used"]].filter(x => m[x[1]]);
+    const storage = storageList(m);
     const backupRunning = (m.data_backup || "").includes("running");
     ctx.show(`
       <div class="center" style="padding:14px 0 6px"><div style="width:84px;height:84px;border-radius:50%;margin:0 auto 10px;display:grid;place-items:center;background:color-mix(in srgb, ${levelColor(lvl)} 18%, transparent);color:${levelColor(lvl)}">${I(lvl === "ok" ? "okc" : "err").replace('class="i ', 'style="width:48px;height:48px" class="i ')}</div>
         <div style="font-size:20px;font-weight:700">${esc(lvl === "ok" ? "All systems normal" : st.headline)}</div>
         <div class="muted" style="font-size:14px">Updated ${esc((/\d{1,2}:\d{2}/.exec(st.updated_local || "") || ["—"])[0])} · up ${n?.uptime_s ? uptime(n.uptime_s) : esc(m.uptime || "—")}</div></div>
       ${S.error ? disconnectedBanner() : ""}
-      ${active.length ? sec("Needs attention") + group(active.map(a => row(cleanTitle(a.title), { sub: [a.detail, a.since && "since " + a.since].filter(Boolean).join(" · "), icon: "warn", tint: levelColor(a.level) })).join("")) : ""}
+      ${attentionHtml()}
       ${sec(hour ? "Last hour" : "Live · last 2 minutes")}
       ${segmented(["Live", "Last hour"], hour ? 1 : 0, "range")}
       <div style="height:6px"></div>
@@ -168,13 +206,16 @@ export async function status(ctx) {
         ${gcard("Network", "c4", n ? "↓ " + rate(n.rx) : "—", n ? "↑ " + rate(n.tx) : "")}
       </div>
       <p class="note" id="gnote">${pts().length < 3 ? (hour ? "Graphs fill in over the next few minutes." : "Connecting to the live feed…") : ""}</p>
-      ${sec("Storage")}${group(storage.map(([l, k]) => { const p = (pct(m[k]) ?? 0) / 100; return `<div class="row" style="display:block"><div style="display:flex"><span style="flex:1;font-size:16px">${l}</span><span class="muted" style="font-size:14px">${esc(m[k])}</span></div><div style="margin-top:8px">${bar(p, usageColor(p))}</div></div>`; }).join("")
+      ${sec("Storage")}${group(storage.map(x => { const p = x.pct / 100; return `<div class="row" style="display:block"><div style="display:flex"><span style="flex:1;font-size:16px">${esc(x.name)}</span><span class="muted" style="font-size:14px">${Math.round(x.pct)}% · ${esc(x.free)}</span></div><div style="margin-top:8px">${bar(p, usageColor(p))}</div></div>`; }).join("")
         + row("Drives", { sub: `${m.drives || "—"} · ${m.drive_temps || ""}`, blue: true, icon: "disk", click: "go:hardware" }))}
-      ${sec("Backups")}${group([row("Data backup", { sub: backupRunning ? backupLine(S.cache["/api/v1/backup"]) : m.data_backup, blue: backupRunning, icon: "backup" }),
-        ...[["Backup sets", m.backup_sets], ["Photo check", (m.backup_verify || "").replace("✗", "").trim()], ["Server settings backup", m.config_backup], ["Photo database backup", m.immich_db_backup]].filter(x => x[1]).map(([l, v]) => row(l, { sub: v }))].join(""))}
+      ${(() => { const rows = [...(backupRunning || m.data_backup ? [row("Data backup", { sub: backupRunning ? backupLine(S.cache["/api/v1/backup"]) : m.data_backup, blue: backupRunning, icon: "backup" })] : []),
+          ...[["Backup sets", m.backup_sets], ["Photo check", (m.backup_verify || "").replace("✗", "").trim()], ["Server settings backup", m.config_backup],
+              ...Object.keys(m).filter(k => k.endsWith("_db_backup")).map(k => [k === "immich_db_backup" ? "Photo database backup" : cap(k.slice(0, -10).replace(/_/g, " ")) + " database backup", m[k]])].filter(x => x[1]).map(([l, v]) => row(l, { sub: v }))];
+        return rows.length ? sec("Backups") + group(rows.join("")) : ""; })()}
       ${sec("Services")}${group([["Containers", m.containers], ["Websites", m.websites], ["Swap", m.swap]].filter(x => x[1]).map(([l, v]) => row(l, { sub: v })).join("") || row("—"))}`,
       { title: "Server status" });
     wireCommon(ctx.root, { onSeg: (_, i) => { hour = i === 1; draw(); } });
+    wireAttention(ctx, draw);
     graphs();
   };
   const graphs = () => {
@@ -189,6 +230,8 @@ export async function status(ctx) {
     set("c2v", Math.round(n.mem) + "%"); set("c2s", `${n.mem_used_gb} of ${n.mem_total_gb} GB`);
     if (n.temp) set("c3v", Math.round(n.temp) + "°C"); set("c4v", "↓ " + rate(n.rx)); set("c4s", "↑ " + rate(n.tx));
   };
+  const keyOf = a => { a.pop(); return a.join(":"); };          // keys contain ":" — rejoin the act arguments
+  ctx.handlers({ alert: (...a) => alertMenu(keyOf(a), draw), ignore: (...a) => dismissAlert(keyOf(a), draw) });
   const load = r => { L.history = r.history || L.history; if (r.recent) L.recent = r.recent; if (r.now?.cpu != null) { L.now = r.now; S.lastNow = r.now; } L.tick++; L.added = 1; };
   if (S.cache["/api/v1/stats"]) load(S.cache["/api/v1/stats"]);
   draw();
@@ -370,18 +413,37 @@ async function storeItem(ctx, id) {
 // ═════════════════════════════════════ INBOX ════════════════════════════════════
 export async function inbox(ctx) {
   let filter = 0;
+  const shown = () => (S.cache["/api/v1/events?since=0"]?.events || []).filter(e => filter === 1 ? ["warning", "critical"].includes(e.level) : filter === 2 ? e.level === "critical" : filter === 3 ? e.category === "login" : true);
   const draw = () => {
-    const all = S.cache["/api/v1/events?since=0"]?.events;
-    const ev = (all || []).filter(e => filter === 1 ? ["warning", "critical"].includes(e.level) : filter === 2 ? e.level === "critical" : filter === 3 ? e.category === "login" : true);
+    const all = S.cache["/api/v1/events?since=0"]?.events, ev = shown();
     const days = {}; ev.forEach(e => (days[new Date(e.t * 1000).toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" })] ||= []).push(e));
-    ctx.show(`${segmented(["All", "Issues", "Critical", "Logins"], filter, "f")}
-      ${Object.entries(days).map(([d, l]) => sec(d) + group(l.map(e => `<div class="row" style="align-items:flex-start"><span class="dot" style="margin-top:7px;background:${levelColor(e.level)}"></span><div class="t"><b style="font-size:16px">${esc(cleanTitle(e.title))}</b>${e.detail ? `<small>${esc(e.detail)}</small>` : ""}</div><span class="end" style="font-size:13px">${hm(e.t)}</span></div>`).join(""))).join("")
+    ctx.show(`${attentionHtml()}${segmented(["All", "Issues", "Critical", "Logins"], filter, "f")}
+      ${ev.length ? `<p class="note" style="margin-top:6px">Swipe left to delete.</p>` : ""}
+      ${Object.entries(days).map(([d, l]) => sec(d) + group(l.map(e => `<div class="swipe" data-key="${e.t}" data-left="Delete"><div class="swbg"></div><div class="swfg"><div class="row" style="align-items:flex-start"><span class="dot" style="margin-top:7px;background:${levelColor(e.level)}"></span><div class="t"><b style="font-size:16px">${esc(cleanTitle(e.title))}</b>${e.detail ? `<small>${esc(e.detail)}</small>` : ""}</div><span class="end" style="font-size:13px">${hm(e.t)}</span><button class="xbtn" data-act="del:${e.t}" aria-label="Delete">${I("del")}</button></div></div></div>`).join(""))).join("")
         || note(all ? "Nothing here — all quiet." : "Loading…")}`,
-      { title: "Inbox", actions: [{ icon: "gear", label: "Notification settings", act: "go:notify" }] });
+      { title: "Inbox", actions: [{ icon: "del", label: "Clear the inbox", act: "clear" }, { icon: "gear", label: "Notification settings", act: "go:notify" }] });
     wireCommon(ctx.root, { onSeg: (_, i) => { filter = i; draw(); } });
+    swipeable(ctx.root, { onRight: key => dismissAlert(key, draw), onLeft: t => remove([+t]) });
   };
+  const remove = async ts => {
+    if (!isAdmin()) return viewOnly();
+    const c = S.cache["/api/v1/events?since=0"]; if (c) c.events = c.events.filter(e => !ts.some(t => Math.abs(t - e.t) < .0005));
+    draw();
+    try { await post("/api/v1/events/delete", { t: ts }); } catch (e) { toast(e.message); await get("/api/v1/events?since=0").catch(() => {}); draw(); }
+  };
+  const keyOf = a => { a.pop(); return a.join(":"); };
+  ctx.handlers({
+    alert: (...a) => alertMenu(keyOf(a), draw), ignore: (...a) => dismissAlert(keyOf(a), draw), del: t => remove([+t]),
+    clear: async () => {
+      if (!(await confirm("Clear the inbox?", filter === 0 ? "Every past event is removed from this server's inbox (for all devices). Active alerts stay until they're fixed or ignored." : `The ${shown().length} event(s) shown are removed (for all devices).`, "Clear"))) return;
+      if (!isAdmin()) return viewOnly();
+      if (filter !== 0) return remove(shown().map(e => e.t));
+      const c = S.cache["/api/v1/events?since=0"]; if (c) c.events = []; draw();
+      try { await post("/api/v1/events/delete", { all: true }); toast("Inbox cleared"); } catch (e) { toast(e.message); }
+    },
+  });
   draw();
-  ctx.every(15000, async () => { const r = await get("/api/v1/events?since=0"); if (r.events?.[0]) { prefs.lastEventSeen = r.events[0].t; S.unread = 0; } draw(); }, true);
+  ctx.every(15000, async () => { const r = await get("/api/v1/events?since=0"); if (r.events?.[0]) { prefs.lastEventSeen = r.events[0].t; S.unread = 0; } await refresh(); draw(); }, true);
 }
 export async function notify(ctx) {
   const LV = [["info", "Everything", "Includes logins and USB plug/unplug"], ["warning", "Warnings and critical"], ["critical", "Critical only"]];
@@ -609,7 +671,7 @@ export async function hardware(ctx) {
           return `<div class="row click" data-act="open:${esc(d.serial)}" style="display:block"><div style="display:flex;align-items:center;gap:8px"><div class="t"><b>${esc(driveName(d))}</b><small>${bytes(d.size)} · ${d.ssd ? "SSD" : "HDD"} · ${esc((d.bus || "").toUpperCase())}${d.temp ? ` · ${d.temp}°C` : ""}</small></div><b style="color:${levelColor(lv)};font-size:14px">${h}</b></div>
             ${u ? `<div style="margin-top:8px">${bar(f, usageColor(f))}</div><small class="muted" style="font-size:13px">${bytes(u.free)} free of ${bytes(u.total)}</small>` : (d.mounts || []).length ? "" : `<small style="color:var(--amber);font-size:13px">Not mounted</small>`}</div>`; }).join(""))).join("")
         || note(hw ? "No drives reported." : "Loading…")}
-      ${sec("Fans")}${group(expand("CPU & case fan speed", "Run by the motherboard", "speed", "The fans are run by the motherboard's own controller (set the curve in the BIOS). Nova shows the fan lighting below.", { tint: "var(--sub)" })
+      ${sec("Fans")}${group(expand("CPU & case fan speed", "Run by the motherboard", "speed", "The fans follow the motherboard's own curve — set it in the BIOS (often under Smart Fan or Q-Fan). Reading or setting speeds from Linux needs a driver for the board's fan chip.", { tint: "var(--sub)" })
         + (has("lighting") ? row("Fan lighting", { sub: "Colour, effects, schedules", blue: true, icon: "bulb", tint: "var(--amber)", click: "go:lighting" }) : ""))}
       ${links([["Quick panel (restart, shut down)", "go:quick"]])}`, { title: "Storage & hardware" });
     wireCommon(ctx.root);
@@ -618,7 +680,19 @@ export async function hardware(ctx) {
   draw(); ctx.every(15000, async () => { await get("/api/v1/hardware"); draw(); }, true);
 }
 async function drive(ctx, serial) {
-  let busy = false;
+  let busy = false, testBusy = false;
+  const tp = `/api/v1/drives/${encodeURIComponent(serial)}/test`;
+  const dur = m => m >= 120 ? `${Math.round(m / 60)} hours` : `${m} min`;
+  const testsHtml = () => {
+    const t = S.cache[tp]; if (!t || t.supported === false) return "";
+    const log = (t.log || []).slice(0, 5).map(e => { const ok = e.passed !== false && !/fail/i.test(e.result || "");
+      return row(`${(e.type || "Test").replace(" offline", "")} · ${e.result}`, { sub: e.hours ? `At ${e.hours} power-on hours${t.power_on_hours ? ` (now ${t.power_on_hours})` : ""}` : "", icon: ok ? "okc" : "err", tint: ok ? "var(--green)" : "var(--red)" }); }).join("");
+    if (t.running) { const done = t.remaining_pct != null ? 100 - t.remaining_pct : (t.progress_pct || 0);
+      return sec("Health tests") + group(`<div style="padding:16px 22px"><div style="font-size:17px">Testing… ${done}%</div><div style="margin-top:8px">${bar(done / 100)}</div><p class="muted" style="font-size:13px;margin:6px 0 0">The drive keeps working normally while it tests itself.</p></div>`
+        + row("Stop the test", { icon: "stop", tint: "var(--red)", click: "test:abort", dis: testBusy }) + log); }
+    return sec("Health tests") + group(row("Quick test", { sub: `About ${t.short_minutes || 2} min · checks the electronics and a sample of the surface`, blue: true, icon: "speed", click: "test:short", dis: testBusy })
+      + row("Full surface scan", { sub: `${t.long_minutes ? `About ${dur(t.long_minutes)} · ` : ""}reads every sector — best for second-hand drives`, blue: true, icon: "disk", click: "test:long", dis: testBusy }) + log);
+  };
   const draw = () => {
     const d = (S.cache["/api/v1/hardware"]?.drives || []).find(x => x.serial === serial);
     if (!d) return ctx.show(note("Loading…"), { title: "Drive" });
@@ -628,11 +702,18 @@ async function drive(ctx, serial) {
       ${sec("Health (SMART)")}${group(row("Overall", { sub: d.smart_passed === false ? "FAILED" : "Passed" }) + row("Temperature", { sub: d.temp ? d.temp + "°C" : "—" })
         + row("Reallocated sectors", { sub: String(d.realloc ?? "—") }) + row("Unreadable (pending)", { sub: String(d.pending ?? "—") }) + row("Uncorrectable errors", { sub: String(d.uncorrect ?? "—") })
         + row("Cable errors (all-time) *", { sub: `${d.crc ?? "—"} · if this keeps rising, check the cable` }))}
+      ${testsHtml()}
       ${sec("Details")}${group(row("Size", { sub: bytes(d.size) }) + row("Connection", { sub: (d.bus || "").toUpperCase() }) + row("Serial", { sub: d.serial }) + row("Mounted at", { sub: (d.mounts || []).join(", ") || "Not mounted" }))}
       ${!isAdmin() ? note("View-only access: an admin can mount or unmount drives.") : d.protected ? note(`This drive is in use by the server (${d.role}) and can't be unmounted from the app.`)
         : `<button class="btn block" data-act="mount" ${busy ? "disabled" : ""}>${busy ? "Working…" : mounted ? "Safely unmount" : "Mount"}</button>`}`, { title: driveName(d) });
   };
   ctx.handlers({
+    test: async kind => {
+      if (!isAdmin()) return viewOnly();
+      testBusy = true; draw();
+      try { const r = await post(tp, { type: kind }); if (kind !== "abort") toast(r.minutes ? `Test started · about ${dur(r.minutes)}` : "Test started"); await get(tp); }
+      catch (e) { toast(e.message); } finally { testBusy = false; if (ctx.alive()) draw(); }
+    },
     mount: async () => {
       const d = (S.cache["/api/v1/hardware"]?.drives || []).find(x => x.serial === serial), mounted = (d?.mounts || []).length > 0;
       if (mounted && !(await confirm("Unmount this drive?", "Anything using it stops being able to read or write it. Your phone confirms it.", "Unmount"))) return;
@@ -642,6 +723,7 @@ async function drive(ctx, serial) {
     },
   });
   draw(); if (!S.cache["/api/v1/hardware"]) { await get("/api/v1/hardware").catch(e => toast(e.message)); if (ctx.alive()) draw(); }
+  ctx.every(5000, async () => { const before = S.cache[tp]?.running; await get(tp).catch(() => {}); if (before || S.cache[tp]?.running || !before) draw(); }, true);
 }
 
 // ════════════════════════════ DEVICES, SETTINGS, ABOUT ═════════════════════════
@@ -795,7 +877,7 @@ export async function dashboard(ctx) {
       case "mem": return g("mem", "mem", "Memory", "var(--violet)", n ? Math.round(n.mem) + "%" : "—", n ? `${n.mem_used_gb} / ${n.mem_total_gb} GB` : "");
       case "temp": return g("temp", "temp", "CPU temperature", "var(--amber)", n?.temp ? Math.round(n.temp) + "°C" : m.cpu_temp || "—", n?.nvme_temp ? `NVMe ${Math.round(n.nvme_temp)}°C` : "");
       case "net": return g("net", "net", "Network", "var(--green)", n ? "↓ " + rate(n.rx) : "—", n ? "↑ " + rate(n.tx) : "");
-      case "storage": return `<div class="card glass span2">${lbl("disk", "Storage", "var(--green)")}${[["Photos", "photo_pool_used"], ["System", "root_used"], ["Cold", "cold_storage_used"], ["Backup", "backup_drive_used"]].filter(x => m[x[1]]).map(([l, k]) => { const p = (pct(m[k]) ?? 0) / 100; return `<div style="display:flex;align-items:center;gap:10px;margin-top:12px"><span style="width:64px">${l}</span><div style="flex:1">${bar(p, usageColor(p))}</div><span class="muted" style="font-size:12px;width:110px;text-align:right">${esc((/\(([^)]*)\)/.exec(m[k]) || [])[1] || "")}</span></div>`; }).join("")}</div>`;
+      case "storage": return `<div class="card glass span2">${lbl("disk", "Storage", "var(--green)")}${storageList(m).slice(0, 5).map(x => { const p = x.pct / 100; return `<div style="display:flex;align-items:center;gap:10px;margin-top:12px"><span style="width:96px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(x.name)}</span><div style="flex:1">${bar(p, usageColor(p))}</div><span class="muted" style="font-size:12px;width:110px;text-align:right">${esc(x.free)}</span></div>`; }).join("")}</div>`;
       case "containers": return `<div class="card glass">${lbl("box", "Containers", "var(--amber)")}<div class="val" style="font-size:36px">${cs ? `${cs.running}/${cs.total}` : "—"}</div><div class="sub">running</div></div>`;
       case "backup": return `<div class="card glass">${lbl("backup", "Backups", "var(--blue)")}<div class="val" style="font-size:22px">${(m.data_backup || "").includes("running") ? "Running" : esc(m.data_backup || "—")}</div><div class="sub">${esc(m.backup_sets || "")}</div></div>`;
       case "fan": return `<div class="card glass span2" style="flex-direction:row;align-items:center;gap:12px"><canvas id="dfan" style="width:150px;height:150px;flex:none"></canvas><div>${lbl("bulb", "Fan light", "var(--amber)")}<div class="val">${f.on !== false ? `${cap(f.effect || "")} · ${f.brightness}%` : "Off"}</div></div></div>`;

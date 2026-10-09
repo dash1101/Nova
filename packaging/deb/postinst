@@ -8,6 +8,12 @@ if [ "$1" = configure ]; then
     systemctl daemon-reload || true
     systemctl enable --now nova-helper.socket >/dev/null 2>&1 || true
     systemctl enable --now nova-update-check.timer >/dev/null 2>&1 || true
+    # Monitoring + alerts (Status page, Inbox, phone and Discord alerts). Works out mounts and
+    # services by itself; settings in /etc/nova-alerts/config.json (root only: it may hold a webhook).
+    install -d -m 755 /var/lib/nova-alerts /var/lib/nova-alerts/www
+    install -d -m 700 /var/lib/nova-alerts/spool /etc/nova-alerts
+    [ -f /etc/nova-alerts/config.json ] || { echo '{}' > /etc/nova-alerts/config.json; chmod 600 /etc/nova-alerts/config.json; }
+    systemctl enable --now nova-alerts.timer >/dev/null 2>&1 || true
     if [ -f /etc/nova-api/config.json ]; then
         systemctl enable nova-api.service >/dev/null 2>&1 || true
         systemctl restart nova-api.service || true

@@ -1,6 +1,6 @@
 #!/bin/sh
 set -e
 if [ "$1" = remove ]; then
-    systemctl disable --now nova-api.service nova-helper.socket nova-rgb-anim.service nova-rgb-tick.timer >/dev/null 2>&1 || true
+    systemctl disable --now nova-api.service nova-helper.socket nova-rgb-anim.service nova-rgb-tick.timer nova-alerts.timer >/dev/null 2>&1 || true
 fi
 exit 0

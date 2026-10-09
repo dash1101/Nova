@@ -119,8 +119,9 @@ def main():
     if rc == 0 and "Status: active" in st:
         if yes(f"Allow {subnet} to reach Nova (port 8495, encrypted)?", True):
             sh("ufw", "allow", "from", subnet, "to", "any", "port", "8495", "proto", "tcp", "comment", "Nova (home network)")
+            sh("ufw", "allow", "from", subnet, "to", "any", "port", "8496", "proto", "udp", "comment", "Nova discovery (home network)")
             print(f"  {G}✓{X} Firewall rules added")
-    else: print(f"  {D}ufw isn't active — make sure your firewall lets {subnet} reach port 8495.{X}")
+    else: print(f"  {D}ufw isn't active — make sure your firewall lets {subnet} reach tcp 8495 (and udp 8496 for discovery).{X}")
 
     step(9, "Start Nova")
     sh("systemctl", "daemon-reload")

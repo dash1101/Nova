@@ -283,3 +283,15 @@ input[type=range]:disabled { opacity: .45; }
 .dash .top.hide { opacity: 0; pointer-events: none; }
 .dash .night { position: fixed; inset: 0; background: rgba(0,0,0,.72); pointer-events: none; }
 .dash canvas { flex: 1; min-height: 40px; height: auto !important; }
+
+/* swipe rows */
+.swipe { position: relative; overflow: hidden; touch-action: pan-y; }
+.swipe .swbg { position: absolute; inset: 0; display: flex; align-items: center; padding: 0 26px; color: #fff; font-weight: 700; font-size: 15px; opacity: 0; }
+.swipe .swbg.right { background: var(--amber); justify-content: flex-start; } .swipe .swbg.left { background: var(--red); justify-content: flex-end; }
+.swipe .swfg { position: relative; background: inherit; transition: transform .3s var(--spring); }
+.swipe .swfg > .row { background: var(--card); }
+.swipe.gone { transition: height .25s ease .15s, opacity .2s .15s; height: 0 !important; opacity: 0; }
+.swipe + .swipe::before { content: ""; position: absolute; left: 22px; right: 22px; top: 0; border-top: .8px solid var(--divider); z-index: 1; }
+.swipe .row + .row::before { display: none; }
+.xbtn { color: var(--sub); opacity: .0; transition: opacity .2s; padding: 6px; border-radius: 50%; }
+.swipe:hover .xbtn { opacity: .8; } @media (hover: none) { .xbtn { display: none; } }

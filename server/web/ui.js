@@ -263,3 +263,37 @@ export function spark(canvas, vals, color, { max = null, window = 0, tick = 0, a
   requestAnimationFrame(frame);
 }
 export { css };
+
+/**
+ * Swipe a row sideways to reveal an action (like the app): past 35 % of the width it arms (a buzz),
+ * and letting go there slides the row away and runs it. right = swipe right, left = swipe left.
+ * Rows: <div class="swipe" data-right="Ignore" data-left="Delete"><div class="swbg"></div><div class="swfg">…</div></div>
+ */
+export function swipeable(root, { onRight, onLeft } = {}) {
+  $$(".swipe", root).forEach(el => {
+    const fg = $(".swfg", el), bg = $(".swbg", el);
+    let x0 = null, y0 = 0, dx = 0, armed = false, horiz = null;
+    el.addEventListener("pointerdown", e => { if (e.button > 0) return; x0 = e.clientX; y0 = e.clientY; dx = 0; horiz = null; armed = false; });
+    el.addEventListener("pointermove", e => {
+      if (x0 == null) return;
+      const mx = e.clientX - x0, my = e.clientY - y0;
+      if (horiz == null) { if (Math.abs(mx) < 8 && Math.abs(my) < 8) return; horiz = Math.abs(mx) > Math.abs(my); if (horiz) el.setPointerCapture(e.pointerId); }
+      if (!horiz) return;
+      dx = mx; if (dx > 0 && !el.dataset.right) dx = 0; if (dx < 0 && !el.dataset.left) dx = 0;
+      fg.style.transition = "none"; fg.style.transform = `translateX(${dx}px)`;
+      const w = el.clientWidth, past = Math.abs(dx) > w * .35, side = dx > 0 ? "right" : "left";
+      bg.className = "swbg " + side; bg.textContent = dx ? el.dataset[side] : ""; bg.style.opacity = Math.min(1, .3 + Math.abs(dx) / (w * .35) * .7);
+      if (past !== armed) { armed = past; navigator.vibrate?.(past ? 12 : 4); }
+    });
+    const end = () => {
+      if (x0 == null) return; x0 = null; if (!horiz) return;
+      fg.style.transition = "";
+      if (armed) {
+        const w = el.clientWidth, right = dx > 0; fg.style.transform = `translateX(${right ? w : -w}px)`;
+        el.style.height = el.offsetHeight + "px"; void el.offsetHeight; el.classList.add("gone"); el.addEventListener("click", ev => ev.stopPropagation(), { capture: true, once: true });
+        setTimeout(() => (right ? onRight : onLeft)?.(el.dataset.key, el), 180);
+      } else { fg.style.transform = ""; bg.textContent = ""; }
+    };
+    el.addEventListener("pointerup", end); el.addEventListener("pointercancel", end);
+  });
+}

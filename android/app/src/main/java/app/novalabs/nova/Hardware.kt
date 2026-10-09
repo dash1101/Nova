@@ -76,11 +76,10 @@ private fun health(d: JSONObject): Pair<String, String> {
             }
         SectionLabel("Fans")
         Group {
-            ExpandRow("CPU & case fan speed", "Not available on this board yet", false, Icons.Rounded.Toys, N.sub) {
+            ExpandRow("CPU & case fan speed", "Run by the motherboard", false, Icons.Rounded.Toys, N.sub) {
                 Detail(hw?.optJSONObject("fans")?.optString("note")?.ifEmpty { null }
-                    ?: "The fans are run by the motherboard's own controller.")
-                Detail("Linux needs a driver for the A620I AX's fan chip before speeds can be read or set. The built-in one doesn't support it; a third-party driver could, but it has to be installed on the server first.")
-                Detail("Until then the BIOS fan curve stays in charge — set it in the BIOS under Smart Fan.")
+                    ?: "The fans follow the motherboard's own curve — set it in the BIOS (often under Smart Fan or Q-Fan).")
+                Detail("Reading or setting fan speeds from Linux needs a driver for the board's fan chip; many boards work out of the box with lm-sensors.")
             }
             RowDivider()
             Row1("Fan lighting", "Colour, effects, schedules", true, Icons.Rounded.Lightbulb, N.amber, onClick = { app.go(Route.Lighting) })
@@ -124,6 +123,7 @@ private fun health(d: JSONObject): Pair<String, String> {
             Row1("Uncorrectable errors", d.optString("uncorrect", "—")); RowDivider()
             Row1("Cable errors (all-time) *", "${d.optString("crc", "—")} · if this keeps rising, check the cable")
         }
+        DriveTests(app, serial)
         SectionLabel("Details")
         Group {
             Row1("Size", bytesHuman(d.optLong("size"))); RowDivider()
@@ -149,4 +149,54 @@ private fun health(d: JSONObject): Pair<String, String> {
         listOf(DialogButton("Cancel") { confirm = false }, DialogButton("Unmount", N.amber) { confirm = false; app.act { busy = true
             try { val r = app.stepUp("Unmount ${driveName(d)}", "POST", "/api/v1/drives/$serial/unmount"); app.toast(r.optString("note", "Unmounted")); reload() }
             finally { busy = false } } }))
+}
+
+/** SMART self-tests: the drive checks itself (read-only, fine while it's in use). */
+@Composable private fun DriveTests(app: AppState, serial: String) {
+    val tl = live(app, "/api/v1/drives/$serial/test")
+    val t = tl.value
+    val running = t?.optBoolean("running") == true
+    var busy by remember { mutableStateOf(false) }
+    LaunchedEffect(running) { while (running) { delay(5_000); runCatching { tl.value = app.api.get("/api/v1/drives/$serial/test") } } }
+    if (t == null || !t.optBoolean("supported", true)) return
+    fun start(kind: String) {
+        if (!app.isAdmin) { app.toast("This phone has view-only access"); return }
+        busy = true
+        app.act { try {
+            val r = app.api.post("/api/v1/drives/$serial/test", JSONObject().put("type", kind))
+            if (kind != "abort") app.toast(r.optInt("minutes").takeIf { it > 0 }?.let { "Test started · about ${if (it >= 120) "${it / 60} hours" else "$it min"}" } ?: "Test started")
+            tl.value = app.api.get("/api/v1/drives/$serial/test")
+        } finally { busy = false } }
+    }
+    SectionLabel("Health tests")
+    Group {
+        if (running) {
+            val left = t.optInt("remaining_pct", -1).takeIf { it >= 0 }?.let { 100 - it } ?: t.optInt("progress_pct", 0)
+            Column(Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 16.dp)) {
+                Text("Testing… $left%", color = N.text, fontSize = 17.sp)
+                Spacer(Modifier.height(8.dp)); ProgressBar(left / 100f)
+                Text("The drive keeps working normally while it tests itself.", color = N.sub, fontSize = 13.sp, modifier = Modifier.padding(top = 6.dp))
+            }
+            RowDivider()
+            Row1("Stop the test", null, icon = Icons.Rounded.Stop, iconTint = N.red, enabled = !busy, onClick = { start("abort") })
+        } else {
+            val sm = t.optInt("short_minutes", 2); val lm = t.optInt("long_minutes", 0)
+            Row1("Quick test", "About ${sm.coerceAtLeast(1)} min · checks the electronics and a sample of the surface", true, Icons.Rounded.Speed,
+                enabled = !busy, onClick = { start("short") })
+            RowDivider()
+            Row1("Full surface scan", (if (lm > 0) "About ${if (lm >= 120) "${lm / 60} hours" else "$lm min"} · " else "") + "reads every sector — best for second-hand drives",
+                true, Icons.Rounded.Search, enabled = !busy, onClick = { start("long") })
+        }
+        val log = t.optJSONArray("log")
+        if (log != null && log.length() > 0) {
+            RowDivider()
+            for (i in 0 until minOf(log.length(), 5)) {
+                val e = log.getJSONObject(i); if (i > 0) RowDivider()
+                val ok = e.optBoolean("passed", true) && !e.optString("result").contains("fail", true)
+                Row1(e.optString("type").replace(" offline", "").ifEmpty { "Test" } + " · " + e.optString("result"),
+                    e.optInt("hours").takeIf { it > 0 }?.let { "At $it power-on hours" + (t.optInt("power_on_hours").takeIf { n -> n > 0 }?.let { n -> " (now $n)" } ?: "") },
+                    false, if (ok) Icons.Rounded.CheckCircle else Icons.Rounded.Error, if (ok) N.green else N.red)
+            }
+        }
+    }
 }

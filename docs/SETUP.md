@@ -34,7 +34,7 @@ It asks a few questions. Press Enter to accept the suggested answer.
 | Terminal | The account the in-app SSH terminal logs in to. |
 | Remote access | Cloudflare Access, so Nova works away from home without a VPN. You can skip this and do it later (see [REMOTE.md](REMOTE.md)). |
 | Storage safety | Mounts that can never be unmounted from the app. |
-| Firewall | Opens Nova's two ports to your home network only, if `ufw` is active. |
+| Firewall | Opens Nova's port (tcp 8495) and discovery (udp 8496) to your home network only, if `ufw` is active. |
 
 Run `sudo nova-setup` again whenever you want to change something. Your current answers are the
 defaults.
@@ -55,7 +55,8 @@ defaults.
 | **Use it from a computer** | Open `https://<server>:8495/`, choose *Get a code*, then approve it in the app (*Approve a browser*) |
 | **Always-on screen** | App → Menu → *Dashboard mode*. Pair a spare tablet as View only and pin the screen |
 | **Fan / case lighting** (Gigabyte RGB Fusion 2) | `sudo nova-setup-lighting` |
-| **Alerts from your own monitoring** | [MODULES.md](MODULES.md#bring-your-own-monitor) |
+| **Alerts, Discord, what's watched** | Built in — see [MONITOR.md](MONITOR.md) |
+| **More servers** | Install Nova on each; in the app, Settings → Servers lists the ones it finds on your network |
 | **Your own look** | App → Settings → *Appearance & privacy* (theme, Home layout, app lock); *Server* (name, accent colour) |
 
 ## Updating

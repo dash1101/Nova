@@ -27,42 +27,10 @@ fun serverName(app: AppState): String {
         ?: app.pairing.label.ifEmpty { "Nova" }
 }
 
-private fun labelOf(app: AppState, id: String) = Pairing(app.activity, id).let { p ->
+fun labelOf(app: AppState, id: String) = Pairing(app.activity, id).let { p ->
     p.label.ifEmpty { p.lanUrl.substringAfter("//").substringBefore(":").ifEmpty { "Server" } } }
 
 // ── Servers on this phone ─────────────────────────────────────────────────────────
-@Composable fun ServersScreen(app: AppState) {
-    val ctx = app.activity
-    var ids by remember { mutableStateOf(Servers.all(ctx).filter { Pairing(ctx, it).paired }) }
-    var remove by remember { mutableStateOf<String?>(null) }
-    Page("Servers", app::back) {
-        Text("Each server is paired separately, with its own keys in this phone's secure chip.", color = N.sub, fontSize = 14.sp,
-            modifier = Modifier.padding(horizontal = 30.dp, vertical = 6.dp))
-        Group {
-            ids.forEachIndexed { i, id -> if (i > 0) RowDivider()
-                val p = Pairing(ctx, id); val active = id == app.pairing.profile
-                Row1(if (active) serverName(app) else labelOf(app, id),
-                    (if (active) "In use · " else "") + p.lanUrl.substringAfter("//").substringBefore("/") + if (p.remoteUrl.isNotEmpty()) " · remote access" else "",
-                    active, Icons.Rounded.Dns, if (active) N.green else N.blue, onClick = { if (!active) app.switchServer(id) }) {
-                    if (!active) Icon(Icons.Rounded.RemoveCircleOutline, "Remove", tint = N.red,
-                        modifier = Modifier.clip(CircleShape).clickable { remove = id }.padding(6.dp))
-                    else OneRadio(true)
-                }
-            }
-            RowDivider()
-            Row1("Add a server", "Pair this phone with another machine running Nova", false, Icons.Rounded.AddCircle, N.green,
-                onClick = { app.switchServer(Servers.create(ctx)) })
-        }
-        LinksCard(listOf("How to install Nova on a server" to { app.toast("See the README: github.com/<you>/nova — run server/install.sh") }))
-    }
-    remove?.let { id ->
-        OneDialog({ remove = null }, "Remove ${labelOf(app, id)} from this phone?",
-            "Its keys are erased from this phone. To stop the server trusting them too, remove this phone in that server's Paired devices first.",
-            listOf(DialogButton("Cancel") { remove = null }, DialogButton("Remove", N.red) {
-                Servers.remove(ctx, id); ids = ids - id; remove = null; app.toast("Removed") }))
-    }
-}
-
 // ── Server name + accent ──────────────────────────────────────────────────────────
 private val ACCENTS = listOf("", "#3e91ff", "#5e5ce6", "#bf5af2", "#ff2d55", "#ff9500", "#ffcc00", "#34c759", "#00c7be")
 

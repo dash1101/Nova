@@ -77,7 +77,7 @@ import java.util.concurrent.atomic.AtomicBoolean
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var code by remember { mutableStateOf("") }
-    var address by remember { mutableStateOf("") }
+    var address by remember { mutableStateOf(PairHint.address ?: "") }
     var confirm by remember { mutableStateOf<Pair<String, String>?>(null) }      // (url, pin) awaiting "it matches"
     var scanning by remember { mutableStateOf(false) }
     val camPerm = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
@@ -91,7 +91,7 @@ import java.util.concurrent.atomic.AtomicBoolean
                 val r = NovaApi.pair(lan, c.trim().uppercase(), "${Build.MANUFACTURER} ${Build.MODEL}".trim(), app.pairing.keys.publicKeyPem(), pin)
                 app.pairing.save(r.getString("device_id"), r.optString("lan_url").ifEmpty { lan }, r.optString("remote_url"),
                     r.optString("cf_client_id"), r.optString("cf_client_secret"), r.optString("lan_pin").ifEmpty { pin })
-                app.pairing.label = r.optString("name")
+                app.pairing.label = r.optString("name"); PairHint.address = null; PairHint.name = null
                 app.pairing.role = r.optString("role").ifEmpty { "admin" }
                 runCatching {   // fingerprint-bound key for risky actions, registered while we're on home Wi-Fi
                     app.pairing.keys.ensureStepUp()
@@ -127,7 +127,9 @@ import java.util.concurrent.atomic.AtomicBoolean
                 onClick = { if (ctx.checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) scanning = true
                             else camPerm.launch(Manifest.permission.CAMERA) })
         }
-        SectionLabel("Or type the code")
+        if (!scanning) DiscoveredServers(app) { srv -> address = srv.optString("lan_url").substringAfter("//"); error = null
+            android.widget.Toast.makeText(ctx, "Now type the code shown by  sudo nova-api pair  on ${srv.optString("name")}", android.widget.Toast.LENGTH_LONG).show() }
+        SectionLabel(if (address.isNotEmpty() && PairHint.name != null) "Pair with ${PairHint.name}" else "Or type the code")
         Group {
             Column(Modifier.padding(20.dp)) {
                 OneTextField(address, { address = it.trim().take(80) }, "Server address (e.g. 192.168.1.20)", Modifier.fillMaxWidth(),

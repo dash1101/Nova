@@ -159,21 +159,20 @@ class DashPrefs(ctx: android.content.Context, profile: String) {
                 Text(o?.optJSONObject("containers")?.let { "${it.optInt("running")}/${it.optInt("total")} containers running" } ?: "", color = N.sub, fontSize = 14.sp)
                 if (app.error != null) Text("Offline — showing the last data", color = N.amber, fontSize = 13.sp)
             } }
-        "cpu" -> GraphTile("CPU", Icons.Rounded.Memory, N.blue, n?.let { "%.0f%%".format(it.optDouble("cpu")) }, n?.let { "load ${it.optDouble("load")}" }, series("cpu"), 100f, tick, window)
+        "cpu" -> GraphTile("CPU", Icons.Rounded.Memory, N.blue, n?.let { "%.0f%%".format(it.optDouble("cpu")) }, n?.let { "load ${it.optDouble("load")}" }, series("cpu"), 100f, tick, window, stats.added)
         "mem" -> GraphTile("Memory", Icons.Rounded.DeveloperBoard, Color(0xFFBF5AF2), n?.let { "%.0f%%".format(it.optDouble("mem")) },
-            n?.let { "${it.optDouble("mem_used_gb")} / ${it.optDouble("mem_total_gb")} GB" }, series("mem"), 100f, tick, window)
+            n?.let { "${it.optDouble("mem_used_gb")} / ${it.optDouble("mem_total_gb")} GB" }, series("mem"), 100f, tick, window, stats.added)
         "temp" -> GraphTile("CPU temperature", Icons.Rounded.Thermostat, N.amber, n?.optDouble("temp")?.takeIf { !it.isNaN() }?.let { "%.0f°C".format(it) } ?: m?.optString("cpu_temp"),
-            n?.optDouble("nvme_temp")?.takeIf { !it.isNaN() }?.let { "NVMe %.0f°C".format(it) }, series("temp"), null, tick, window)
+            n?.optDouble("nvme_temp")?.takeIf { !it.isNaN() }?.let { "NVMe %.0f°C".format(it) }, series("temp"), null, tick, window, stats.added)
         "net" -> GraphTile("Network", Icons.Rounded.SwapVert, N.green, n?.let { "↓ ${rate(it.optDouble("rx"))}" }, n?.let { "↑ ${rate(it.optDouble("tx"))}" },
-            series("rx").zip(series("tx")) { a, b -> a + b }, null, tick, window)
+            series("rx").zip(series("tx")) { a, b -> a + b }, null, tick, window, stats.added)
         "storage" -> Tile("Storage", Icons.Rounded.Storage, N.green) {
-            listOf("Photos" to "photo_pool_used", "System" to "root_used", "Cold" to "cold_storage_used", "Backup" to "backup_drive_used")
-                .filter { m?.has(it.second) == true }.take(4).forEach { (label, k) ->
-                    val v = m!!.optString(k); val p = Regex("(\\d+)%").find(v)?.groupValues?.get(1)?.toFloatOrNull() ?: 0f
+            storageList(m).take(5).forEach { su ->
+                    val p = su.pct
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 3.dp)) {
-                        Text(label, color = N.text, fontSize = 13.sp, modifier = Modifier.width(64.dp))
+                        Text(su.name, color = N.text, fontSize = 13.sp, maxLines = 1, modifier = Modifier.width(84.dp))
                         Box(Modifier.weight(1f)) { UsageBar(p / 100f, if (p > 95) N.red else if (p > 85) N.amber else N.blue) }
-                        Text("  " + (Regex("\\(([^)]*)\\)").find(v)?.groupValues?.get(1) ?: v), color = N.sub, fontSize = 12.sp, maxLines = 1)
+                        Text("  " + su.free, color = N.sub, fontSize = 12.sp, maxLines = 1)
                     }
                 }
         }
@@ -219,12 +218,12 @@ class DashPrefs(ctx: android.content.Context, profile: String) {
 }
 
 @Composable private fun GraphTile(title: String, icon: ImageVector, color: Color, value: String?, sub: String?, values: List<Float>, max: Float?,
-                                   tick: Int = 0, window: Int = 0) =
+                                   tick: Int = 0, window: Int = 0, added: Int = 1) =
     Tile(title, icon, color) {
         Text(value ?: "—", color = N.text, fontSize = 30.sp, fontWeight = FontWeight.Bold)
         Text(sub ?: "", color = N.sub, fontSize = 12.sp, maxLines = 1)
         Spacer(Modifier.height(8.dp))
-        Sparkline(values, color, Modifier.fillMaxWidth().weight(1f), max, tick, window)
+        Sparkline(values, color, Modifier.fillMaxWidth().weight(1f), max, tick, window, added)
     }
 
 @Composable private fun EditDashboard(app: AppState, prefs: DashPrefs, tiles: List<String>, save: (List<String>) -> Unit, done: () -> Unit) {

@@ -1,0 +1,9 @@
+[Unit]
+Description=Nova monitoring + alerts (one check pass)
+After=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /usr/local/lib/nova-api/monitor/nova_alerts.py
+TimeoutStartSec=170
+Nice=5

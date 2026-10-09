@@ -1,0 +1,10 @@
+[Unit]
+Description=Nova monitoring every minute
+
+[Timer]
+OnBootSec=90s
+OnCalendar=minutely
+AccuracySec=5s
+
+[Install]
+WantedBy=timers.target

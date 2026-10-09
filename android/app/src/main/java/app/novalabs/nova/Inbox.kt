@@ -23,7 +23,20 @@ import java.util.*
 
 @Composable fun InboxScreen(app: AppState) {
     var filter by remember { mutableIntStateOf(0) }
-    val data by live(app, "/api/v1/events?since=0", 15_000)
+    val dataLive = live(app, "/api/v1/events?since=0", 15_000)
+    val data by dataLive
+    var clearAll by remember { mutableStateOf(false) }
+    fun delete(ts: List<Double>) {
+        if (!app.isAdmin) { app.toast("This phone has view-only access"); return }
+        val before = dataLive.value
+        dataLive.value = JSONObject(before.toString()).also { o ->        // gone at once; the server catches up
+            val left = org.json.JSONArray(); val ev = o.optJSONArray("events") ?: org.json.JSONArray()
+            for (i in 0 until ev.length()) if (ts.none { kotlin.math.abs(it - ev.getJSONObject(i).optDouble("t")) < 0.0005 }) left.put(ev.getJSONObject(i))
+            o.put("events", left)
+        }
+        app.act { try { app.api.post("/api/v1/events/delete", JSONObject().put("t", org.json.JSONArray(ts))) }
+                  catch (e: Exception) { dataLive.value = before; throw e } }
+    }
     val events = data?.optJSONArray("events")?.let { a -> (0 until a.length()).map { a.getJSONObject(it) } } ?: emptyList()
     LaunchedEffect(events.firstOrNull()?.optDouble("t")) {
         events.firstOrNull()?.optDouble("t")?.let { app.pairing.lastEventSeen = it }; app.unread = 0
@@ -31,15 +44,19 @@ import java.util.*
     val shown = events.filter { e -> when (filter) { 1 -> e.optString("level") in listOf("warning", "critical"); 2 -> e.optString("level") == "critical"
         3 -> e.optString("category") == "login"; else -> true } }
     val day = SimpleDateFormat("EEEE, MMM d", Locale.getDefault()); val hm = SimpleDateFormat("HH:mm", Locale.getDefault())
-    Page("Inbox", app::back, listOf(TopAction(Icons.Rounded.Settings, "Notification settings") { app.go(Route.NotifySettings) })) {
+    Page("Inbox", app::back, listOf(TopAction(Icons.Rounded.DeleteSweep, "Clear the inbox") { clearAll = true },
+            TopAction(Icons.Rounded.Settings, "Notification settings") { app.go(Route.NotifySettings) })) {
+        AttentionList(app)
         Segmented(listOf("All", "Issues", "Critical", "Logins"), filter) { filter = it }
         if (shown.isEmpty()) Text(if (data == null) "Loading…" else "Nothing here — all quiet.", color = N.sub, modifier = Modifier.padding(30.dp))
+        if (shown.isNotEmpty()) Text("Swipe left to delete.", color = N.sub, fontSize = 12.sp, modifier = Modifier.padding(start = 30.dp, top = 4.dp))
         shown.groupBy { day.format(Date((it.optDouble("t") * 1000).toLong())) }.forEach { (d, list) ->
             SectionLabel(d)
             Group {
                 list.forEachIndexed { i, e ->
                     if (i > 0) RowDivider()
                     val lvl = e.optString("level")
+                    key(e.optDouble("t")) { SwipeRow(end = SwipeAction("Delete", Icons.Rounded.Delete, N.red) { delete(listOf(e.optDouble("t"))) }) {
                     Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 14.dp)) {
                         Box(Modifier.padding(top = 6.dp).size(10.dp).clip(CircleShape).background(levelColor(lvl, N)))
                         Spacer(Modifier.width(14.dp))
@@ -49,10 +66,19 @@ import java.util.*
                         }
                         Text(hm.format(Date((e.optDouble("t") * 1000).toLong())), color = N.sub, fontSize = 13.sp)
                     }
+                    } }
                 }
             }
         }
     }
+    if (clearAll) OneDialog({ clearAll = false }, "Clear the inbox?",
+        if (filter == 0) "Every past event is removed from this server's inbox (for all devices). Active alerts stay until they're fixed or ignored."
+        else "The ${shown.size} event(s) shown are removed from this server's inbox (for all devices).",
+        listOf(DialogButton("Cancel") { clearAll = false }, DialogButton("Clear", N.red) { clearAll = false
+            if (filter == 0) { if (!app.isAdmin) app.toast("This phone has view-only access") else {
+                dataLive.value = JSONObject().put("events", org.json.JSONArray())
+                app.act("Inbox cleared") { app.api.post("/api/v1/events/delete", JSONObject().put("all", true)) } } }
+            else delete(shown.map { it.optDouble("t") }) }))
 }
 
 @Composable fun NotifySettingsScreen(app: AppState) {
