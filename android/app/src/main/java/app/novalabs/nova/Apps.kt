@@ -44,6 +44,23 @@ object AppSessions {
     fun open(a: JSONObject): Session = get(a.optString("id")) ?: Session(a.optString("id"), a).also { s -> s.icon = icons[s.id]; open.add(s) }
     fun close(id: String) { get(id)?.let { s -> s.web?.apply { stopLoading(); loadUrl("about:blank"); destroy() }; open.remove(s) } }
     fun closeAll() { open.toList().forEach { close(it.id) } }
+    private val idle = mutableMapOf<String, Session>()      // pinned apps that aren't open: just their icon in the dock
+    /** What the dock shows: pinned apps first (open or not), then the other open apps. */
+    fun dock(): List<Session> {
+        val known = Cache["/api/v1/apps"]?.optJSONArray("apps").objs().associateBy { it.optString("id") }
+        val pinned = AppPrefs.pinnedApps.mapNotNull { id -> get(id) ?: known[id]?.let { a -> idle.getOrPut(id) { Session(id, a).also { it.icon = icons[id] } }.also { it.icon = icons[id] ?: it.icon } } }
+        return pinned + open.filter { it.id !in AppPrefs.pinnedApps }
+    }
+    fun isPinned(id: String) = id in AppPrefs.pinnedApps
+    fun togglePin(id: String) = AppPrefs.set("pinned_apps", (if (isPinned(id)) AppPrefs.pinnedApps - id else (AppPrefs.pinnedApps + id).takeLast(4)).joinToString(","))
+}
+
+/** Tap on an app in the dock: switch to it, or open it if it's only pinned. */
+fun dockTap(app: AppState, id: String) {
+    if (AppSessions.get(id) != null) { app.tab(Route.AppFrame(id)); return }
+    val a = Cache["/api/v1/apps"]?.optJSONArray("apps").objs().firstOrNull { it.optString("id") == id } ?: return
+    if (appUrl(app, a) == null) { app.toast("This app is only on your home network or Tailscale — hold it in Apps to add a remote link"); return }
+    AppSessions.open(a); app.tab(Route.AppFrame(id))
 }
 
 /** Where to open an app from here: your own link, or the server's address on this route + the app's port. */
@@ -126,6 +143,8 @@ fun openApp(app: AppState, a: JSONObject) {
         listOfNotNull(
             if (a != null && a.optString("source") == "custom") DialogButton("Delete", N.red) { app.act { app.api.delete("/api/v1/apps/${a.optString("id")}"); onDone(app.api.get("/api/v1/apps")) } } else null,
             if (a != null && a.optString("source") != "custom") DialogButton(if (a.optBoolean("hidden")) "Show" else "Hide") { save { put("hidden", !a.optBoolean("hidden")) } } else null,
+            if (a != null) DialogButton(if (AppSessions.isPinned(a.optString("id"))) "Unpin" else "Pin to dock") {
+                AppSessions.togglePin(a.optString("id")); app.toast(if (AppSessions.isPinned(a.optString("id"))) "Pinned — it stays in the navigation pill" else "Unpinned"); onDone(null) } else null,
             DialogButton("Save", N.blue, enabled = name.isNotBlank() && (a != null || url.startsWith("http"))) { save() })) {
         Column(Modifier.padding(horizontal = 22.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             OneTextField(name, { name = it.take(40) }, "Name", Modifier.fillMaxWidth())

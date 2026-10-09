@@ -2,7 +2,7 @@
 
 | Module | Install | What it adds |
 |---|---|---|
-| `fan-gigabyte-fusion2` | `install.sh --with lighting` | Fan/case LED control for Gigabyte RGB Fusion 2 (USB `048d:5702`): colours and palettes, effects (incl. software wave, comet, scanner, twinkle, fire, breathe), presets, schedules (time or sunrise/sunset, fades, end times), a status light that turns amber/red with server health. |
+| `fan-gigabyte-fusion2` | `install.sh --with lighting` | Fan/case LED control for Gigabyte RGB Fusion 2 (USB `048d:5702`): colors and palettes, effects (incl. software wave, comet, scanner, twinkle, fire, breathe), presets, schedules (time or sunrise/sunset, fades, end times), a status light that turns amber/red with server health. |
 | your own monitor | see below | Feed Nova alerts and richer status from any monitoring script. |
 
 The API detects which modules are present and reports them as `features` in `/api/v1/overview`;

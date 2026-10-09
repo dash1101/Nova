@@ -57,7 +57,7 @@ defaults.
 | **Fan / case lighting** (Gigabyte RGB Fusion 2) | `sudo nova-setup-lighting` |
 | **Alerts, Discord, what's watched** | Built in — see [MONITOR.md](MONITOR.md) |
 | **More servers** | Install Nova on each; in the app, Settings → Servers lists the ones it finds on your network |
-| **Your own look** | App → Settings → *Appearance & privacy* (theme, Home layout, app lock); *Server* (name, accent colour) |
+| **Your own look** | App → Settings → *Appearance & privacy* (theme, Home layout, app lock); *Server* (name, accent color) |
 
 ## Updating
 

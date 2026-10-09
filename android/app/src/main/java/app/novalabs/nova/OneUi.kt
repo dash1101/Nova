@@ -86,7 +86,7 @@ data class TopAction(val icon: ImageVector, val label: String, val onClick: () -
 
 /**
  * The back arrow (and any actions) stay pinned at the top while the page scrolls.
- * At the top they sit flush with the title; once content slides under them a dark-grey
+ * At the top they sit flush with the title; once content slides under them a dark-gray
  * circle fades in behind each, and fades out again when you scroll back to the top.
  */
 @Composable fun Page(title: String, onBack: () -> Unit, actions: List<TopAction> = emptyList(),
@@ -94,7 +94,7 @@ data class TopAction(val icon: ImageVector, val label: String, val onClick: () -
                      content: @Composable ColumnScope.() -> Unit) {
     val haze = remember { dev.chrisbanes.haze.HazeState() }
     Box(Modifier.fillMaxSize()) {
-      // the blur source includes the background glow, so the frosted buttons pick up its colour
+      // the blur source includes the background glow, so the frosted buttons pick up its color
       Box(Modifier.fillMaxSize().hazeSource(haze)) {
         GlowLayer()
         Column(Modifier.fillMaxSize().verticalScroll(scroll)) {
@@ -150,7 +150,7 @@ data class TopAction(val icon: ImageVector, val label: String, val onClick: () -
 
 @Composable fun CircleButton(icon: ImageVector, label: String, fade: Float, onClick: () -> Unit,
                              iconSize: Dp = 24.dp, nudge: Dp = 0.dp) {
-    // The glyph is centred in its box (ArrowBackIosNew, not the off-centre ArrowBackIos), so the
+    // The glyph is centered in its box (ArrowBackIosNew, not the off-center ArrowBackIos), so the
     // frosted circle that fades in behind it sits exactly around it.
     Box(Modifier.size(48.dp).frosted(LocalPageHaze.current, CircleShape, 8.dp, fade)
         .bouncy(onClick = onClick), contentAlignment = Alignment.Center) {
@@ -159,7 +159,7 @@ data class TopAction(val icon: ImageVector, val label: String, val onClick: () -
 }
 
 // ── Toast ─────────────────────────────────────────────────────────────────────────
-/** One UI toast: a small rounded grey bubble, centred above the bottom bar. */
+/** One UI toast: a small rounded gray bubble, centered above the bottom bar. */
 @Composable fun OneToastHost(state: SnackbarHostState, modifier: Modifier = Modifier) {
     SnackbarHost(state, modifier) { data ->
         if (N.material) {
@@ -183,7 +183,7 @@ data class DialogButton(val label: String, val color: Color? = null, val enabled
 /** One UI dialog: floats at the bottom of the screen, big rounded card, text buttons split by a hairline. */
 @Composable fun OneDialog(onDismiss: () -> Unit, title: String? = null, text: String? = null,
                           buttons: List<DialogButton> = emptyList(), content: (@Composable ColumnScope.() -> Unit)? = null) {
-    if (N.material) {                       // M3 dialog: centred, 28dp corners, text buttons on the right
+    if (N.material) {                       // M3 dialog: centered, 28dp corners, text buttons on the right
         Dialog(onDismiss, DialogProperties(usePlatformDefaultWidth = false)) {
             Column(Modifier.padding(horizontal = 24.dp).widthIn(max = 560.dp).fillMaxWidth().clip(RoundedCornerShape(28.dp))
                 .background(MaterialTheme.colorScheme.surfaceContainerHigh).padding(top = 24.dp, bottom = 12.dp)) {
@@ -252,7 +252,7 @@ data class DialogButton(val label: String, val color: Color? = null, val enabled
 }
 
 // ── Controls ──────────────────────────────────────────────────────────────────────
-/** One UI switch: blue track with the white thumb inside; grey when off. */
+/** One UI switch: blue track with the white thumb inside; gray when off. */
 @Composable fun OneSwitch(checked: Boolean, onChange: (Boolean) -> Unit, enabled: Boolean = true) {
     if (N.material) {
         androidx.compose.material3.Switch(checked, onChange, enabled = enabled, thumbContent = if (checked) { { Icon(Icons.Rounded.Check, null, Modifier.size(16.dp)) } } else null)

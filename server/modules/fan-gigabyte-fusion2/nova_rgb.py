@@ -2,10 +2,10 @@
 
 state.json fields:
   on, effect (static|pulse|blink|cycle|wave|random|gradient), color, color2 (gradient end),
-  brightness 0-100, speed 1-100 (higher = faster; speed_v=2 marks the new scale), rainbow (cycle/wave use every colour vs. just `color`),
+  brightness 0-100, speed 1-100 (higher = faster; speed_v=2 marks the new scale), rainbow (cycle/wave use every color vs. just `color`),
   led_count (LEDs on the fan ring, for gradients),
   status_light: when on, the light shows server health (warning = amber, critical = red pulse)
-                instead of your colour, then goes back to normal when all is well,
+                instead of your color, then goes back to normal when all is well,
   schedules: [{"id","time":"HH:MM","days":[0-6, Mon=0],"enabled",set:{...any of the fields above}}]
 `python3 nova_rgb.py restore` at boot (a wave fades in, then your setting), `python3 nova_rgb.py off` at
 shutdown (the ARGB header keeps standby power, so without it the fan stays lit on its last frame), `python3 nova_rgb.py tick` every minute (schedules + status),
@@ -29,6 +29,12 @@ SETTABLE = ("on", "effect", "color", "color2", "brightness", "speed", "rainbow",
 # Drawn frame by frame by `animate` (direct mode) from the clock, so the app can show them in sync;
 # the rest run on the controller.
 SOFTWARE_EFFECTS = {"wave", "comet", "scanner", "twinkle", "fire", "breathe"}
+# Controller effects that can also take a palette: with 2+ colors Nova draws them itself (in sync with the app)
+PALETTE_EFFECTS = {"static", "pulse", "blink", "cycle", "gradient"}
+def palette_of(eff): return [c for c in (eff.get("palette") or []) if c]
+def uses_palette(eff):
+    return eff["effect"] in PALETTE_EFFECTS and len(palette_of(eff)) >= 2 and not (eff["effect"] == "cycle" and eff.get("rainbow", True))
+def is_software(eff): return eff["effect"] in SOFTWARE_EFFECTS or uses_palette(eff)
 FIRE = ["#200000", "#ff1800", "#ff6000", "#ffb000", "#fff0a0"]      # fire's default heat palette
 
 def _old_speed(v):
@@ -84,7 +90,7 @@ def validate(patch, allow_schedules=True):
             out[k] = v
         elif k in ("rainbow", "status_light", "schedules_paused"): out[k] = bool(v)
         elif k == "palette":
-            if not isinstance(v, list) or len(v) > 8: raise ValueError("palette: up to 8 colours")
+            if not isinstance(v, list) or len(v) > 8: raise ValueError("palette: up to 8 colors")
             out[k] = [_hex(c) for c in v]
         elif k == "location":
             if v is None: out[k] = None
@@ -134,14 +140,14 @@ def _scaled(rgb, pct):
     return tuple(round(c * pct / 100) for c in rgb)
 
 def apply(st, override=None):
-    """Push a state to the hardware. `override` (status light) replaces effect/colour."""
+    """Push a state to the hardware. `override` (status light) replaces effect/color."""
     eff = dict(st)
-    if override: eff.update(override)
-    anim = bool(eff["on"]) and eff["effect"] in SOFTWARE_EFFECTS
+    if override: eff.update({"palette": [], **override})      # the status light is its own color, never your palette
+    anim = bool(eff["on"]) and is_software(eff)
     with fusion2.Fusion2() as f:          # holds the hardware lock until the end of this block
         if not eff["on"]:
             f.set_effect("argb", "off", (0, 0, 0), 0)
-        elif eff["effect"] == "gradient":
+        elif eff["effect"] == "gradient" and not anim:
             n = eff["led_count"]; a, b = hex_rgb(eff["color"]), hex_rgb(eff["color2"])
             cols = [tuple(round(a[i] + (b[i] - a[i]) * (j / max(1, n - 1))) for i in range(3)) for j in range(n)]
             f.set_direct([_scaled(c, eff["brightness"]) for c in cols])
@@ -165,15 +171,23 @@ def _h(a, b):
     h = (h * 1274126177) & 0x7fffffff
     return h ^ (h >> 16)
 
+def _tint_flame(c):
+    """Fire in one color: from nearly black, through the color, to almost white (a heat ramp)."""
+    k = lambda f: tuple(round(v * f) for v in c); w = lambda f: tuple(round(v + (255 - v) * f) for v in c)
+    return [k(0.08), k(0.55), tuple(c), w(0.45), w(0.8)]
+
 def _pal(eff):
-    if eff.get("rainbow", True) and eff["effect"] != "fire": return None          # None = rainbow
     p = [c for c in (eff.get("palette") or []) if c]
+    if eff["effect"] == "fire":            # Flame (rainbow on): the classic heat colors · Palette: your own ramp · One color: a flame in it
+        if len(p) >= 2: return [hex_rgb(c) for c in p]
+        if eff.get("rainbow", True): return [hex_rgb(c) for c in FIRE]
+        return _tint_flame(hex_rgb(eff.get("color") or "#ff6000"))
+    if eff.get("rainbow", True): return None          # None = rainbow
     if len(p) >= 2: return [hex_rgb(c) for c in p]
-    if eff["effect"] == "fire": return [hex_rgb(c) for c in FIRE]
     return [hex_rgb(eff.get("color") or "#3e91ff")]
 
 def _at(pal, x):
-    """Colour at position x (0..1, wrapping) along the palette — rainbow when pal is None."""
+    """Color at position x (0..1, wrapping) along the palette — rainbow when pal is None."""
     x %= 1.0
     if pal is None: return tuple(round(c * 255) for c in colorsys.hsv_to_rgb(x, 1, 1))
     if len(pal) == 1: return pal[0]
@@ -186,7 +200,7 @@ def _heat(pal, x):
     return tuple(round(a[c] + (b[c] - a[c]) * k) for c in range(3))
 
 def frame(eff, t):
-    """LED colours (full brightness; brightness is applied on top) for software effects at time t."""
+    """LED colors (full brightness; brightness is applied on top) for software effects at time t."""
     n = max(1, int(eff["led_count"])); per = fusion2.period_ms(eff["speed"]) / 1000; e = eff["effect"]; pal = _pal(eff)
     sc = lambda c, k: tuple(round(v * max(0.0, min(1.0, k))) for v in c)
     if e == "wave":
@@ -222,7 +236,16 @@ def frame(eff, t):
             v = 0.45 + 0.55 * (a + (b - a) * f)
             out.append(sc(_heat(pal, v), 0.35 + 0.65 * v))
         return out
-    if e == "breathe":                     # a smooth breath; each breath takes the next palette colour
+    if uses_palette(eff):                  # controller effects with your palette, drawn here
+        pp = [hex_rgb(c) for c in palette_of(eff)]
+        if e in ("static", "gradient"): return [_at(pp, j / n) for j in range(n)]
+        if e == "pulse":
+            c = int(t / per); k = 0.06 + 0.94 * (0.5 - 0.5 * math.cos(2 * math.pi * (t / per % 1.0)))
+            return [sc(pp[c % len(pp)], k)] * n
+        if e == "blink":
+            c = int(t / per); return [pp[c % len(pp)] if t / per % 1.0 < 0.5 else (0, 0, 0)] * n
+        if e == "cycle": return [_at(pp, t / (per * 2 * len(pp)))] * n
+    if e == "breathe":                     # a smooth breath; each breath takes the next palette color
         T = per * 2; c = int(t / T); k = 0.06 + 0.94 * (0.5 - 0.5 * math.cos(2 * math.pi * (t / T % 1.0)))
         col = _at(pal, (c % 12) / 12) if pal is None else pal[c % len(pal)]
         return [sc(col, k)] * n
@@ -255,7 +278,7 @@ def animate(fps=30):
             dev, order = None, None; time.sleep(2)
 
 def intro(st, seconds=2.6, fps=30):
-    """Boot: a wave in your colour (or rainbow) fades in and comes up to your brightness; the
+    """Boot: a wave in your color (or rainbow) fades in and comes up to your brightness; the
     caller then applies your real setting."""
     look = {**st, "effect": "wave", "speed": max(55, st.get("speed", 50))}
     target = max(20, st.get("brightness", 50)) if st.get("on", True) else 35
@@ -341,7 +364,7 @@ def _minute(trig, hhmm, offset, st):
 
 def extras(st):
     """Read-only extras for the app: today's sun times, and what each schedule does next."""
-    out = {"effects": EFFECT_NAMES, "software_effects": sorted(SOFTWARE_EFFECTS)}
+    out = {"effects": EFFECT_NAMES, "software_effects": sorted(SOFTWARE_EFFECTS), "palette_effects": sorted(PALETTE_EFFECTS)}
     loc = location(st); sun = sun_times(loc["lat"], loc["lon"]) if loc else None
     if sun: out["sun"] = {"sunrise": f"{sun[0] // 60:02d}:{sun[0] % 60:02d}", "sunset": f"{sun[1] // 60:02d}:{sun[1] % 60:02d}"}
     nxt = {}
@@ -374,7 +397,7 @@ def tick():
                 if s.get("until"): r["restore"] = {k: st.get(k) for k in LOOK}
                 fade = int(s.get("fade", 0))
                 if fade > 0 and st.get("on", True):
-                    # Fade: effect/colour switch now if they change, brightness glides; turning off fades to 0 first.
+                    # Fade: effect/color switch now if they change, brightness glides; turning off fades to 0 first.
                     r["fade"] = {"t0": now_t, "dur": fade * 60, "b0": st.get("brightness", 50), "c0": st.get("color"),
                                  "b1": 0 if target.get("on") is False else target.get("brightness", st.get("brightness", 50)),
                                  "c1": target.get("color", st.get("color")), "off": target.get("on") is False}

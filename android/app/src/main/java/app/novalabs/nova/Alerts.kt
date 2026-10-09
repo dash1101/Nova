@@ -120,3 +120,4 @@ class AlertService : Service() {
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(ctx: Context, intent: Intent) { Alerts.start(ctx) }
 }
+

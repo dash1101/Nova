@@ -4,11 +4,16 @@ import kotlin.math.*
 
 /**
  * The fan's software effects, ported line for line from the server (nova_rgb.frame), so the app's
- * picture shows exactly what the fan shows at the same moment. Colours are 0..255 RGB triples at
+ * picture shows exactly what the fan shows at the same moment. Colors are 0..255 RGB triples at
  * full brightness. Keep in sync with server/modules/fan-gigabyte-fusion2/nova_rgb.py.
  */
 object LightFx {
     val SOFTWARE = setOf("wave", "comet", "scanner", "twinkle", "fire", "breathe")
+    /** Controller effects that also take a palette: with 2+ colors Nova draws them itself (same as the server). */
+    val PALETTE_FX = setOf("static", "pulse", "blink", "cycle", "gradient")
+    fun usesPalette(effect: String, palette: List<String>, rainbow: Boolean) =
+        effect in PALETTE_FX && palette.count { it.isNotEmpty() } >= 2 && !(effect == "cycle" && rainbow)
+    fun isSoftware(effect: String, palette: List<String>, rainbow: Boolean) = effect in SOFTWARE || usesPalette(effect, palette, rainbow)
     private val FIRE = listOf("#200000", "#ff1800", "#ff6000", "#ffb000", "#fff0a0")
     data class Fx(val effect: String, val leds: Int, val speed: Int, val rainbow: Boolean, val palette: List<String>, val color: String, val color2: String)
 
@@ -30,11 +35,21 @@ object LightFx {
         val (r, g, b) = when (i % 6) { 0 -> Triple(1.0, f, 0.0); 1 -> Triple(q, 1.0, 0.0); 2 -> Triple(0.0, 1.0, f); 3 -> Triple(0.0, q, 1.0); 4 -> Triple(f, 0.0, 1.0); else -> Triple(1.0, 0.0, q) }
         return intArrayOf(pyRound(r * 255), pyRound(g * 255), pyRound(b * 255))
     }
+    /** Fire in one color: from nearly black, through the color, to almost white (same as the server). */
+    private fun tintFlame(c: IntArray): List<IntArray> {
+        fun k(f: Double) = IntArray(3) { pyRound(c[it] * f) }
+        fun w(f: Double) = IntArray(3) { pyRound(c[it] + (255 - c[it]) * f) }
+        return listOf(k(0.08), k(0.55), c, w(0.45), w(0.8))
+    }
     private fun pal(fx: Fx): List<IntArray>? {
-        if (fx.rainbow && fx.effect != "fire") return null
         val p = fx.palette.filter { it.isNotEmpty() }
+        if (fx.effect == "fire") {          // Flame (rainbow on) · Palette: your own heat ramp · One color: a flame in it
+            if (p.size >= 2) return p.map { hexRgb(it) }
+            if (fx.rainbow) return FIRE.map { hexRgb(it) }
+            return tintFlame(hexRgb(fx.color.ifEmpty { "#ff6000" }))
+        }
+        if (fx.rainbow) return null
         if (p.size >= 2) return p.map { hexRgb(it) }
-        if (fx.effect == "fire") return FIRE.map { hexRgb(it) }
         return listOf(hexRgb(fx.color.ifEmpty { "#3e91ff" }))
     }
     private fun at(pal: List<IntArray>?, x0: Double): IntArray {
@@ -50,9 +65,18 @@ object LightFx {
     }
     private fun sc(c: IntArray, k: Double) = IntArray(3) { pyRound(c[it] * k.coerceIn(0.0, 1.0)) }
 
-    /** LED colours for a software effect at server time [t] (seconds). */
+    /** LED colors for a software effect at server time [t] (seconds). */
     fun frame(fx: Fx, t: Double): List<IntArray> {
         val n = max(1, fx.leds); val per = periodMs(fx.speed) / 1000; val p = pal(fx)
+        if (usesPalette(fx.effect, fx.palette, fx.rainbow)) {
+            val pp = fx.palette.filter { it.isNotEmpty() }.map { hexRgb(it) }; val c = floor(t / per).toLong()
+            when (fx.effect) {
+                "static", "gradient" -> return List(n) { at(pp, it.toDouble() / n) }
+                "pulse" -> { val k = 0.06 + 0.94 * (0.5 - 0.5 * cos(2 * PI * ((t / per) % 1.0))); return List(n) { sc(pp[(c % pp.size).toInt()], k) } }
+                "blink" -> return List(n) { if ((t / per) % 1.0 < 0.5) pp[(c % pp.size).toInt()] else intArrayOf(0, 0, 0) }
+                "cycle" -> return List(n) { at(pp, t / (per * 2 * pp.size)) }
+            }
+        }
         return when (fx.effect) {
             "wave" -> { val ph = (t / (per * 1.5)) % 1.0
                 if (p == null || p.size >= 2) List(n) { at(p, it.toDouble() / n + ph) }

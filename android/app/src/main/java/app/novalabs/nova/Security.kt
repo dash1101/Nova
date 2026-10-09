@@ -234,7 +234,7 @@ object Servers {
         prefs(ctx).edit().putString("ids", left.ifEmpty { listOf("") }.joinToString(",")).apply()
         if (active(ctx) == id) setActive(ctx, left.firstOrNull() ?: "")
     }
-    /** Drop half-made profiles (pairing cancelled), except the one in use. */
+    /** Drop half-made profiles (pairing canceled), except the one in use. */
     fun prune(ctx: Context) {
         val keep = active(ctx)
         all(ctx).filter { it != keep && it.isNotEmpty() && !Pairing(ctx, it).paired }.forEach { remove(ctx, it) }

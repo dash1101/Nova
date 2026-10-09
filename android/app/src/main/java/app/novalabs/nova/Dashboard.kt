@@ -98,7 +98,7 @@ class DashPrefs(ctx: android.content.Context, profile: String) {
             val cols = (maxWidth / 260.dp).toInt().coerceIn(2, 6)
             Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Spacer(Modifier.height(if (chrome) 56.dp else 4.dp))
-                // Pack tiles into rows of `cols` columns, honouring each tile's span.
+                // Pack tiles into rows of `cols` columns, honoring each tile's span.
                 val rows = mutableListOf<MutableList<DashTile>>(); var used = cols
                 tiles.mapNotNull { id -> DASH_TILES.firstOrNull { it.id == id } }.forEach { t ->
                     val span = t.span.coerceAtMost(cols)
@@ -120,7 +120,7 @@ class DashPrefs(ctx: android.content.Context, profile: String) {
             IconButton({ app.back() }) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Leave dashboard", tint = N.text) }
             Text(serverName(app), color = N.text, fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
             if (!app.isAdmin) Text("View only  ", color = N.sub, fontSize = 13.sp)
-            IconButton({ editing = true }) { Icon(Icons.Rounded.Edit, "Customise", tint = N.text) }
+            IconButton({ editing = true }) { Icon(Icons.Rounded.Edit, "Customize", tint = N.text) }
         }
         if (night) Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.72f)))     // night dimming
     }
@@ -229,7 +229,7 @@ class DashPrefs(ctx: android.content.Context, profile: String) {
 @Composable private fun EditDashboard(app: AppState, prefs: DashPrefs, tiles: List<String>, save: (List<String>) -> Unit, done: () -> Unit) {
     var dim by remember { mutableStateOf(prefs.dimNight) }
     var from by remember { mutableIntStateOf(prefs.dimFrom) }; var to by remember { mutableIntStateOf(prefs.dimTo) }
-    Page("Customise dashboard", done) {
+    Page("Customize dashboard", done) {
         SectionLabel("On the dashboard · in this order")
         Group {
             tiles.forEachIndexed { i, id -> val d = DASH_TILES.first { it.id == id }

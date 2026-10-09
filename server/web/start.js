@@ -7,7 +7,7 @@ import { poolKind } from "./storage.js";
 const enc = encodeURIComponent;
 
 // ── what Nova can find ─────────────────────────────────────────────────────────
-const PLACES = [
+export const PLACES = [
   ["Home", "overview start", "dns", "home"], ["Start page", "new tab homepage search bookmarks", "home", "start"],
   ["Status", "graphs cpu memory ram temperature network live", "status", "status"], ["Containers", "docker compose logs shell restart stop", "box", "containers"],
   ["Apps", "web apps open launch", "apps", "apps"], ["App store", "install store programs", "store", "store"],
@@ -16,11 +16,11 @@ const PLACES = [
   ["Diagnostics", "speed test internet ping traceroute dns port cpu stress memory test disk speed", "speed", "diag"],
   ["Updates", "upgrade packages apt containers images nova update", "update", "updates"], ["Inbox", "alerts notifications events history", "bell", "inbox"],
   ["Archive", "old events history export", "book", "archive"], ["Notifications", "discord webhook alerts levels logins usb", "bell", "notify"],
-  ["Lighting", "fan rgb led colour color effect brightness wave", "bulb", "lighting"], ["Light schedules", "schedule sunrise sunset fade timer", "clock", "schedules"],
+  ["Lighting", "fan rgb led color color effect brightness wave", "bulb", "lighting"], ["Light schedules", "schedule sunrise sunset fade timer", "clock", "schedules"],
   ["Quick panel", "shortcuts tiles restart shut down power free ram", "widgets", "quick"], ["Dashboard mode", "always on tablet wall display", "dash", "dashboard"],
   ["Users & devices", "devices phones browsers users roles remove", "group", "devices"], ["Settings", "software update connection this browser", "gear", "settings"],
   ["Appearance", "theme dark light material you style reduce motion home layout navigation pill tabs start page open on start", "palette", "appearance"],
-  ["Server", "name accent colour location sunrise", "dns", "server"], ["Setup guide", "help install how to", "info", "guide"], ["About", "version licence", "info", "about"],
+  ["Server", "name accent color location sunrise", "dns", "server"], ["Setup guide", "help install how to", "info", "guide"], ["About", "version license", "info", "about"],
 ];
 const SOURCES = ["/api/v1/containers", "/api/v1/apps", "/api/v1/storage", "/api/v1/backups"];
 export const loadSearchData = () => Promise.all(SOURCES.map(p => S.cache[p] ? null : get(p).catch(() => null)));
@@ -45,13 +45,32 @@ export function searchNova(q0) {
 export async function search(ctx) {
   let q = ctx.args[0] ? decodeURIComponent(ctx.args[0]) : "";
   const results = () => { const hits = searchNova(q), groups = {}; hits.forEach(h => (groups[h.kind] ||= []).push(h));
-    return !q.trim() ? note("Try “dark mode”, “raid”, “speed test” or a container's name. Press / anywhere in Nova to search.")
-      : hits.length ? Object.entries(groups).map(([k, l]) => sec(k) + group(l.map(h => row(h.title, { sub: h.sub, icon: h.icon, click: `go:${h.go}` })).join(""))).join("") : note(`Nothing called “${q}”.`); };
+    return !q.trim() ? historyHtml() + note("Try “dark mode”, “raid”, “speed test” or a container's name. Press / anywhere in Nova to search.")
+      : hits.length ? Object.entries(groups).map(([k, l]) => sec(k) + group(l.map(h => row(h.title, { sub: h.sub, icon: h.icon, click: `hit:${h.go}` })).join(""))).join("") : note(`Nothing called “${q}”.`); };
+  // recent and pinned searches (this browser)
+  const recent = () => prefs.searchRecent || [], pinned = () => prefs.searchPinned || [];
+  const keep = t => { t = t.trim().slice(0, 80); if (t.length < 2) return; prefs.searchRecent = [t, ...recent().filter(x => x.toLowerCase() !== t.toLowerCase())].slice(0, 12); };
+  const historyHtml = () => {
+    const pins = pinned(), rec = recent().filter(t => !pins.includes(t));
+    return (pins.length ? sec("Pinned") + `<div class="chips">${pins.map((t, i) => `<button class="chip press" data-act="useq:${i}:p" title="Right-click to unpin">${I("pin")}${esc(t)}</button>`).join("")}</div>` : "")
+      + (rec.length ? sec("Recent") + group(rec.map(t => { const i = recent().indexOf(t);
+          return row(t, { icon: "history", tint: "var(--sub)", click: `useq:${i}:r`, end: `<span class="hact"><button class="xbtn" style="opacity:.8" data-act="pinq:${i}" title="Pin">${I("pin")}</button><button class="xbtn" style="opacity:.8" data-act="rmq:${i}" title="Remove">${I("close")}</button></span>` }); }).join("")
+          + row("Clear history", { icon: "del", tint: "var(--red)", click: "clearq" })) : "");
+  };
+  const redraw = () => { $("#sres").innerHTML = results(); $$("#sres .chip").forEach(c => c.oncontextmenu = e => { e.preventDefault(); const i = +c.dataset.act.split(":")[1]; prefs.searchPinned = pinned().filter((_, j) => j !== i); redraw(); }); };
+  const setQ = t => { q = t; $("#sq").value = t; $("#sq").focus(); redraw(); };
+  ctx.handlers({
+    hit: (...a) => { keep(q); ctx.go(a.filter(x => typeof x === "string").join(":")); },
+    useq: (i, kind) => setQ((kind === "p" ? pinned() : recent())[+i] || ""),
+    pinq: i => { const t = recent()[+i]; if (t && !pinned().includes(t)) prefs.searchPinned = [...pinned(), t].slice(-8); redraw(); },
+    rmq: i => { prefs.searchRecent = recent().filter((_, j) => j !== +i); redraw(); },
+    clearq: () => { prefs.searchRecent = []; redraw(); },
+  });
   ctx.show(`<div class="searchbox glass">${I("search")}<input id="sq" class="sq" placeholder="Screens, settings, containers, apps, drives…" value="${esc(q)}" autocomplete="off" aria-label="Search Nova"></div><div id="sres">${results()}</div>`, { title: "Search" });
   const inp = $("#sq"); inp.focus();
-  inp.oninput = () => { q = inp.value; $("#sres").innerHTML = results(); };
-  inp.onkeydown = e => { if (e.key === "Enter") { const h = searchNova(q)[0]; if (h) ctx.go(h.go); } };
-  await loadSearchData(); if (ctx.alive()) $("#sres").innerHTML = results();
+  inp.oninput = () => { q = inp.value; redraw(); };
+  inp.onkeydown = e => { if (e.key === "Enter") { const h = searchNova(q)[0]; if (h) { keep(q); ctx.go(h.go); } } };
+  redraw(); await loadSearchData(); if (ctx.alive()) redraw();
 }
 
 // ── the start page ─────────────────────────────────────────────────────────────
@@ -177,5 +196,18 @@ export async function startEdit(ctx) {
     sug: () => { prefs.startSuggest = !startPrefs().suggest; draw(); }, nt: () => { prefs.startNewTab = !startPrefs().newTab; draw(); },
     sr: k => { prefs.startRoute = k; draw(); toast("Nova opens there next time"); },
   });
+  draw();
+}
+
+/** Menu → Favorites: any screen in Nova, starred (saved in this browser). */
+export const favoritesHtml = () => {
+  const favs = (prefs.favorites || []).map(f => PLACES.find(p => p[0] === f)).filter(Boolean);
+  return sec("Favorites") + group(favs.map(p => row(p[0], { icon: p[2], tint: "var(--amber)", click: "go:" + p[3] })).join("")
+    + row(favs.length ? "Edit favorites" : "Add favorites", { sub: favs.length ? "" : "Star the screens you use most — they show up here", blue: !favs.length, icon: favs.length ? "edit" : "star", tint: "var(--sub)", click: "go:favorites" }));
+};
+export async function favorites(ctx) {
+  const draw = () => ctx.show(`${note("Starred screens appear at the top of Menu, in this order.")}${group(PLACES.map(p => { const on = (prefs.favorites || []).includes(p[0]);
+      return row(p[0], { icon: p[2], tint: on ? "var(--amber)" : "var(--sub)", click: "fav:" + p[0], end: `<span class="star${on ? " on" : ""}" aria-label="${on ? "Remove from favorites" : "Add to favorites"}">${I(on ? "star" : "starOutline")}</span>` }); }).join(""))}`, { title: "Favorites" });
+  ctx.handlers({ fav: (...a) => { const t = a.filter(x => typeof x === "string").join(":"), f = prefs.favorites || []; prefs.favorites = f.includes(t) ? f.filter(x => x !== t) : [...f, t]; draw(); } });
   draw();
 }

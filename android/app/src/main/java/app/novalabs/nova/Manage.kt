@@ -109,7 +109,7 @@ private val ACCENTS = listOf("", "#3e91ff", "#5e5ce6", "#bf5af2", "#ff2d55", "#f
         }
         Text("Shown at the top of Home and in the server switcher. The machine's hostname (${st?.optString("hostname") ?: "—"}) doesn't change.",
             color = N.sub, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 30.dp, vertical = 4.dp))
-        SectionLabel("Accent colour")
+        SectionLabel("Accent color")
         Group {
             Row(Modifier.fillMaxWidth().padding(18.dp), horizontalArrangement = Arrangement.SpaceBetween) {
                 ACCENTS.forEach { h ->
@@ -123,7 +123,7 @@ private val ACCENTS = listOf("", "#3e91ff", "#5e5ce6", "#bf5af2", "#ff2d55", "#f
                 }
             }
         }
-        Text("Gives each server its own colour, so you always know which one you're controlling. \"A\" is the default blue.",
+        Text("Gives each server its own color, so you always know which one you're controlling. \"A\" is the default blue.",
             color = N.sub, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 30.dp, vertical = 4.dp))
         SectionLabel("Location")
         var locating by remember { mutableStateOf(false) }

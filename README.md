@@ -1,4 +1,4 @@
-# Nova  ·  0.5.5-alpha
+# Nova  ·  0.5.6-alpha
 
 **A secure remote control for your home server, from your Android phone.**
 Status and live graphs, containers (logs, shell, start/stop), a one-tap app store, drives,
@@ -39,10 +39,10 @@ network, and optionally from anywhere through Cloudflare Access, without a VPN.
 | **Terminal** | Real SSH to the server, with a key that lives in the phone's secure chip |
 | **Quick panel** | Your own tiles: back up, free RAM, lights, pause alerts, restart a container… |
 | **Alerts** | Inbox plus instant notifications (no Google push service, no third party) |
-| **Several servers** | Pair with as many machines as you like and switch between them, each with its own name and colour |
+| **Several servers** | Pair with as many machines as you like and switch between them, each with its own name and color |
 | **Users & roles** | Named users, each Admin or View only; invite phones by QR, approve browsers from your phone |
-| **Tablets & dashboard** | One UI tablet layout (rail + list/detail) and an always-on, customisable dashboard mode |
-| **Two looks** | Default (One UI-style frosted glass) or Material You Expressive with wallpaper colours — chosen automatically by phone maker, switchable in Appearance |
+| **Tablets & dashboard** | One UI tablet layout (rail + list/detail) and an always-on, customizable dashboard mode |
+| **Two looks** | Default (One UI-style frosted glass) or Material You Expressive with wallpaper colors — chosen automatically by phone maker, switchable in Appearance |
 | **Nova web** | The same design in any browser, at `https://<server>:8495/`. Risky actions are approved on your phone |
 | **Optional modules** | Case/fan lighting (Gigabyte RGB Fusion 2); plug in your own monitor for alerts |
 
@@ -99,7 +99,7 @@ behind a Cloudflare Tunnel with Access and a service token. Step by step: [docs/
 ```
 android/                 the app (Kotlin, Jetpack Compose)
 server/api/              server.py (API), helper.py (root helper), nova-api (CLI), nova-app-publish
-server/store/            app store catalogue: docker/*.json (compose-based apps) + programs.json (apt)
+server/store/            app store catalog: docker/*.json (compose-based apps) + programs.json (apt)
 server/modules/          optional: lighting (fan-gigabyte-fusion2)
 packaging/               .deb builder (build-deb.sh), nova-setup-lighting, logrotate
 server/install.sh        installer
@@ -126,7 +126,7 @@ app uses). See docs/REMOTE.md.
 - Monitoring and alerts are built in (docs/MONITOR.md); you can still plug in your own monitor.
 - Pools use mergerfs (combined) or Linux software RAID (mdadm); ZFS isn't offered from the app yet.
 
-## Licence
+## License
 
 Nova is open source under the [GNU AGPL-3.0](LICENSE), with a few extra terms in [NOTICE.md](NOTICE.md):
 keep the credit, and give a fork you distribute its own name, icon and app ID. Pull requests are welcome.

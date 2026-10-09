@@ -1,7 +1,7 @@
 // The home-screen server (tower case, glass side, live ARGB fan, drive LEDs, power LED in the
-// status colour) and the big Lighting fan — the same drawing as the app's Hero.kt, on a canvas.
+// status color) and the big Lighting fan — the same drawing as the app's Hero.kt, on a canvas.
 import { S } from "./core.js";
-import { SOFTWARE, frame } from "./fx.js";
+import { isSoftware, frame } from "./fx.js";
 
 const RAINBOW = ["#ff3b30", "#ff9500", "#ffcc00", "#34c759", "#00c7be", "#007aff", "#af52de", "#ff3b30"];
 const reduce = () => document.documentElement.classList.contains("reduce");
@@ -17,7 +17,7 @@ export function fanLook(f) {
     speed: ov?.speed ?? f?.speed ?? 50,
     rainbow: f?.rainbow !== false,
     leds: Math.max(4, Math.min(40, f?.led_count ?? 12)),
-    palette: f?.palette || [],
+    palette: ov ? [] : f?.palette || [],
   };
 }
 const dark = () => getComputedStyle(document.documentElement).colorScheme !== "light";
@@ -32,7 +32,7 @@ const CYC = [[255, 0, 0], [255, 127, 0], [255, 255, 0], [0, 255, 0], [0, 0, 255]
  *  the clock); pulse/blink/cycle/random run on the board's own clock, so their speed matches. */
 function ledColor(look, j, n, t, reverse) {
   const per = periodMs(look.speed), jj = reverse ? (n - j) % n : j, col = hexRgb(look.color);
-  if (SOFTWARE.has(look.effect)) {                // Nova's animator draws these from the clock: identical maths
+  if (isSoftware(look)) {                // Nova's animator draws these from the clock: identical maths
     const c = frame({ effect: look.effect, leds: n, speed: look.speed, rainbow: look.rainbow, palette: look.palette, color: look.color, color2: look.color2 }, t / 1000)[jj];
     const m = Math.max(1, ...c); return [c.map(v => v / m * 255), m / 255];
   }
@@ -50,7 +50,7 @@ function ledColor(look, j, n, t, reverse) {
   return [col, 1];
 }
 const rgbA = ([r, g, b], a) => `rgba(${r | 0},${g | 0},${b | 0},${a})`;
-/** The fan ring: a continuous glowing strip, the LEDs' colours blended round it (LED 0 at the top). */
+/** The fan ring: a continuous glowing strip, the LEDs' colors blended round it (LED 0 at the top). */
 function ring(c, x, y, r, look, t, spin, isDark, reverse) {
   c.save();
   c.fillStyle = isDark ? "#151518" : "#2a2a30"; c.beginPath(); c.arc(x, y, r * 1.12, 0, 7); c.fill();
@@ -77,11 +77,18 @@ function glow(look, t, reverse) {
   let s = [0, 0, 0]; for (let j = 0; j < look.leds; j++) { const [c, k] = ledColor(look, j, look.leds, t, reverse); s = s.map((v, i) => v + c[i] * k); }
   return s.map(v => Math.min(255, v / look.leds));
 }
-/** A healthy drive's LED: quick random blips that fade, like disk activity (deterministic per LED). */
-function activity(i, t) {
+/** How often a drive's light blinks, in % of 110 ms slots: from its real activity (the server's
+ *  share of time spent on I/O, and bytes moved), or a gentle flicker when the server doesn't say. */
+function blinkRate(io) {
+  if (!io) return 9;
+  const [busy, bps] = io;
+  return busy > 0 || bps > 0 ? Math.min(85, 6 + 80 * Math.sqrt(busy)) : 0;
+}
+/** A healthy drive's LED: quick blips that fade, like disk activity (deterministic per LED). */
+function activity(i, t, pct = 9) {
   const slot = 110, now = Math.floor(t / slot); let v = 0;
   for (let k = 0; k < 5; k++) { const s = now - k, h = (Math.imul(s, 2654435761) ^ Math.imul(i, 40503) ^ (s >> 3)) >>> 0;
-    if (h % 100 < 9) v = Math.max(v, Math.exp(-(t - s * slot) / 160)); }
+    if (h % 100 < pct) v = Math.max(v, Math.exp(-(t - s * slot) / 160)); }
   return v;
 }
 
@@ -109,7 +116,8 @@ function drawServer(c, w, h, look, t, spin, status, drives, reverse) {
   const lr = Math.max(cw * .008, Math.min(cw * .016, step * .32));
   for (let i = 0; i < n; i++) {
     const lvl = list ? list[i].level : "ok";
-    const [col, a] = lvl === "critical" ? [[255, 64, 64], .35 + .65 * (.5 + .5 * Math.sin(t / 1000 * 2 * Math.PI))] : lvl === "warning" ? [[255, 176, 32], .9] : [[62, 207, 110], .38 + .62 * activity(i, t)];
+    const io = list && S.lastNow?.disks ? S.lastNow.disks[list[i].name] : null;
+    const [col, a] = lvl === "critical" ? [[255, 64, 64], .35 + .65 * (.5 + .5 * Math.sin(t / 1000 * 2 * Math.PI))] : lvl === "warning" ? [[255, 176, 32], .9] : [[62, 207, 110], .38 + .62 * activity(i, t, blinkRate(io))];
     if (a > .5) { c.fillStyle = rgbA(col, (a - .5) * .6); c.beginPath(); c.arc(x0 + i * step, ly, lr * 2.6, 0, 7); c.fill(); }
     c.fillStyle = rgbA(col, a); c.beginPath(); c.arc(x0 + i * step, ly, lr, 0, 7); c.fill();
   }

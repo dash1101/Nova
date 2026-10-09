@@ -10,7 +10,7 @@ Thanks for helping! Nova aims to be the easiest *secure* way to manage a home se
 | `server/api/server.py` | The API (Python standard library + `cryptography`); runs unprivileged |
 | `server/api/helper.py` | The only privileged code: fixed verbs, validated arguments, no shell |
 | `server/web/` | Nova web (plain HTML/CSS/JS, no build step, no third-party code) |
-| `server/store/` | App store catalogue — the easiest place to contribute (see docs/STORE.md) |
+| `server/store/` | App store catalog — the easiest place to contribute (see docs/STORE.md) |
 | `packaging/` | `.deb` builder, setup helpers |
 
 ## Ground rules
@@ -21,7 +21,7 @@ Thanks for helping! Nova aims to be the easiest *secure* way to manage a home se
 - **No new runtime dependencies** on the server without a very good reason (it's stdlib + cryptography).
 - **Keep the look consistent:** use the components in `OneUi.kt` (Page, Group, Row1, OneDialog,
   OneSwitch…) rather than stock Material widgets.
-- Plain-English UI text: say what happens ("Restarts the container"), not how.
+- Plain-English UI text in American spelling (color, customize, center, license): say what happens ("Restarts the container"), not how.
 
 ## Building
 
@@ -35,7 +35,7 @@ cd android && ./gradlew assembleDebug  # release builds need your own signing ke
 Test a server change against the real flow (pair a phone or the web app), not only the helper.
 Please describe how you tested in your pull request.
 
-## Licence
+## License
 
 Nova is AGPL-3.0 with a few extra terms (keep the credit, use your own name and icon for a fork) —
 see `NOTICE.md`. By sending a pull request you agree your contribution is licensed the same way.

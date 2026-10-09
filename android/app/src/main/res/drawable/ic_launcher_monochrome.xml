@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Themed icons (Android 13+): one shape the system tints from the wallpaper colours. -->
+<!-- Themed icons (Android 13+): one shape the system tints from the wallpaper colors. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
     <group android:pivotX="51" android:pivotY="57" android:scaleX="0.93" android:scaleY="0.93" android:translateX="3" android:translateY="-3">

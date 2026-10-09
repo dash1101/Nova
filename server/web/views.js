@@ -6,6 +6,7 @@ import { I, row, group, sec, note, sw, radio, switchRow, links, expand, slider, 
          toast, dialog, confirm, choose, ask, wireCommon, reorderable, onHold, spark, swipeable, colorPicker } from "./ui.js";
 import { animate } from "./hero.js";
 import * as ST from "./storage.js";
+import { favoritesHtml } from "./start.js";
 
 // ── catalogs (same ids as the app, so the two read alike) ───────────────────────
 export const SHORTCUTS = [
@@ -26,7 +27,7 @@ const QUICK = [
   ["backup", "Back up now", "backup", "Start a backup now"], ["freeram", "Free RAM", "mem", "Drop the disk cache"], ["fan", "Fan light", "bulb", "On / off"],
   ["dim", "Dim fan", "dim", "Brightness 5%"], ["bright", "Bright fan", "bright", "Brightness 60%"], ["status_light", "Status light", "traffic", "Fan shows server health"],
   ["discord", "Discord pings", "bell", "Pause / resume alerts"], ["status", "Server status", "status", "Live graphs and health"], ["dashboard", "Dashboard", "dash", "Always-on screen"],
-  ["containers", "Containers", "box", "Open the list"], ["lighting", "Lighting", "palette", "Colours and effects"], ["inbox", "Inbox", "bell", "Alerts and logins"],
+  ["containers", "Containers", "box", "Open the list"], ["lighting", "Lighting", "palette", "Colors and effects"], ["inbox", "Inbox", "bell", "Alerts and logins"],
   ["storage", "Storage", "disk", "Drives and temperatures"], ["store", "App store", "store", "Install apps"],
 ].map(([id, label, icon, hint]) => ({ id, label, icon, hint }));
 const quickDef = id => id.startsWith("restart:") ? { id, label: "Restart " + id.slice(8), icon: "restart", hint: "Approved on your phone" } : QUICK.find(q => q.id === id);
@@ -159,13 +160,14 @@ export async function menu(ctx) {
   const draw = () => {
     const m = S.overview?.status?.metrics || {}, cs = S.overview?.containers, f = S.fan;
     ctx.show(`<button class="searchbox glass" data-act="search" style="width:calc(100% - 2*var(--gutter));text-align:left">${I("search")}<span class="muted" style="font-size:17px">Search Nova</span><span class="muted" style="margin-left:auto;font-size:13px">/</span></button>
+      ${favoritesHtml()}${sec("Everything")}
       ${group(row("Containers", { sub: cs ? `${cs.running} of ${cs.total} running` : null, blue: true, icon: "box", click: "go:containers" })
         + (has("lighting") ? row("Lighting", { sub: f ? (f.on !== false ? `${cap(f.effect)} · ${f.brightness}%` : "Off") : null, blue: true, icon: "bulb", tint: "#ffb020", click: "go:lighting" }) : ""))}
       ${group(row("Storage & hardware", { sub: "Drives, pools, set up drives" + (storageList(m).length ? " · " + storageList(m).map(x => `${x.name} ${Math.round(x.pct)}%`).slice(0, 2).join(" · ") : ""), blue: true, icon: "disk", tint: "#3ecf6e", click: "go:hardware" })
         + row("Backups", { sub: "What's backed up, restore files", blue: true, icon: "backup", click: "go:backups" })
         + row("Diagnostics", { sub: "Speed, stress and network tests", blue: true, icon: "speed", tint: "#64d2ff", click: "go:diag" })
         + row("Updates", { sub: "Packages, containers and Nova", blue: true, icon: "update", tint: "#3ecf6e", click: "go:updates" })
-        + row("Quick panel", { sub: "Your shortcuts — tap ✎ to customise", blue: true, icon: "widgets", click: "go:quick" })
+        + row("Quick panel", { sub: "Your shortcuts — tap ✎ to customize", blue: true, icon: "widgets", click: "go:quick" })
         + row("Server status", { sub: "Live graphs, storage, backups", blue: true, icon: "status", tint: "#3ecf6e", click: "go:status" })
         + row("Dashboard mode", { sub: "Always-on screen for a tablet or spare screen", blue: true, icon: "dash", tint: "#64d2ff", click: "go:dashboard" })
         + row("Terminal", { sub: "Container shells here · SSH in the phone app", icon: "term", tint: "#8e8e93", click: "go:terminal" }))}
@@ -421,14 +423,16 @@ export async function inbox(ctx) {
     const all = S.cache["/api/v1/events?since=0"]?.events, ev = shown();
     picked = new Set([...picked].filter(t => ev.some(e => String(e.t) === t)));
     const days = {}; ev.forEach(e => (days[new Date(e.t * 1000).toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" })] ||= []).push(e));
-    const bar = picked.size ? `<div class="selbar glass"><b>${picked.size} selected</b><span class="sp"></span><button class="pillbtn press" data-act="selall">Select all</button>
-        <button class="pillbtn press" data-act="selnone">Clear</button><button class="btn" style="height:40px;padding:0 18px;font-size:15px" data-act="archsel">${I("down")} Archive ${picked.size}</button></div>` : "";
-    ctx.show(`${attentionHtml()}${segmented(["All", "Issues", "Critical", "Logins"], filter, "f")}
-      ${ev.length ? `<p class="note" style="margin-top:6px">${mouse ? "Tick events to archive several at once, or use the archive button on a row. Keys: <b>x</b> select · <b>e</b> archive · <b>Shift</b>-click a range." : "Swipe left to archive"} — archived events are kept on the server (Inbox → Archive), for every device.</p>` : ""}
+    const bar = mouse ? `<div class="selbar glass fadeok${picked.size ? " show" : ""}" id="selbar" aria-live="polite"><b id="selcount">${picked.size || 1} selected</b><span class="sp"></span><button class="pillbtn press" data-act="selall">Select all</button>
+        <button class="pillbtn press" data-act="selnone">Clear</button><button class="btn" style="height:40px;padding:0 18px;font-size:15px" data-act="archsel">${I("down")} Archive <span id="selnum">${picked.size || 1}</span></button></div>` : "";
+    const nudge = "Notification" in window && Notification.permission === "default" && !prefs.browserNotify && !prefs.browserNotifyNudged
+      ? `<div class="nudge glass fadeok">${I("bell")}<span>Get new alerts as browser notifications on this computer?</span><button class="pillbtn press" data-act="bnotify">Turn on</button><button class="pillbtn press" data-act="bnudgeno">Not now</button></div>` : "";
+    ctx.show(`${nudge}${attentionHtml()}${segmented(["All", "Issues", "Critical", "Logins"], filter, "f")}
+      ${ev.length ? `<p class="note" style="margin-top:6px">${mouse ? "Tick events to archive several at once, or use the archive button on a row. Keys: <b>x</b> select · <b>Ctrl+A</b> all · <b>e</b> archive · <b>Shift</b>-click a range." : "Swipe left to archive"} — archived events are kept on the server (Inbox → Archive), for every device.</p>` : ""}
       ${bar}
       ${Object.entries(days).map(([d, l]) => sec(d) + group(l.map(e => { const k = String(e.t), on = picked.has(k);
-          return `<div class="swipe${mouse ? " mouse" : ""}${on ? " picked" : ""}" data-key="${e.t}" data-left="Archive" tabindex="0"><div class="swbg"></div><div class="swfg"><div class="row" style="align-items:flex-start">
-            ${mouse ? `<button class="tick${on ? " on" : ""}" data-act="pick:${k}" aria-label="Select">${on ? I("check") : ""}</button>` : `<span class="dot" style="margin-top:7px;background:${levelColor(e.level)}"></span>`}
+          return `<div class="swipe fadeok${mouse ? " mouse" : ""}${on ? " picked" : ""}" data-key="${e.t}" data-left="Archive" tabindex="0"><div class="swbg"></div><div class="swfg"><div class="row" style="align-items:flex-start">
+            ${mouse ? `<button class="tick fadeok${on ? " on" : ""}" data-act="pick:${k}" aria-label="Select" aria-pressed="${on}">${I("check")}</button>` : `<span class="dot" style="margin-top:7px;background:${levelColor(e.level)}"></span>`}
             <div class="t">${mouse ? `<span class="dot" style="display:inline-block;margin-right:8px;background:${levelColor(e.level)}"></span>` : ""}<b style="font-size:16px;display:inline">${esc(cleanTitle(e.title))}</b>${e.detail ? `<small>${esc(e.detail)}</small>` : ""}</div>
             <span class="end" style="font-size:13px">${hm(e.t)}</span><button class="xbtn" data-act="del:${e.t}" aria-label="Archive" title="Archive">${I("down")}</button></div></div></div>`; }).join(""))).join("")
         || note(all ? "Nothing here — all quiet." : "Loading…")}`,
@@ -437,11 +441,23 @@ export async function inbox(ctx) {
     swipeable(ctx.root, { onRight: key => dismissAlert(key, draw), onLeft: t => remove([+t]) });
     $$(".swipe.mouse", ctx.root).forEach(el => el.onfocus = () => { last = el.dataset.key; });
   };
+  // Selection changes update the page in place (so ticks, rows and the bar can animate) instead of redrawing it.
+  const updateSel = () => {
+    $$(".swipe[data-key]", ctx.root).forEach(el => { const on = picked.has(el.dataset.key); el.classList.toggle("picked", on);
+      const t = el.querySelector(".tick"); if (t) { t.classList.toggle("on", on); t.setAttribute("aria-pressed", on); } });
+    const bar = $("#selbar"); if (!bar) return;
+    if (picked.size) { $("#selcount").textContent = `${picked.size} selected`; $("#selnum").textContent = picked.size; }
+    bar.classList.toggle("show", picked.size > 0);
+  };
   const remove = async ts => {
     if (!isAdmin()) return viewOnly();
     const c = S.cache["/api/v1/events?since=0"];
+    // rows fold away first, then the list is redrawn without them
+    const rows = $$(".swipe[data-key]", ctx.root).filter(el => ts.some(t => Math.abs(t - +el.dataset.key) < .0005));
+    rows.forEach(el => { el.style.height = el.offsetHeight + "px"; }); void ctx.root.offsetHeight; rows.forEach(el => el.classList.add("gone"));
+    ts.forEach(t => picked.delete(String(t))); updateSel();
+    if (rows.length && !document.documentElement.classList.contains("reduce")) await sleep(380);
     if (c) c.events = c.events.filter(e => !ts.some(t => Math.abs(t - e.t) < .0005));
-    ts.forEach(t => picked.delete(String(t)));
     draw();
     try { await post("/api/v1/events/delete", { t: ts }); toast(ts.length > 1 ? `Archived ${ts.length}` : "Archived"); }
     catch (e) { toast(e.message); await get("/api/v1/events?since=0").catch(() => {}); draw(); }
@@ -450,13 +466,14 @@ export async function inbox(ctx) {
     const ev = shown().map(e => String(e.t));
     if (shift && last && ev.includes(last)) { const [a, b] = [ev.indexOf(last), ev.indexOf(k)].sort((x, y) => x - y); ev.slice(a, b + 1).forEach(t => picked.add(t)); }
     else picked.has(k) ? picked.delete(k) : picked.add(k);
-    last = k; draw();
+    last = k; updateSel();
   };
   const keyOf = a => { a.pop(); return a.join(":"); };
   ctx.handlers({
     alert: (...a) => alertMenu(keyOf(a), draw), ignore: (...a) => dismissAlert(keyOf(a), draw), del: t => remove([+t]),
-    pick: (k, el) => toggle(k, lastClickShift), selall: () => { shown().forEach(e => picked.add(String(e.t))); draw(); }, selnone: () => { picked.clear(); draw(); },
+    pick: (k, el) => toggle(k, lastClickShift), selall: () => { shown().forEach(e => picked.add(String(e.t))); updateSel(); }, selnone: () => { picked.clear(); updateSel(); },
     archsel: () => remove([...picked].map(Number)),
+    bnotify: async () => { prefs.browserNotifyNudged = true; await toggleBrowserNotify(); draw(); }, bnudgeno: () => { prefs.browserNotifyNudged = true; draw(); },
     clear: async () => {
       if (!(await confirm("Archive everything?", filter === 0 ? "The server's inbox is emptied for every device; everything stays in the server's Archive. Active alerts stay until they're fixed or ignored." : `The ${shown().length} event(s) shown leave the inbox; they stay in the server's Archive.`, "Archive", "var(--blue)"))) return;
       if (!isAdmin()) return viewOnly();
@@ -470,7 +487,9 @@ export async function inbox(ctx) {
     if (!ctx.alive()) return removeEventListener("keydown", onKey);
     if (/INPUT|TEXTAREA/.test(document.activeElement?.tagName)) return;
     const row = document.activeElement?.closest?.(".swipe"); const k = row?.dataset.key;
-    if (e.key === "x" && k) { e.preventDefault(); toggle(k, false); }
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "a" && mouse) { e.preventDefault(); shown().forEach(ev => picked.add(String(ev.t))); updateSel(); }
+    else if (e.key === "Escape" && picked.size) { e.preventDefault(); picked.clear(); updateSel(); }
+    else if (e.key === "x" && k) { e.preventDefault(); toggle(k, false); }
     else if ((e.key === "e" || e.key === "Delete") && (picked.size || k)) { e.preventDefault(); remove(picked.size ? [...picked].map(Number) : [+k]); }
     else if ((e.key === "j" || e.key === "ArrowDown" || e.key === "k" || e.key === "ArrowUp") && row) {
       const rows = $$(".swipe", ctx.root), i = rows.indexOf(row) + (e.key === "j" || e.key === "ArrowDown" ? 1 : -1); rows[i]?.focus(); e.preventDefault();
@@ -523,18 +542,36 @@ export async function archive(ctx) {
   });
   draw(); load();
 }
+// Browser notifications (this browser only, while a Nova tab is open — in the background is fine)
+export function browserNotifyHtml() {
+  if (!("Notification" in window)) return sec("This browser") + group(row("Browser notifications", { sub: "This browser can't show notifications" }));
+  const perm = Notification.permission, on = !!prefs.browserNotify && perm === "granted";
+  const sub = perm === "denied" ? "Blocked — allow notifications for this site in the browser's site settings, then turn this on"
+    : on ? "On — while a Nova tab is open, even in the background" : "Pop up new alerts on this computer while a Nova tab is open";
+  return sec("This browser") + group(switchRow("Browser notifications", sub, on, "bnotify", { blue: on })
+    + (on ? switchRow("Include everything", prefs.browserNotifyAll ? "Every new event, logins and USB too" : "Only warnings and critical alerts", !!prefs.browserNotifyAll, "bnotifyall", { blue: false }) : ""));
+}
+export async function toggleBrowserNotify() {
+  if (!("Notification" in window)) return;
+  if (prefs.browserNotify && Notification.permission === "granted") { prefs.browserNotify = false; return; }
+  const p = Notification.permission === "default" ? await Notification.requestPermission() : Notification.permission;
+  if (p === "granted") { prefs.browserNotify = true; toast("Browser notifications on"); }
+  else toast("Notifications are blocked for this site — allow them in the browser's site settings");
+}
 export async function notify(ctx) {
   const LV = [["info", "Everything", "Includes logins and USB plug/unplug"], ["warning", "Warnings and critical"], ["critical", "Critical only"]];
   const draw = () => {
     const s = S.cache["/api/v1/notify"];
     ctx.show(`<div style="display:flex;justify-content:space-evenly;align-items:center;padding:22px 0;color:var(--text)">${I("computer").replace('class="i ', 'style="width:64px;height:64px" class="i ')}<b style="color:var(--blue);font-size:26px">•••</b>${I("dns").replace('class="i ', 'style="width:64px;height:64px" class="i ')}</div>
       ${note("Alerts land in the Inbox here. Your phone gets them as notifications (Nova app → Notifications). These settings are the server's, shared by every device.")}
+      ${browserNotifyHtml()}
       ${s ? `${sec("Discord")}${group((isAdmin() ? row(S.cache["/api/v1/notify/discord"]?.configured ? "Discord channel" : "Set up Discord", { sub: S.cache["/api/v1/notify/discord"]?.configured ? `Sending to ${S.cache["/api/v1/notify/discord"].hint} · click to change or test` : "Get alerts in a Discord channel too — paste its webhook link", blue: !!S.cache["/api/v1/notify/discord"]?.configured, icon: "bell", tint: "#5865f2", click: "discord" }) : "")
           + switchRow("Discord pings", s.discord_paused ? "Paused — alerts still show in the Inbox" : "On", !s.discord_paused, "set:discord_paused")
           + row("Send to Discord", { sub: (LV.find(l => l[0] === s.push_min_level) || [0, "—"])[1], blue: true, click: "level" }))}
         ${sec("What counts")}${group(switchRow("Logins", "Someone signs in to the server", s.push_logins, "set:push_logins", { blue: false }) + switchRow("USB devices", "Plugged in or unplugged", s.push_usb, "set:push_usb", { blue: false }))}` : note("Loading…")}
       ${links([["Inbox", "go:inbox"]])}`, { title: "Notifications" });
   };
+  ctx.handlers({ bnotify: async () => { await toggleBrowserNotify(); draw(); }, bnotifyall: () => { prefs.browserNotifyAll = !prefs.browserNotifyAll; draw(); } });
   const save = async (k, v) => {
     if (!isAdmin()) return viewOnly();
     const before = S.cache["/api/v1/notify"]; S.cache["/api/v1/notify"] = { ...before, [k]: v }; draw();
@@ -662,23 +699,28 @@ export async function editQuick(ctx) {
 // ════════════════════════════════════ LIGHTING ══════════════════════════════════
 const periodMs = s => 10000 * Math.pow(.02, (Math.max(1, Math.min(100, s)) - 1) / 99);
 const speedLabel = s => { const p = periodMs(s) / 1000; return (p >= 1 ? p.toFixed(1) : p.toFixed(2)) + " s per cycle"; };
-const EFFECTS2 = [["static", "Static", "One steady colour"], ["pulse", "Pulse", "Breathes in and out"], ["blink", "Blink", "Flashes on and off"], ["cycle", "Colour cycle", "Fades through colours"],
-  ["wave", "Wave", "Colours chase around the ring"], ["comet", "Comet", "A bright head with a fading tail"], ["scanner", "Scanner", "A light sweeping back and forth"],
-  ["twinkle", "Twinkle", "LEDs fade in and out at random"], ["fire", "Fire", "A flickering flame"], ["breathe", "Breathe", "Slow breaths, one colour after another"],
-  ["random", "Random", "Surprise me"], ["gradient", "Gradient", "Blends two colours across the ring"]];
-const SOFT = new Set(["wave", "comet", "scanner", "twinkle", "fire", "breathe"]), ANIM = new Set(["pulse", "blink", "cycle", "wave", "random", "comet", "scanner", "twinkle", "fire", "breathe"]);
+const EFFECTS2 = [["static", "Static", "One steady color"], ["pulse", "Pulse", "Breathes in and out"], ["blink", "Blink", "Flashes on and off"], ["cycle", "Color cycle", "Fades through colors"],
+  ["wave", "Wave", "Colors chase around the ring"], ["comet", "Comet", "A bright head with a fading tail"], ["scanner", "Scanner", "A light sweeping back and forth"],
+  ["twinkle", "Twinkle", "LEDs fade in and out at random"], ["fire", "Fire", "A flickering flame"], ["breathe", "Breathe", "Slow breaths, one color after another"],
+  ["random", "Random", "Surprise me"], ["gradient", "Gradient", "Blends two colors across the ring"]];
+const SOFT = new Set(["wave", "comet", "scanner", "twinkle", "fire", "breathe"]), PALETTE_FX = new Set(["static", "pulse", "blink", "gradient"]), ANIM = new Set(["pulse", "blink", "cycle", "wave", "random", "comet", "scanner", "twinkle", "fire", "breathe"]);
 const PALS = [["Ocean", ["#001a66", "#0050ff", "#00c7be", "#80f0ff"]], ["Lava", ["#200000", "#ff2000", "#ff8000", "#ffd060"]], ["Forest", ["#003300", "#20a040", "#80d000", "#004020"]],
   ["Sunset", ["#ff5e3a", "#ff2a68", "#bf5af2", "#5e5ce6"]], ["Party", ["#ff2d55", "#ffcc00", "#34c759", "#3e91ff", "#bf5af2"]], ["Aurora", ["#00ff88", "#00c7be", "#5e5ce6", "#bf5af2"]],
   ["Ice", ["#ffffff", "#80d8ff", "#3e91ff", "#0040a0"]], ["Candy", ["#ff6b9a", "#ffffff", "#bf5af2", "#80d8ff"]], ["Fire", ["#200000", "#ff1800", "#ff6000", "#ffb000", "#fff0a0"]]];
 const swatchRow = (sel, key, dis, noChange) => `<div class="swatches">${noChange ? `<button class="swatch${sel ? "" : " on"}" style="background:var(--card);color:${sel ? "var(--sub)" : "var(--blue)"}" data-act="${dis ? "" : `col:${key}:none`}" aria-label="No change">${I("block")}</button>` : ""}${SWATCHES.map(h => `<button class="swatch${h.toLowerCase() === (sel || "").toLowerCase() ? " on" : ""}" style="background:${h};color:${h === "#ffffff" ? "#000" : "#fff"}" data-act="${dis ? "" : `col:${key}:${h}`}" aria-label="${h}">${h.toLowerCase() === (sel || "").toLowerCase() ? I("check") : ""}</button>`).join("")}
-  <button class="swatch custom" aria-label="Custom colour" data-act="${dis ? "" : `pick:${key}`}" style="${sel && !SWATCHES.includes((sel || "").toLowerCase()) ? `background:${sel};border:3px solid var(--blue)` : ""}">${I("palette")}</button></div>`;
+  <button class="swatch custom" aria-label="Custom color" data-act="${dis ? "" : `pick:${key}`}" style="${sel && !SWATCHES.includes((sel || "").toLowerCase()) ? `background:${sel};border:3px solid var(--blue)` : ""}">${I("palette")}</button></div>`;
 const lookOf = f => Object.fromEntries(["on", "effect", "color", "color2", "brightness", "speed", "rainbow", "palette"].filter(k => f?.[k] !== undefined).map(k => [k, f[k]]));
 const palBg = cols => cols.length > 1 ? `linear-gradient(90deg,${cols.join(",")})` : cols[0];
 const chip = (label, act, on, icon) => `<button class="chip" style="font-family:inherit;font-size:14px;display:inline-flex;align-items:center;gap:6px;${on ? "background:var(--blue);color:#fff" : ""}" data-act="${act}">${icon ? I("block") : ""}${esc(label)}</button>`;
 export async function lighting(ctx) {
   const draw = () => {
     const f = S.fan || {}, lit = f.on !== false, on = lit && isAdmin(), eff = f.effect || "static", nsch = (f.schedules || []).length, pal = f.palette || [], rb = f.rainbow !== false;
-    const presets = f.presets || [], soft = SOFT.has(eff), mode = soft ? (eff !== "fire" && rb ? 0 : pal.length >= 2 ? 2 : 1) : -1;
+    const presets = f.presets || [], soft = SOFT.has(eff) || eff === "cycle", mode = soft ? (pal.length >= 2 && !(eff !== "fire" && rb) ? 2 : rb ? 0 : 1) : -1;
+    const pfx = !soft && PALETTE_FX.has(eff), pmode = pal.length >= 2 ? 1 : 0;      // static, pulse, flash, gradient: color(s) or a palette
+    const palEditor = () => `<div style="padding:14px 20px"><div style="display:flex;flex-wrap:wrap;gap:12px">${pal.map((c, i) => `<button class="swatch" style="width:44px;height:44px;background:${c}" data-act="${on ? "pal:" + i : ""}" data-pi="${i}" aria-label="${c}"></button>`).join("")}
+                ${pal.length < 8 && on ? `<button class="swatch" style="width:44px;height:44px;border:1.5px dashed var(--sub)" data-act="paladd">${I("add")}</button>` : ""}</div>
+              <p class="muted" style="font-size:12px;margin:8px 0 10px">Tap a color to change it, hold (or right-click) to remove it.</p>
+              <div style="display:flex;gap:8px;overflow-x:auto;scrollbar-width:none">${PALS.map(([n, c]) => `<button style="display:flex;flex-direction:column;align-items:center;gap:4px;padding:4px" data-act="${on ? "palset:" + n : ""}"><span style="width:64px;height:22px;border-radius:11px;background:${palBg(c)}"></span><small class="muted">${n}</small></button>`).join("")}</div></div>`;
     ctx.show(`<canvas class="fanhero" id="fh"></canvas>
       ${f.status_override ? `<p class="note" style="color:var(--amber);font-size:14px">Showing server status right now — your setting comes back when it's resolved.</p>` : ""}
       ${!isAdmin() ? note("View-only access — an admin can change the lighting.") : ""}
@@ -689,27 +731,25 @@ export async function lighting(ctx) {
         ${isAdmin() ? `<button class="tile glass press" style="height:48px;padding:0 14px;width:auto;color:var(--blue)" data-act="savepreset">${I("add")}<b>Save current</b></button>` : ""}</div>
       ${presets.length ? note("Hold a preset (or right-click) to update, rename or delete it.") : note("Save the look you have now to switch back to it in one tap — or to use it in a schedule.")}
       ${sec("Effect")}${group(EFFECTS2.map(([k, l, d]) => row(l, { sub: d, blue: eff === k, end: radio(eff === k), click: on ? "set:effect:" + k : "", dis: !on })).join(""))}
-      ${sec("Colour")}${group(soft ? segmented(eff === "fire" ? ["Flame", "One colour", "Palette"] : ["Rainbow", "One colour", "Palette"], mode, "cmode")
-          + (mode === 2 ? `<div style="padding:14px 20px"><div style="display:flex;flex-wrap:wrap;gap:12px">${pal.map((c, i) => `<button class="swatch" style="width:44px;height:44px;background:${c}" data-act="${on ? "pal:" + i : ""}" data-pi="${i}" aria-label="${c}"></button>`).join("")}
-                ${pal.length < 8 && on ? `<button class="swatch" style="width:44px;height:44px;border:1.5px dashed var(--sub)" data-act="paladd">${I("add")}</button>` : ""}</div>
-              <p class="muted" style="font-size:12px;margin:8px 0 10px">Tap a colour to change it, hold (or right-click) to remove it.</p>
-              <div style="display:flex;gap:8px;overflow-x:auto">${PALS.map(([n, c]) => `<button style="display:flex;flex-direction:column;align-items:center;gap:4px;padding:4px" data-act="${on ? "palset:" + n : ""}"><span style="width:64px;height:22px;border-radius:11px;background:${palBg(c)}"></span><small class="muted">${n}</small></button>`).join("")}</div></div>`
-            : mode === 1 ? swatchRow(f.color, "color", !on) : eff === "fire" ? `<p class="note" style="margin:14px 22px">A warm flame (dark red → orange → yellow). Pick Palette for blue or green fire.</p>` : "")
-        : swatchRow(f.color, "color", !on) + (eff === "gradient" ? `<div class="sec" style="margin:4px 22px 0">Blend into</div>${swatchRow(f.color2, "color2", !on)}` : "")
-          + (eff === "cycle" ? switchRow("Rainbow", rb ? "Uses every colour" : "Uses your colour only", rb, on ? "set:rainbow" : "", { dis: !on }) : ""))}
+      ${sec("Color")}${group(soft ? segmented(eff === "fire" ? ["Flame", "One color", "Palette"] : ["Rainbow", "One color", "Palette"], mode, "cmode")
+          + (mode === 2 ? palEditor() : mode === 1 ? swatchRow(f.color, "color", !on) : eff === "fire" ? `<p class="note" style="margin:14px 22px">A warm flame (dark red → orange → yellow). Pick One color for a flame in your color, or Palette for your own.</p>` : "")
+        : pfx ? segmented([eff === "gradient" ? "Two colors" : "One color", "Palette"], pmode, "pmode")
+          + (pmode === 1 ? palEditor() : swatchRow(f.color, "color", !on) + (eff === "gradient" ? `<div class="sec" style="margin:4px 22px 0">Blend into</div>${swatchRow(f.color2, "color2", !on)}` : ""))
+        : swatchRow(f.color, "color", !on))}
       ${ANIM.has(eff) ? group(slider("Speed", "speed", f.speed ?? 50, 1, 100, speedLabel(f.speed ?? 50), !on) + `<div style="display:flex;justify-content:space-between;padding:0 22px 12px" class="muted"><small>Slower</small><small>Faster</small></div>`) : ""}
-      ${eff === "gradient" || soft ? group(slider("LEDs on the fan", "led_count", f.led_count ?? 12, 4, 40, String(f.led_count ?? 12), !on)
+      ${eff === "gradient" || soft || (pfx && pmode === 1) ? group(slider("LEDs on the fan", "led_count", f.led_count ?? 12, 4, 40, String(f.led_count ?? 12), !on)
         + `<p class="note" style="margin:0 22px 14px">Match this to your fan so the effect fits the ring exactly (most 120 mm fans have 8–18).</p>`
         + switchRow("Picture spins the other way", "If the effect here goes round the opposite way to your fan", localStorage.getItem("nova.fanReverse") === "true", "rev", { blue: false })) : ""}
-      ${sec("Automation")}${group(switchRow("Status light", "Turns amber for warnings and pulses red for critical alerts, then goes back to your colour", !!f.status_light, isAdmin() ? "set:status_light" : "", { blue: false, dis: !isAdmin() })
+      ${sec("Automation")}${group(switchRow("Status light", "Turns amber for warnings and pulses red for critical alerts, then goes back to your color", !!f.status_light, isAdmin() ? "set:status_light" : "", { blue: false, dis: !isAdmin() })
         + row("Schedules", { sub: f.schedules_paused ? "Paused" : nsch ? `${nsch} schedule${nsch > 1 ? "s" : ""}` : "Wake up gently, dim at sunset, off while you sleep…", blue: nsch > 0, click: "go:schedules" }))}
       ${links([["Notifications", "go:notify"], ["Storage & hardware", "go:hardware"]])}`, { title: "Lighting" });
     animate($("#fh"), "fan");
     wireCommon(ctx.root, {
       onRangeInput: (k, v) => { const l = $(`[data-lbl="${k}"]`); if (l) l.textContent = k === "speed" ? speedLabel(v) : k === "brightness" ? v + "%" : String(v); if (k === "brightness") S.fan = { ...S.fan, brightness: v }; },
       onRange: (k, v) => set({ [k]: v }),
-      onSeg: (_, m) => { const f2 = S.fan || {};
-        if (m === 0) set(f2.effect === "fire" ? { palette: [], rainbow: false } : { rainbow: true });
+      onSeg: (key, m) => { const f2 = S.fan || {};
+        if (key === "pmode") return set(m === 0 ? { palette: [] } : { rainbow: false, palette: (f2.palette || []).length >= 2 ? f2.palette : [f2.color || "#3e91ff", f2.color2 || "#bf5af2"] });
+        if (m === 0) set(f2.effect === "fire" ? { palette: [], rainbow: true } : { rainbow: true });
         else if (m === 1) set({ rainbow: false, palette: [] });
         else set({ rainbow: false, palette: (f2.palette || []).length >= 2 ? f2.palette : [f2.color || "#3e91ff", f2.color2 || "#bf5af2"] }); },
     });
@@ -742,7 +782,7 @@ export async function lighting(ctx) {
 const DAYS = ["M", "T", "W", "T", "F", "S", "S"], DAYN = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 function describeSet(s) {
   if (!s) return ""; if ("on" in s && !s.on) return "Turn off";
-  const p = []; if (s.on) p.push("Turn on"); if ("brightness" in s) p.push(p.length ? `${s.brightness}%` : `Brightness ${s.brightness}%`); if (s.effect) p.push((EFFECTS2.find(e => e[0] === s.effect) || [0, s.effect])[1]); if (s.color || s.palette) p.push("colour");
+  const p = []; if (s.on) p.push("Turn on"); if ("brightness" in s) p.push(p.length ? `${s.brightness}%` : `Brightness ${s.brightness}%`); if (s.effect) p.push((EFFECTS2.find(e => e[0] === s.effect) || [0, s.effect])[1]); if (s.color || s.palette) p.push("color");
   return p.join(", ") || "No change";
 }
 const whenText = (trig, time, off) => { const o = off ? ` ${off > 0 ? "+" : "−"}${Math.abs(off)} min` : ""; return trig === "sunrise" ? "Sunrise" + o : trig === "sunset" ? "Sunset" + o : time; };
@@ -794,7 +834,7 @@ export async function schedule(ctx) {
       <div class="days">${DAYS.map((d, i) => `<button class="${v.days.has(i) ? "on" : ""}" data-act="day:${i}">${d}</button>`).join("")}</div>
       ${sec("Does")}${segmented(["Turn off", "Set the light", "A preset"], v.action, "action")}
       ${v.action === 1 ? group(switchRow("Change the brightness", v.changeBright ? `To ${v.bright}%` : "No change", v.changeBright, "cb") + (v.changeBright ? slider("Brightness", "b", v.bright, 0, 100, v.bright + "%") : ""))
-          + sec("Colour") + group(swatchRow(v.color, "c", false, true))
+          + sec("Color") + group(swatchRow(v.color, "c", false, true))
           + sec("Effect") + `<div class="chips">${[[null, "No change"], ...EFFECTS2.map(e => [e[0], e[1]])].map(([k, l]) => chip(l, "eff:" + (k || ""), v.effect === k, !k)).join("")}</div>`
           + group(switchRow("Turn the light on if it's off", v.turnOn ? "Always runs" : "Only runs while the light is on — handy for dimming", v.turnOn, "ton"))
         : v.action === 2 ? group(presets.length ? presets.map(p => row(p.name, { sub: describeSet(p.set), end: radio(v.preset === p.id), click: "pre:" + p.id })).join("") : row("No presets yet — save one on the Lighting page first.", { dis: true })) : ""}
@@ -854,7 +894,7 @@ export async function hardware(ctx) {
             ${u ? `<div style="margin-top:8px">${bar(f, usageColor(f))}</div><small class="muted" style="font-size:13px">${bytes(u.free)} free of ${bytes(u.total)}</small>` : (d.mounts || []).length ? "" : `<small style="color:var(--amber);font-size:13px">Not mounted</small>`}</div>`; }).join(""))).join("")
         || note(hw ? "No drives reported." : "Loading…")}
       ${sec("Fans")}${group(expand("CPU & case fan speed", "Run by the motherboard", "speed", "The fans follow the motherboard's own curve — set it in the BIOS (often under Smart Fan or Q-Fan). Reading or setting speeds from Linux needs a driver for the board's fan chip.", { tint: "var(--sub)" })
-        + (has("lighting") ? row("Fan lighting", { sub: "Colour, effects, schedules", blue: true, icon: "bulb", tint: "var(--amber)", click: "go:lighting" }) : ""))}
+        + (has("lighting") ? row("Fan lighting", { sub: "Color, effects, schedules", blue: true, icon: "bulb", tint: "var(--amber)", click: "go:lighting" }) : ""))}
       ${links([["Quick panel (restart, shut down)", "go:quick"]])}`, { title: "Storage & hardware", actions: [{ icon: "add", label: "Set up drives", act: "go:setup" }] });
     wireCommon(ctx.root);
   };
@@ -918,12 +958,19 @@ export async function devices(ctx) {
     l.forEach(d => (by[d.user || "No name yet"] ||= []).push(d));
     ctx.show(`${Object.entries(by).sort(([a], [b]) => (a === "No name yet") - (b === "No name yet") || a.localeCompare(b)).map(([u, ds]) => sec(u) + group(ds.map(d => row(d.name + (d.current ? "  ·  this browser" : ""), {
         sub: `${formLabel(d)} · ${d.role === "viewer" ? "View only" : "Admin"} · last seen ${d.last_seen || "never"}${d.via ? " via " + d.via : ""}${d.type === "browser" ? " · risky actions approved on a phone" : ""}`,
-        icon: { tablet: "tablet", desktop: "computer" }[formOf(d)] || "phone", tint: d.current ? "var(--green)" : d.role === "viewer" ? "var(--sub)" : "var(--blue)" })).join(""))).join("") || note("Loading…")}
+        icon: { tablet: "tablet", desktop: "computer" }[formOf(d)] || "phone", tint: d.current ? "var(--green)" : d.role === "viewer" ? "var(--sub)" : "var(--blue)",
+        click: !d.current && isAdmin() ? "rm:" + d.id : "", end: !d.current && isAdmin() ? `<button class="rmbtn press" data-act="rm:${esc(d.id)}" aria-label="Remove ${esc(d.name)}" title="Remove">${I("del")}</button>` : "" })).join(""))).join("") || note("Loading…")}
       ${group(row("Remove this browser", { sub: "Erases its key here and its access on the server", icon: "del", tint: "var(--red)", click: "forget" }))}
-      ${note("Inviting phones, approving browsers and changing roles happen in the Nova app on an admin phone (they need its fingerprint key). Admins can do everything; view-only devices see the same screens but can't change anything.")}`,
+      ${note("Removing a device here is approved on an admin phone with your fingerprint. Inviting phones, approving browsers and changing roles happen in the Nova app on an admin phone (they need its fingerprint key). Admins can do everything; view-only devices see the same screens but can't change anything.")}`,
       { title: "Users & devices" });
   };
-  ctx.handlers({ forget: () => forgetBrowser() });
+  ctx.handlers({ forget: () => forgetBrowser(),
+    rm: async id => {
+      const d = (S.cache["/api/v1/devices"]?.devices || []).find(x => x.id === id); if (!d) return;
+      if (!(await confirm(`Remove ${d.name}?`, `${d.name} loses access to this server${d.type === "watch" ? "" : " (and so does a watch paired with it)"}. You'll approve this on an admin phone with your fingerprint.`, "Remove"))) return;
+      try { const r = await del(`/api/v1/devices/${encodeURIComponent(id)}`); if (r?.ok !== false) { toast(`Removed ${d.name}`); await get("/api/v1/devices"); draw(); } }
+      catch (e) { toast(e.message); }
+    } });
   draw(); try { await get("/api/v1/devices"); if (ctx.alive()) draw(); } catch (e) { toast(e.message); }
 }
 export async function forgetBrowser() {
@@ -951,11 +998,17 @@ export async function settings(ctx) {
       ${links([["About Nova", "go:about"]])}`, { title: "Settings" });
     wireCommon(ctx.root);
   };
-  ctx.handlers({ forget: () => forgetBrowser() });
+  ctx.handlers({ forget: () => forgetBrowser(),
+    rm: async id => {
+      const d = (S.cache["/api/v1/devices"]?.devices || []).find(x => x.id === id); if (!d) return;
+      if (!(await confirm(`Remove ${d.name}?`, `${d.name} loses access to this server${d.type === "watch" ? "" : " (and so does a watch paired with it)"}. You'll approve this on an admin phone with your fingerprint.`, "Remove"))) return;
+      try { const r = await del(`/api/v1/devices/${encodeURIComponent(id)}`); if (r?.ok !== false) { toast(`Removed ${d.name}`); await get("/api/v1/devices"); draw(); } }
+      catch (e) { toast(e.message); }
+    } });
   draw(); ctx.every(10000, async () => { await get("/api/v1/server/update").catch(() => {}); draw(); }, true);
 }
 export const locationText = l => !l ? "Not known — set it for sunrise/sunset schedules" : l.source === "timezone" ? `Near ${l.name} (from the time zone)` : l.name || `${(+l.lat).toFixed(2)}, ${(+l.lon).toFixed(2)}`;
-/** Where the server is (for sunrise/sunset). Saved in the server's settings; resolves with the new location (or undefined if cancelled). */
+/** Where the server is (for sunrise/sunset). Saved in the server's settings; resolves with the new location (or undefined if canceled). */
 export async function locationDialog(loc) {
   const typed = loc?.source === "set" ? loc : {}, v = { lat: typed.lat ?? "", lon: typed.lon ?? "", name: typed.name ?? "" };
   const pending = dialog("Where is the server?", `Used to work out sunrise and sunset for light schedules. Nova starts from the server's time zone${loc?.source === "timezone" ? ` (${loc.name})` : ""}; for the exact times, type its latitude and longitude (from any map app — your town is close enough), or use this device's location if it's with the server.`,
@@ -975,8 +1028,8 @@ export async function serverSettings(ctx) {
     ctx.show(`${sec("Name")}${group(`<div style="padding:18px"><input class="field" id="nm" maxlength="40" placeholder="${esc(st.hostname || "Server name")}" value="${esc(st.display_name || "")}" ${isAdmin() ? "" : "disabled"}>
         <div style="display:flex;gap:10px;margin-top:10px">${isAdmin() ? `<button class="pillbtn press" data-act="save">Save</button>${st.display_name ? `<button class="pillbtn plain press" data-act="host">Use hostname</button>` : ""}` : ""}</div></div>`)}
       ${note(`Shown at the top of Home and in the server switcher. The machine's hostname (${st.hostname || "—"}) doesn't change.`)}
-      ${sec("Accent colour")}${group(`<div style="display:flex;justify-content:space-between;padding:18px">${ACCENTS.map(h => `<button class="swatch${(st.accent || "") === h ? " on" : ""}" style="width:32px;height:32px;${h ? `background:${h}` : ""}" data-act="${isAdmin() ? "acc:" + (h || "none") : ""}">${h ? "" : `<span class="muted" style="font-size:13px">A</span>`}</button>`).join("")}</div>`)}
-      ${note('Gives each server its own colour, so you always know which one you\'re controlling. "A" is the default blue.')}
+      ${sec("Accent color")}${group(`<div style="display:flex;justify-content:space-between;padding:18px">${ACCENTS.map(h => `<button class="swatch${(st.accent || "") === h ? " on" : ""}" style="width:32px;height:32px;${h ? `background:${h}` : ""}" data-act="${isAdmin() ? "acc:" + (h || "none") : ""}">${h ? "" : `<span class="muted" style="font-size:13px">A</span>`}</button>`).join("")}</div>`)}
+      ${note('Gives each server its own color, so you always know which one you\'re controlling. "A" is the default blue.')}
       ${sec("Location")}${group(row("Where the server is", { sub: locationText(st.location), blue: st.location?.source === "set", icon: "place", tint: "var(--amber)", click: isAdmin() ? "loc" : "" }))}
       ${note("For sunrise and sunset light schedules — worked out on the server, nothing is looked up online.")}`, { title: "Server" });
   };
@@ -993,14 +1046,14 @@ export async function appearance(ctx) {
     const t = prefs.theme, st = prefs.style, mat = document.documentElement.classList.contains("material"), look = mat ? "Material" : "Default";
     const autoMat = /Android/i.test(navigator.userAgent) && !/SamsungBrowser|SM-[A-Z0-9]|Xiaomi|Redmi|POCO|HUAWEI|HONOR|vivo|OPPO|realme/i.test(navigator.userAgent);
     ctx.show(`${sec("Style")}${group([["auto", "Automatic", `${autoMat ? "Material You" : "Default"} — matches this device`], ["default", "Default", "Nova's own look: frosted glass, soft glow, One UI-style"],
-        ["material", "Material You", "Google's Material 3 Expressive: tonal colours from the accent, bolder shapes, springy motion"]].map(([k, l, d]) => row(l, { sub: d, end: radio(st === k), click: "style:" + k })).join(""))}
+        ["material", "Material You", "Google's Material 3 Expressive: tonal colors from the accent, bolder shapes, springy motion"]].map(([k, l, d]) => row(l, { sub: d, end: radio(st === k), click: "style:" + k })).join(""))}
       ${sec("Theme")}${group([["system", "Same as this device"], ["light", `${look} light`], ["dark", `${look} dark`]].map(([k, l]) => row(l, { end: radio(t === k), click: "theme:" + k })).join(""))}
       ${group(switchRow("Reduce motion", "Simple fades instead of slides and bounces", prefs.reduceMotion, "motion", { blue: false }))}
       ${sec("Home")}${group(row("Home layout", { sub: prefs.homeOrder.filter(id => prefs[HOME_SECTIONS.find(s => s[0] === id)[3]]).map(id => HOME_SECTIONS.find(s => s[0] === id)[1]).join(" · ") || "Just the header", blue: true, icon: "dash", click: "go:edit-home" })
         + row("Choose shortcuts", { sub: homeChips().map(s => s.label).join(", ") || "None", blue: true, icon: "tune", click: "go:edit-shortcuts" })
         + row("Start page", { sub: `Search, stats, apps and bookmarks · Nova opens on ${({ home: "Home", start: "the start page", status: "Status", apps: "Apps", inbox: "the Inbox", dashboard: "the dashboard" })[prefs.startRoute || "home"]}`, blue: true, icon: "home", click: "go:start-edit" })
         + row("Navigation pill", { sub: navTabs().map(s => s.label).join(", ") + " · along the bottom, or down the left on wide screens", blue: true, icon: "viewday", click: "go:edit-tabs" }))}
-      ${note("These choices are saved in this browser. Each server also has its own name and accent colour (Settings → Server).")}`, { title: "Appearance" });
+      ${note("These choices are saved in this browser. Each server also has its own name and accent color (Settings → Server).")}`, { title: "Appearance" });
   };
   ctx.handlers({
     theme: k => { prefs.theme = k; ctx.applyTheme(); draw(); },
@@ -1100,7 +1153,7 @@ export async function dashboard(ctx) {
     const h = new Date().getHours(), night = prefs.dashDim && (prefs.dashFrom > prefs.dashTo ? h >= prefs.dashFrom || h < prefs.dashTo : h >= prefs.dashFrom && h < prefs.dashTo);
     const cols = Math.max(2, Math.min(6, Math.floor(innerWidth / 260)));
     ctx.raw(`<div class="dash" id="dash"><div class="top${chrome ? "" : " hide"}" id="dtop"><button class="circle frost" data-act="back" aria-label="Leave">${I("back")}</button><b style="font-size:18px;flex:1">${esc(serverName())}</b>
-        <button class="circle frost" data-act="edit" aria-label="Customise">${I("edit")}</button><button class="circle frost" data-act="fs" aria-label="Full screen">${I("full")}</button></div>
+        <button class="circle frost" data-act="edit" aria-label="Customize">${I("edit")}</button><button class="circle frost" data-act="fs" aria-label="Full screen">${I("full")}</button></div>
       <div class="dgrid" style="--cols:${cols};transform:translate(${(shift * 7) % 9 - 4}px,${(shift * 5) % 7 - 3}px)">${prefs.dashTiles.map(tileHtml).join("")}</div>${night ? `<div class="night"></div>` : ""}</div>`);
     $("#dash").onclick = e => { if (e.target.closest("[data-act]")) return; chrome = !chrome; $("#dtop").classList.toggle("hide", !chrome); clearTimeout(chromeT); if (chrome) chromeT = setTimeout(() => { chrome = false; $("#dtop")?.classList.add("hide"); }, 5000); };
     graphs(); animate($("#dfan"), "fan");
@@ -1138,7 +1191,7 @@ export async function editDash(ctx) {
       ${sec("Night")}${group(switchRow("Dim at night", `${String(prefs.dashFrom).padStart(2, "0")}:00 – ${String(prefs.dashTo).padStart(2, "0")}:00`, prefs.dashDim, "dim")
         + (prefs.dashDim ? slider("From", "from", prefs.dashFrom, 0, 23, prefs.dashFrom + ":00") + slider("Until", "to", prefs.dashTo, 0, 23, prefs.dashTo + ":00") : ""))}
       ${note("The dashboard keeps the screen awake, drifts a few pixels every minute so nothing burns in, and hides its buttons until you tap.")}
-      ${links([["Reset the dashboard", "reset"]])}`, { title: "Customise dashboard" });
+      ${links([["Reset the dashboard", "reset"]])}`, { title: "Customize dashboard" });
     reorderable($("#rl"), keys => { prefs.dashTiles = keys; draw(); });
     wireCommon(ctx.root, { onRangeInput: (k, v) => { $(`[data-lbl="${k}"]`).textContent = v + ":00"; }, onRange: (k, v) => { prefs[k === "from" ? "dashFrom" : "dashTo"] = v; draw(); } });
   };

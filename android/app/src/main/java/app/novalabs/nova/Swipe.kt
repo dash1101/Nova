@@ -32,7 +32,7 @@ import org.json.JSONObject
 class SwipeAction(val label: String, val icon: ImageVector, val color: Color, val onAction: () -> Unit)
 
 /**
- * One UI–style swipe row (like the Phone and Messages apps): drag sideways to reveal a coloured
+ * One UI–style swipe row (like the Phone and Messages apps): drag sideways to reveal a colored
  * action; past 35 % of the width it buzzes, and letting go there slides the row away and runs it.
  * Short drags spring back. Vertical scrolling is untouched.
  */

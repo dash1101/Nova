@@ -8,4 +8,4 @@ about: Suggest a self-hosted app for the one-tap store
 
 **Port and data folder**
 
-See docs/STORE.md for the catalogue format — a pull request with the JSON file is even better.
+See docs/STORE.md for the catalog format — a pull request with the JSON file is even better.

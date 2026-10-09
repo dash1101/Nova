@@ -28,6 +28,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -49,7 +50,7 @@ val LightTokens = NovaColors(Color(0xFFF4F3F8), Color(0xFFE2DBF7), Color(0xFFDCE
 val LocalNova = staticCompositionLocalOf { DarkTokens }
 val N: NovaColors @Composable get() = LocalNova.current
 
-/** Tokens for Material You: the wallpaper's dynamic colour scheme, mapped onto Nova's roles. */
+/** Tokens for Material You: the wallpaper's dynamic color scheme, mapped onto Nova's roles. */
 fun materialTokens(c: ColorScheme, dark: Boolean) = NovaColors(
     bg = c.surfaceContainer, glow = Color.Transparent, glow2 = Color.Transparent,
     card = if (dark) c.surfaceContainerHighest else c.surfaceBright, pill = c.surfaceContainerHigh, nav = c.surfaceContainerHigh,
@@ -75,11 +76,11 @@ fun materialTokens(c: ColorScheme, dark: Boolean) = NovaColors(
     CompositionLocalProvider(LocalNova provides t) { MaterialTheme(colorScheme = scheme, content = content) }
 }
 
-/** Per-server accent colour (set in Settings → Server) replaces the blue throughout. */
+/** Per-server accent color (set in Settings → Server) replaces the blue throughout. */
 @Composable fun AccentTheme(hex: String?, content: @Composable () -> Unit) {
     val c = hex?.takeIf { it.length == 7 }?.let { runCatching { Color(android.graphics.Color.parseColor(it)) }.getOrNull() }
     val t = N
-    if (c == null || t.material) { content(); return }          // Material You: the wallpaper's colours win
+    if (c == null || t.material) { content(); return }          // Material You: the wallpaper's colors win
     CompositionLocalProvider(LocalNova provides t.copy(blue = c, link = lerp(c, Color.White, if (t.dark) 0.25f else 0f)), content = content)
 }
 
@@ -92,7 +93,7 @@ fun levelColor(level: String, t: NovaColors) = when (level) {
     Box(modifier.fillMaxSize()) { GlowLayer(); content() }
 }
 
-/** The background colour + glow on its own (pages paint it again inside their blur source). */
+/** The background color + glow on its own (pages paint it again inside their blur source). */
 @Composable fun GlowLayer() {
     val t = N
     if (t.material) { Box(Modifier.fillMaxSize().background(t.bg)); return }
@@ -225,8 +226,7 @@ val LocalWide = staticCompositionLocalOf { false }
                             modifier: Modifier = Modifier, onLongClick: (() -> Unit)? = null,
                             apps: List<AppSessions.Session> = emptyList(), selectedApp: String? = null, onApp: (String) -> Unit = {}) {
     val itemW = 76.dp; val gap = 4.dp
-    val x by androidx.compose.animation.core.animateDpAsState((itemW + gap) * selected.coerceAtLeast(0),
-        if (reduceMotion()) androidx.compose.animation.core.snap() else androidx.compose.animation.core.spring(dampingRatio = 0.72f, stiffness = 420f), label = "bead")
+    val bead = rememberBead(selected, icons.size, apps, selectedApp, itemW, 52.dp, gap)
     val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
     if (N.material) {                         // M3 Expressive: a floating bar, pill indicator behind the icon, labels
         Row(modifier.navigationBarsPadding().padding(bottom = 12.dp).frosted(null, RoundedCornerShape(32.dp), 6.dp)
@@ -250,7 +250,7 @@ val LocalWide = staticCompositionLocalOf { false }
     Box(modifier.navigationBarsPadding().padding(bottom = 14.dp).frosted(LocalRootHaze.current, RoundedCornerShape(40.dp), 18.dp)
         .pointerInput(onLongClick) { detectTapGestures(onLongPress = { onLongClick?.let { l -> haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress); l() } }) }
         .padding(6.dp)) {
-        if (selected >= 0) Box(Modifier.offset(x = x).size(width = itemW, height = 56.dp)
+        Box(Modifier.offset(x = bead.pos).size(width = bead.size, height = 56.dp).graphicsLayer { alpha = bead.alpha }
             .frosted(LocalRootHaze.current, RoundedCornerShape(28.dp), 4.dp)
             .background(if (N.dark) Color.White.copy(alpha = 0.10f) else Color.Black.copy(alpha = 0.05f)))
         Row(horizontalArrangement = Arrangement.spacedBy(gap), verticalAlignment = Alignment.CenterVertically) {
@@ -287,6 +287,26 @@ val LocalWide = staticCompositionLocalOf { false }
     }
 }
 
+/** The pill's sliding bead: on a tab, or on an open app past the divider. It remembers where it
+ *  last was, so it glides from there (fading out on pages that aren't in the pill) instead of
+ *  jumping in from the first tab. [item]/[appItem]: a tab's and an app's size along the pill. */
+class Bead(val pos: Dp, val size: Dp, val alpha: Float)
+@Composable fun rememberBead(selected: Int, tabs: Int, apps: List<AppSessions.Session>, selectedApp: String?, item: Dp, appItem: Dp, gap: Dp): Bead {
+    val j = apps.indexOfFirst { it.id == selectedApp }
+    val target = when {
+        selected >= 0 -> (item + gap) * selected to item
+        j >= 0 -> (item + gap) * tabs + 9.dp + gap + (appItem + gap) * j to appItem     // 9dp: the hairline and its padding
+        else -> null
+    }
+    var last by remember { mutableStateOf(target ?: (0.dp to item)) }
+    if (target != null) last = target
+    val spec = if (reduceMotion()) androidx.compose.animation.core.snap<Dp>() else androidx.compose.animation.core.spring(dampingRatio = 0.72f, stiffness = 420f)
+    val pos by androidx.compose.animation.core.animateDpAsState(last.first, spec, label = "bead")
+    val size by androidx.compose.animation.core.animateDpAsState(last.second, spec, label = "beadSize")
+    val alpha by androidx.compose.animation.core.animateFloatAsState(if (target != null) 1f else 0f, label = "beadAlpha")
+    return Bead(pos, size, alpha)
+}
+
 /** One UI segmented tabs (pill). */
 /** Open apps in the navigation pill: a hairline, then each app's icon (a ring on the one you're in). */
 @Composable fun PillApps(apps: List<AppSessions.Session>, selected: String?, onApp: (String) -> Unit, vertical: Boolean) {
@@ -296,7 +316,8 @@ val LocalWide = staticCompositionLocalOf { false }
     apps.forEach { s ->
         val on = s.id == selected
         Box(Modifier.size(if (vertical) 64.dp else 52.dp, 56.dp).clip(RoundedCornerShape(28.dp)).bouncy { onApp(s.id) }, contentAlignment = Alignment.Center) {
-            Box(Modifier.size(34.dp).clip(RoundedCornerShape(10.dp)).background(if (on) N.blue else Color.Transparent).padding(if (on) 2.dp else 0.dp)
+            val ring = on && N.material
+            Box(Modifier.size(34.dp).clip(RoundedCornerShape(10.dp)).background(if (ring) N.blue else Color.Transparent).padding(if (ring) 2.dp else 0.dp)
                 .clip(RoundedCornerShape(9.dp)).background(N.card), contentAlignment = Alignment.Center) {
                 val b = s.icon
                 if (b != null) androidx.compose.foundation.Image(b, s.app.optString("name"), Modifier.fillMaxSize().padding(3.dp))
@@ -312,8 +333,7 @@ val LocalWide = staticCompositionLocalOf { false }
                             modifier: Modifier = Modifier, onLongClick: (() -> Unit)? = null,
                             apps: List<AppSessions.Session> = emptyList(), selectedApp: String? = null, onApp: (String) -> Unit = {}) {
     val itemH = 64.dp; val gap = 4.dp
-    val y by androidx.compose.animation.core.animateDpAsState((itemH + gap) * selected.coerceAtLeast(0),
-        if (reduceMotion()) androidx.compose.animation.core.snap() else androidx.compose.animation.core.spring(dampingRatio = 0.72f, stiffness = 420f), label = "vbead")
+    val bead = rememberBead(selected, icons.size, apps, selectedApp, itemH, 56.dp, gap)
     val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
     val hold = Modifier.pointerInput(onLongClick) { detectTapGestures(onLongPress = { onLongClick?.let { l -> haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress); l() } }) }
     if (N.material) {
@@ -334,7 +354,7 @@ val LocalWide = staticCompositionLocalOf { false }
         return
     }
     Box(modifier.frosted(LocalRootHaze.current, RoundedCornerShape(40.dp), 18.dp).then(hold).padding(6.dp)) {
-        if (selected >= 0) Box(Modifier.offset(y = y).size(width = 64.dp, height = itemH)
+        Box(Modifier.offset(y = bead.pos).size(width = 64.dp, height = bead.size).graphicsLayer { alpha = bead.alpha }
             .frosted(LocalRootHaze.current, RoundedCornerShape(28.dp), 4.dp)
             .background(if (N.dark) Color.White.copy(alpha = 0.10f) else Color.Black.copy(alpha = 0.05f)))
         Column(verticalArrangement = Arrangement.spacedBy(gap), horizontalAlignment = Alignment.CenterHorizontally) {

@@ -3,6 +3,12 @@ import { $, $$, esc, sleep, prefs } from "./core.js";
 
 // ── icons (Material Symbols Rounded, 24px) ────────────────────────────────────────
 const P = {
+  close: "M6.4 19 5 17.6l5.6-5.6L5 6.4 6.4 5l5.6 5.6L17.6 5 19 6.4 13.4 12l5.6 5.6-1.4 1.4-5.6-5.6Z",
+  pin: "m16 12 2 2v2h-5v6l-1 1-1-1v-6H6v-2l2-2V5H7V3h10v2h-1Z",
+  history: "M12 21q-3.45 0-6.01-2.29Q3.43 16.43 3.05 13H5.1q.35 2.6 2.31 4.3Q9.38 19 12 19q2.93 0 4.96-2.04Q19 14.93 19 12q0-2.92-2.04-4.96Q14.93 5 12 5q-1.72 0-3.23.8T6.25 8H9v2H3V4h2v2.35q1.28-1.6 3.11-2.47Q9.95 3 12 3q1.88 0 3.51.71 1.64.71 2.86 1.92 1.21 1.22 1.92 2.86Q21 10.13 21 12t-.71 3.51q-.71 1.64-1.92 2.86-1.22 1.21-2.86 1.92Q13.88 21 12 21Zm2.8-4.8L11 12.4V7h2v4.6l3.2 3.2Z",
+  star: "m5.83 21 1.63-7.03L2 9.24l7.2-.62L12 2l2.8 6.62 7.2.62-5.46 4.73L18.17 21 12 17.27Z",
+  starOutline: "m8.85 16.83 3.15-1.9 3.15 1.93-.83-3.6 2.78-2.4-3.65-.33-1.45-3.4-1.45 3.38-3.65.33 2.77 2.42Zm-3.02 4.17 1.63-7.03L2 9.24l7.2-.62L12 2l2.8 6.62 7.2.62-5.46 4.73L18.17 21 12 17.27Z",
+  copy: "M9 18q-.83 0-1.41-.59Q7 16.83 7 16V4q0-.82.59-1.41Q8.17 2 9 2h9q.82 0 1.41.59Q20 3.18 20 4v12q0 .83-.59 1.41Q18.82 18 18 18Zm0-2h9V4H9v12Zm-4 6q-.83 0-1.41-.59Q3 20.83 3 20V6h2v14h11v2Z",
   home: "M4 21V9l8-6 8 6v12h-6v-7h-4v7Z",
   dns: "M20 13H4c-.55 0-1 .45-1 1v6c0 .55.45 1 1 1h16c.55 0 1-.45 1-1v-6c0-.55-.45-1-1-1zM7 19c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zM20 3H4c-.55 0-1 .45-1 1v6c0 .55.45 1 1 1h16c.55 0 1-.45 1-1V4c0-.55-.45-1-1-1zM7 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2z",
   status: "M3 13h4l2-5 4 10 2-5h6v-2h-4.6L15 13.4 11 3.6 8.6 11H3Z",
@@ -102,6 +108,8 @@ export const usageColor = f => f > .95 ? "var(--red)" : f > .85 ? "var(--amber)"
 
 // ── toast & sheets ──────────────────────────────────────────────────────────────
 let toastT;
+/** A shell command with a Copy button (the click is handled once, in app.js). */
+export const copyCmd = cmd => `<div class="cmdcopy"><code>${esc(cmd)}</code><button class="pillbtn press" data-copy="${esc(cmd)}" aria-label="Copy the command">${I("copy")}Copy</button></div>`;
 export function toast(m) {
   const t = $("#toast"); t.textContent = m; t.className = "frost on"; clearTimeout(toastT);
   toastT = setTimeout(() => t.className = "frost", 2800);
@@ -144,7 +152,7 @@ export async function waitApproval(id, get, code) {
   let stop = false;
   const until = Date.now() + 600000;
   const box = sheet(`<h2>Approve on your phone</h2><p>Nova sent this to your admin phone. Open the notification (or Nova → Menu → Users &amp; devices → Approvals) and confirm with your fingerprint.</p>
-    ${code ? `<p>…or on the server: <code>sudo nova approve ${esc(code)}</code></p>` : ""}<p class="muted" id="apleft" style="text-align:center"></p>
+    ${code ? `<p>…or on the server:</p>${copyCmd("sudo nova approve " + code)}` : ""}<p class="muted" id="apleft" style="text-align:center"></p>
     <div class="center" style="padding:14px"><div class="spinner" style="margin:auto"></div></div>${acts([{ label: "Stop waiting" }])}`, () => { stop = true; });
   $("[data-b]", box).onclick = () => { stop = true; closeSheet(); };
   const tick = setInterval(() => { const el = $("#apleft"), s = Math.max(0, Math.round((until - Date.now()) / 1000)); if (el) el.textContent = `Expires in ${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; if (stop || !el) clearInterval(tick); }, 1000);
@@ -306,7 +314,7 @@ export function swipeable(root, { onRight, onLeft } = {}) {
   });
 }
 
-/** Custom colour: hue / saturation / brightness, exact R G B values, or a hex code. Resolves "#rrggbb" or null. */
+/** Custom color: hue / saturation / brightness, exact R G B values, or a hex code. Resolves "#rrggbb" or null. */
 export function colorPicker(initial = "#3e91ff") {
   const toHsv = ([r, g, b]) => { r /= 255; g /= 255; b /= 255; const mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn;
     let h = 0; if (d) h = mx === r ? ((g - b) / d) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4; return [(h * 60 + 360) % 360, mx ? d / mx : 0, mx]; };
@@ -314,7 +322,7 @@ export function colorPicker(initial = "#3e91ff") {
   const hx = rgb => "#" + rgb.map(x => x.toString(16).padStart(2, "0")).join("");
   let rgb = [1, 3, 5].map(i => parseInt((initial || "#3e91ff").slice(i, i + 2), 16) || 0), hue = toHsv(rgb)[0];
   return new Promise(res => {
-    const box = sheet(`<h2>Custom colour</h2><div class="pad">
+    const box = sheet(`<h2>Custom color</h2><div class="pad">
       <div id="cp-prev" style="height:56px;border-radius:18px;margin-bottom:12px"></div>
       ${["Hue:h:0:360", "Saturation:s:0:100", "Brightness:v:0:100"].map(x => { const [l, k, a, b] = x.split(":"); return `<div class="muted" style="font-size:13px;margin-top:6px">${l}</div><input type="range" min="${a}" max="${b}" data-cp="${k}">`; }).join("")}
       ${["R:#ff453a", "G:#32d74b", "B:#0a84ff"].map((x, i) => { const [l, c] = x.split(":"); return `<div style="display:flex;align-items:center;gap:10px;margin-top:10px"><b style="color:${c};width:16px">${l}</b><input type="range" min="0" max="255" data-ch="${i}" style="flex:1"><input class="field" data-num="${i}" inputmode="numeric" maxlength="3" style="width:76px;padding:10px 12px;font-family:ui-monospace,monospace"></div>`; }).join("")}

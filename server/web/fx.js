@@ -1,10 +1,15 @@
 // The fan's software effects, ported line for line from the server (nova_rgb.frame) — same as the
 // app's LightFx.kt — so the picture shows exactly what the fan shows at the same moment.
 export const SOFTWARE = new Set(["wave", "comet", "scanner", "twinkle", "fire", "breathe"]);
+/** Controller effects that also take a palette: with 2+ colors Nova draws them itself (same as the server). */
+export const PALETTE_FX = new Set(["static", "pulse", "blink", "cycle", "gradient"]);
+const paletteOf = fx => (fx.palette || []).filter(Boolean);
+export const usesPalette = fx => PALETTE_FX.has(fx.effect) && paletteOf(fx).length >= 2 && !(fx.effect === "cycle" && fx.rainbow);
+export const isSoftware = fx => SOFTWARE.has(fx.effect) || usesPalette(fx);
 const FIRE = ["#200000", "#ff1800", "#ff6000", "#ffb000", "#fff0a0"];
 
 export const periodMs = s => pyRound(10000 * Math.pow(.02, (Math.max(1, Math.min(100, s)) - 1) / 99));
-/** Python's round(): halves go to the even neighbour. */
+/** Python's round(): halves go to the even neighbor. */
 function pyRound(x) { const f = Math.floor(x), d = x - f; return d > .5 ? f + 1 : d < .5 ? f : (f % 2 === 0 ? f : f + 1); }
 const pmod = x => { const r = x % 1; return r < 0 ? r + 1 : r; };
 /** 32-bit integer hash, identical to the server's _h and the app's. */
@@ -20,11 +25,20 @@ function hsv(x) {
   const [r, g, b] = [[1, f, 0], [q, 1, 0], [0, 1, f], [0, q, 1], [f, 0, 1], [1, 0, q]][i % 6];
   return [pyRound(r * 255), pyRound(g * 255), pyRound(b * 255)];
 }
+/** Fire in one color: from nearly black, through the color, to almost white (same as the server). */
+function tintFlame(c) {
+  const k = f => c.map(v => pyRound(v * f)), w = f => c.map(v => pyRound(v + (255 - v) * f));
+  return [k(0.08), k(0.55), c, w(0.45), w(0.8)];
+}
 function pal(fx) {
-  if (fx.rainbow && fx.effect !== "fire") return null;
   const p = (fx.palette || []).filter(Boolean);
+  if (fx.effect === "fire") {                // Flame (rainbow on) · Palette: your own heat ramp · One color: a flame in it
+    if (p.length >= 2) return p.map(hexRgb);
+    if (fx.rainbow) return FIRE.map(hexRgb);
+    return tintFlame(hexRgb(fx.color || "#ff6000"));
+  }
+  if (fx.rainbow) return null;
   if (p.length >= 2) return p.map(hexRgb);
-  if (fx.effect === "fire") return FIRE.map(hexRgb);
   return [hexRgb(fx.color || "#3e91ff")];
 }
 function at(p, x0) {
@@ -40,9 +54,16 @@ function heat(p, x0) {
 }
 const sc = (c, k) => c.map(v => pyRound(v * Math.max(0, Math.min(1, k))));
 
-/** LED colours (0..255, full brightness) for a software effect at server time t (seconds). */
+/** LED colors (0..255, full brightness) for a software effect at server time t (seconds). */
 export function frame(fx, t) {
   const n = Math.max(1, fx.leds | 0), per = periodMs(fx.speed) / 1000, p = pal(fx), L = [...Array(n).keys()];
+  if (usesPalette(fx)) {
+    const pp = paletteOf(fx).map(hexRgb), e = fx.effect, c = Math.floor(t / per);
+    if (e === "static" || e === "gradient") return L.map(j => at(pp, j / n));
+    if (e === "pulse") { const k = .06 + .94 * (.5 - .5 * Math.cos(2 * Math.PI * ((t / per) % 1))); return L.map(() => sc(pp[c % pp.length], k)); }
+    if (e === "blink") return L.map(() => (t / per) % 1 < .5 ? pp[c % pp.length] : [0, 0, 0]);
+    if (e === "cycle") return L.map(() => at(pp, t / (per * 2 * pp.length)));
+  }
   switch (fx.effect) {
     case "wave": { const ph = (t / (per * 1.5)) % 1;
       if (p === null || p.length >= 2) return L.map(j => at(p, j / n + ph));

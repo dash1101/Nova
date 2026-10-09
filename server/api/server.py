@@ -36,7 +36,7 @@ try:                       # optional module: fan/case lighting (modules/fan-gig
 except ImportError:
     nova_rgb = None
 
-API_VERSION = "0.5.5-alpha"
+API_VERSION = "0.5.6-alpha"
 CONFIG = "/etc/nova-api/config.json"
 DATA = "/var/lib/nova-api"
 DEVICES = f"{DATA}/devices.json"
@@ -56,7 +56,7 @@ PENDING = f"{DATA}/pending.json"               # what's waiting for approval, fo
 CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 APPS = f"{DATA}/apps.json"                      # your changes to the Apps grid (names, hidden, custom links)
 ICONS = f"{DATA}/icons"                         # app icons, fetched once from dashboard-icons and kept here
-SETTINGS = f"{DATA}/settings.json"       # changeable from the app: display name, accent colour
+SETTINGS = f"{DATA}/settings.json"       # changeable from the app: display name, accent color
 
 lock = threading.Lock()          # devices.json / pairing.json writes
 rgb_lock = threading.Lock()      # one HID conversation at a time
@@ -259,9 +259,21 @@ def _net(dev=None):
             v = l.split(":", 1)[1].split(); return int(v[0]), int(v[8])
     return 0, 0
 
+WHOLE_DISK = re.compile(r"(sd[a-z]+|nvme\d+n\d+|vd[a-z]+|xvd[a-z]+|hd[a-z]+|mmcblk\d+)")
+def _disks():
+    """Whole disks from /proc/diskstats: {name: (sectors read + written, ms spent doing I/O)}."""
+    out = {}
+    try:
+        for l in open("/proc/diskstats"):
+            f = l.split()
+            if len(f) >= 13 and WHOLE_DISK.fullmatch(f[2]): out[f[2]] = (int(f[5]) + int(f[9]), int(f[12]))
+    except (OSError, ValueError): pass
+    return out
+
 def stats_sampler():
     iface = _default_iface()
     prev_cpu, prev_net, prev_t = _cpu_times(), _net(iface), time.time()
+    prev_disk = _disks()
     n = 0
     while True:
         time.sleep(1 - (time.time() % 1) + 0.02)         # on the second, so phones see an even beat
@@ -279,6 +291,10 @@ def stats_sampler():
                    "rx": round((net[0] - prev_net[0]) / (t - prev_t)), "tx": round((net[1] - prev_net[1]) / (t - prev_t)),
                    "load": float(open("/proc/loadavg").read().split()[0]), "cores": os.cpu_count(),
                    "uptime_s": int(float(open("/proc/uptime").read().split()[0]))}
+            # per-drive activity for the drive lights: share of the last second spent on I/O, and bytes/s
+            disk = _disks(); dt = max(0.2, t - prev_t)
+            now["disks"] = {d: [round(min(1.0, max(0.0, (v[1] - prev_disk[d][1]) / (dt * 1000))), 2), round((v[0] - prev_disk[d][0]) * 512 / dt)]
+                            for d, v in disk.items() if d in prev_disk}
             STATS["now"] = now
             point = {k: now[k] for k in ("t", "cpu", "mem", "temp", "rx", "tx")}
             STATS["recent"] = (STATS["recent"] + [point])[-RECENT_N:]
@@ -287,7 +303,7 @@ def stats_sampler():
                 avg = {k: round(sum((p[k] or 0) for p in last) / len(last), 1) for k in ("cpu", "mem", "rx", "tx")}
                 avg["temp"] = point["temp"]; avg["t"] = int(t)
                 STATS["history"] = (STATS["history"] + [avg])[-HISTORY_N:]
-            prev_cpu, prev_net, prev_t = cpu, net, t
+            prev_cpu, prev_net, prev_t, prev_disk = cpu, net, t, disk
         except Exception:
             pass
 threading.Thread(target=stats_sampler, daemon=True).start()
@@ -354,6 +370,9 @@ def describe_action(a):
     if p[:1] == ["programs"]: return f"{p[2].title()} the program {p[1]}"
     if p[:1] == ["drives"]: return f"{p[2].title()} a drive"
     if p[:1] == ["power"]: return "Restart the server" if p[1:] == ["reboot"] else "Shut down the server"
+    if p[:1] == ["devices"] and a.get("method") == "DELETE" and len(p) == 2:
+        d = load_json(DEVICES, {}).get(p[1], {})
+        return f"Remove “{d.get('name', 'a device')}” from this server" if d else "Remove a device"
     if p[:1] == ["devices"]: return "Change paired devices"
     if p[:1] == ["ssh"]: return "Let this phone log in over SSH"
     if p == ["alerts", "dismiss"]: return f"Ignore the alert “{a.get('data', {}).get('key', '')}”"
@@ -375,6 +394,8 @@ def browser_forbidden(method, parts, dev):
     if parts[:1] == ["browser"]: return True
     if parts == ["server", "update"] and method == "POST": return True          # updates: phones only
     if parts[:1] == ["ssh"] and method != "GET": return True                      # SSH keys: phones only
+    # Removing a device is allowed from a browser, but it's held for an admin phone's fingerprint (needs_stepup).
+    if parts[:1] == ["devices"] and method == "DELETE" and len(parts) == 2: return False
     if parts[:1] == ["devices"] and method != "GET" and parts != ["devices", dev.get("id")]: return True
     return False
 

@@ -1,7 +1,7 @@
 // Nova web — entry: router (with back stack, scroll memory and slide transitions), the app shell
 // (the frosted nav pill: along the bottom on phones, down the left on wide screens), pairing, start-up.
-import { S, $, $$, esc, sleep, kv, pemOf, get, post, prefs, has, refresh, onApproval, ApiError, webForm } from "./core.js";
-import { I, logo, toast, waitApproval, closeSheet } from "./ui.js";
+import { S, $, $$, esc, sleep, kv, pemOf, get, post, prefs, has, refresh, onApproval, ApiError, webForm, levelColor, cleanTitle } from "./core.js";
+import { I, logo, toast, waitApproval, closeSheet, copyCmd } from "./ui.js";
 import * as V from "./views.js";
 import * as ST from "./storage.js";
 import * as SR from "./start.js";
@@ -30,7 +30,7 @@ const ROUTES = {
   devices: V.devices, settings: V.settings, server: V.serverSettings, appearance: V.appearance, "edit-home": V.editHome,
   "edit-shortcuts": V.editShortcuts, "edit-tabs": V.editTabs, about: V.about, guide: V.guide, terminal: V.terminal,
   dashboard: V.dashboard, "edit-dash": V.editDash, archive: V.archive,
-  apps: ST.apps, updates: ST.updates, search: SR.search, start: SR.start, "start-edit": SR.startEdit, setup: ST.setup, pool: ST.pool, task: ST.task, backups: ST.backups, backup: ST.backup, "backup-edit": ST.backupEdit, restore: ST.restore, diag: ST.diag,
+  apps: ST.apps, updates: ST.updates, search: SR.search, start: SR.start, "start-edit": SR.startEdit, favorites: SR.favorites, setup: ST.setup, pool: ST.pool, task: ST.task, backups: ST.backups, backup: ST.backup, "backup-edit": ST.backupEdit, restore: ST.restore, diag: ST.diag,
 };
 // Wide screens and phones in landscape: the bottom bar's pill stands on its end down the left edge.
 const SIDE = matchMedia("(min-width: 900px), (orientation: landscape) and (max-height: 540px)");
@@ -70,7 +70,22 @@ addEventListener("popstate", e => {
   if (pendingHome) { pendingHome = false; if (parse()[0] !== "home") history.replaceState({ k: newKey(), d: 0 }, "", "#/home"); }
   render(dir);
 });
-addEventListener("keydown", e => { if (e.key === "Escape" && !$("#sheet").hidden) closeSheet(); });
+addEventListener("keydown", e => {
+  if (e.key !== "Escape") return;
+  if (!$("#sheet").hidden) { closeSheet(); return; }
+  if ($("#alertbar")?.classList.contains("on")) { hideAlert(); return; }
+  if (/INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName)) { document.activeElement.blur(); return; }
+  // Esc = back (after the page had its say: the Inbox uses Esc to clear a selection)
+  setTimeout(() => { if (!e.defaultPrevented && depth > 0) back(); });
+});
+// Copy buttons ([data-copy]) anywhere: the server command to approve a browser, etc.
+addEventListener("click", async e => {
+  const b = e.target.closest?.("[data-copy]"); if (!b) return;
+  e.preventDefault(); e.stopPropagation();
+  try { await navigator.clipboard.writeText(b.dataset.copy); }
+  catch { const r = document.createRange(); const c = b.previousElementSibling || b; r.selectNodeContents(c); getSelection().removeAllRanges(); getSelection().addRange(r); toast("Selected — press Ctrl+C to copy"); return; }
+  const was = b.innerHTML; b.innerHTML = I("check") + "Copied"; b.classList.add("done"); setTimeout(() => { b.innerHTML = was; b.classList.remove("done"); }, 1600);
+}, true);
 
 // ── the shell (page + top bar + nav pill), built once ────────────────────
 function ensureShell() {
@@ -117,7 +132,7 @@ function render(dir = 0) {
     alive: () => my === seq,
     go, tab, back,
     run: (name, ...a) => handlers[name]?.(...a),
-    handlers: h => { handlers = h; },
+    handlers: h => { handlers = { ...handlers, ...h }; },
     onLeave: fn => leaveFns.push(fn),
     applyTheme, refreshNav: () => { $("#nav") && ($("#nav").dataset.ids = ""); drawNav(r); },
     every(ms, fn, immediate = false) {
@@ -208,7 +223,7 @@ async function pairScreen() {
       $("#app").innerHTML = `<div class="pair"><h1 style="font-size:34px">Approve this browser</h1>
         <p class="lead">On an admin phone open <b>Nova → Menu → Users &amp; devices → Approve a browser</b> and enter:</p>
         <div class="code">${esc(j.code)}</div>
-        <p class="note" style="text-align:center">…or on the server: <code>sudo nova approve ${esc(j.code)}</code></p>
+        <p class="note" style="text-align:center">…or on the server:</p>${copyCmd("sudo nova approve " + j.code)}
         <div class="center"><div class="spinner" style="margin:auto"></div><p class="note" id="left" style="font-size:16px"></p></div></div>`;
       const tick = () => { const s = Math.max(0, Math.round((until - Date.now()) / 1000)), el = $("#left");
         if (el) { el.innerHTML = `Waiting… <b>${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}</b> left`; el.style.color = s < 60 ? "var(--amber)" : ""; } };
@@ -247,9 +262,45 @@ async function start() {
   render(0);
   // keep the overview fresh in the background (screens refresh what they show themselves)
   setInterval(() => { if (!document.hidden) refresh().catch(e => { if (e.code === 401) unauthorized(); }); }, 30000);
+  watchEvents(); setInterval(watchEvents, 20000);
   addEventListener("resize", () => { const [r] = parse(); drawNav(r); });
 }
 start();
+
+// ── New alerts while Nova is open: a banner on the page, and a browser notification when the tab is in the background ──
+let alertSince = null, alertQueue = [], alertTimer;
+async function watchEvents() {
+  try {
+    const ev = ((await get(`/api/v1/events?since=${alertSince ?? 0}`)).events || []);
+    const newest = Math.max(0, ...ev.map(e => e.t));
+    if (alertSince === null) { alertSince = newest || Date.now() / 1000; return; }      // what's already there isn't news
+    const fresh = ev.filter(e => e.t > alertSince).sort((a, b) => a.t - b.t);
+    if (!fresh.length) return;
+    alertSince = newest; announce(fresh);
+  } catch {}
+}
+const important = e => ["warning", "critical"].includes(e.level);
+function announce(list) {
+  if (prefs.browserNotify && "Notification" in window && Notification.permission === "granted" && (document.hidden || !document.hasFocus())) {
+    list.filter(e => prefs.browserNotifyAll || important(e)).slice(-3).forEach(e => {
+      try { const n = new Notification(cleanTitle(e.title), { body: e.detail || "", tag: "nova-" + e.t, icon: "/web/icon.svg" }); n.onclick = () => { focus(); location.hash = "#/inbox"; n.close(); }; } catch {}
+    });
+  }
+  if (parse()[0] === "inbox") return;                     // the Inbox shows them itself
+  alertQueue.push(...list); showAlert();
+}
+function showAlert() {
+  const box = $("#alertbar"); if (!box || !alertQueue.length) return;
+  const e = alertQueue[alertQueue.length - 1], more = alertQueue.length - 1;
+  box.innerHTML = `<button class="alertcard glass" data-act="go:inbox"><span class="dot" style="background:${levelColor(e.level)}"></span>
+    <span class="t"><b>${esc(cleanTitle(e.title))}</b><small>${esc(e.detail || "")}${more ? ` · and ${more} more` : ""}</small></span>
+    <span class="x" data-x="1" aria-label="Dismiss">×</span></button>`;
+  box.classList.add("on");
+  $("[data-x]", box).onclick = ev => { ev.stopPropagation(); hideAlert(); };
+  box.querySelector(".alertcard").addEventListener("click", hideAlert);
+  clearTimeout(alertTimer); alertTimer = setTimeout(hideAlert, important(e) ? 12000 : 6000);
+}
+function hideAlert() { alertQueue = []; $("#alertbar")?.classList.remove("on"); }
 
 // Press / (or Ctrl/⌘+K) anywhere to search Nova
 addEventListener("keydown", e => {

@@ -85,7 +85,7 @@ import org.json.JSONObject
             Modifier.clickable(interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }, indication = null) { app.go(Route.Lighting) }
             else Modifier)) {
             val drives = st?.optJSONObject("metrics")?.optJSONArray("drive_states")?.let { a -> (0 until a.length()).map { a.getJSONObject(it) } }
-            ServerHero(app.fan, levelColor(level, N), drives, app.clockSkew, Modifier.fillMaxSize())
+            ServerHero(app.fan, levelColor(level, N), drives, app.clockSkew, Modifier.fillMaxSize(), io = app.lastNow?.optJSONObject("disks"))
         }
     }
     val pills: @Composable () -> Unit = {
@@ -125,6 +125,8 @@ import org.json.JSONObject
             Icon(Icons.Rounded.Search, null, tint = N.sub); Spacer(Modifier.width(12.dp))
             Text("Search Nova", color = N.sub, fontSize = 17.sp)
         }
+        FavoritesGroup(app)
+        SectionLabel("Everything")
         Group {
             Row1("Containers", cs?.let { "${it.optInt("running")} of ${it.optInt("total")} running" }, true,
                 Icons.Rounded.ViewInAr, onClick = { app.go(Route.Containers) })
@@ -143,7 +145,7 @@ import org.json.JSONObject
             RowDivider()
             Row1("Updates", "Packages, containers and Nova", true, Icons.Rounded.Update, androidx.compose.ui.graphics.Color(0xFF3ECF6E), onClick = { app.go(Route.Updates) })
             RowDivider()
-            Row1("Quick panel", "Your shortcuts — tap ✎ to customise", true, Icons.Rounded.Widgets, onClick = { app.go(Route.QuickPanel) })
+            Row1("Quick panel", "Your shortcuts — tap ✎ to customize", true, Icons.Rounded.Widgets, onClick = { app.go(Route.QuickPanel) })
             RowDivider()
             Row1("Server status", "Live graphs, storage, backups", true, Icons.Rounded.MonitorHeart, androidx.compose.ui.graphics.Color(0xFF3ECF6E),
                 onClick = { app.go(Route.Status) })

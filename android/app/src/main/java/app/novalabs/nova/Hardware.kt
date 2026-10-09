@@ -81,7 +81,7 @@ private fun health(d: JSONObject): Pair<String, String> {
                 Detail("Reading or setting fan speeds from Linux needs a driver for the board's fan chip; many boards work out of the box with lm-sensors.")
             }
             RowDivider()
-            Row1("Fan lighting", "Colour, effects, schedules", true, Icons.Rounded.Lightbulb, N.amber, onClick = { app.go(Route.Lighting) })
+            Row1("Fan lighting", "Color, effects, schedules", true, Icons.Rounded.Lightbulb, N.amber, onClick = { app.go(Route.Lighting) })
         }
         LinksCard(listOf("Quick panel (restart, shut down)" to { app.go(Route.QuickPanel) }))
     }

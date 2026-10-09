@@ -37,6 +37,10 @@ object AppPrefs {
     var startEngine by mutableStateOf("ddg"); private set                  // start page: web search engine
     var startHidden by mutableStateOf(listOf<String>()); private set       // start page: hidden sections
     var startLinks by mutableStateOf("[]"); private set                    // start page: bookmarks, JSON [{name,url}]
+    var pinnedApps by mutableStateOf(listOf<String>()); private set        // apps pinned to the dock
+    var favorites by mutableStateOf(listOf<String>()); private set         // Menu → Favorites
+    var searchRecent by mutableStateOf(listOf<String>()); private set      // Search: recent queries (newest first)
+    var searchPinned by mutableStateOf(listOf<String>()); private set      // Search: pinned queries
 
     fun init(ctx: Context) {
         if (::sp.isInitialized) return
@@ -48,6 +52,8 @@ object AppPrefs {
         fanReverse = sp.getBoolean("fan_reverse", false)
         startRoute = sp.getString("start_route", "home")!!; startEngine = sp.getString("start_engine", "ddg")!!
         startHidden = sp.getString("start_hidden", "")!!.split(",").filter { it.isNotBlank() }; startLinks = sp.getString("start_links", "[]")!!
+        searchRecent = sp.getString("search_recent", "")!!.split("\n").filter { it.isNotBlank() }; searchPinned = sp.getString("search_pinned", "")!!.split("\n").filter { it.isNotBlank() }
+        pinnedApps = sp.getString("pinned_apps", "")!!.split(",").filter { it.isNotBlank() }; favorites = sp.getString("favorites", "")!!.split(",").filter { it.isNotBlank() }
         navTabs = sp.getString("nav_tabs", null)?.split(",")?.filter { it.isNotBlank() } ?: DEFAULT_TABS
         homeChips = sp.getString("home_chips", null)?.let { s -> s.split(",").filter { it.isNotBlank() } } ?: DEFAULT_SHORTCUTS
     }
@@ -60,6 +66,8 @@ object AppPrefs {
             "fan_reverse" -> fanReverse = v as Boolean
             "start_route" -> startRoute = v as String; "start_engine" -> startEngine = v as String
             "start_hidden" -> startHidden = (v as String).split(",").filter { it.isNotBlank() }; "start_links" -> startLinks = v as String
+            "search_recent" -> searchRecent = (v as String).split("\n").filter { it.isNotBlank() }; "search_pinned" -> searchPinned = (v as String).split("\n").filter { it.isNotBlank() }
+            "pinned_apps" -> pinnedApps = (v as String).split(",").filter { it.isNotBlank() }; "favorites" -> favorites = (v as String).split(",").filter { it.isNotBlank() }
             "nav_tabs" -> navTabs = (v as String).split(",").filter { it.isNotBlank() }
             "home_chips" -> homeChips = (v as String).split(",").filter { it.isNotBlank() }
         }
@@ -73,7 +81,7 @@ private val DEFAULT_LOOK_MAKERS = setOf("samsung", "xiaomi", "redmi", "poco", "h
 fun autoMaterial(): Boolean = android.os.Build.MANUFACTURER.lowercase() !in DEFAULT_LOOK_MAKERS && android.os.Build.BRAND.lowercase() !in DEFAULT_LOOK_MAKERS
 fun materialStyle(): Boolean = when (AppPrefs.style) { "material" -> true; "default" -> false; else -> autoMaterial() }
 
-/** Honour both the app setting and Android's "remove animations". */
+/** Honor both the app setting and Android's "remove animations". */
 fun reduceMotion(): Boolean = AppPrefs.reduceMotion
 
 /** FLAG_SECURE: hides Nova's contents in the recent-apps view and blocks screenshots. */
@@ -119,7 +127,7 @@ object AppLock {
             val autoName = if (autoMaterial()) "Material You" else "Default"
             listOf("auto" to ("Automatic" to "$autoName — matches how ${android.os.Build.MANUFACTURER.replaceFirstChar { it.uppercase() }} phones look"),
                    "default" to ("Default" to "Nova's own look: frosted glass, soft glow, One UI-style"),
-                   "material" to ("Material You" to "Google's Material 3 Expressive: colours from your wallpaper, bolder shapes, springy motion"))
+                   "material" to ("Material You" to "Google's Material 3 Expressive: colors from your wallpaper, bolder shapes, springy motion"))
                 .forEachIndexed { i, (k, l) ->
                     if (i > 0) RowDivider()
                     Row1(l.first, l.second, onClick = { AppPrefs.set("style", k) }) { OneRadio(AppPrefs.style == k) }
@@ -156,7 +164,7 @@ object AppLock {
                 Row1(l.first, null, onClick = { AppPrefs.set("start_route", k) }) { OneRadio(AppPrefs.startRoute == k) }
             }
         }
-        Text("Each server also has its own name and accent colour (Settings → Server).", color = N.sub, fontSize = 13.sp,
+        Text("Each server also has its own name and accent color (Settings → Server).", color = N.sub, fontSize = 13.sp,
             modifier = Modifier.padding(horizontal = 30.dp, vertical = 4.dp))
         SectionLabel("Privacy")
         Group {

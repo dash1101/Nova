@@ -46,7 +46,7 @@ val QUICK_ACTIONS = listOf(
     QuickDef("status", "Server status", Icons.Rounded.MonitorHeart, "Live graphs and health"),
     QuickDef("dashboard", "Dashboard", Icons.Rounded.Dashboard, "Always-on screen"),
     QuickDef("containers", "Containers", Icons.Rounded.ViewInAr, "Open the list"),
-    QuickDef("lighting", "Lighting", Icons.Rounded.Palette, "Colours and effects"),
+    QuickDef("lighting", "Lighting", Icons.Rounded.Palette, "Colors and effects"),
     QuickDef("inbox", "Inbox", Icons.Rounded.Notifications, "Alerts and logins"),
     QuickDef("storage", "Storage", Icons.Rounded.Storage, "Drives and temperatures"),
     QuickDef("store", "App store", Icons.Rounded.Storefront, "Install apps"),
@@ -57,7 +57,7 @@ fun quickDef(id: String): QuickDef? = if (id.startsWith("restart:"))
     QuickDef(id, "Restart ${id.removePrefix("restart:")}", Icons.Rounded.RestartAlt, "Fingerprint to confirm")
 else QUICK_ACTIONS.firstOrNull { it.id == id }
 
-/** One UI quick-panel tile: blue when "on", card-coloured otherwise. Long-press opens its settings. */
+/** One UI quick-panel tile: blue when "on", card-colored otherwise. Long-press opens its settings. */
 @Composable fun QuickTile(icon: ImageVector, label: String, state: String?, active: Boolean, modifier: Modifier = Modifier,
                           onLongClick: (() -> Unit)? = null, onClick: () -> Unit) {
     val bg by animateColorAsState(if (active) N.blue else Color.Transparent, label = "tile")

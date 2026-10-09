@@ -64,7 +64,7 @@ object Space {
 @Composable fun Modifier.glassCard(shape: Shape, elevation: Dp = 6.dp): Modifier =
     if (N.material) this.clip(shape).background(N.card) else this.shadow(elevation, shape, ambientColor = Color.Black.copy(alpha = 0.25f), spotColor = Color.Black.copy(alpha = 0.3f))
         .clip(shape)
-        // Solid fill (a see-through one lets the shadow show as a grey box inside the card), lit
+        // Solid fill (a see-through one lets the shadow show as a gray box inside the card), lit
         // slightly from the top so it reads as a raised pane of glass.
         .background(Brush.verticalGradient(if (N.dark) listOf(lerp(N.card, Color.White, 0.045f), N.card)
                                            else listOf(Color.White, lerp(Color.White, N.bg, 0.35f))))

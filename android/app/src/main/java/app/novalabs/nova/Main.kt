@@ -59,7 +59,7 @@ sealed class Route {
     data class BackupWizard(val id: String?, val sources: List<String> = emptyList(), val dest: String? = null) : Route()
     data class BackupBrowse(val id: String, val snap: String = "", val path: String = "") : Route()
     data object Diagnostics : Route()
-    data object Apps : Route(); data class AppFrame(val id: String) : Route(); data object Updates : Route(); data object Search : Route(); data object Start : Route(); data object StartEdit : Route()
+    data object Apps : Route(); data class AppFrame(val id: String) : Route(); data object Updates : Route(); data object Search : Route(); data object Start : Route(); data object StartEdit : Route(); data object EditFavorites : Route()
 }
 
 /** Shared app state: the API, live data, navigation, messages. */
@@ -81,6 +81,11 @@ class AppState(val activity: Activity, val pairing: Pairing, val scope: Coroutin
     var paired by mutableStateOf(pairing.paired)
     var notAuthorized by mutableStateOf(false)
     private var failures = 0
+    /** The newest event already announced (−1: not yet known), and the banner on screen. */
+    private var alertSince = -1.0
+    var banner by mutableStateOf<JSONObject?>(null)
+    var bannerMore by mutableIntStateOf(0)
+    var bannerAt by mutableLongStateOf(0L)
 
     val top get() = stack.last()
     var role by mutableStateOf(pairing.role)
@@ -130,6 +135,13 @@ class AppState(val activity: Activity, val pairing: Pairing, val scope: Coroutin
             }
             val ev = api.get("/api/v1/events?since=${pairing.lastEventSeen}").optJSONArray("events")
             unread = (0 until (ev?.length() ?: 0)).count { ev!!.getJSONObject(it).optString("level") in listOf("warning", "critical") }
+            // New since the last look (while Nova is open): a banner at the top, unless you're already in the Inbox
+            // (its own cursor: the background notifier marks events seen as soon as it shows them)
+            if (alertSince < 0) alertSince = api.get("/api/v1/events?since=0").optJSONArray("events").objs().maxOfOrNull { it.optDouble("t") } ?: (System.currentTimeMillis() / 1000.0)
+            else api.get("/api/v1/events?since=$alertSince").optJSONArray("events").objs().filter { it.optDouble("t") > alertSince }.sortedBy { it.optDouble("t") }.takeIf { it.isNotEmpty() }?.let { fresh ->
+                alertSince = fresh.last().optDouble("t")
+                if (top != Route.Inbox) { bannerMore = if (banner != null) bannerMore + fresh.size else fresh.size - 1; banner = fresh.last(); bannerAt = System.currentTimeMillis() }
+            }
         } catch (e: ApiException) {
             failures++
             if (e.code == 401) {
@@ -290,7 +302,7 @@ class MainActivity : ComponentActivity() {
             app.back(instant = true)
             backP.snapTo(0f); backExit.snapTo(0f)
         } catch (e: kotlin.coroutines.cancellation.CancellationException) {
-            // gesture cancelled: glide back into place
+            // gesture canceled: glide back into place
             backScope.launch { backExit.snapTo(0f); backP.animateTo(0f, androidx.compose.animation.core.spring(stiffness = 700f)) }
             throw e
         }
@@ -343,10 +355,11 @@ class MainActivity : ComponentActivity() {
                     val openApp = (app.top as? Route.AppFrame)?.id
                     if (tabIndex >= 0 || openApp != null) FloatingNav(tabIndex, tabs.map { it.icon }, tabs.map { it.label }, { i -> app.tab(tabs[i].route) },
                         Modifier.align(Alignment.BottomCenter), onLongClick = { app.go(Route.EditTabs) },
-                        apps = AppSessions.open, selectedApp = openApp, onApp = { id -> app.tab(Route.AppFrame(id)) })
+                        apps = AppSessions.dock(), selectedApp = openApp, onApp = { id -> dockTap(app, id) })
                 } else WideLayout(app, maxWidth)
             }
             CompositionLocalProvider(LocalRootHaze provides rootHaze) {        // so the toast is real frosted glass
+                AlertBanner(app, Modifier.align(Alignment.TopCenter))
                 OneToastHost(app.snack, Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = if (wide) 24.dp else 96.dp))
             }
         }
@@ -379,7 +392,7 @@ private fun Modifier.paneTouch(app: AppState, left: Boolean) = pointerInput(left
         if (app.top != Route.Dashboard)        // the always-on dashboard gets the whole screen
             Box(Modifier.fillMaxHeight().statusBarsPadding().navigationBarsPadding().padding(start = 12.dp, end = 4.dp), contentAlignment = Alignment.Center) {
                 VerticalNav(tabs.indexOfFirst { it.route == root }, tabs.map { it.icon }, tabs.map { it.label }, { i -> app.tab(tabs[i].route) },
-                    onLongClick = { app.go(Route.EditTabs) }, apps = AppSessions.open, selectedApp = (root as? Route.AppFrame)?.id, onApp = { id -> app.tab(Route.AppFrame(id)) })
+                    onLongClick = { app.go(Route.EditTabs) }, apps = AppSessions.dock(), selectedApp = (root as? Route.AppFrame)?.id, onApp = { id -> dockTap(app, id) })
             }
         val parent = app.stack.getOrNull(app.stack.size - 2)
         Box(Modifier.weight(1f).fillMaxHeight()) {
@@ -440,6 +453,7 @@ private fun Modifier.paneTouch(app: AppState, left: Boolean) = pointerInput(left
         Route.Search -> SearchScreen(app)
         Route.Start -> StartScreen(app)
         Route.StartEdit -> StartEditScreen(app)
+        Route.EditFavorites -> EditFavoritesScreen(app)
         is Route.AppFrame -> AppFrameScreen(app, r.id)
         Route.Status -> StatusScreen(app)
         Route.Ssh -> SshScreen(app)

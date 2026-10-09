@@ -30,12 +30,12 @@ import org.json.JSONObject
 private val SWATCHES = listOf("#ffffff", "#ff3b30", "#ff9500", "#ffcc00", "#34c759", "#00c7be",
     "#005aff", "#3e91ff", "#5e5ce6", "#bf5af2", "#ff2d55", "#ff6b9a")
 private val EFFECTS = listOf(
-    "static" to ("Static" to "One steady colour"), "pulse" to ("Pulse" to "Breathes in and out"),
-    "blink" to ("Blink" to "Flashes on and off"), "cycle" to ("Colour cycle" to "Fades through colours"),
-    "wave" to ("Wave" to "Colours chase around the ring"), "comet" to ("Comet" to "A bright head with a fading tail"),
+    "static" to ("Static" to "One steady color"), "pulse" to ("Pulse" to "Breathes in and out"),
+    "blink" to ("Blink" to "Flashes on and off"), "cycle" to ("Color cycle" to "Fades through colors"),
+    "wave" to ("Wave" to "Colors chase around the ring"), "comet" to ("Comet" to "A bright head with a fading tail"),
     "scanner" to ("Scanner" to "A light sweeping back and forth"), "twinkle" to ("Twinkle" to "LEDs fade in and out at random"),
-    "fire" to ("Fire" to "A flickering flame"), "breathe" to ("Breathe" to "Slow breaths, one colour after another"),
-    "random" to ("Random" to "Surprise me"), "gradient" to ("Gradient" to "Blends two colours across the ring"))
+    "fire" to ("Fire" to "A flickering flame"), "breathe" to ("Breathe" to "Slow breaths, one color after another"),
+    "random" to ("Random" to "Surprise me"), "gradient" to ("Gradient" to "Blends two colors across the ring"))
 private val ANIMATED = setOf("pulse", "blink", "cycle", "wave", "random", "comet", "scanner", "twinkle", "fire", "breathe")
 /** Ready-made palettes (inspired by WLED's): tap one to use it. */
 val PALETTES = listOf(
@@ -51,7 +51,7 @@ fun hex(c: Color) = "#%06x".format(c.toArgb() and 0xFFFFFF)
 fun col(h: String) = runCatching { Color(android.graphics.Color.parseColor(h)) }.getOrDefault(Color(0xFF3E91FF))
 
 @OptIn(ExperimentalLayoutApi::class)
-/** [noChange]: put a "No change" (❌) choice first, picked as "" — for schedules that leave the colour alone. */
+/** [noChange]: put a "No change" (❌) choice first, picked as "" — for schedules that leave the color alone. */
 @Composable fun SwatchRow(selected: String, enabled: Boolean, onPick: (String) -> Unit, noChange: Boolean = false, onCustom: () -> Unit) {
     FlowRow(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 16.dp),
         horizontalArrangement = Arrangement.SpaceBetween, verticalArrangement = Arrangement.spacedBy(14.dp), maxItemsInEachRow = 7) {
@@ -76,12 +76,12 @@ fun col(h: String) = runCatching { Color(android.graphics.Color.parseColor(h)) }
             .background(if (custom) Brush.linearGradient(listOf(col(selected), col(selected))) else Brush.sweepGradient(listOf(Color.Red, Color.Yellow, Color.Green, Color.Cyan, Color.Blue, Color.Magenta, Color.Red)))
             .border(if (custom) 3.dp else 0.dp, N.blue, CircleShape)
             .clickable(enabled = enabled, onClick = onCustom), contentAlignment = Alignment.Center) {
-            Icon(Icons.Rounded.Palette, "Custom colour", tint = Color.White, modifier = Modifier.size(20.dp))
+            Icon(Icons.Rounded.Palette, "Custom color", tint = Color.White, modifier = Modifier.size(20.dp))
         }
     }
 }
 
-/** Custom colour: hue / saturation / brightness, or exact R G B values, or a hex code. */
+/** Custom color: hue / saturation / brightness, or exact R G B values, or a hex code. */
 @Composable fun ColorPickerDialog(initial: String, onDismiss: () -> Unit, onPick: (String) -> Unit) {
     val start = col(initial)
     var r by remember { mutableIntStateOf((start.red * 255).toInt()) }
@@ -93,7 +93,7 @@ fun col(h: String) = runCatching { Color(android.graphics.Color.parseColor(h)) }
         val c = android.graphics.Color.HSVToColor(floatArrayOf(h, s, v)); r = (c shr 16) and 255; g = (c shr 8) and 255; b = c and 255 }
     val cur = Color(r, g, b); val hexNow = "#%02x%02x%02x".format(r, g, b)
     var hexText by remember(hexNow) { mutableStateOf(hexNow) }
-    OneDialog(onDismiss, "Custom colour", buttons = listOf(DialogButton("Cancel", onClick = onDismiss), DialogButton("Done", N.blue) { onPick(hexNow) })) {
+    OneDialog(onDismiss, "Custom color", buttons = listOf(DialogButton("Cancel", onClick = onDismiss), DialogButton("Done", N.blue) { onPick(hexNow) })) {
         Column(Modifier.padding(horizontal = 26.dp)) {
             Box(Modifier.fillMaxWidth().height(56.dp).clip(RoundedCornerShape(18.dp)).background(cur))
             Spacer(Modifier.height(10.dp))
@@ -138,7 +138,7 @@ private fun lookOf(f: JSONObject?): JSONObject = JSONObject().also { o ->
     var bright by remember(fb) { mutableFloatStateOf(fb.toFloat()) }
     var speed by remember(fs) { mutableFloatStateOf(fs.toFloat()) }
     var leds by remember(fl) { mutableFloatStateOf(fl.toFloat()) }
-    var picker by remember { mutableStateOf<Pair<String, (String) -> Unit>?>(null) }      // initial colour + where it goes
+    var picker by remember { mutableStateOf<Pair<String, (String) -> Unit>?>(null) }      // initial color + where it goes
     var presetMenu by remember { mutableStateOf<JSONObject?>(null) }
     var naming by remember { mutableStateOf<JSONObject?>(null) }      // preset being saved/renamed
     fun set(patch: JSONObject) = app.changeFan(patch)
@@ -194,15 +194,32 @@ private fun lookOf(f: JSONObject?): JSONObject = JSONObject().also { o ->
                 Row1(v.first, v.second, eff == key, enabled = on, onClick = { set(JSONObject().put("effect", key)) }) { OneRadio(eff == key, on) }
             }
         }
-        // ── colours (depend on the effect) ──
-        SectionLabel("Colour")
+        // ── colors (depend on the effect) ──
+        SectionLabel("Color")
         Group {
-            val software = eff in LightFx.SOFTWARE
-            if (software) {
-                val mode = if (eff != "fire" && rainbow) 0 else if (palette.size >= 2) 2 else 1
-                Segmented(if (eff == "fire") listOf("Flame", "One colour", "Palette") else listOf("Rainbow", "One colour", "Palette"), mode) { m ->
+            val software = eff in LightFx.SOFTWARE || eff == "cycle"
+            val palDefault = { JSONArray(palette.takeIf { it.size >= 2 } ?: listOf(f?.optString("color")?.ifEmpty { null } ?: "#3e91ff", f?.optString("color2")?.ifEmpty { null } ?: "#bf5af2")) }
+            if (!software && eff in LightFx.PALETTE_FX) {
+                // Static, pulse, flash, gradient: your color(s), or a palette (Nova then draws the effect itself)
+                val pmode = if (palette.size >= 2) 1 else 0
+                Segmented(listOf(if (eff == "gradient") "Two colors" else "One color", "Palette"), pmode) { m ->
+                    set(if (m == 0) JSONObject().put("palette", JSONArray()) else JSONObject().put("rainbow", false).put("palette", palDefault()))
+                }
+                if (pmode == 1) PaletteEditor(palette, on, onChange = { set(JSONObject().put("palette", JSONArray(it)).put("rainbow", false)) },
+                    onEdit = { i, cur, put -> picker = cur to put })
+                else {
+                    SwatchRow(f?.optString("color") ?: "", on, { set(JSONObject().put("color", it)) }) { picker = (f?.optString("color") ?: "#3e91ff") to { c -> set(JSONObject().put("color", c)) } }
+                    if (eff == "gradient") {
+                        RowDivider()
+                        Text("Blend into", color = N.sub, fontSize = 14.sp, modifier = Modifier.padding(start = 22.dp, top = 12.dp))
+                        SwatchRow(f?.optString("color2") ?: "", on, { set(JSONObject().put("color2", it)) }) { picker = (f?.optString("color2") ?: "#bf5af2") to { c -> set(JSONObject().put("color2", c)) } }
+                    }
+                }
+            } else if (software) {
+                val mode = if (palette.size >= 2 && !(eff != "fire" && rainbow)) 2 else if (rainbow) 0 else 1
+                Segmented(if (eff == "fire") listOf("Flame", "One color", "Palette") else listOf("Rainbow", "One color", "Palette"), mode) { m ->
                     when (m) {
-                        0 -> set(if (eff == "fire") JSONObject().put("palette", JSONArray()).put("rainbow", false) else JSONObject().put("rainbow", true))
+                        0 -> set(if (eff == "fire") JSONObject().put("palette", JSONArray()).put("rainbow", true) else JSONObject().put("rainbow", true))
                         1 -> set(JSONObject().put("rainbow", false).put("palette", JSONArray()))
                         else -> set(JSONObject().put("rainbow", false).put("palette", JSONArray(palette.takeIf { it.size >= 2 }
                             ?: listOf(f?.optString("color")?.ifEmpty { null } ?: "#3e91ff", f?.optString("color2")?.ifEmpty { null } ?: "#bf5af2"))))
@@ -212,7 +229,7 @@ private fun lookOf(f: JSONObject?): JSONObject = JSONObject().also { o ->
                     onEdit = { i, cur, put -> picker = cur to put })
                 if (mode == 1)
                     SwatchRow(f?.optString("color") ?: "", on, { set(JSONObject().put("color", it)) }) { picker = (f?.optString("color") ?: "#3e91ff") to { c -> set(JSONObject().put("color", c)) } }
-                if (mode == 0 && eff == "fire") Text("A warm flame (dark red → orange → yellow). Pick Palette for blue or green fire.", color = N.sub, fontSize = 13.sp,
+                if (mode == 0 && eff == "fire") Text("A warm flame (dark red → orange → yellow). Pick One color for a flame in your color, or Palette for your own.", color = N.sub, fontSize = 13.sp,
                     modifier = Modifier.padding(horizontal = 22.dp, vertical = 14.dp))
             } else {
                 SwatchRow(f?.optString("color") ?: "", on, { set(JSONObject().put("color", it)) }) { picker = (f?.optString("color") ?: "#3e91ff") to { c -> set(JSONObject().put("color", c)) } }
@@ -222,7 +239,7 @@ private fun lookOf(f: JSONObject?): JSONObject = JSONObject().also { o ->
                     SwatchRow(f?.optString("color2") ?: "", on, { set(JSONObject().put("color2", it)) }) { picker = (f?.optString("color2") ?: "#bf5af2") to { c -> set(JSONObject().put("color2", c)) } }
                 }
                 if (eff == "cycle") { RowDivider()
-                    SwitchRow("Rainbow", if (rainbow) "Uses every colour" else "Uses your colour only", rainbow, on) { set(JSONObject().put("rainbow", it)) } }
+                    SwitchRow("Rainbow", if (rainbow) "Uses every color" else "Uses your color only", rainbow, on) { set(JSONObject().put("rainbow", it)) } }
             }
         }
         if (eff in ANIMATED) Group {
@@ -232,7 +249,7 @@ private fun lookOf(f: JSONObject?): JSONObject = JSONObject().also { o ->
                 Text("Slower", color = N.sub, fontSize = 13.sp, modifier = Modifier.weight(1f)); Text("Faster", color = N.sub, fontSize = 13.sp)
             }
         }
-        if (eff == "gradient" || eff in LightFx.SOFTWARE) Group {
+        if (eff == "gradient" || LightFx.isSoftware(eff, palette, rainbow)) Group {
             SliderRow("LEDs on the fan", leds, 4f..40f, "${leds.toInt()}", on, onChange = { leds = it }) {
                 set(JSONObject().put("led_count", leds.toInt())) }
             Text("Match this to your fan so the effect fits the ring exactly (most 120 mm fans have 8–18).",
@@ -244,7 +261,7 @@ private fun lookOf(f: JSONObject?): JSONObject = JSONObject().also { o ->
         SectionLabel("Automation")
         Group {
             val sl = f?.optBoolean("status_light") ?: false
-            SwitchRow("Status light", "Turns amber for warnings and pulses red for critical alerts, then goes back to your colour",
+            SwitchRow("Status light", "Turns amber for warnings and pulses red for critical alerts, then goes back to your color",
                 sl) { set(JSONObject().put("status_light", it)) }
             RowDivider()
             val n = f?.optJSONArray("schedules")?.length() ?: 0
@@ -277,7 +294,7 @@ private fun lookOf(f: JSONObject?): JSONObject = JSONObject().also { o ->
 
 private fun savePresets(app: AppState, list: List<JSONObject>) = app.changeFan(JSONObject().put("presets", JSONArray(list)))
 
-/** A palette: up to 8 colours you can tap to change, plus ready-made ones. */
+/** A palette: up to 8 colors you can tap to change, plus ready-made ones. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable private fun PaletteEditor(palette: List<String>, enabled: Boolean, onChange: (List<String>) -> Unit, onEdit: (Int, String, (String) -> Unit) -> Unit) {
     Column(Modifier.padding(horizontal = 20.dp, vertical = 14.dp)) {
@@ -289,9 +306,9 @@ private fun savePresets(app: AppState, list: List<JSONObject>) = app.changeFan(J
             }
             if (palette.size < 8) Box(Modifier.size(44.dp).clip(CircleShape).border(1.5.dp, N.sub, CircleShape)
                 .clickable(enabled = enabled) { onChange(palette + palette.last()) }, contentAlignment = Alignment.Center) {
-                Icon(Icons.Rounded.Add, "Add a colour", tint = N.sub) }
+                Icon(Icons.Rounded.Add, "Add a color", tint = N.sub) }
         }
-        Text("Tap a colour to change it, hold to remove it.", color = N.sub, fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp, bottom = 10.dp))
+        Text("Tap a color to change it, hold to remove it.", color = N.sub, fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp, bottom = 10.dp))
         Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             PALETTES.forEach { (name, cols) ->
                 Column(Modifier.clip(RoundedCornerShape(14.dp)).clickable(enabled = enabled) { onChange(cols) }.padding(4.dp),
@@ -313,7 +330,7 @@ fun describe(set: JSONObject?): String {
     if (set.optBoolean("on", false)) parts += "Turn on"
     if (set.has("brightness")) parts += if (parts.isEmpty()) "Brightness ${set.optInt("brightness")}%" else "${set.optInt("brightness")}%"
     if (set.has("effect")) parts += (EFFECTS.firstOrNull { it.first == set.optString("effect") }?.second?.first ?: set.optString("effect"))
-    if (set.has("color") || set.has("palette")) parts += "colour"
+    if (set.has("color") || set.has("palette")) parts += "color"
     return parts.joinToString(", ").ifEmpty { "No change" }
 }
 private fun whenText(trig: String, time: String, offset: Int): String {
@@ -460,7 +477,7 @@ private fun actionText(s: JSONObject, presets: List<JSONObject>): String =
                         SwitchRow("Change the brightness", if (changeBright) "To ${bright.toInt()}%" else "No change", changeBright) { changeBright = it }
                         if (changeBright) SliderRow("Brightness", bright, 0f..100f, "${bright.toInt()}%", onChange = { bright = it }) {}
                     }
-                    SectionLabel("Colour")
+                    SectionLabel("Color")
                     Group { SwatchRow(setColor ?: "", true, { setColor = if (it.isEmpty() || setColor == it) null else it }, noChange = true) { picker = true } }
                     SectionLabel("Effect")
                     FlowRow(Modifier.padding(horizontal = Space.gutter), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {

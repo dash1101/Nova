@@ -60,7 +60,7 @@ fingerprint. The server refuses to demote the last admin.
   started by systemd per request on `/run/nova-helper.sock` (`root:nova-api 0660`, so only the
   API can connect).
   Every verb is hard-coded. Arguments are checked against live state (container names must exist
-  and be Compose-managed, store items must be in the catalogue, drives are addressed by serial,
+  and be Compose-managed, store items must be in the catalog, drives are addressed by serial,
   protected mounts are refused). The helper never runs a shell or a caller-supplied command.
 - The audit log is `/var/log/nova-api/audit.log`: every change, who made it, from where, and whether a fingerprint was used.
 
