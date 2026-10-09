@@ -106,9 +106,9 @@ object InboxArchive {
         }, "Export history"))
     }
     Page("Archive", app::back, listOf(TopAction(Icons.Rounded.IosShare, "Export") { export() },
-            TopAction(Icons.Rounded.DeleteForever, "Erase this phone's copy") { clear = true })) {
-        Text(if (serverOk) "Everything archived from the Inbox or too old for it, kept on ${serverName(app)} for every device. This phone's own copy fills in when it's offline."
-             else "Can't reach the server's archive right now — showing this phone's own copy.",
+            TopAction(Icons.Rounded.DeleteForever, "Erase this ${DeviceForm.noun}'s copy") { clear = true })) {
+        Text(if (serverOk) "Everything archived from the Inbox or too old for it, kept on ${serverName(app)} for every device. This ${DeviceForm.noun}'s own copy fills in when it's offline."
+             else "Can't reach the server's archive right now — showing this ${DeviceForm.noun}'s own copy.",
             color = N.sub, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 30.dp, vertical = 4.dp))
         Segmented(listOf("All", "Archived", "Issues", "Logins"), filter) { filter = it }
         if (shown.isEmpty()) Text(if (events.isEmpty()) "Nothing yet — events appear here as the phone receives them." else "Nothing matches.",
@@ -137,8 +137,8 @@ object InboxArchive {
         if (more || loading) Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = androidx.compose.ui.Alignment.Center) {
             if (loading) OneSpinner() else PillButton("Load older") { scope.launch { page(server.lastOrNull()?.optDouble("t")) } } }
     }
-    if (clear) OneDialog({ clear = false }, "Erase this phone's copy?",
-        "This phone's own copy of the history is deleted. The server keeps its archive for every device.",
+    if (clear) OneDialog({ clear = false }, "Erase this ${DeviceForm.noun}'s copy?",
+        "This ${DeviceForm.noun}'s own copy of the history is deleted. The server keeps its archive for every device.",
         listOf(DialogButton("Cancel") { clear = false }, DialogButton("Erase", N.red) { clear = false
             InboxArchive.clear(app.activity, app.pairing.profile); data = InboxArchive.all(app.activity, app.pairing.profile); app.toast("Erased") }))
 }

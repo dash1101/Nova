@@ -112,7 +112,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).statusBarsPadding()) {
         Text("Nova", fontSize = 40.sp, fontWeight = FontWeight.Bold, color = N.text, modifier = Modifier.padding(start = 28.dp, top = 60.dp))
-        Text(if (onCancel != null) "Add another server" else "Pair this phone with your server", color = N.sub, fontSize = 17.sp,
+        Text(if (onCancel != null) "Add another server" else "Pair this ${DeviceForm.noun} with your server", color = N.sub, fontSize = 17.sp,
             modifier = Modifier.padding(start = 28.dp, top = 6.dp, bottom = 24.dp))
         if (scanning) {
             Box(Modifier.padding(horizontal = 24.dp).fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(32.dp))
@@ -186,10 +186,10 @@ import java.util.concurrent.atomic.AtomicBoolean
         "sudo apt install ./nova-server_*.deb\n# or from source:\ngit clone <repo> && cd nova && sudo ./server/install.sh")
     Step(2, "Run the setup wizard", "It finds your home network, asks a few questions (press Enter for the suggested answers) and starts Nova.",
         "sudo nova-setup")
-    Step(3, "Pair this phone", "On home Wi-Fi, show a pairing code on the server and scan it here. The code works once and expires in 10 minutes.",
+    Step(3, "Pair this ${DeviceForm.noun}", "On home Wi-Fi, show a pairing code on the server and scan it here. The code works once and expires in 10 minutes.",
         "sudo nova-api pair")
     Step(4, "Optional: use it away from home", "Without a VPN, put Nova behind Cloudflare Access (free) — the README's docs/REMOTE.md walks you through it, then run nova-setup again. With Tailscale, nova-setup turns it on for you.")
     Step(5, "Optional: other people, tablets, browsers", "Menu → Users & devices: invite phones as Admin or View only, and approve browsers (Nova web at https://<server>:8495). A spare tablet makes a nice always-on Dashboard.")
-    Text("Security in a sentence: every request is signed by a key in this phone's secure chip, and anything risky also needs your fingerprint.",
+    Text("Security in a sentence: every request is signed by a key in this ${DeviceForm.noun}'s secure chip, and anything risky also needs your fingerprint.",
         color = N.sub, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 26.dp, vertical = 12.dp))
 }

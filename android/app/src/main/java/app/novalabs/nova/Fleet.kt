@@ -110,7 +110,7 @@ private class ServerLive(val id: String) { var overview by mutableStateOf<JSONOb
         }
     }
     Page("Servers", app::back) {
-        Text("Every server paired with this phone, live. Tap one to switch to it — each has its own keys in this phone's secure chip, and instant alerts cover all of them.",
+        Text("Every server paired with this ${DeviceForm.noun}, live. Tap one to switch to it — each has its own keys in this ${DeviceForm.noun}'s secure chip, and instant alerts cover all of them.",
             color = N.sub, fontSize = 14.sp, modifier = Modifier.padding(horizontal = 30.dp, vertical = 6.dp))
         Group {
             ids.forEachIndexed { i, id -> if (i > 0) RowDivider()
@@ -135,7 +135,7 @@ private class ServerLive(val id: String) { var overview by mutableStateOf<JSONOb
                     color = N.sub, fontSize = 12.sp, modifier = Modifier.padding(start = 76.dp, bottom = 10.dp))
             }
             RowDivider()
-            Row1("Add a server", "Pair this phone with another machine running Nova", false, Icons.Rounded.AddCircle, N.green,
+            Row1("Add a server", "Pair this ${DeviceForm.noun} with another machine running Nova", false, Icons.Rounded.AddCircle, N.green,
                 onClick = { PairHint.address = null; app.switchServer(Servers.create(ctx)) })
         }
         DiscoveredServers(app) { s ->
@@ -145,8 +145,8 @@ private class ServerLive(val id: String) { var overview by mutableStateOf<JSONOb
         LinksCard(listOf("How to install Nova on a server" to { app.go(Route.SetupGuide) }))
     }
     remove?.let { id ->
-        OneDialog({ remove = null }, "Remove ${labelOf(app, id)} from this phone?",
-            "Its keys are erased from this phone. To stop the server trusting them too, remove this phone in that server's Users & devices first.",
+        OneDialog({ remove = null }, "Remove ${labelOf(app, id)} from this ${DeviceForm.noun}?",
+            "Its keys are erased from this ${DeviceForm.noun}. To stop the server trusting them too, remove this ${DeviceForm.noun} in that server's Users & devices first.",
             listOf(DialogButton("Cancel") { remove = null }, DialogButton("Remove", N.red) {
                 Servers.remove(ctx, id); ids = ids - id; remove = null; app.toast("Removed") }))
     }

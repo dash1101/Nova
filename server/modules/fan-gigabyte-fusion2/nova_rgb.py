@@ -124,7 +124,7 @@ def validate(patch, allow_schedules=True):
                             "days": days or list(range(7)), "enabled": bool(s.get("enabled", True)),
                             "name": "".join(c for c in str(s.get("name", "")) if c.isprintable())[:30], "set": sset,
                             "preset": preset, "trigger": trig, "offset": off, "fade": fade, "until": until or None,
-                            "skip_next": bool(s.get("skip_next", False))})
+                            "skip_next": bool(s.get("skip_next", False)), "if_on": bool(s.get("if_on", False))})
             out[k] = sch
         elif k not in ("effects", "speed_v", "status_override", "period_ms", "sun", "running"):
             raise ValueError(f"unknown setting {k}")
@@ -292,6 +292,22 @@ def status_override(st):
     return None
 
 # ── schedules: time / sunrise / sunset (± up to 2 h), fade in, optional end time that puts things back ──
+NOVA_SETTINGS = "/var/lib/nova-api/settings.json"     # the server's location (set in nova-setup or the app)
+
+def tz_location():
+    """The time zone's reference city (nova_tz, shipped with nova-api); None without it."""
+    for d in ("/usr/lib/nova-api", "/usr/local/lib/nova-api", os.path.join(os.path.dirname(os.path.realpath(__file__)), "../../api")):
+        if os.path.isfile(os.path.join(d, "nova_tz.py")) and d not in sys.path: sys.path.append(d)
+    try: from nova_tz import tz_location as t
+    except ImportError: return None
+    return t()
+
+def location(st):
+    """Set in setup/the app > an old per-lighting location > the time zone's."""
+    try: loc = json.load(open(NOVA_SETTINGS)).get("location")
+    except Exception: loc = None
+    return loc or st.get("location") or tz_location()
+
 def sun_times(lat, lon, day=None):
     """Local sunrise and sunset (minutes after midnight) for `day` — the standard almanac method
     (zenith 90.833°), good to a minute or two. None in polar day/night."""
@@ -318,7 +334,7 @@ def _minute(trig, hhmm, offset, st):
     if trig == "time":
         h, m = hhmm.split(":"); base = int(h) * 60 + int(m)
     else:
-        loc = st.get("location"); sun = sun_times(loc["lat"], loc["lon"]) if loc else None
+        loc = location(st); sun = sun_times(loc["lat"], loc["lon"]) if loc else None
         if not sun: return None
         base = sun[0] if trig == "sunrise" else sun[1]
     return (base + int(offset or 0)) % 1440
@@ -326,7 +342,7 @@ def _minute(trig, hhmm, offset, st):
 def extras(st):
     """Read-only extras for the app: today's sun times, and what each schedule does next."""
     out = {"effects": EFFECT_NAMES, "software_effects": sorted(SOFTWARE_EFFECTS)}
-    loc = st.get("location"); sun = sun_times(loc["lat"], loc["lon"]) if loc else None
+    loc = location(st); sun = sun_times(loc["lat"], loc["lon"]) if loc else None
     if sun: out["sun"] = {"sunrise": f"{sun[0] // 60:02d}:{sun[0] % 60:02d}", "sunset": f"{sun[1] // 60:02d}:{sun[1] % 60:02d}"}
     nxt = {}
     for s in st.get("schedules", []):
@@ -353,6 +369,7 @@ def tick():
             start = _minute(s.get("trigger", "time"), s.get("time", "00:00"), s.get("offset", 0), st)
             if start == minute and not target == {}:
                 if s.get("skip_next"): s["skip_next"] = False; changed = True; continue
+                if s.get("if_on") and not st.get("on", True): continue      # "only if the light is on"
                 r = running.setdefault(s["id"], {})
                 if s.get("until"): r["restore"] = {k: st.get(k) for k in LOOK}
                 fade = int(s.get("fade", 0))

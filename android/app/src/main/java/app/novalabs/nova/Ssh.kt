@@ -177,7 +177,7 @@ object SshSession {
                 term.feed("\r\n[session ended]\r\n"); state = "closed"
             } catch (e: Exception) {
                 val msg = when {
-                    e.message.orEmpty().contains("Auth fail", true) -> "The server didn't accept this phone's SSH key yet — add it first (see below)."
+                    e.message.orEmpty().contains("Auth fail", true) -> "The server didn't accept this ${DeviceForm.noun}'s SSH key yet — add it first (see below)."
                     generateSequence<Throwable>(e) { it.cause }.any { it is android.security.keystore.UserNotAuthenticatedException } -> "Confirmation expired — try again."
                     e.message.orEmpty().contains("HostKey", true) || e.message.orEmpty().contains("reject", true) -> "The server's identity didn't match — refusing to connect."
                     e.message.orEmpty().contains("timeout", true) || e.message.orEmpty().contains("connect", true) -> "Can't reach the server here. Away from home, turn on Tailscale."

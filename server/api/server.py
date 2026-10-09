@@ -29,12 +29,14 @@ from cryptography.hazmat.primitives.asymmetric import ec, padding, rsa
 HERE = os.path.dirname(os.path.realpath(__file__))
 for _d in ("/usr/lib/nova-rgb", "/usr/local/lib/nova-rgb"):      # packaged / source install
     if os.path.isdir(_d): sys.path.insert(0, _d)
+sys.path.insert(0, HERE)
+from nova_tz import tz_location  # noqa: E402
 try:                       # optional module: fan/case lighting (modules/fan-gigabyte-fusion2)
     import nova_rgb  # noqa: E402
 except ImportError:
     nova_rgb = None
 
-API_VERSION = "0.4.6-alpha"
+API_VERSION = "0.4.7-alpha.1"
 CONFIG = "/etc/nova-api/config.json"
 DATA = "/var/lib/nova-api"
 DEVICES = f"{DATA}/devices.json"
@@ -56,6 +58,19 @@ rgb_lock = threading.Lock()      # one HID conversation at a time
 nonces = {}                      # nonce -> expiry (seconds)
 fails = {}                       # ip -> [timestamps]
 
+
+def server_location():
+    """The location used for sunrise/sunset: the one set in setup or the app, else the time zone's."""
+    loc = load_json(SETTINGS, {}).get("location")
+    if loc: return {**loc, "source": "set"}
+    return tz_location()
+
+def valid_location(v):
+    if v is None: return None                                  # back to the time zone's
+    lat, lon = float(v.get("lat")), float(v.get("lon"))
+    if not (-90 <= lat <= 90 and -180 <= lon <= 180): raise ValueError("location out of range")
+    name = "".join(c for c in str(v.get("name", "")) if c.isprintable()).strip()[:40]
+    return {"lat": round(lat, 2), "lon": round(lon, 2), "name": name}     # ~1 km: plenty for the sun
 
 def load_json(p, default):
     try:
@@ -286,13 +301,14 @@ def browser_forbidden(method, parts, dev):
     return False
 
 ROLES = ("admin", "viewer")
+FORMS = ("phone", "tablet", "desktop")
 def role_of(d): return d.get("role") if d.get("role") in ROLES else "admin"     # devices from before roles: admin
 
 def viewer_may(method, parts, dev):
     """View-only devices: read anything, change nothing — except their own housekeeping."""
     if method == "GET": return True
     if method == "DELETE" and parts == ["devices", dev.get("id")]: return True     # unpair itself
-    if method == "POST" and parts in (["crash"], ["device", "stepup-key"]): return True
+    if method == "POST" and parts in (["crash"], ["device", "stepup-key"], ["device", "form"]): return True
     return False
 
 def basic_status():
@@ -609,7 +625,15 @@ class Handler(BaseHTTPRequestHandler):
         if method == "GET" and parts == ["whoami"]:
             return 200, {"device": dev["name"], "via": dev["via"], "paired": dev.get("created"), "id": dev["id"],
                          "stepup": bool(dev.get("stepup_key")), "api": API_VERSION,
-                         "role": role_of(dev), "user": dev.get("user", "")}
+                         "role": role_of(dev), "user": dev.get("user", ""), "form": dev.get("form", "")}
+        if method == "POST" and parts == ["device", "form"]:
+            # What kind of device this is (phone, tablet or desktop) — only for showing the right icon and words.
+            form = str(data.get("form", ""))
+            if form not in FORMS: raise ValueError("form: phone, tablet or desktop")
+            with lock:
+                devs = load_json(DEVICES, {})
+                if devs.get(dev["id"], {}).get("form") != form: devs[dev["id"]]["form"] = form; save_json(DEVICES, devs)
+            return 200, {"ok": True, "form": form}
         if method == "POST" and parts == ["device", "stepup-key"]:
             if dev["via"] not in ("lan", "local"): return 403, {"error": "set this up on home Wi-Fi"}
             if dev.get("stepup_key"): return 409, {"error": "already set up (re-pair to replace it)"}
@@ -623,7 +647,8 @@ class Handler(BaseHTTPRequestHandler):
         if method == "GET" and parts == ["devices"]:
             return 200, {"devices": [{"id": k, "name": v["name"], "created": v.get("created"), "last_seen": v.get("last_seen"),
                                       "via": v.get("last_via"), "stepup": bool(v.get("stepup_key")), "current": k == dev["id"],
-                                      "role": role_of(v), "user": v.get("user", ""), "type": v.get("type", "phone")}
+                                      "role": role_of(v), "user": v.get("user", ""), "type": v.get("type", "phone"),
+                                      "form": v.get("form") or ("desktop" if v.get("type") == "browser" else "phone")}
                                      for k, v in load_json(DEVICES, {}).items()]}
         if method == "POST" and parts == ["devices", "remove-all"]:
             # Fingerprint-confirmed. keep_self=true removes every *other* phone; false removes all, this one included.
@@ -683,8 +708,10 @@ class Handler(BaseHTTPRequestHandler):
                     v = str(data["accent"])
                     if v and not (len(v) == 7 and v[0] == "#" and all(x in "0123456789abcdefABCDEF" for x in v[1:])): raise ValueError("accent must be #rrggbb")
                     cfg["accent"] = v.lower()
+                if "location" in data: cfg["location"] = valid_location(data["location"])
                 with lock: save_json(SETTINGS, cfg)
-            return 200, {"display_name": cfg.get("display_name", ""), "accent": cfg.get("accent", ""), "hostname": os.uname().nodename}
+            return 200, {"display_name": cfg.get("display_name", ""), "accent": cfg.get("accent", ""), "hostname": os.uname().nodename,
+                         "location": server_location()}
         if method == "DELETE" and len(parts) == 2 and parts[0] == "devices":
             with lock:
                 devs = load_json(DEVICES, {}); gone = devs.pop(parts[1], None); save_json(DEVICES, devs)
@@ -836,6 +863,10 @@ class Handler(BaseHTTPRequestHandler):
                 st = nova_rgb.load()
                 if method == "POST":
                     pid = data.pop("apply_preset", None) if isinstance(data, dict) else None
+                    if isinstance(data, dict) and "location" in data:   # the server's location lives in its settings now
+                        loc = valid_location(data.pop("location"))
+                        with lock: cfg = load_json(SETTINGS, {}); cfg["location"] = loc; save_json(SETTINGS, cfg)
+                        st["location"] = None
                     patch = nova_rgb.validate(data)
                     if pid is not None:                               # one tap: a saved look
                         pr = next((p for p in st.get("presets", []) if p["id"] == str(pid)), None)
@@ -850,7 +881,7 @@ class Handler(BaseHTTPRequestHandler):
                         nova_rgb.apply(st, nova_rgb.status_override(st))
                     nova_rgb.save(st)
                 ex = nova_rgb.extras(st) if hasattr(nova_rgb, "extras") else {"effects": nova_rgb.EFFECT_NAMES}
-                return 200, {**st, **ex, "status_override": nova_rgb.status_override(st)}
+                return 200, {**st, **ex, "location": server_location(), "status_override": nova_rgb.status_override(st)}
 
         # ── containers ──
         if method == "GET" and parts == ["containers"]:
@@ -993,7 +1024,8 @@ class Handler(BaseHTTPRequestHandler):
             devs = load_json(DEVICES, {})
             role = p.get("role") if p.get("role") in ROLES else "admin"
             devs[dev_id] = {"name": name, "public_key": pem, "created": time.strftime("%Y-%m-%d %H:%M"),
-                            "paired_from": ip, "role": role, "user": str(p.get("user", ""))[:40]}
+                            "paired_from": ip, "role": role, "user": str(p.get("user", ""))[:40],
+                            **({"form": d["form"]} if d.get("form") in FORMS else {})}
             save_json(DEVICES, devs)
         audit(ip=ip, path="/api/v1/pair", result=200, device=name)
         helper("notify-paired", "".join(c for c in name if c.isalnum() or c in " -_")[:40] or "device")

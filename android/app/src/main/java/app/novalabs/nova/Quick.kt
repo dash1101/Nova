@@ -163,7 +163,7 @@ private fun settingsFor(id: String): Route? = when {
 
     fun run(id: String) {
         val opensScreen = id in listOf("terminal", "status", "dashboard", "containers", "lighting", "inbox", "storage", "store")
-        if (!app.isAdmin && !opensScreen) { app.toast("This phone has view-only access"); return }
+        if (!app.isAdmin && !opensScreen) { app.toast("This ${DeviceForm.noun} has view-only access"); return }
         when (id) {
             "backup" -> if (!running) { busy = "backup"
                 app.act { try { app.api.post("/api/v1/actions/backup"); backupState.value = app.api.get("/api/v1/backup") } finally { busy = null } } }

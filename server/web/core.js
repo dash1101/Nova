@@ -123,6 +123,15 @@ export const levelColor = l => l === "critical" ? "var(--red)" : l === "warning"
 export const pct = s => { const m = /(\d+)%/.exec(s || ""); return m ? +m[1] : null; };
 export const rate = b => b >= 1e6 ? (b / 1e6).toFixed(1) + " MB/s" : b >= 1e3 ? Math.round(b / 1e3) + " kB/s" : Math.round(b || 0) + " B/s";
 export const bytes = b => { if (!b) return "0 B"; const u = ["B", "KB", "MB", "GB", "TB"]; let i = 0; while (b >= 1000 && i < u.length - 1) { b /= 1000; i++; } return (b >= 100 || i === 0 ? Math.round(b) : b.toFixed(1)) + " " + u[i]; };
+/** What kind of device this browser is on — only for the device list's icon. */
+export function webForm() {
+  const ua = navigator.userAgent, uad = navigator.userAgentData;
+  if (uad?.mobile) return "phone";
+  if (/iPad|Tablet/i.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1)) return "tablet";   // iPadOS says "Macintosh"
+  if (/Android/i.test(ua)) return /Mobile/i.test(ua) ? "phone" : "tablet";
+  if (/iPhone|iPod|Mobile/i.test(ua)) return "phone";
+  return "desktop";
+}
 export const isAdmin = () => S.me?.role !== "viewer";
 export const has = f => S.overview?.features?.[f] !== false;
 export const cleanTitle = t => String(t || "").replace(/^[^\p{L}\p{N}]+\s*/u, "");

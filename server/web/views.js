@@ -618,11 +618,11 @@ const SOFT = new Set(["wave", "comet", "scanner", "twinkle", "fire", "breathe"])
 const PALS = [["Ocean", ["#001a66", "#0050ff", "#00c7be", "#80f0ff"]], ["Lava", ["#200000", "#ff2000", "#ff8000", "#ffd060"]], ["Forest", ["#003300", "#20a040", "#80d000", "#004020"]],
   ["Sunset", ["#ff5e3a", "#ff2a68", "#bf5af2", "#5e5ce6"]], ["Party", ["#ff2d55", "#ffcc00", "#34c759", "#3e91ff", "#bf5af2"]], ["Aurora", ["#00ff88", "#00c7be", "#5e5ce6", "#bf5af2"]],
   ["Ice", ["#ffffff", "#80d8ff", "#3e91ff", "#0040a0"]], ["Candy", ["#ff6b9a", "#ffffff", "#bf5af2", "#80d8ff"]], ["Fire", ["#200000", "#ff1800", "#ff6000", "#ffb000", "#fff0a0"]]];
-const swatchRow = (sel, key, dis) => `<div class="swatches">${SWATCHES.map(h => `<button class="swatch${h.toLowerCase() === (sel || "").toLowerCase() ? " on" : ""}" style="background:${h};color:${h === "#ffffff" ? "#000" : "#fff"}" data-act="${dis ? "" : `col:${key}:${h}`}" aria-label="${h}">${h.toLowerCase() === (sel || "").toLowerCase() ? I("check") : ""}</button>`).join("")}
+const swatchRow = (sel, key, dis, noChange) => `<div class="swatches">${noChange ? `<button class="swatch${sel ? "" : " on"}" style="background:var(--card);color:${sel ? "var(--sub)" : "var(--blue)"}" data-act="${dis ? "" : `col:${key}:none`}" aria-label="No change">${I("block")}</button>` : ""}${SWATCHES.map(h => `<button class="swatch${h.toLowerCase() === (sel || "").toLowerCase() ? " on" : ""}" style="background:${h};color:${h === "#ffffff" ? "#000" : "#fff"}" data-act="${dis ? "" : `col:${key}:${h}`}" aria-label="${h}">${h.toLowerCase() === (sel || "").toLowerCase() ? I("check") : ""}</button>`).join("")}
   <button class="swatch custom" aria-label="Custom colour" data-act="${dis ? "" : `pick:${key}`}" style="${sel && !SWATCHES.includes((sel || "").toLowerCase()) ? `background:${sel};border:3px solid var(--blue)` : ""}">${I("palette")}</button></div>`;
 const lookOf = f => Object.fromEntries(["on", "effect", "color", "color2", "brightness", "speed", "rainbow", "palette"].filter(k => f?.[k] !== undefined).map(k => [k, f[k]]));
 const palBg = cols => cols.length > 1 ? `linear-gradient(90deg,${cols.join(",")})` : cols[0];
-const chip = (label, act, on) => `<button class="chip" style="font-family:inherit;font-size:14px;${on ? "background:var(--blue);color:#fff" : ""}" data-act="${act}">${esc(label)}</button>`;
+const chip = (label, act, on, icon) => `<button class="chip" style="font-family:inherit;font-size:14px;display:inline-flex;align-items:center;gap:6px;${on ? "background:var(--blue);color:#fff" : ""}" data-act="${act}">${icon ? I("block") : ""}${esc(label)}</button>`;
 export async function lighting(ctx) {
   const draw = () => {
     const f = S.fan || {}, lit = f.on !== false, on = lit && isAdmin(), eff = f.effect || "static", nsch = (f.schedules || []).length, pal = f.palette || [], rb = f.rainbow !== false;
@@ -690,7 +690,7 @@ export async function lighting(ctx) {
 const DAYS = ["M", "T", "W", "T", "F", "S", "S"], DAYN = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 function describeSet(s) {
   if (!s) return ""; if ("on" in s && !s.on) return "Turn off";
-  const p = []; if (s.on) p.push("Turn on"); if ("brightness" in s) p.push(`${s.brightness}%`); if (s.effect) p.push((EFFECTS2.find(e => e[0] === s.effect) || [0, s.effect])[1]); if (s.color || s.palette) p.push("colour");
+  const p = []; if (s.on) p.push("Turn on"); if ("brightness" in s) p.push(p.length ? `${s.brightness}%` : `Brightness ${s.brightness}%`); if (s.effect) p.push((EFFECTS2.find(e => e[0] === s.effect) || [0, s.effect])[1]); if (s.color || s.palette) p.push("colour");
   return p.join(", ") || "No change";
 }
 const whenText = (trig, time, off) => { const o = off ? ` ${off > 0 ? "+" : "−"}${Math.abs(off)} min` : ""; return trig === "sunrise" ? "Sunrise" + o : trig === "sunset" ? "Sunset" + o : time; };
@@ -699,10 +699,10 @@ export async function schedules(ctx) {
   const draw = () => {
     const f = S.fan || {}, sch = f.schedules || [], presets = f.presets || [], paused = !!f.schedules_paused, sun = f.sun, starts = f.starts_today || {};
     ctx.show(`${group(switchRow("Pause all schedules", paused ? "Nothing runs until you turn this off" : "Schedules run as set", paused, isAdmin() ? "pause" : "", { blue: paused, dis: !isAdmin() })
-        + row("Location for sunrise & sunset", { sub: sun ? `Today: sunrise ${sun.sunrise} · sunset ${sun.sunset}` : "Not set — needed for sunrise/sunset schedules", blue: !!sun, icon: "clock", tint: "var(--amber)", click: isAdmin() ? "loc" : "" }))}
+        + row("Location for sunrise & sunset", { sub: locationText(f.location) + (sun ? ` · today: sunrise ${sun.sunrise}, sunset ${sun.sunset}` : ""), blue: !!sun, icon: "place", tint: "var(--amber)", click: isAdmin() ? "loc" : "" }))}
       ${sch.length ? group(sch.map((s, i) => { const d = s.days || [0, 1, 2, 3, 4, 5, 6], trig = s.trigger || "time", u = s.until;
           const title = whenText(trig, s.time, s.offset) + (trig !== "time" && starts[s.id] ? ` (${starts[s.id]})` : "") + (u ? " – " + whenText(u.trigger || "time", u.time, u.offset) : "") + (s.name ? "  ·  " + s.name : "");
-          const sub = [actionText(s, presets), s.fade ? `fades over ${s.fade} min` : "", u ? "then back" : "", d.length === 7 ? "every day" : d.join() === "0,1,2,3,4" ? "weekdays" : d.join() === "5,6" ? "weekends" : d.map(x => DAYN[x]).join(" "), s.skip_next ? "skipping next time" : ""].filter(Boolean).join(" · ");
+          const sub = [actionText(s, presets), s.fade ? `fades over ${s.fade} min` : "", u ? "then back" : "", d.length === 7 ? "every day" : d.join() === "0,1,2,3,4" ? "weekdays" : d.join() === "5,6" ? "weekends" : d.map(x => DAYN[x]).join(" "), s.if_on ? "only while on" : "", s.skip_next ? "skipping next time" : ""].filter(Boolean).join(" · ");
           return `<div class="row click" data-act="menu:${i}"><div class="t"><b>${esc(title)}</b><small class="${s.enabled !== false && !paused ? "blue" : ""}">${esc(sub)}</small></div><button data-act="toggle:${i}" aria-label="On/off">${sw(s.enabled !== false)}</button></div>`; }).join(""))
         : `${note("No schedules yet. Some ideas: wake up to a slow sunrise, dim to a warm glow at sunset, turn off while you sleep and back on in the morning.")}<div class="center"><button class="btn" data-act="edit:-1">Add schedule</button></div>`}
       ${note("Fades change the light gradually, a step each minute. With an end time, the light goes back to how it was when the schedule started.")}`,
@@ -723,19 +723,7 @@ export async function schedules(ctx) {
       if (v === "dup") { const c = structuredClone(s); delete c.id; all.push(c); putAll(all); }
       if (v === "del") { all.splice(i, 1); putAll(all); }
     },
-    loc: async () => {
-      const loc = S.fan?.location || {}, typed = { lat: loc.lat ?? "", lon: loc.lon ?? "" };
-      const pending = dialog("Where is the server?", "Sunrise and sunset are worked out on the server from this. Use this device's location, or type latitude and longitude (a city is close enough).",
-        [{ label: "Cancel", value: null }, { label: "Use my location", color: "var(--blue)", value: "geo" }, { label: "Save", color: "var(--blue)", value: "save" }],
-        `<div class="pad" style="display:flex;gap:10px"><input class="field" id="lat" inputmode="decimal" placeholder="Latitude" value="${esc(typed.lat)}"><input class="field" id="lon" inputmode="decimal" placeholder="Longitude" value="${esc(typed.lon)}"></div>`);
-      $("#lat").oninput = e => typed.lat = e.target.value; $("#lon").oninput = e => typed.lon = e.target.value;
-      const v = await pending; let lat, lon;
-      if (v === "geo") { try { const p = await new Promise((ok, no) => navigator.geolocation.getCurrentPosition(ok, no, { timeout: 10000 })); lat = p.coords.latitude; lon = p.coords.longitude; } catch { return toast("Location isn't available here — type it instead"); } }
-      else if (v === "save") { lat = parseFloat(typed.lat); lon = parseFloat(typed.lon); if (isNaN(lat) || isNaN(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) return toast("Enter a latitude (−90…90) and longitude (−180…180)"); }
-      else return;
-      lat = Math.round(lat * 100) / 100; lon = Math.round(lon * 100) / 100;      // a city is enough; no need to store an exact spot
-      try { await changeFan({ location: { lat, lon } }); S.fan = await get("/api/v1/fan"); toast("Saved"); } catch (e) { toast(e.message); } draw();
-    },
+    loc: async () => { await locationDialog(S.fan?.location); draw(); },
   });
   draw(); try { S.fan = await get("/api/v1/fan"); if (ctx.alive()) draw(); } catch {}
 }
@@ -743,6 +731,7 @@ export async function schedule(ctx) {
   const index = +ctx.args[0], ex = (S.fan?.schedules || [])[index], s0 = ex?.set || {}, presets = S.fan?.presets || [];
   const v = { name: ex?.name || "", trig: ex?.trigger || "time", time: ex?.time || "22:00", offset: ex?.offset || 0, days: new Set(ex?.days || [0, 1, 2, 3, 4, 5, 6]),
     action: ex?.preset ? 2 : ("on" in s0 && !s0.on) ? 0 : 1, preset: ex?.preset || presets[0]?.id || null, bright: s0.brightness ?? 30, color: s0.color || null, effect: s0.effect || null,
+    changeBright: !ex || "brightness" in s0, turnOn: !ex?.if_on,
     fade: ex?.fade || 0, hasEnd: !!ex?.until, endTrig: ex?.until?.trigger || "time", endTime: ex?.until?.time || "07:00", endOffset: ex?.until?.offset || 0 };
   const sunKnown = !!S.fan?.sun;
   const trigHtml = (pre, trig, time, off) => `${segmented(["Time", "Sunrise", "Sunset"], ["time", "sunrise", "sunset"].indexOf(trig), pre + "trig")}
@@ -752,8 +741,10 @@ export async function schedule(ctx) {
     ctx.show(`${sec("Starts")}${trigHtml("s", v.trig, v.time, v.offset)}
       <div class="days">${DAYS.map((d, i) => `<button class="${v.days.has(i) ? "on" : ""}" data-act="day:${i}">${d}</button>`).join("")}</div>
       ${sec("Does")}${segmented(["Turn off", "Set the light", "A preset"], v.action, "action")}
-      ${v.action === 1 ? group(slider("Brightness", "b", v.bright, 0, 100, v.bright + "%")) + sec("Colour (optional)") + group(swatchRow(v.color, "c", false))
-          + sec("Effect (optional)") + `<div class="chips">${[[null, "Keep"], ...EFFECTS2.map(e => [e[0], e[1]])].map(([k, l]) => chip(l, "eff:" + (k || ""), v.effect === k)).join("")}</div>`
+      ${v.action === 1 ? group(switchRow("Change the brightness", v.changeBright ? `To ${v.bright}%` : "No change", v.changeBright, "cb") + (v.changeBright ? slider("Brightness", "b", v.bright, 0, 100, v.bright + "%") : ""))
+          + sec("Colour") + group(swatchRow(v.color, "c", false, true))
+          + sec("Effect") + `<div class="chips">${[[null, "No change"], ...EFFECTS2.map(e => [e[0], e[1]])].map(([k, l]) => chip(l, "eff:" + (k || ""), v.effect === k, !k)).join("")}</div>`
+          + group(switchRow("Turn the light on if it's off", v.turnOn ? "Always runs" : "Only runs while the light is on — handy for dimming", v.turnOn, "ton"))
         : v.action === 2 ? group(presets.length ? presets.map(p => row(p.name, { sub: describeSet(p.set), end: radio(v.preset === p.id), click: "pre:" + p.id })).join("") : row("No presets yet — save one on the Lighting page first.", { dis: true })) : ""}
       ${sec("Fade")}<div class="chips">${[0, 5, 10, 15, 30, 45, 60, 90, 120].map(m => chip(m ? `${m} min` : "Instant", "fade:" + m, v.fade === m)).join("")}</div>
       ${note(v.fade ? `Glides there over ${v.fade} minutes — a slow sunrise or a gentle fade to sleep.` : "Changes straight away.")}
@@ -761,7 +752,7 @@ export async function schedule(ctx) {
       ${v.hasEnd ? trigHtml("e", v.endTrig, v.endTime, v.endOffset) : ""}
       ${sec("Name (optional)")}${group(`<div style="padding:16px"><input class="field" id="nm" maxlength="30" placeholder="e.g. Wake up" value="${esc(v.name)}"></div>`)}
       ${index >= 0 ? group(row("Delete schedule", { icon: "del", tint: "var(--red)", click: "delete" })) : ""}
-      <div style="display:flex;gap:12px;padding:18px 22px"><button class="btn" style="flex:1;background:color-mix(in srgb,var(--text) 8%,transparent);color:var(--text)" data-act="back">Cancel</button><button class="btn" style="flex:1" data-act="save" ${v.days.size && (v.action !== 2 || v.preset) ? "" : "disabled"}>Save</button></div>`,
+      <div style="display:flex;gap:12px;padding:18px 22px"><button class="btn" style="flex:1;background:color-mix(in srgb,var(--text) 8%,transparent);color:var(--text)" data-act="back">Cancel</button><button class="btn" style="flex:1" data-act="save" ${v.days.size && (v.action !== 2 || v.preset) && (v.action !== 1 || v.turnOn || v.changeBright || v.color || v.effect) ? "" : "disabled"}>Save</button></div>`,
       { title: index >= 0 ? "Edit schedule" : "New schedule" });
     $("#stm") && ($("#stm").onchange = e => v.time = e.target.value || v.time);
     $("#etm") && ($("#etm").onchange = e => v.endTime = e.target.value || v.endTime);
@@ -776,15 +767,15 @@ export async function schedule(ctx) {
   const write = async all => { try { await changeFan({ schedules: all }); ctx.back(); toast("Saved"); } catch (e) { toast(e.message); } };
   ctx.handlers({
     day: i => { i = +i; v.days.has(i) ? v.days.delete(i) : v.days.add(i); draw(); },
-    col: (_, h) => { v.color = v.color === h ? null : h; draw(); },
+    col: (_, h) => { v.color = !h || h === "none" || v.color === h ? null : h; draw(); },
     pick: async () => { const c = await colorPicker(v.color || "#3e91ff"); if (c) { v.color = c; draw(); } },
-    eff: k => { v.effect = k || null; draw(); }, pre: id => { v.preset = id; draw(); }, fade: m => { v.fade = +m; draw(); }, end: () => { v.hasEnd = !v.hasEnd; draw(); },
+    eff: k => { v.effect = k || null; draw(); }, cb: () => { v.changeBright = !v.changeBright; draw(); }, ton: () => { v.turnOn = !v.turnOn; draw(); }, pre: id => { v.preset = id; draw(); }, fade: m => { v.fade = +m; draw(); }, end: () => { v.hasEnd = !v.hasEnd; draw(); },
     delete: async () => { const all = structuredClone(S.fan?.schedules || []); all.splice(index, 1); await write(all); },
     save: async () => {
       const all = structuredClone(S.fan?.schedules || []);
-      const set = v.action === 0 ? { on: false } : v.action === 1 ? { on: true, brightness: v.bright, ...(v.color ? { color: v.color } : {}), ...(v.effect ? { effect: v.effect } : {}) } : {};
+      const set = v.action === 0 ? { on: false } : v.action === 1 ? { ...(v.turnOn ? { on: true } : {}), ...(v.changeBright ? { brightness: v.bright } : {}), ...(v.color ? { color: v.color } : {}), ...(v.effect ? { effect: v.effect } : {}) } : {};
       const s = { time: v.time, days: [...v.days].sort(), enabled: true, name: v.name.trim(), trigger: v.trig, offset: v.offset, fade: v.fade, set, preset: v.action === 2 ? v.preset : "",
-        ...(v.hasEnd ? { until: { trigger: v.endTrig, time: v.endTime, offset: v.endOffset } } : {}), ...(ex?.id ? { id: ex.id, skip_next: !!ex.skip_next } : {}) };
+        if_on: v.action === 1 && !v.turnOn, ...(v.hasEnd ? { until: { trigger: v.endTrig, time: v.endTime, offset: v.endOffset } } : {}), ...(ex?.id ? { id: ex.id, skip_next: !!ex.skip_next } : {}) };
       if (index >= 0) all[index] = s; else all.push(s); await write(all);
     },
   });
@@ -863,13 +854,15 @@ async function drive(ctx, serial) {
 }
 
 // ════════════════════════════ DEVICES, SETTINGS, ABOUT ═════════════════════════
+const formOf = d => d.form || (d.type === "browser" ? "desktop" : "phone");
+const formLabel = d => { const n = { tablet: "Tablet", desktop: "Computer" }[formOf(d)] || "Phone"; return d.type === "browser" ? "Browser · " + n : n; };
 export async function devices(ctx) {
   const draw = () => {
     const l = S.cache["/api/v1/devices"]?.devices || [], by = {};
     l.forEach(d => (by[d.user || "No name yet"] ||= []).push(d));
     ctx.show(`${Object.entries(by).sort(([a], [b]) => (a === "No name yet") - (b === "No name yet") || a.localeCompare(b)).map(([u, ds]) => sec(u) + group(ds.map(d => row(d.name + (d.current ? "  ·  this browser" : ""), {
-        sub: `${d.role === "viewer" ? "View only" : "Admin"} · last seen ${d.last_seen || "never"}${d.via ? " via " + d.via : ""}${d.type === "browser" ? " · risky actions approved on a phone" : ""}`,
-        icon: d.type === "browser" ? "computer" : d.role === "viewer" ? "eye" : "shield", tint: d.current ? "var(--green)" : d.role === "viewer" ? "var(--sub)" : "var(--blue)" })).join(""))).join("") || note("Loading…")}
+        sub: `${formLabel(d)} · ${d.role === "viewer" ? "View only" : "Admin"} · last seen ${d.last_seen || "never"}${d.via ? " via " + d.via : ""}${d.type === "browser" ? " · risky actions approved on a phone" : ""}`,
+        icon: { tablet: "tablet", desktop: "computer" }[formOf(d)] || "phone", tint: d.current ? "var(--green)" : d.role === "viewer" ? "var(--sub)" : "var(--blue)" })).join(""))).join("") || note("Loading…")}
       ${group(row("Remove this browser", { sub: "Erases its key here and its access on the server", icon: "del", tint: "var(--red)", click: "forget" }))}
       ${note("Inviting phones, approving browsers and changing roles happen in the Nova app on an admin phone (they need its fingerprint key). Admins can do everything; view-only devices see the same screens but can't change anything.")}`,
       { title: "Users & devices" });
@@ -905,6 +898,21 @@ export async function settings(ctx) {
   ctx.handlers({ forget: () => forgetBrowser() });
   draw(); ctx.every(10000, async () => { await get("/api/v1/server/update").catch(() => {}); draw(); }, true);
 }
+export const locationText = l => !l ? "Not known — set it for sunrise/sunset schedules" : l.source === "timezone" ? `Near ${l.name} (from the time zone)` : l.name || `${(+l.lat).toFixed(2)}, ${(+l.lon).toFixed(2)}`;
+/** Where the server is (for sunrise/sunset). Saved in the server's settings; resolves with the new location (or undefined if cancelled). */
+export async function locationDialog(loc) {
+  const typed = loc?.source === "set" ? loc : {}, v = { lat: typed.lat ?? "", lon: typed.lon ?? "", name: typed.name ?? "" };
+  const pending = dialog("Where is the server?", `Used to work out sunrise and sunset for light schedules. Nova starts from the server's time zone${loc?.source === "timezone" ? ` (${loc.name})` : ""}; for the exact times, type its latitude and longitude (from any map app — your town is close enough), or use this device's location if it's with the server.`,
+    [{ label: "Use the time zone", value: "tz" }, { label: "Use my location", color: "var(--blue)", value: "geo" }, { label: "Save", color: "var(--blue)", value: "save" }],
+    `<div class="pad" style="display:flex;flex-direction:column;gap:10px"><div style="display:flex;gap:10px"><input class="field" id="lat" inputmode="decimal" placeholder="Latitude" value="${esc(v.lat)}"><input class="field" id="lon" inputmode="decimal" placeholder="Longitude" value="${esc(v.lon)}"></div><input class="field" id="lnm" maxlength="40" placeholder="Name (optional, e.g. Home)" value="${esc(v.name)}"></div>`);
+  $("#lat").oninput = e => v.lat = e.target.value; $("#lon").oninput = e => v.lon = e.target.value; $("#lnm").oninput = e => v.name = e.target.value;
+  const b = await pending; let body;
+  if (b === "tz") body = null;
+  else if (b === "geo") { try { const p = await new Promise((ok, no) => navigator.geolocation.getCurrentPosition(ok, no, { timeout: 10000 })); body = { lat: p.coords.latitude, lon: p.coords.longitude, name: v.name.trim() }; } catch { toast("Location isn't available here — type it instead"); return; } }
+  else if (b === "save") { const lat = parseFloat(v.lat), lon = parseFloat(v.lon); if (isNaN(lat) || isNaN(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) { toast("Enter a latitude (−90…90) and longitude (−180…180)"); return; } body = { lat, lon, name: v.name.trim() }; }
+  else return;
+  try { const r = await post("/api/v1/settings", { location: body }); S.cache["/api/v1/settings"] = r; S.fan = await get("/api/v1/fan"); toast("Saved"); return r.location || null; } catch (e) { toast(e.message); }
+}
 export async function serverSettings(ctx) {
   const draw = () => {
     const st = S.cache["/api/v1/settings"] || {};
@@ -912,13 +920,16 @@ export async function serverSettings(ctx) {
         <div style="display:flex;gap:10px;margin-top:10px">${isAdmin() ? `<button class="pillbtn press" data-act="save">Save</button>${st.display_name ? `<button class="pillbtn plain press" data-act="host">Use hostname</button>` : ""}` : ""}</div></div>`)}
       ${note(`Shown at the top of Home and in the server switcher. The machine's hostname (${st.hostname || "—"}) doesn't change.`)}
       ${sec("Accent colour")}${group(`<div style="display:flex;justify-content:space-between;padding:18px">${ACCENTS.map(h => `<button class="swatch${(st.accent || "") === h ? " on" : ""}" style="width:32px;height:32px;${h ? `background:${h}` : ""}" data-act="${isAdmin() ? "acc:" + (h || "none") : ""}">${h ? "" : `<span class="muted" style="font-size:13px">A</span>`}</button>`).join("")}</div>`)}
-      ${note('Gives each server its own colour, so you always know which one you\'re controlling. "A" is the default blue.')}`, { title: "Server" });
+      ${note('Gives each server its own colour, so you always know which one you\'re controlling. "A" is the default blue.')}
+      ${sec("Location")}${group(row("Where the server is", { sub: locationText(st.location), blue: st.location?.source === "set", icon: "place", tint: "var(--amber)", click: isAdmin() ? "loc" : "" }))}
+      ${note("For sunrise and sunset light schedules — worked out on the server, nothing is looked up online.")}`, { title: "Server" });
   };
   const save = async patch => {
     try { S.cache["/api/v1/settings"] = await post("/api/v1/settings", patch); if (S.overview?.server) Object.assign(S.overview.server, patch); await refresh(); toast("Saved"); } catch (e) { toast(e.message); }
     if (ctx.alive()) draw();
   };
-  ctx.handlers({ save: () => save({ display_name: $("#nm").value.trim() }), host: () => save({ display_name: "" }), acc: h => save({ accent: h === "none" ? "" : h }) });
+  ctx.handlers({ save: () => save({ display_name: $("#nm").value.trim() }), host: () => save({ display_name: "" }), acc: h => save({ accent: h === "none" ? "" : h }),
+    loc: async () => { await locationDialog(S.cache["/api/v1/settings"]?.location); if (ctx.alive()) draw(); } });
   draw(); try { await get("/api/v1/settings"); if (ctx.alive()) draw(); } catch (e) { toast(e.message); }
 }
 export async function appearance(ctx) {

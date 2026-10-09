@@ -53,8 +53,8 @@ private fun copy(ctx: Context, label: String, text: String) =
         app.act {
             try {
                 sshKey.ensure(); hasKey = true
-                app.stepUp("Let this phone log in over SSH", "POST", "/api/v1/ssh/authorize", JSONObject().put("key", sshKey.openSsh()))
-                keyState.value = JSONObject().put("installed", true); app.toast("Done — this phone can log in now")
+                app.stepUp("Let this ${DeviceForm.noun} log in over SSH", "POST", "/api/v1/ssh/authorize", JSONObject().put("key", sshKey.openSsh()))
+                keyState.value = JSONObject().put("installed", true); app.toast("Done — this ${DeviceForm.noun} can log in now")
             } finally { installing = false }
         }
     }
@@ -88,17 +88,17 @@ private fun copy(ctx: Context, label: String, text: String) =
                 onClick = { app.go(Route.SshTerm) })
         }
         Box(Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 8.dp)) {
-            if (installed == false) PrimaryButton(if (installing) "Adding the key…" else "Let this phone log in", Modifier.fillMaxWidth(), !installing) { install() }
+            if (installed == false) PrimaryButton(if (installing) "Adding the key…" else "Let this ${DeviceForm.noun} log in", Modifier.fillMaxWidth(), !installing) { install() }
             else PrimaryButton(if (SshSession.state == "connecting") "Connecting…" else "Connect", Modifier.fillMaxWidth(),
                 SshSession.state != "connecting") { connect() }
         }
         // The usual first-time snag: the server doesn't know this phone's key yet. One tap (and your fingerprint) fixes it.
-        if (installed == false) Text("The server doesn't know this phone's key yet. Nova adds it for you after your fingerprint.",
+        if (installed == false) Text("The server doesn't know this ${DeviceForm.noun}'s key yet. Nova adds it for you after your fingerprint.",
             color = N.sub, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 30.dp))
         SectionLabel("Connect through")
         Group {
             (listOf("auto" to ("Automatic" to "Home network when you're home, otherwise the next route")) +
-                hosts.map { h -> h.optString("name") to (h.optString("name") to h.optString("host") + if (h.optString("host").startsWith("100.")) " · needs Tailscale on this phone" else "") }
+                hosts.map { h -> h.optString("name") to (h.optString("name") to h.optString("host") + if (h.optString("host").startsWith("100.")) " · needs Tailscale on this ${DeviceForm.noun}" else "") }
             ).forEachIndexed { i, (k, v) ->
                 if (i > 0) RowDivider()
                 Row1(v.first, v.second, route == k, onClick = { route = k; app.pairing.sshRoute = k }) { OneRadio(route == k) }
@@ -106,13 +106,13 @@ private fun copy(ctx: Context, label: String, text: String) =
         }
         SectionLabel("Security")
         Group {
-            ExpandRow("This phone's SSH key", when (installed) { true -> "On the server · in the secure chip · fingerprint to use"
+            ExpandRow("This ${DeviceForm.noun}'s SSH key", when (installed) { true -> "On the server · in the secure chip · fingerprint to use"
                     false -> "Not on the server yet"; else -> if (hasKey) "In the secure chip · fingerprint to use" else "Created the first time you connect" },
                 hasKey, Icons.Rounded.Key) {
-                Detail("Nova adds this phone's key to $user's ~/.ssh/authorized_keys for you (fingerprint-confirmed), and removes it again if you remove this phone. Port and agent forwarding are off for it.")
-                if (installed != true) PillButton(if (installing) "Adding…" else "Add this phone's key to the server") { if (!installing) install() }
+                Detail("Nova adds this ${DeviceForm.noun}'s key to $user's ~/.ssh/authorized_keys for you (fingerprint-confirmed), and removes it again if you remove this ${DeviceForm.noun}. Port and agent forwarding are off for it.")
+                if (installed != true) PillButton(if (installing) "Adding…" else "Add this ${DeviceForm.noun}'s key to the server") { if (!installing) install() }
                 Detail("Or add it by hand, on the server or from a computer that can already log in:")
-                if (!hasKey) PillButton("Create the key now") { runCatching { sshKey.ensure(); hasKey = true }.onFailure { app.toast("Set a screen lock on this phone first") } }
+                if (!hasKey) PillButton("Create the key now") { runCatching { sshKey.ensure(); hasKey = true }.onFailure { app.toast("Set a screen lock on this ${DeviceForm.noun} first") } }
                 else {
                     val cmd = "mkdir -p ~/.ssh && echo '${sshKey.openSsh()}' >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys"
                     Text(cmd, color = N.text, fontFamily = Mono, fontSize = 12.sp, modifier = Modifier.clip(RoundedCornerShape(14.dp))
@@ -135,7 +135,7 @@ private fun copy(ctx: Context, label: String, text: String) =
             }
         }
     }
-    if (keyDialog) OneDialog({ keyDialog = false }, "Replace this phone's SSH key?",
+    if (keyDialog) OneDialog({ keyDialog = false }, "Replace this ${DeviceForm.noun}'s SSH key?",
         "The old key stops working here. Remove it from ~/.ssh/authorized_keys on the server and add the new one.",
         listOf(DialogButton("Cancel") { keyDialog = false }, DialogButton("Replace", N.red) {
             keyDialog = false; SshSession.disconnect(); sshKey.delete(); runCatching { sshKey.ensure() }; hasKey = sshKey.exists(); app.toast("New key created") }))

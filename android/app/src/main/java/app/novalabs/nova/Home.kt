@@ -72,7 +72,7 @@ import org.json.JSONObject
         val backupRunning = m?.optString("data_backup")?.contains("running") == true
         val backup = if (backupRunning) live(app, "/api/v1/backup", 5_000).value else null
         when {
-            app.notAuthorized -> Banner("This phone isn't authorized anymore — tap to pair again", N.red) { app.pairing.clear(); app.paired = false }
+            app.notAuthorized -> Banner("This ${DeviceForm.noun} isn't authorized anymore — tap to pair again", N.red) { app.pairing.clear(); app.paired = false }
             app.error != null -> DisconnectedBanner(app)
             level != "ok" -> Banner(st?.optString("headline") ?: "", levelColor(level, N)) { app.go(Route.Inbox) }
             backupRunning -> Banner(backup?.let { backupLine(it) } ?: "Backing up…", N.blue) { app.go(Route.QuickPanel) }

@@ -29,7 +29,7 @@ import java.util.*
     LaunchedEffect(data) { data?.optJSONArray("events")?.let { InboxArchive.merge(app.activity, app.pairing.profile, it) } }
     /** Archive: gone from the server's inbox (every device), kept in this phone's history (Inbox → Archive). */
     fun delete(ts: List<Double>) {
-        if (!app.isAdmin) { app.toast("This phone has view-only access"); return }
+        if (!app.isAdmin) { app.toast("This ${DeviceForm.noun} has view-only access"); return }
         val before = dataLive.value
         before?.optJSONArray("events")?.let { ev -> InboxArchive.archive(app.activity, app.pairing.profile,
             (0 until ev.length()).map { ev.getJSONObject(it) }.filter { e -> ts.any { kotlin.math.abs(it - e.optDouble("t")) < 0.0005 } }) }
@@ -80,7 +80,7 @@ import java.util.*
         if (filter == 0) "Everything moves from the Inbox to the Archive (kept on the server, for every device). Active alerts stay until they're fixed or ignored."
         else "The ${shown.size} event(s) shown move to the Archive (kept on the server, for every device).",
         listOf(DialogButton("Cancel") { clearAll = false }, DialogButton("Archive", N.blue) { clearAll = false
-            if (filter == 0) { if (!app.isAdmin) app.toast("This phone has view-only access") else {
+            if (filter == 0) { if (!app.isAdmin) app.toast("This ${DeviceForm.noun} has view-only access") else {
                 data?.optJSONArray("events")?.let { ev -> InboxArchive.archive(app.activity, app.pairing.profile, (0 until ev.length()).map { ev.getJSONObject(it) }) }
                 dataLive.value = JSONObject().put("events", org.json.JSONArray())
                 app.act("Archived — see Inbox → Archive") { app.api.post("/api/v1/events/delete", JSONObject().put("all", true)) } } }
@@ -104,7 +104,7 @@ import java.util.*
             Text("•••", color = N.blue, fontSize = 26.sp, fontWeight = FontWeight.Bold)
             Icon(Icons.Rounded.Dns, null, tint = N.text, modifier = Modifier.size(64.dp))
         }
-        SectionLabel("This phone")
+        SectionLabel("This ${DeviceForm.noun}")
         Group {
             var instant by remember { mutableStateOf(Alerts.enabled(app.activity)) }
             SwitchRow("Instant alerts", if (instant) "Alerts arrive within a minute, even with Nova closed" else "Checked about every 15 minutes (Android may delay it)",
@@ -168,13 +168,13 @@ import java.util.*
         Group {
             Row1("Name", serverName(app), true, Icons.Rounded.Edit, onClick = { app.go(Route.ServerSettings) })
             RowDivider()
-            Row1("Servers on this phone", "${Servers.all(app.activity).count { Pairing(app.activity, it).paired }} · switch or add another", true,
+            Row1("Servers on this ${DeviceForm.noun}", "${Servers.all(app.activity).count { Pairing(app.activity, it).paired }} · switch or add another", true,
                 Icons.Rounded.Dns, onClick = { app.go(Route.Servers) })
         }
-        SectionLabel("This phone")
+        SectionLabel("This ${DeviceForm.noun}")
         Group {
-            ExpandRow("Signing key", "In this phone's secure chip", false, Icons.Rounded.Key) {
-                Detail("Every request Nova sends is signed by a key that was created inside this phone's hardware security chip and can't be copied out — not even by Nova.")
+            ExpandRow("Signing key", "In this ${DeviceForm.noun}'s secure chip", false, Icons.Rounded.Key) {
+                Detail("Every request Nova sends is signed by a key that was created inside this ${DeviceForm.noun}'s hardware security chip and can't be copied out — not even by Nova.")
                 Detail("The server only accepts requests signed by a paired phone, each with a fresh time stamp and a one-time number, so a recorded request can't be replayed.")
             }
             RowDivider()
@@ -183,7 +183,7 @@ import java.util.*
                 Detail("Risky actions — opening a terminal, stopping or restarting things, installs, unmounting drives, restarting the server — need your fingerprint (or PIN).")
                 Detail("Behind the scenes that unlocks a second key in the secure chip, which signs the request as well. The server refuses risky actions without that second signature, so even a stolen, unlocked phone can't do them without you.")
                 Detail(if (app.pairing.stepUpRegistered) "Status: set up and registered with the server."
-                       else if (app.api.via == "home") "Status: not set up — this phone needs a screen lock (PIN or fingerprint) first. Add one in Android settings, then reopen Nova."
+                       else if (app.api.via == "home") "Status: not set up — this ${DeviceForm.noun} needs a screen lock (PIN or fingerprint) first. Add one in Android settings, then reopen Nova."
                        else "Status: waiting — it's registered automatically the next time Nova opens on home Wi-Fi (registration is only accepted from home).",
                     if (app.pairing.stepUpRegistered) N.green else N.amber)
             }
@@ -204,10 +204,10 @@ import java.util.*
             RowDivider()
             Row1("Setup guide", "Install Nova on a server, remote access, browsers", true, androidx.compose.material.icons.Icons.AutoMirrored.Rounded.MenuBook, onClick = { app.go(Route.SetupGuide) })
         }
-        Group { Row1("Unpair this phone", "Erases its keys", false, Icons.Rounded.LinkOff, N.red, onClick = { confirmUnpair = true }) }
+        Group { Row1("Unpair this ${DeviceForm.noun}", "Erases its keys", false, Icons.Rounded.LinkOff, N.red, onClick = { confirmUnpair = true }) }
         LinksCard(listOf("About Nova" to { app.go(Route.About) }))
     }
-    if (confirmUnpair) OneDialog({ confirmUnpair = false }, "Unpair this phone?",
+    if (confirmUnpair) OneDialog({ confirmUnpair = false }, "Unpair this ${DeviceForm.noun}?",
         "Its keys are erased. To use Nova again you'll need a new pairing code from the server.",
         listOf(DialogButton("Cancel") { confirmUnpair = false },
             DialogButton("Unpair", N.red) { confirmUnpair = false; app.pairing.clear(); app.paired = false }))
@@ -231,7 +231,7 @@ import java.util.*
         }
         SectionLabel("Security")
         Group {
-            Row1("Every request is signed", "By a key in this phone's secure chip, time-stamped and single-use", false); RowDivider()
+            Row1("Every request is signed", "By a key in this ${DeviceForm.noun}'s secure chip, time-stamped and single-use", false); RowDivider()
             Row1("Risky actions need your fingerprint", "Shells, stopping things, installs, unmounting, power", false); RowDivider()
             Row1("At home: encrypted, pinned", "HTTPS to the server's own certificate, checked on every connection", false); RowDivider()
             Row1("Outside home: Cloudflare Access", "Strangers are stopped before they reach the server", false)

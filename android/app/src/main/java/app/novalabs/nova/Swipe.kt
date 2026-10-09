@@ -90,7 +90,7 @@ private fun cleanAlertTitle(t: String) = t.replace(Regex("^[^\\p{L}\\p{N}]+\\s*"
 fun dismissAlert(app: AppState, a: JSONObject, done: () -> Unit = {}) {
     val key = a.optString("key")
     if (key.isEmpty()) { app.toast("Update the server to dismiss alerts from here"); return }
-    if (!app.isAdmin) { app.toast("This phone has view-only access"); return }
+    if (!app.isAdmin) { app.toast("This ${DeviceForm.noun} has view-only access"); return }
     // Hide it straight away; the server confirms in a moment.
     app.overview = JSONObject(app.overview.toString()).also { o ->
         val st = o.optJSONObject("status") ?: return@also

@@ -1,6 +1,6 @@
 // Nova web — entry: router (with back stack, scroll memory and slide transitions), the app shell
 // (side rail on wide screens, frosted bottom bar on phones), pairing, start-up.
-import { S, $, $$, esc, sleep, kv, pemOf, get, prefs, has, refresh, onApproval, ApiError } from "./core.js";
+import { S, $, $$, esc, sleep, kv, pemOf, get, post, prefs, has, refresh, onApproval, ApiError, webForm } from "./core.js";
 import { I, logo, toast, waitApproval, closeSheet } from "./ui.js";
 import * as V from "./views.js";
 
@@ -216,7 +216,7 @@ async function start() {
   const d = await kv("device").catch(() => null);
   if (!d?.id) return pairScreen();
   S.device = d.id; S.keys = d.keys;
-  try { S.me = await get("/api/v1/whoami"); }
+  try { S.me = await get("/api/v1/whoami"); if (S.me.form !== webForm()) post("/api/v1/device/form", { form: webForm() }).catch(() => {}); }
   catch (e) {
     if (e.code === 401) { await kv("device", null); return pairScreen(); }
     if (e.code === 403) { $("#app").innerHTML = `<div class="pair"><h1>Nova</h1><p class="lead">${esc(e.message)}</p></div>`; return; }

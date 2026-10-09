@@ -109,12 +109,41 @@ def main():
     os.chown(tmp, 0, gid); os.chmod(tmp, 0o640); os.replace(tmp, CONF)
     print(f"\n  {G}✓{X} Saved {CONF} {D}(root:nova-api, 640){X}")
 
-    step(7, "Lighting module")
+    step(7, "Location (for sunrise & sunset)")
+    print(f"  {D}Light schedules can start at sunrise or sunset. Nova works them out here, offline, from this.{X}")
+    sys.path.insert(0, "/usr/lib/nova-api")
+    try: from nova_tz import tz_location; tzl = tz_location()
+    except ImportError: tzl = None
+    settings_f = "/var/lib/nova-api/settings.json"
+    try: settings = json.load(open(settings_f))
+    except Exception: settings = {}
+    cur = settings.get("location")
+    if tzl: print(f"  From the time zone ({tzl['tz']}): near {tzl['name']}, {tzl['lat']:.2f}, {tzl['lon']:.2f}.")
+    else: print(f"  {D}The time zone doesn't say where this is (UTC?) — type it below for sunrise/sunset.{X}")
+    shown = f"{cur['lat']}, {cur['lon']}" if cur else ("time zone" if tzl else "")
+    a = ask("Latitude, longitude (or \"time zone\")", shown)
+    if a and a != shown:
+        if a.lower().replace(" ", "") in ("timezone", "tz"): settings.pop("location", None)
+        else:
+            try:
+                lat, lon = (float(x) for x in a.replace(";", ",").split(",")[:2])
+                if not (-90 <= lat <= 90 and -180 <= lon <= 180): raise ValueError
+                settings["location"] = {"lat": round(lat, 2), "lon": round(lon, 2), "name": ""}
+            except ValueError: print(f"  {Y}That isn't 'latitude, longitude' (e.g. 40.71, -74.01) — kept as it was.{X}")
+        os.makedirs(os.path.dirname(settings_f), exist_ok=True)
+        tmp = settings_f + ".tmp"
+        with open(tmp, "w") as f: json.dump(settings, f, indent=1)
+        try: shutil.chown(tmp, "nova-api", "nova-api")
+        except (LookupError, OSError): pass
+        os.chmod(tmp, 0o640); os.replace(tmp, settings_f)
+        print(f"  {G}✓{X} Saved — change it any time in the app (Settings → Server, or Lighting → Schedules)")
+
+    step(8, "Lighting module")
     lit = any("048D:00005702" in open(u).read().upper() for u in glob.glob("/sys/class/hidraw/hidraw*/device/uevent"))
     if lit: print(f"  Found a Gigabyte RGB Fusion 2 controller.  Install it with:  {B}sudo nova-setup-lighting{X}")
     else: print(f"  {D}No supported lighting controller found — skipped.{X}")
 
-    step(8, "Firewall")
+    step(9, "Firewall")
     rc, st = sh("ufw", "status")
     if rc == 0 and "Status: active" in st:
         if yes(f"Allow {subnet} to reach Nova (port 8495, encrypted)?", True):
@@ -123,7 +152,7 @@ def main():
             print(f"  {G}✓{X} Firewall rules added")
     else: print(f"  {D}ufw isn't active — make sure your firewall lets {subnet} reach tcp 8495 (and udp 8496 for discovery).{X}")
 
-    step(9, "Start Nova")
+    step(10, "Start Nova")
     sh("systemctl", "daemon-reload")
     sh("systemctl", "enable", "--now", "nova-helper.socket")
     sh("systemctl", "enable", "nova-api.service"); sh("systemctl", "restart", "nova-api.service")

@@ -51,9 +51,18 @@ fun hex(c: Color) = "#%06x".format(c.toArgb() and 0xFFFFFF)
 fun col(h: String) = runCatching { Color(android.graphics.Color.parseColor(h)) }.getOrDefault(Color(0xFF3E91FF))
 
 @OptIn(ExperimentalLayoutApi::class)
-@Composable fun SwatchRow(selected: String, enabled: Boolean, onPick: (String) -> Unit, onCustom: () -> Unit) {
+/** [noChange]: put a "No change" (❌) choice first, picked as "" — for schedules that leave the colour alone. */
+@Composable fun SwatchRow(selected: String, enabled: Boolean, onPick: (String) -> Unit, noChange: Boolean = false, onCustom: () -> Unit) {
     FlowRow(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 16.dp),
         horizontalArrangement = Arrangement.SpaceBetween, verticalArrangement = Arrangement.spacedBy(14.dp), maxItemsInEachRow = 7) {
+        if (noChange) {
+            val sel = selected.isEmpty()
+            Box(Modifier.size(40.dp).clip(CircleShape).background(N.card)
+                .border(if (sel) 3.dp else 1.dp, if (sel) N.blue else N.divider, CircleShape)
+                .clickable(enabled = enabled) { onPick("") }, contentAlignment = Alignment.Center) {
+                Icon(Icons.Rounded.Block, "No change", tint = if (sel) N.blue else N.sub, modifier = Modifier.size(22.dp))
+            }
+        }
         SWATCHES.forEach { h ->
             val sel = h.equals(selected, true)
             Box(Modifier.size(40.dp).clip(CircleShape).background(col(h))
@@ -302,7 +311,7 @@ fun describe(set: JSONObject?): String {
     if (set.has("on") && !set.optBoolean("on")) return "Turn off"
     val parts = mutableListOf<String>()
     if (set.optBoolean("on", false)) parts += "Turn on"
-    if (set.has("brightness")) parts += "${set.optInt("brightness")}%"
+    if (set.has("brightness")) parts += if (parts.isEmpty()) "Brightness ${set.optInt("brightness")}%" else "${set.optInt("brightness")}%"
     if (set.has("effect")) parts += (EFFECTS.firstOrNull { it.first == set.optString("effect") }?.second?.first ?: set.optString("effect"))
     if (set.has("color") || set.has("palette")) parts += "colour"
     return parts.joinToString(", ").ifEmpty { "No change" }
@@ -330,8 +339,9 @@ private fun actionText(s: JSONObject, presets: List<JSONObject>): String =
             SwitchRow("Pause all schedules", if (paused) "Nothing runs until you turn this off" else "Schedules run as set", paused, app.isAdmin) {
                 app.changeFan(JSONObject().put("schedules_paused", it)) }
             RowDivider()
-            Row1("Location for sunrise & sunset", sun?.let { "Today: sunrise ${it.optString("sunrise")} · sunset ${it.optString("sunset")}" }
-                ?: "Not set — needed for sunrise/sunset schedules", sun != null, Icons.Rounded.WbTwilight, N.amber, onClick = { if (app.isAdmin) locating = true })
+            Row1("Location for sunrise & sunset", locationText(f?.optJSONObject("location")) +
+                (sun?.let { "\nToday: sunrise ${it.optString("sunrise")} · sunset ${it.optString("sunset")}" } ?: ""),
+                sun != null, Icons.Rounded.WbTwilight, N.amber, onClick = { if (app.isAdmin) locating = true })
         }
         if (sch.length() == 0) {
             Text("No schedules yet. Some ideas: wake up to a slow sunrise, dim to a warm glow at sunset, turn off while you sleep and back on in the morning.",
@@ -348,7 +358,7 @@ private fun actionText(s: JSONObject, presets: List<JSONObject>): String =
                     s.optString("name").takeIf { it.isNotEmpty() }?.let { "  ·  $it" }.orEmpty()
                 val sub = listOfNotNull(actionText(s, presets), s.optInt("fade").takeIf { it > 0 }?.let { "fades over $it min" }, u?.let { "then back" },
                     if (days.size == 7) "every day" else if (days == listOf(0, 1, 2, 3, 4)) "weekdays" else if (days == listOf(5, 6)) "weekends" else days.joinToString(" ") { DAYN[it] },
-                    if (s.optBoolean("skip_next")) "skipping next time" else null).joinToString(" · ")
+                    if (s.optBoolean("if_on")) "only while on" else null, if (s.optBoolean("skip_next")) "skipping next time" else null).joinToString(" · ")
                 Row1(title, sub, s.optBoolean("enabled", true) && !paused, onClick = { menu = i }) {
                     OneSwitch(s.optBoolean("enabled", true), { en -> val all = JSONArray(sch.toString()); all.getJSONObject(i).put("enabled", en); putAll(all) }, app.isAdmin)
                 }
@@ -372,21 +382,7 @@ private fun actionText(s: JSONObject, presets: List<JSONObject>): String =
             DialogChoice("Delete", null, false) { menu = null; val all = JSONArray(sch.toString()); all.remove(i); putAll(all) }
         }
     }
-    if (locating) {
-        val loc = f?.optJSONObject("location")
-        var lat by remember { mutableStateOf(loc?.optDouble("lat")?.toString() ?: "") }
-        var lon by remember { mutableStateOf(loc?.optDouble("lon")?.toString() ?: "") }
-        OneDialog({ locating = false }, "Where is the server?",
-            "Sunrise and sunset are worked out on the server from this (latitude and longitude, e.g. from a map app — a city is close enough).",
-            listOf(DialogButton("Cancel") { locating = false }, DialogButton("Save", N.blue, enabled = lat.toDoubleOrNull() != null && lon.toDoubleOrNull() != null) {
-                locating = false; app.changeFan(JSONObject().put("location", JSONObject().put("lat", lat.toDouble()).put("lon", lon.toDouble())))
-                app.act { app.fan = app.api.get("/api/v1/fan") } })) {
-            Column(Modifier.padding(horizontal = 22.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                OneTextField(lat, { lat = it.take(12) }, "Latitude (e.g. 40.71)", Modifier.fillMaxWidth(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
-                OneTextField(lon, { lon = it.take(12) }, "Longitude (e.g. -74.01)", Modifier.fillMaxWidth(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
-            }
-        }
-    }
+    if (locating) ServerLocationDialog(app, f?.optJSONObject("location")) { locating = false }
 }
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -404,6 +400,8 @@ private fun actionText(s: JSONObject, presets: List<JSONObject>): String =
     var action by remember { mutableIntStateOf(when { existing?.optString("preset")?.isNotEmpty() == true -> 2; set0?.has("on") == true && !set0.optBoolean("on") -> 0; else -> 1 }) }
     var preset by remember { mutableStateOf(existing?.optString("preset")?.ifEmpty { null } ?: presets.firstOrNull()?.optString("id")) }
     var bright by remember { mutableFloatStateOf((set0?.optInt("brightness", 30) ?: 30).toFloat()) }
+    var changeBright by remember { mutableStateOf(set0 == null || set0.has("brightness")) }
+    var turnOn by remember { mutableStateOf(existing == null || !existing.optBoolean("if_on")) }
     var setColor by remember { mutableStateOf(set0?.optString("color")?.ifEmpty { null }) }
     var effect by remember { mutableStateOf(set0?.optString("effect")?.ifEmpty { null }) }
     var fade by remember { mutableIntStateOf(existing?.optInt("fade") ?: 0) }
@@ -421,11 +419,12 @@ private fun actionText(s: JSONObject, presets: List<JSONObject>): String =
         val set = JSONObject()
         when (action) {
             0 -> set.put("on", false)
-            1 -> { set.put("on", true).put("brightness", bright.toInt()); setColor?.let { set.put("color", it) }; effect?.let { set.put("effect", it) } }
+            1 -> { if (turnOn) set.put("on", true); if (changeBright) set.put("brightness", bright.toInt())
+                   setColor?.let { set.put("color", it) }; effect?.let { set.put("effect", it) } }
         }
         val s = JSONObject().put("time", "%02d:%02d".format(hour, minute)).put("days", JSONArray(days.sorted())).put("enabled", true)
             .put("name", name.trim()).put("trigger", trig).put("offset", offset.toInt()).put("fade", fade).put("set", set)
-            .put("preset", if (action == 2) preset ?: "" else "")
+            .put("preset", if (action == 2) preset ?: "" else "").put("if_on", action == 1 && !turnOn)
         if (hasEnd) s.put("until", JSONObject().put("trigger", endTrig).put("time", "%02d:%02d".format(endHour, endMinute)).put("offset", endOffset.toInt()))
         if (index >= 0) { s.put("id", existing?.optString("id")); s.put("skip_next", existing?.optBoolean("skip_next") ?: false); all.put(index, s) } else all.put(s)
         app.changeFan(JSONObject().put("schedules", all)); app.back(); app.toast("Saved")
@@ -436,7 +435,7 @@ private fun actionText(s: JSONObject, presets: List<JSONObject>): String =
         else Group {
             SliderRow("Offset", off, -120f..120f, when { off.toInt() == 0 -> "At ${t}"; off < 0 -> "${-off.toInt()} min before"; else -> "${off.toInt()} min after" },
                 steps = 47, onChange = onOff) {}
-            if (!sunKnown) Text("Set the server's location in Schedules first.", color = N.amber, fontSize = 13.sp, modifier = Modifier.padding(start = 22.dp, bottom = 12.dp))
+            if (!sunKnown) Text("Set the server's location first (Schedules → Location).", color = N.amber, fontSize = 13.sp, modifier = Modifier.padding(start = 22.dp, bottom = 12.dp))
         }
     }
 
@@ -457,17 +456,24 @@ private fun actionText(s: JSONObject, presets: List<JSONObject>): String =
             Segmented(listOf("Turn off", "Set the light", "A preset"), action) { action = it }
             when (action) {
                 1 -> {
-                    Group { SliderRow("Brightness", bright, 0f..100f, "${bright.toInt()}%", onChange = { bright = it }) {} }
-                    SectionLabel("Colour (optional)")
-                    Group { SwatchRow(setColor ?: "", true, { setColor = if (setColor == it) null else it }) { picker = true } }
-                    SectionLabel("Effect (optional)")
+                    Group {
+                        SwitchRow("Change the brightness", if (changeBright) "To ${bright.toInt()}%" else "No change", changeBright) { changeBright = it }
+                        if (changeBright) SliderRow("Brightness", bright, 0f..100f, "${bright.toInt()}%", onChange = { bright = it }) {}
+                    }
+                    SectionLabel("Colour")
+                    Group { SwatchRow(setColor ?: "", true, { setColor = if (it.isEmpty() || setColor == it) null else it }, noChange = true) { picker = true } }
+                    SectionLabel("Effect")
                     FlowRow(Modifier.padding(horizontal = Space.gutter), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        (listOf(null to "Keep") + EFFECTS.map { it.first to it.second.first }).forEach { (k, l) ->
+                        (listOf(null to "No change") + EFFECTS.map { it.first to it.second.first }).forEach { (k, l) ->
                             val sel = effect == k
-                            Text(l, color = if (sel) Color.White else N.text, fontSize = 14.sp, modifier = Modifier.clip(RoundedCornerShape(16.dp))
-                                .background(if (sel) N.blue else N.card).clickable { effect = k }.padding(horizontal = 14.dp, vertical = 8.dp))
+                            Row(Modifier.clip(RoundedCornerShape(16.dp)).background(if (sel) N.blue else N.card).clickable { effect = k }
+                                .padding(horizontal = 14.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                if (k == null) { Icon(Icons.Rounded.Block, null, tint = if (sel) Color.White else N.sub, modifier = Modifier.size(16.dp)); Spacer(Modifier.width(6.dp)) }
+                                Text(l, color = if (sel) Color.White else N.text, fontSize = 14.sp)
+                            }
                         }
                     }
+                    Group { SwitchRow("Turn the light on if it's off", if (turnOn) "Always runs" else "Only runs while the light is on — handy for dimming", turnOn) { turnOn = it } }
                 }
                 2 -> Group {
                     if (presets.isEmpty()) Text("No presets yet — save one on the Lighting page first.", color = N.sub, modifier = Modifier.padding(22.dp))
@@ -494,7 +500,8 @@ private fun actionText(s: JSONObject, presets: List<JSONObject>): String =
                 val all = JSONArray((f?.optJSONArray("schedules") ?: JSONArray()).toString()); all.remove(index)
                 app.changeFan(JSONObject().put("schedules", all)); app.back(); app.toast("Deleted") }) }
         }
-        CancelSavePill(app::back, ::save, days.isNotEmpty() && (action != 2 || preset != null), modifier = Modifier.align(Alignment.BottomCenter))
+        val changes = action != 1 || turnOn || changeBright || setColor != null || effect != null
+        CancelSavePill(app::back, ::save, days.isNotEmpty() && (action != 2 || preset != null) && changes, modifier = Modifier.align(Alignment.BottomCenter))
     }
     if (picker) ColorPickerDialog(setColor ?: "#3e91ff", { picker = false }) { setColor = it; picker = false }
 }

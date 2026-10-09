@@ -160,7 +160,7 @@ private fun health(d: JSONObject): Pair<String, String> {
     LaunchedEffect(running) { while (running) { delay(5_000); runCatching { tl.value = app.api.get("/api/v1/drives/$serial/test") } } }
     if (t == null || !t.optBoolean("supported", true)) return
     fun start(kind: String) {
-        if (!app.isAdmin) { app.toast("This phone has view-only access"); return }
+        if (!app.isAdmin) { app.toast("This ${DeviceForm.noun} has view-only access"); return }
         busy = true
         app.act { try {
             val r = app.api.post("/api/v1/drives/$serial/test", JSONObject().put("type", kind))

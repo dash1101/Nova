@@ -136,7 +136,7 @@ class AppState(val activity: Activity, val pairing: Pairing, val scope: Coroutin
     private var fanSeq = 0
     var fanInFlight = 0; private set
     fun changeFan(patch: JSONObject) {
-        if (!isAdmin) { toast("This phone has view-only access"); return }
+        if (!isAdmin) { toast("This ${DeviceForm.noun} has view-only access"); return }
         val before = fan
         fan = JSONObject(fan?.toString() ?: "{}").also { m -> patch.keys().forEach { k -> m.put(k, patch.get(k)) } }
         val seq = ++fanSeq; fanInFlight++
@@ -175,6 +175,7 @@ class AppState(val activity: Activity, val pairing: Pairing, val scope: Coroutin
             val who = api.get("/api/v1/whoami")
             who.optString("role").takeIf { it.isNotEmpty() }?.let { pairing.role = it; role = it }
             pairing.user = who.optString("user")
+            if (who.optString("form") != DeviceForm.kind) runCatching { api.post("/api/v1/device/form", JSONObject().put("form", DeviceForm.kind)) }
             // Upgrade older pairings to the encrypted home listener (pin comes over the signed connection).
             if (pairing.lanPin.isEmpty()) runCatching {
                 val t = api.get("/api/v1/lan-tls")
@@ -203,6 +204,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        DeviceForm.init(this)
         if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED)
             requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1)
         val openInbox = intent?.getStringExtra("open") == "inbox"

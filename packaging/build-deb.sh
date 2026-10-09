@@ -9,6 +9,7 @@ install -d "$P$L/web" "$P$L/store" "$P$L/monitor" "$P/usr/bin" "$P/usr/sbin" "$P
            "$P/etc/logrotate.d" "$P/usr/share/doc/nova-server" "$P/DEBIAN"
 install -m 755 "$S/api/server.py" "$P$L/server.py"
 install -m 755 "$S/api/helper.py" "$P$L/helper"
+install -m 644 "$S/api/nova_tz.py" "$P$L/nova_tz.py"
 install -m 755 "$S/api/helper-sock.py" "$P$L/helper-sock"
 install -m 755 "$S/monitor/nova_alerts.py" "$P$L/monitor/nova_alerts.py"
 ln -s "$L/monitor/nova_alerts.py" "$P/usr/sbin/nova-alert"

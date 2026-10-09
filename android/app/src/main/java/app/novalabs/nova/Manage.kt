@@ -5,6 +5,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.Icon
@@ -15,6 +16,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import org.json.JSONObject
@@ -31,6 +33,47 @@ fun labelOf(app: AppState, id: String) = Pairing(app.activity, id).let { p ->
     p.label.ifEmpty { p.lanUrl.substringAfter("//").substringBefore(":").ifEmpty { "Server" } } }
 
 // ── Servers on this phone ─────────────────────────────────────────────────────────
+/** "Phone", "Tablet", "Browser on a computer"… from what the device told the server. */
+private fun formLabel(d: JSONObject): String {
+    val f = d.optString("form").ifEmpty { if (d.optString("type") == "browser") "desktop" else "phone" }
+    val n = when (f) { "tablet" -> "Tablet"; "desktop" -> "Computer"; else -> "Phone" }
+    return if (d.optString("type") == "browser") "Browser · $n" else n
+}
+
+// ── Server location (sunrise & sunset) ──
+/** "Near New York (from the time zone)" or "40.71, -74.01". */
+fun locationText(loc: JSONObject?): String = when {
+    loc == null -> "Not known — set it for sunrise/sunset schedules"
+    loc.optString("source") == "timezone" -> "Near ${loc.optString("name")} (from the time zone)"
+    loc.optString("name").isNotEmpty() -> loc.optString("name")
+    else -> "%.2f, %.2f".format(loc.optDouble("lat"), loc.optDouble("lon"))
+}
+
+/** Where the server is. Saved in the server's settings; "Use the time zone" goes back to the automatic guess. */
+@Composable fun ServerLocationDialog(app: AppState, loc: JSONObject?, onDone: (JSONObject?) -> Unit) {
+    val typed = loc?.takeIf { it.optString("source") == "set" }
+    var lat by remember { mutableStateOf(typed?.optDouble("lat")?.toString() ?: "") }
+    var lon by remember { mutableStateOf(typed?.optDouble("lon")?.toString() ?: "") }
+    var name by remember { mutableStateOf(typed?.optString("name") ?: "") }
+    fun post(v: Any) = app.act {
+        val r = app.api.post("/api/v1/settings", JSONObject().put("location", v))
+        app.fan = app.api.get("/api/v1/fan"); onDone(r.optJSONObject("location")); app.toast("Saved")
+    }
+    val ok = lat.toDoubleOrNull()?.let { it in -90.0..90.0 } == true && lon.toDoubleOrNull()?.let { it in -180.0..180.0 } == true
+    OneDialog({ onDone(loc) }, "Where is the server?",
+        "Used to work out sunrise and sunset for light schedules. Nova starts from the server's time zone" +
+            (loc?.takeIf { it.optString("source") == "timezone" }?.let { " (${it.optString("name")})" } ?: "") +
+            "; for the exact times, type its latitude and longitude (from any map app — your town is close enough).",
+        listOf(DialogButton("Use the time zone") { post(JSONObject.NULL) }, DialogButton("Save", N.blue, enabled = ok) {
+            post(JSONObject().put("lat", lat.toDouble()).put("lon", lon.toDouble()).put("name", name.trim())) })) {
+        Column(Modifier.padding(horizontal = 22.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            OneTextField(lat, { lat = it.take(12) }, "Latitude (e.g. 40.71)", Modifier.fillMaxWidth(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
+            OneTextField(lon, { lon = it.take(12) }, "Longitude (e.g. -74.01)", Modifier.fillMaxWidth(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
+            OneTextField(name, { name = it.take(40) }, "Name (optional, e.g. Home)", Modifier.fillMaxWidth())
+        }
+    }
+}
+
 // ── Server name + accent ──────────────────────────────────────────────────────────
 private val ACCENTS = listOf("", "#3e91ff", "#5e5ce6", "#bf5af2", "#ff2d55", "#ff9500", "#ffcc00", "#34c759", "#00c7be")
 
@@ -81,6 +124,13 @@ private val ACCENTS = listOf("", "#3e91ff", "#5e5ce6", "#bf5af2", "#ff2d55", "#f
         }
         Text("Gives each server its own colour, so you always know which one you're controlling. \"A\" is the default blue.",
             color = N.sub, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 30.dp, vertical = 4.dp))
+        SectionLabel("Location")
+        var locating by remember { mutableStateOf(false) }
+        Group { Row1("Where the server is", locationText(st?.optJSONObject("location")), st?.optJSONObject("location")?.optString("source") == "set",
+            Icons.Rounded.Place, N.amber, onClick = { if (app.isAdmin) locating = true }) }
+        Text("For sunrise and sunset light schedules — worked out on the server, nothing is looked up online.",
+            color = N.sub, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 30.dp, vertical = 4.dp))
+        if (locating) ServerLocationDialog(app, st?.optJSONObject("location")) { l -> locating = false; st = JSONObject(st?.toString() ?: "{}").put("location", l ?: JSONObject.NULL) }
     }
 }
 
@@ -112,7 +162,7 @@ fun roleLabel(r: String) = if (r == "viewer") "View only" else "Admin"
     var invite by remember { mutableStateOf<JSONObject?>(null) }
     var approveBrowser by remember { mutableStateOf(false) }
     Page("Users & devices", app::back, if (app.isAdmin) listOf(TopAction(Icons.Rounded.PersonAdd, "Invite a phone") { inviting = true }) else emptyList()) {
-        if (!app.isAdmin) Text("This phone has view-only access, so it can see the devices but not change them.",
+        if (!app.isAdmin) Text("This ${DeviceForm.noun} has view-only access, so it can see the devices but not change them.",
             color = N.amber, fontSize = 14.sp, modifier = Modifier.padding(horizontal = 30.dp, vertical = 6.dp))
         list.groupBy { it.optString("user").ifEmpty { "No name yet" } }.toSortedMap(compareBy { if (it == "No name yet") "~" else it.lowercase() })
             .forEach { (user, ds) ->
@@ -120,11 +170,12 @@ fun roleLabel(r: String) = if (r == "viewer") "View only" else "Admin"
                 Group {
                     ds.forEachIndexed { i, d -> if (i > 0) RowDivider()
                         val me = d.optBoolean("current"); val viewer = d.optString("role") == "viewer"
-                        Row1(d.optString("name") + if (me) "  ·  this phone" else "",
-                            "${roleLabel(d.optString("role"))} · last seen ${d.optString("last_seen", "never").let { if (it == "null") "never" else it }}" +
+                        Row1(d.optString("name") + if (me) "  ·  this ${DeviceForm.noun}" else "",
+                            "${formLabel(d)} · ${roleLabel(d.optString("role"))} · last seen ${d.optString("last_seen", "never").let { if (it == "null") "never" else it }}" +
                                 (d.optString("via").takeIf { it.isNotEmpty() && it != "null" }?.let { " via $it" } ?: "") +
                                 if (d.optString("type") == "browser") " · risky actions approved on a phone" else if (!d.optBoolean("stepup")) " · no fingerprint key" else "",
-                            false, if (d.optString("type") == "browser") Icons.Rounded.Computer else if (viewer) Icons.Rounded.Visibility else Icons.Rounded.AdminPanelSettings,
+                            false, when (d.optString("form").ifEmpty { if (d.optString("type") == "browser") "desktop" else "phone" }) {
+                                "tablet" -> Icons.Rounded.TabletAndroid; "desktop" -> Icons.Rounded.Computer; else -> Icons.Rounded.PhoneAndroid },
                             if (me) N.green else if (viewer) N.sub else N.blue, onClick = { if (app.isAdmin) menu = d }) {
                             if (app.isAdmin) Icon(Icons.Rounded.MoreVert, "Options", tint = N.sub)
                         }
@@ -144,10 +195,10 @@ fun roleLabel(r: String) = if (r == "viewer") "View only" else "Admin"
             }
             SectionLabel("Remove access")
             Group {
-                Row1("Remove all other devices", "Only this phone keeps access", false, Icons.Rounded.PhonelinkErase, N.amber,
+                Row1("Remove all other devices", "Only this ${DeviceForm.noun} keeps access", false, Icons.Rounded.PhonelinkErase, N.amber,
                     enabled = list.size > 1, onClick = { removeAll = true })
                 RowDivider()
-                Row1("Remove every device", "Including this phone — you'll need to pair again on the server's network", false,
+                Row1("Remove every device", "Including this ${DeviceForm.noun} — you'll need to pair again on the server's network", false,
                     Icons.Rounded.DeleteForever, N.red, onClick = { removeAll = false })
             }
         }
@@ -158,7 +209,7 @@ fun roleLabel(r: String) = if (r == "viewer") "View only" else "Admin"
         OneDialog({ menu = null }, d.optString("name"), buttons = listOf(DialogButton("Close") { menu = null })) {
             DialogChoice("Who & access", "${d.optString("user").ifEmpty { "No name" }} · ${roleLabel(d.optString("role"))}", false) { menu = null; access = d }
             DialogChoice("Rename device", null, false) { menu = null; rename = d }
-            DialogChoice(if (d.optBoolean("current")) "Remove this phone" else "Remove access", "It can never connect again", false) { menu = null; revoke = d }
+            DialogChoice(if (d.optBoolean("current")) "Remove this ${DeviceForm.noun}" else "Remove access", "It can never connect again", false) { menu = null; revoke = d }
         }
     }
     access?.let { d ->
@@ -207,8 +258,8 @@ fun roleLabel(r: String) = if (r == "viewer") "View only" else "Admin"
         }
     }
     revoke?.let { d -> val me = d.optBoolean("current")
-        OneDialog({ revoke = null }, if (me) "Remove this phone?" else "Remove ${d.optString("name")}?",
-            if (me) "This phone loses access to the server and its keys are erased." else "It will never be able to connect again.",
+        OneDialog({ revoke = null }, if (me) "Remove this ${DeviceForm.noun}?" else "Remove ${d.optString("name")}?",
+            if (me) "This ${DeviceForm.noun} loses access to the server and its keys are erased." else "It will never be able to connect again.",
             listOf(DialogButton("Cancel") { revoke = null }, DialogButton("Remove", N.red) { revoke = null
                 app.act("Removed") { app.stepUp("Remove ${d.optString("name")}", "DELETE", "/api/v1/devices/${d.optString("id")}")
                     if (me) { Servers.remove(app.activity, app.pairing.profile); app.switchServer(Servers.active(app.activity)) } else load() } })) }

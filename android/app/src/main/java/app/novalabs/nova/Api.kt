@@ -86,7 +86,7 @@ class NovaApi(private val pairing: Pairing) {
     suspend fun stepUp(activity: Activity, title: String, method: String, path: String,
                        body: JSONObject? = null): JSONObject {
         if (!pairing.keys.hasStepUp() || !pairing.stepUpRegistered)
-            throw ApiException(403, "Fingerprint confirmation isn't set up yet — open Settings → This phone on home Wi-Fi.")
+            throw ApiException(403, "Fingerprint confirmation isn't set up yet — open Settings → This ${DeviceForm.noun} on home Wi-Fi.")
         val pr = prepare(method, path, body)
         val sig = pairing.keys.stepUpSignature()
         val authed = suspendCancellableCoroutine { cont ->
@@ -200,9 +200,9 @@ class NovaApi(private val pairing: Pairing) {
             val text = resp.body.string()
             if (!resp.isSuccessful) {
                 val obj = runCatching { JSONObject(text) }.getOrDefault(JSONObject())
-                if (resp.code == 401) throw ApiException(401, "This phone isn't authorized anymore. Pair again.")
+                if (resp.code == 401) throw ApiException(401, "This ${DeviceForm.noun} isn't authorized anymore. Pair again.")
                 if (obj.optString("error") == "view_only")
-                    throw ApiException(403, "This phone has view-only access — ask an admin to change it.")
+                    throw ApiException(403, "This ${DeviceForm.noun} has view-only access — ask an admin to change it.")
                 if (obj.optString("error") == "stepup_required")
                     throw ApiException(403, obj.optString("message", "Needs fingerprint confirmation"), stepUpRequired = true)
                 if (route == "remote" && !obj.has("error") && (resp.code in 520..530 || resp.code in 502..504))
@@ -250,7 +250,7 @@ class NovaApi(private val pairing: Pairing) {
         /** Pairing happens on the home LAN only, unsigned, with the one-time code. */
         suspend fun pair(lan: String, code: String, name: String, publicKeyPem: String, pin: String = ""): JSONObject =
             withContext(Dispatchers.IO) {
-                val body = JSONObject().put("code", code).put("name", name).put("public_key", publicKeyPem)
+                val body = JSONObject().put("code", code).put("name", name).put("public_key", publicKeyPem).put("form", DeviceForm.kind)
                 val req = Request.Builder().url(lan.trimEnd('/') + "/api/v1/pair")
                     .post(body.toString().toByteArray().toRequestBody("application/json".toMediaType())).build()
                 try {
