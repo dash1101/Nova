@@ -65,9 +65,15 @@ def verify_sums(sums: bytes, sig: bytes):
 
 def fetch(url, dest=None, limit=200 * 1024 * 1024):
     if not url.startswith("https://"): fail("refusing a non-https download")
-    req = urllib.request.Request(url, headers={"User-Agent": "nova-update", "Accept": "application/octet-stream"})
-    with urllib.request.urlopen(req, timeout=60) as r:
-        data = r.read(limit + 1)
+    api = url.startswith("https://api.github.com/")
+    req = urllib.request.Request(url, headers={"User-Agent": "nova-update", "Accept": "application/vnd.github+json" if api else "application/octet-stream"})
+    try:
+        with urllib.request.urlopen(req, timeout=60) as r:
+            data = r.read(limit + 1)
+    except urllib.error.HTTPError as e:
+        fail(f"{'GitHub' if 'github' in url else 'the update source'} answered {e.code} for {url.split('?')[0]}" + (" (no release published yet?)" if e.code == 404 else ""))
+    except (urllib.error.URLError, OSError) as e:
+        fail(f"couldn't download {url.split('?')[0]}: {getattr(e, 'reason', e)}")
     if len(data) > limit: fail("download too large")
     if dest: open(dest, "wb").write(data)
     return data
