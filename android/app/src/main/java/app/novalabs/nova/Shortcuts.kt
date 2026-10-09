@@ -178,11 +178,11 @@ fun navTabs(app: AppState): List<Shortcut> =
     AppPrefs.navTabs.mapNotNull { id -> NAV_TABS.firstOrNull { it.id == id } }.filter { it.feature == null || app.has(it.feature) }
         .let { if (it.none { t -> t.id == "home" }) listOf(NAV_TABS[0]) + it else it }
 
-/** Settings → Appearance → Bottom bar (or hold the bar). */
+/** Settings → Appearance → Navigation pill (or hold it). */
 @Composable fun EditTabsScreen(app: AppState) {
     val ids = AppPrefs.navTabs.let { if ("home" in it) it else listOf("home") + it }
     fun save(v: List<String>) = AppPrefs.set("nav_tabs", v.joinToString(","))
-    Page("Bottom bar", app::back) {
+    Page("Navigation pill", app::back) {
         Box(Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 6.dp), contentAlignment = Alignment.Center) {
             val t = navTabs(app)
             // the preview sits inside the blurred page, so it can't blur that same page: plain glass

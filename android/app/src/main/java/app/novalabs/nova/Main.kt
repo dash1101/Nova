@@ -364,19 +364,15 @@ private fun Modifier.paneTouch(app: AppState, left: Boolean) = pointerInput(left
 
 /** Tablets & unfolded foldables: navigation rail + list/detail side by side (One UI tablet style). */
 @Composable private fun WideLayout(app: AppState, width: androidx.compose.ui.unit.Dp) {
-    val rail = buildList {
-        add(Triple<Route, androidx.compose.ui.graphics.vector.ImageVector, String>(Route.Home, Icons.Rounded.Dns, "Home"))
-        add(Triple(Route.Status, Icons.Rounded.MonitorHeart, "Status"))
-        add(Triple(Route.Containers, Icons.Rounded.ViewInAr, "Containers"))
-        if (app.has("store")) add(Triple(Route.Store, Icons.Rounded.Storefront, "Store"))
-        if (app.has("ssh")) add(Triple(Route.Ssh, Icons.Rounded.Terminal, "Terminal"))
-        add(Triple(Route.Dashboard, Icons.Rounded.Dashboard, "Dashboard"))
-        add(Triple(Route.Menu, Icons.AutoMirrored.Rounded.List, "Menu"))
-    }
+    val tabs = navTabs(app)
     val root = app.stack.first()
     Row(Modifier.fillMaxSize()) {
+        // The bottom bar's pill, turned on its side: same tabs, same glass (hold it to choose the tabs)
         if (app.top != Route.Dashboard)        // the always-on dashboard gets the whole screen
-            NavRail(rail.map { it.second to it.third }, rail.indexOfFirst { it.first == root }) { i -> app.tab(rail[i].first) }
+            Box(Modifier.fillMaxHeight().statusBarsPadding().navigationBarsPadding().padding(start = 12.dp, end = 4.dp), contentAlignment = Alignment.Center) {
+                VerticalNav(tabs.indexOfFirst { it.route == root }, tabs.map { it.icon }, tabs.map { it.label }, { i -> app.tab(tabs[i].route) },
+                    onLongClick = { app.go(Route.EditTabs) })
+            }
         val parent = app.stack.getOrNull(app.stack.size - 2)
         Box(Modifier.weight(1f).fillMaxHeight()) {
             if (parent != null && width >= 900.dp) Row(Modifier.fillMaxSize()) {

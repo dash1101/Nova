@@ -938,16 +938,20 @@ export async function serverSettings(ctx) {
 }
 export async function appearance(ctx) {
   const draw = () => {
-    const t = prefs.theme;
-    ctx.show(`${sec("Theme")}${group([["system", "Same as this device"], ["light", "Light"], ["dark", "Dark"]].map(([k, l]) => row(l, { end: radio(t === k), click: "theme:" + k })).join(""))}
+    const t = prefs.theme, st = prefs.style, mat = document.documentElement.classList.contains("material"), look = mat ? "Material" : "Default";
+    const autoMat = /Android/i.test(navigator.userAgent) && !/SamsungBrowser|SM-[A-Z0-9]|Xiaomi|Redmi|POCO|HUAWEI|HONOR|vivo|OPPO|realme/i.test(navigator.userAgent);
+    ctx.show(`${sec("Style")}${group([["auto", "Automatic", `${autoMat ? "Material You" : "Default"} — matches this device`], ["default", "Default", "Nova's own look: frosted glass, soft glow, One UI-style"],
+        ["material", "Material You", "Google's Material 3 Expressive: tonal colours from the accent, bolder shapes, springy motion"]].map(([k, l, d]) => row(l, { sub: d, end: radio(st === k), click: "style:" + k })).join(""))}
+      ${sec("Theme")}${group([["system", "Same as this device"], ["light", `${look} light`], ["dark", `${look} dark`]].map(([k, l]) => row(l, { end: radio(t === k), click: "theme:" + k })).join(""))}
       ${group(switchRow("Reduce motion", "Simple fades instead of slides and bounces", prefs.reduceMotion, "motion", { blue: false }))}
       ${sec("Home")}${group(row("Home layout", { sub: prefs.homeOrder.filter(id => prefs[HOME_SECTIONS.find(s => s[0] === id)[3]]).map(id => HOME_SECTIONS.find(s => s[0] === id)[1]).join(" · ") || "Just the header", blue: true, icon: "dash", click: "go:edit-home" })
         + row("Choose shortcuts", { sub: homeChips().map(s => s.label).join(", ") || "None", blue: true, icon: "tune", click: "go:edit-shortcuts" })
-        + row("Bottom bar", { sub: navTabs().map(s => s.label).join(", "), blue: true, icon: "viewday", click: "go:edit-tabs" }))}
+        + row("Navigation pill", { sub: navTabs().map(s => s.label).join(", ") + " · along the bottom, or down the left on wide screens", blue: true, icon: "viewday", click: "go:edit-tabs" }))}
       ${note("These choices are saved in this browser. Each server also has its own name and accent colour (Settings → Server).")}`, { title: "Appearance" });
   };
   ctx.handlers({
     theme: k => { prefs.theme = k; ctx.applyTheme(); draw(); },
+    style: k => { prefs.style = k; ctx.applyTheme(); ctx.refreshNav(); draw(); },
     motion: () => { prefs.reduceMotion = !prefs.reduceMotion; ctx.applyTheme(); draw(); },
   });
   draw();
@@ -984,8 +988,8 @@ export const editShortcuts = ctx => editList(ctx, { title: "Home shortcuts", lab
   preview: () => { const l = homeChips(); return `<div style="padding:4px 0 6px">${l.length ? `<div class="pillbar glass${l.length >= 5 ? " five" : ""}">${l.map(s => `<button>${I(s.icon)}<span class="l">${esc(l.length >= 5 ? s.short : s.label)}</span></button>`).join("")}</div>` : note("No shortcuts — add some below.")}</div>`; } });
 export const editTabs = ctx => {
   if (!prefs.navTabs.includes("home")) prefs.navTabs = ["home", ...prefs.navTabs];
-  editList(ctx, { title: "Bottom bar", label: "Tabs · hold and drag to reorder", all: NAV_TABS, key: "navTabs", max: 5, fixed: "home", resetLabel: "Reset the bottom bar",
-    preview: () => { const t = navTabs(), i = t.findIndex(x => x.id === "home"); return `<div style="display:flex;justify-content:center;padding:4px 0 6px"><div class="nav glass" style="position:static;transform:none"><div class="items"><span class="bead" style="transform:translateX(${i * 80}px)"></span>${t.map(x => `<button aria-label="${esc(x.label)}">${I(x.icon)}</button>`).join("")}</div></div></div>${note("On a wide screen these sit in the side rail. Back from any tab goes to Home. If you remove Menu, it's still in Home ⋮.")}`; } });
+  editList(ctx, { title: "Navigation pill", label: "Tabs · hold and drag to reorder", all: NAV_TABS, key: "navTabs", max: 5, fixed: "home", resetLabel: "Reset the navigation pill",
+    preview: () => { const t = navTabs(), i = t.findIndex(x => x.id === "home"); return `<div style="display:flex;justify-content:center;padding:4px 0 6px"><div class="nav glass" style="position:static;transform:none"><div class="items"><span class="bead" style="transform:translateX(${i * 80}px)"></span>${t.map(x => `<button aria-label="${esc(x.label)}">${I(x.icon)}</button>`).join("")}</div></div></div>${note("On a wide screen or in landscape the same pill stands down the left edge. Back from any tab goes to Home. If you remove Menu, it's still in Home ⋮.")}`; } });
 };
 export async function about(ctx) {
   const s = S.overview?.server || {};

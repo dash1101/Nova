@@ -136,7 +136,7 @@ object AppLock {
             Row1("Choose shortcuts", homeShortcuts(app).joinToString(", ") { it.label }.ifEmpty { "None" }, true,
                 Icons.Rounded.Tune, onClick = { app.go(Route.EditShortcuts) })
             RowDivider()
-            Row1("Bottom bar", navTabs(app).joinToString(", ") { it.label }, true,
+            Row1("Navigation pill", navTabs(app).joinToString(", ") { it.label } + " · bottom, or left in landscape", true,
                 Icons.Rounded.ViewDay, onClick = { app.go(Route.EditTabs) })
         }
         Text("Each server also has its own name and accent colour (Settings → Server).", color = N.sub, fontSize = 13.sp,

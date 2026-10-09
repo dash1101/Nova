@@ -1,5 +1,5 @@
 // Nova web — entry: router (with back stack, scroll memory and slide transitions), the app shell
-// (side rail on wide screens, frosted bottom bar on phones), pairing, start-up.
+// (the frosted nav pill: along the bottom on phones, down the left on wide screens), pairing, start-up.
 import { S, $, $$, esc, sleep, kv, pemOf, get, post, prefs, has, refresh, onApproval, ApiError, webForm } from "./core.js";
 import { I, logo, toast, waitApproval, closeSheet } from "./ui.js";
 import * as V from "./views.js";
@@ -13,6 +13,10 @@ function applyTheme() {
   if (t === "system") delete root.dataset.theme; else root.dataset.theme = t;
   root.classList.toggle("reduce", prefs.reduceMotion || matchMedia("(prefers-reduced-motion: reduce)").matches);
   const dark = t === "dark" || (t === "system" && !matchMedia("(prefers-color-scheme: light)").matches);
+  // Style: Material You on Android phones that aren't Samsung (or another One UI/iOS-like maker); the Default look elsewhere
+  const autoMaterial = /Android/i.test(navigator.userAgent) && !/SamsungBrowser|SM-[A-Z0-9]|Xiaomi|Redmi|POCO|HUAWEI|HONOR|vivo|OPPO|realme/i.test(navigator.userAgent);
+  const material = prefs.style === "material" || (prefs.style !== "default" && autoMaterial);
+  root.classList.toggle("material", material); root.classList.toggle("m-dark", material && dark); root.classList.toggle("m-light", material && !dark);
   $('meta[name="theme-color"]')?.setAttribute("content", dark ? "#000000" : "#f4f3f8");
 }
 applyTheme();
@@ -27,8 +31,9 @@ const ROUTES = {
   dashboard: V.dashboard, "edit-dash": V.editDash, archive: V.archive,
   setup: ST.setup, pool: ST.pool, task: ST.task, backups: ST.backups, backup: ST.backup, "backup-edit": ST.backupEdit, restore: ST.restore, diag: ST.diag,
 };
-const RAIL = () => [["home", "dns", "Home"], ["status", "status", "Status"], ["containers", "box", "Containers"],
-  ...(has("store") ? [["store", "store", "Store"]] : []), ["dashboard", "dash", "Dashboard"], ["menu", "list", "Menu"]];
+// Wide screens and phones in landscape: the bottom bar's pill stands on its end down the left edge.
+const SIDE = matchMedia("(min-width: 900px), (orientation: landscape) and (max-height: 540px)");
+SIDE.addEventListener?.("change", () => { const n = $("#nav"); if (n) n.dataset.ids = ""; drawNav(parse()[0]); });
 const parse = () => (location.hash.replace(/^#\/?/, "") || "home").split("/").filter(Boolean).map(decodeURIComponent);
 
 // ── navigation: a real back stack on top of browser history ───────────────────────
@@ -64,27 +69,26 @@ addEventListener("popstate", e => {
 });
 addEventListener("keydown", e => { if (e.key === "Escape" && !$("#sheet").hidden) closeSheet(); });
 
-// ── the shell (rail + page + top bar + bottom bar), built once ────────────────────
+// ── the shell (page + top bar + nav pill), built once ────────────────────
 function ensureShell() {
   if ($("#shell")) return;
-  $("#app").innerHTML = `<div class="shell" id="shell"><nav class="rail" id="rail"></nav><main class="main" id="main"></main></div>
+  $("#app").innerHTML = `<div class="shell" id="shell"><main class="main" id="main"></main></div>
     <div class="scrim"></div><div class="topbar" id="topbar"></div><nav class="nav frost" id="nav" hidden></nav>`;
   addEventListener("scroll", fade, { passive: true });
 }
 function fade() { const f = Math.max(0, Math.min(1, scrollY / 36)); $$("#topbar .bgc").forEach(b => b.style.setProperty("--fade", f)); }
-function drawRail(route) {
-  if (!$("#rail")) return;
-  const sel = RAIL().findIndex(([k]) => k === route) >= 0 ? route : rootRoute;
-  $("#rail").innerHTML = logo() + RAIL().map(([k, ic, l]) => `<button class="${k === sel ? "on" : ""}" data-act="tab:${k}"><span class="ic">${I(ic)}</span>${l}</button>`).join("");
-}
 function drawNav(route) {
-  const t = V.navTabs(), i = t.findIndex(x => x.route === route), nav = $("#nav");
+  const side = SIDE.matches, t = V.navTabs(), nav = $("#nav");
   if (!nav) return;
-  nav.hidden = i < 0 || innerWidth >= 900;
+  // phones: only on the tab pages; side pill: always there, the bead on the tab you came from
+  const i = t.findIndex(x => x.route === route) >= 0 ? t.findIndex(x => x.route === route) : side ? t.findIndex(x => x.route === rootRoute) : -1;
+  nav.hidden = (i < 0 && !side) || route === "dashboard";
+  document.body.classList.toggle("side", side && route !== "dashboard");
+  nav.classList.toggle("vertical", side);
   if (nav.hidden) return;
   const was = nav.dataset.sel, ids = t.map(x => x.id).join();
   if (nav.dataset.ids !== ids) {
-    nav.innerHTML = `<div class="items"><span class="bead"></span>${t.map(x => `<button class="press" aria-label="${esc(x.label)}" data-act="tab:${x.route}">${I(x.icon)}</button>`).join("")}</div>`;
+    nav.innerHTML = `<div class="items"><span class="bead"></span>${t.map(x => `<button class="press" aria-label="${esc(x.label)}" data-act="tab:${x.route}"><span class="ind">${I(x.icon)}</span><small>${esc(x.label)}</small></button>`).join("")}</div>`;
     nav.dataset.ids = ids;
     let h; nav.onpointerdown = () => { h = setTimeout(() => { navigator.vibrate?.(10); go("edit-tabs"); }, 550); };
     nav.onpointerup = nav.onpointerleave = () => clearTimeout(h);
@@ -92,7 +96,9 @@ function drawNav(route) {
   }
   const bead = $(".bead", nav);
   if (was == null) { bead.style.transition = "none"; requestAnimationFrame(() => bead.style.transition = ""); }
-  bead.style.transform = `translateX(${i * 80}px)`; nav.dataset.sel = i;
+  bead.style.opacity = i < 0 ? "0" : "1";
+  $$("button", nav).forEach((btn, k) => btn.classList.toggle("on", k === i));
+  bead.style.transform = side ? `translateY(${Math.max(0, i) * 60}px)` : `translateX(${Math.max(0, i) * 80}px)`; nav.dataset.sel = i;
 }
 
 // ── render a route ───────────────────────────────────────────────────────────────
@@ -100,7 +106,6 @@ function render(dir = 0) {
   const my = ++seq, [r, ...args] = parse(), view = ROUTES[r] || V.home;
   current?.leave(); closeSheet();
   if (V.navTabs().some(t => t.route === r) && depth === 0) rootRoute = r;
-  if (RAIL().some(([k]) => k === r) && depth === 0) rootRoute = r;
   let shown, firstShow = new Promise(res => shown = res);
   const leaveFns = [], timers = [];
   let handlers = {};
@@ -129,7 +134,7 @@ function render(dir = 0) {
       main.dataset.seq = my; ctx.root = main;
       $("#topbar").innerHTML = (o.root || o.noHeader ? "" : `<button class="circle press" data-act="back" aria-label="Back"><span class="bgc frost"></span>${I("back")}</button>`)
         + `<span class="sp"></span>` + (o.actions || []).map(a => `<button class="circle press" data-act="${esc(a.act)}" aria-label="${esc(a.label)}"><span class="bgc frost"></span>${I(a.icon)}</button>`).join("");
-      drawRail(r); drawNav(r);
+      drawNav(r);
       if (first) {
         const y = dir === -1 ? (scrolls[keyNow()] || 0) : 0;
         requestAnimationFrame(() => { scrollTo(0, y); fade(); });
@@ -228,6 +233,6 @@ async function start() {
   ensureShell(); render(0);
   // keep the overview fresh in the background (screens refresh what they show themselves)
   setInterval(() => { if (!document.hidden) refresh().catch(e => { if (e.code === 401) unauthorized(); }); }, 30000);
-  addEventListener("resize", () => { const [r] = parse(); drawNav(r); drawRail(r); });
+  addEventListener("resize", () => { const [r] = parse(); drawNav(r); });
 }
 start();

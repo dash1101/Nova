@@ -106,7 +106,7 @@ export async function waitJob(job, onUpdate) {
 
 // ── preferences (this browser) — same choices as the app's Appearance screens ───
 const PREF_DEFAULTS = {
-  theme: "system", reduceMotion: false,
+  theme: "system", style: "auto", reduceMotion: false,
   homeOrder: ["hero", "shortcuts", "stats"], homeHero: true, homeShortcuts: true, homeStats: true,
   homeChips: ["inbox", "quick", "containers", "storage"],
   navTabs: ["store", "home", "menu"],

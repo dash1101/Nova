@@ -219,24 +219,6 @@ data class PillItem(val icon: ImageVector, val label: String, val badge: Int = 0
 /** True when the tablet / wide layout is in use (screens can rearrange themselves). */
 val LocalWide = staticCompositionLocalOf { false }
 
-/** One UI tablet navigation rail: icons in rounded pills down the left edge, with labels. */
-@Composable fun NavRail(items: List<Pair<ImageVector, String>>, selected: Int, onSelect: (Int) -> Unit) {
-    Column(Modifier.fillMaxHeight().width(96.dp).statusBarsPadding().navigationBarsPadding().padding(top = 28.dp, bottom = 12.dp),
-        horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        items.forEachIndexed { i, (ic, label) ->
-            val bg by animateColorAsState(if (i == selected) N.navSel else Color.Transparent, label = "rail")
-            Column(Modifier.clip(RoundedCornerShape(22.dp)).clickable { onSelect(i) }.padding(vertical = 6.dp, horizontal = 4.dp),
-                horizontalAlignment = Alignment.CenterHorizontally) {
-                Box(Modifier.size(width = 64.dp, height = 40.dp).clip(RoundedCornerShape(20.dp)).background(bg), contentAlignment = Alignment.Center) {
-                    Icon(ic, label, tint = N.text, modifier = Modifier.size(24.dp))
-                }
-                Text(label, color = if (i == selected) N.text else N.sub, fontSize = 12.sp, fontWeight = if (i == selected) FontWeight.Bold else FontWeight.Medium,
-                    maxLines = 1, modifier = Modifier.padding(top = 4.dp))
-            }
-        }
-    }
-}
-
 /** The floating bottom bar. The "you are here" bead is its own little pane of frosted glass that
  *  slides from tab to tab; hold the bar to choose its tabs. */
 @Composable fun FloatingNav(selected: Int, icons: List<ImageVector>, labels: List<String>, onSelect: (Int) -> Unit,
@@ -303,6 +285,46 @@ val LocalWide = staticCompositionLocalOf { false }
 }
 
 /** One UI segmented tabs (pill). */
+/** The same floating pill, stood on its end for landscape and tablets: down the left edge, same
+ *  frosted glass, same sliding bead, same tabs (hold it to choose them). */
+@Composable fun VerticalNav(selected: Int, icons: List<ImageVector>, labels: List<String>, onSelect: (Int) -> Unit,
+                            modifier: Modifier = Modifier, onLongClick: (() -> Unit)? = null) {
+    val itemH = 64.dp; val gap = 4.dp
+    val y by androidx.compose.animation.core.animateDpAsState((itemH + gap) * selected.coerceAtLeast(0),
+        if (reduceMotion()) androidx.compose.animation.core.snap() else androidx.compose.animation.core.spring(dampingRatio = 0.72f, stiffness = 420f), label = "vbead")
+    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
+    val hold = Modifier.pointerInput(onLongClick) { detectTapGestures(onLongPress = { onLongClick?.let { l -> haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress); l() } }) }
+    if (N.material) {
+        Column(modifier.frosted(null, RoundedCornerShape(32.dp), 6.dp).then(hold).padding(horizontal = 8.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(gap)) {
+            icons.forEachIndexed { i, ic ->
+                val on = i == selected
+                val w by androidx.compose.animation.core.animateDpAsState(if (on) 56.dp else 40.dp, if (reduceMotion()) androidx.compose.animation.core.snap() else androidx.compose.animation.core.spring(0.55f, 380f), label = "vind")
+                Column(Modifier.width(72.dp).height(itemH).clip(RoundedCornerShape(20.dp)).bouncy(onLongClick = onLongClick) { onSelect(i) },
+                    horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                    Box(Modifier.size(width = w, height = 32.dp).clip(RoundedCornerShape(16.dp)).background(if (on) N.navSel else Color.Transparent), contentAlignment = Alignment.Center) {
+                        Icon(ic, labels[i], tint = if (on) N.text else N.sub, modifier = Modifier.size(24.dp))
+                    }
+                    Text(labels[i], fontSize = 11.sp, fontWeight = if (on) FontWeight.Bold else FontWeight.Medium, color = if (on) N.text else N.sub, maxLines = 1, modifier = Modifier.padding(top = 3.dp))
+                }
+            }
+        }
+        return
+    }
+    Box(modifier.frosted(LocalRootHaze.current, RoundedCornerShape(40.dp), 18.dp).then(hold).padding(6.dp)) {
+        if (selected >= 0) Box(Modifier.offset(y = y).size(width = 64.dp, height = itemH)
+            .frosted(LocalRootHaze.current, RoundedCornerShape(28.dp), 4.dp)
+            .background(if (N.dark) Color.White.copy(alpha = 0.10f) else Color.Black.copy(alpha = 0.05f)))
+        Column(verticalArrangement = Arrangement.spacedBy(gap)) {
+            icons.forEachIndexed { i, ic ->
+                Box(Modifier.size(width = 64.dp, height = itemH).clip(RoundedCornerShape(28.dp))
+                    .bouncy(onLongClick = onLongClick) { onSelect(i) }, contentAlignment = Alignment.Center) {
+                    Icon(ic, labels[i], tint = N.text, modifier = Modifier.size(26.dp))
+                }
+            }
+        }
+    }
+}
+
 @Composable fun Segmented(options: List<String>, selected: Int, onSelect: (Int) -> Unit) {
     if (N.material) {                       // M3 Expressive connected button group
         Row(Modifier.padding(horizontal = Space.gutter, vertical = 6.dp).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
