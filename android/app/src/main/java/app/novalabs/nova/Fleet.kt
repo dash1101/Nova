@@ -94,6 +94,7 @@ private class ServerLive(val id: String) { var overview by mutableStateOf<JSONOb
     val ctx = app.activity
     var ids by remember { mutableStateOf(Servers.all(ctx).filter { Pairing(ctx, it).paired }) }
     val live = remember(ids) { ids.associateWith { ServerLive(it) } }
+    val apis = remember(ids) { ids.associateWith { NovaApi(Pairing(ctx, it)) } }      // one client (and connection pool) per server
     var remove by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(ids) {
         while (true) {
@@ -101,7 +102,7 @@ private class ServerLive(val id: String) { var overview by mutableStateOf<JSONOb
                 ids.map { id -> async {
                     val l = live[id] ?: return@async
                     if (id == app.pairing.profile) { l.overview = app.overview; l.error = app.error; return@async }
-                    runCatching { NovaApi(Pairing(ctx, id)).get("/api/v1/overview") }
+                    runCatching { (apis[id] ?: return@async).get("/api/v1/overview") }
                         .onSuccess { l.overview = it; l.error = null }.onFailure { l.error = it.message ?: "Can't reach it" }
                 } }.awaitAll()
             }

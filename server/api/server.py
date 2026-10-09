@@ -34,7 +34,7 @@ try:                       # optional module: fan/case lighting (modules/fan-gig
 except ImportError:
     nova_rgb = None
 
-API_VERSION = "0.4.4-alpha"
+API_VERSION = "0.4.4-alpha.1"
 CONFIG = "/etc/nova-api/config.json"
 DATA = "/var/lib/nova-api"
 DEVICES = f"{DATA}/devices.json"
@@ -272,6 +272,8 @@ def describe_action(a):
     if p[:1] == ["power"]: return "Restart the server" if p[1:] == ["reboot"] else "Shut down the server"
     if p[:1] == ["devices"]: return "Change paired devices"
     if p[:1] == ["ssh"]: return "Let this phone log in over SSH"
+    if p == ["alerts", "dismiss"]: return f"Ignore the alert “{a.get('data', {}).get('key', '')}”"
+    if p == ["events", "delete"]: return "Clear the whole inbox" if a.get("data", {}).get("all") else "Delete from the inbox"
     return f"{a['method']} {a['path']}"
 
 def browser_forbidden(method, parts, dev):
@@ -312,6 +314,11 @@ def basic_status():
                 "load": f"{n.get('load')} / {n.get('cores')} cores" if n.get("load") is not None else None,
                 "uptime": f"{up // 86400}d {up % 86400 // 3600}h",
                 "root_used": f"{used}% ({du.free / 1e9:.0f} GB free)"}.items() if v is not None}}
+
+def browser_needs_phone(method, parts):
+    """Harmless from a phone (hardware key, one swipe), but from a browser they could hide what
+    happened — silence an alert, erase the login history — so a browser asks a phone first."""
+    return method == "POST" and parts in (["alerts", "dismiss"], ["events", "delete"])
 
 # Actions that need the fingerprint-bound step-up key (second signature).
 def needs_stepup(method, parts):
@@ -497,7 +504,7 @@ class Handler(BaseHTTPRequestHandler):
                 devs = load_json(DEVICES, {}); devs.pop(dev["id"], None); save_json(DEVICES, devs)
             audit(device=dev["name"], path=path, result=200, why="browser removed itself")
             return self.send(200, {"ok": True})
-        if needs_stepup(method, parts) and not dev.get("stepup_ok") and dev.get("type") == "browser" and role_of(dev) == "admin":
+        if (needs_stepup(method, parts) or browser_needs_phone(method, parts)) and not dev.get("stepup_ok") and dev.get("type") == "browser" and role_of(dev) == "admin":
             try: data0 = json.loads(body) if body else {}
             except ValueError: data0 = {}
             a = new_approval(dev, method, path, data0)

@@ -43,7 +43,7 @@ private fun copy(ctx: Context, label: String, text: String) =
     var route by remember { mutableStateOf(app.pairing.sshRoute) }      // auto | Home Wi-Fi | Tailscale
     var keyDialog by remember { mutableStateOf(false) }
     val hosts = info?.optJSONArray("hosts")?.let { a -> (0 until a.length()).map { a.getJSONObject(it) } } ?: emptyList()
-    val user = info?.optString("user") ?: "dash"
+    val user = info?.optString("user")?.ifEmpty { null } ?: "you"
     val keyState = live(app, "/api/v1/ssh/authorize")                  // {installed} — older servers: 404 → null
     val installed = keyState.value?.optBoolean("installed")
     var installing by remember { mutableStateOf(false) }
@@ -80,7 +80,7 @@ private fun copy(ctx: Context, label: String, text: String) =
                 Text(">_", color = Color(0xFF3ECF6E), fontFamily = Mono, fontSize = 34.sp, fontWeight = FontWeight.Bold)
             }
             Spacer(Modifier.height(12.dp))
-            Text("$user@${app.overview?.optJSONObject("server")?.optString("name") ?: "nova-xypher"}", color = N.text, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+            Text("$user@${app.overview?.optJSONObject("server")?.optString("name") ?: "server"}", color = N.text, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
             Text("A real shell on the server, over SSH", color = N.sub, fontSize = 14.sp)
         }
         if (SshSession.active) Group {
