@@ -9,8 +9,8 @@ jobs:
       - name: Syntax check
         run: |
           python3 -m py_compile server/api/*.py packaging/pentest.py
-          for f in server/api/*; do head -1 "$f" | grep -q python && python3 -c "import ast,sys; ast.parse(open(sys.argv[1]).read())" "$f"; done
-          for f in server/api/*; do head -1 "$f" | grep -q bash && bash -n "$f"; done
+          for f in server/api/*; do if head -1 "$f" | grep -q python; then python3 -c "import ast,sys; ast.parse(open(sys.argv[1]).read())" "$f"; fi; done
+          for f in server/api/*; do if head -1 "$f" | grep -q bash; then bash -n "$f"; fi; done
           bash -n server/install.sh packaging/build-deb.sh packaging/release.sh
           for f in server/web/*.js; do node --check "$f"; done
       - name: Build package
