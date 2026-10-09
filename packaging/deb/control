@@ -8,7 +8,7 @@ Depends: python3 (>= 3.11), python3-cryptography, qrencode, iproute2, systemd, r
 Recommends: docker.io | docker-ce, ufw, smartmontools, mergerfs, mdadm, xfsprogs, btrfs-progs, exfatprogs, nfs-common, cifs-utils, fio, stress-ng, iputils-tracepath, iputils-ping, attr
 Suggests: tailscale, cloudflared
 Maintainer: Nova contributors <nova@localhost>
-Homepage: https://github.com/
+Homepage: https://github.com/dash1101/Nova
 Description: secure phone & web remote for your home server
  Nova lets you manage a Linux home server from the Nova Android app or a
  browser: status and live graphs, containers (logs, shell, start/stop), an app

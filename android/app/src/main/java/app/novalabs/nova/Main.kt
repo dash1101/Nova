@@ -93,7 +93,11 @@ class AppState(val activity: Activity, val pairing: Pairing, val scope: Coroutin
     /** Which way the last navigation went, so transitions slide the right way. */
     var navDir by mutableIntStateOf(0)          // 1 forward, -1 back, 0 tab switch / instant
     fun go(r: Route) { navDir = 1; if (wide && leftPane && stack.size >= 2) pop(); stack.add(r) }
-    fun tab(r: Route) { navDir = 0; stack.clear(); scrolls.clear(); stack.add(r) }
+    fun tab(r: Route) {
+        // Only real tabs (in your navigation pill) reset the stack; anything else opens as a page with a back button
+        if (r != Route.Home && r !is Route.AppFrame && navTabs(this).none { it.route == r }) { go(r); return }
+        navDir = 0; stack.clear(); scrolls.clear(); stack.add(r)
+    }
     /** [instant]: the page underneath is already on screen (predictive back finished) — swap with no transition. */
     fun back(instant: Boolean = false) {
         if (stack.size > 1) { navDir = if (instant) 2 else -1; pop() }

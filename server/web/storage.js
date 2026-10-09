@@ -1,7 +1,7 @@
 // Nova web — storage map, drive setup wizard, pools, background tasks, backups, diagnostics.
 // Mirrors the app's Storage.kt / Backups.kt / Diagnostics.kt.
-import { S, $, esc, get, post, del, bytes, isAdmin, signedFetch } from "./core.js";
-import { I, row, group, sec, note, radio, switchRow, segmented, bar, usageColor, toast, dialog, confirm, wireCommon } from "./ui.js";
+import { S, $, $$, esc, get, post, del, bytes, isAdmin, signedFetch } from "./core.js";
+import { I, row, group, sec, note, radio, switchRow, segmented, bar, usageColor, toast, dialog, confirm, wireCommon, sheet, closeSheet } from "./ui.js";
 
 const enc = encodeURIComponent;
 const viewOnly = () => toast("This browser has view-only access");
@@ -332,7 +332,7 @@ export async function backupEdit(ctx) {
     let body = "";
     if (v.step === 0) body = secHelp("What to back up", "backup") + group((sug ? srcs.map((s, i) => row(s.label, { sub: `${s.why}${s.size != null ? ` · ${bytes(s.size)}` : ""} · ${s.path}`, blue: v.sources.has(s.path), icon: "list", end: radio(v.sources.has(s.path)), click: `src:${i}` })).join("") : row("Looking at your server…", { dis: true }))
         + [...v.sources].filter(p => !srcs.some(s => s.path === p)).map(p => row(p, { sub: "Added by you", blue: true, icon: "list", end: radio(true), click: `unsrc:${enc(p)}` })).join(""))
-      + group(`<div style="padding:16px;display:flex;gap:8px">${field("custom", "", "Another folder, e.g. /srv/music")}<button class="pillbtn press" data-act="addsrc">Add</button></div>`);
+      + group(`<div style="padding:16px;display:flex;gap:8px;flex-wrap:wrap">${field("custom", "", "Another folder, e.g. /srv/music")}<button class="pillbtn press" data-act="browse">Browse…</button><button class="pillbtn press" data-act="addsrc">Add</button></div>`);
     if (v.step === 1) body = secHelp("Where the copies go", "nas") + segmented(["A drive", "NAS (SMB)", "NAS (NFS)"], ["local", "smb", "nfs"].indexOf(v.destType), "dt")
       + (v.destType === "local" ? group((dests.map((d, i) => row(d.label, { sub: `${d.path} · ${bytes(d.free)} free${d.backup ? " · backup drive" : ""}`, blue: v.destPath === d.path, icon: "disk", tint: d.backup ? "var(--green)" : "var(--blue)", end: radio(v.destPath === d.path), click: `dst:${i}` })).join("")
           || row("No other drive found", { sub: "Set one up first: Storage & hardware → Set up drives → A backup drive", dis: true })) + row("Set up a new backup drive", { sub: "Erase a spare drive and use it for backups", icon: "addc", tint: "var(--green)", click: "go:setup/backup" }))
@@ -360,6 +360,7 @@ export async function backupEdit(ctx) {
   ctx.handlers({
     src: i => { const p = S.cache["/api/v1/backups/suggest"].sources[+i].path; v.sources.has(p) ? v.sources.delete(p) : v.sources.add(p); draw(); },
     unsrc: p => { v.sources.delete(decodeURIComponent(p)); draw(); },
+    browse: async () => { const p = await pickFolder(); if (p) { v.sources.add(p); draw(); } },
     addsrc: () => { const p = ($("#custom").value || "").trim().replace(/\/+$/, "") || "/"; if (!p.startsWith("/")) return toast("Give a full path, like /srv/music"); v.sources.add(p); draw(); },
     dst: i => { v.destPath = S.cache["/api/v1/backups/suggest"].destinations[+i].path; draw(); },
     test: async () => { v.tested = "Testing…"; draw(); try { const r = await post("/api/v1/backups/test", { ...job(), name: "test", sources: v.sources.size ? [...v.sources] : ["/etc"] });
@@ -468,3 +469,79 @@ export async function diag(ctx) {
   ctx.every(4000, async () => { await Promise.all([get("/api/v1/tasks"), get("/api/v1/diag/top").catch(() => {}), S.cache["/api/v1/storage"] ? null : get("/api/v1/storage").catch(() => {})]); if (!v.devLive) draw(); }, true);
 }
 
+
+
+// ── apps: the web apps on the server ───────────────────────────────────────────
+// Nova web is HTTPS and most home-server apps are plain http on the LAN, so browsers won't show them
+// inside this page: each app opens in its own tab (the Android app opens them inside Nova).
+const iconCache = {};
+async function appIcon(id) {
+  if (id in iconCache) return iconCache[id];
+  try { const r = await signedFetch("GET", `/api/v1/apps/${enc(id)}/icon`); iconCache[id] = r.ok ? URL.createObjectURL(await r.blob()) : null; }
+  catch { iconCache[id] = null; }
+  return iconCache[id];
+}
+const appHref = a => {
+  const ip = /^(\d+\.){3}\d+$|^\[/.test(location.hostname), remote = !ip && !/\.local$/.test(location.hostname);
+  if (remote) return a.remote_url || null;
+  if (a.url) return a.url;
+  if (!a.port) return null;
+  const host = a.host_ip || location.hostname;
+  return `${a.scheme || "http"}://${host.includes(":") ? `[${host}]` : host}:${a.port}${a.path || "/"}`;
+};
+export async function apps(ctx) {
+  let showHidden = false;
+  const draw = () => {
+    const all = S.cache["/api/v1/apps"]?.apps || [], list = all.filter(a => showHidden || !a.hidden);
+    ctx.show(note("The web apps on your server. Each opens in its own tab. Right-click (or hold) an app to rename, hide it or set a remote link.")
+      + (S.cache["/api/v1/apps"] ? (list.length ? `<div class="appgrid">${list.map((a, i) => { const h = appHref(a);
+          return `<a class="appcell${a.hidden ? " dim" : ""}" ${h ? `href="${esc(h)}" target="_blank" rel="noopener noreferrer"` : `data-act="noreach"`} data-i="${i}"><span class="appic" data-id="${esc(a.id)}">${esc((a.name || "?")[0].toUpperCase())}</span><span class="appname">${esc(a.name)}</span></a>`; }).join("")}</div>`
+        : group(row("No web apps found", { sub: "Install one from the Store, or add a link with +", icon: "apps" }))) : note("Looking for apps…"))
+      + (all.some(a => a.hidden) ? group(switchRow("Show hidden apps", null, showHidden, "hid")) : ""),
+      { title: "Apps", actions: [{ icon: "add", label: "Add an app", act: "add" }] });
+    $$(".appic", ctx.root).forEach(async el => { const u = await appIcon(el.dataset.id); if (u && ctx.alive()) { el.textContent = ""; el.style.backgroundImage = `url("${u}")`; el.classList.add("img"); } });
+    $$(".appcell", ctx.root).forEach(el => el.oncontextmenu = e => { e.preventDefault(); edit(list[+el.dataset.i]); });
+  };
+  const edit = async a => {
+    if (!isAdmin()) return viewOnly();
+    const v = { name: a?.name || "", url: a?.url || "", remote_url: a?.remote_url || "", icon: a?.slug || "" };
+    const f = (id, ph) => `<input class="field" id="ap-${id}" placeholder="${esc(ph)}" value="${esc(v[id])}" style="margin-top:8px">`;
+    const btns = [{ label: "Cancel", value: null }, ...(a && a.source !== "custom" ? [{ label: a.hidden ? "Show" : "Hide", value: "hide" }] : []), ...(a?.source === "custom" ? [{ label: "Delete", color: "var(--red)", value: "del" }] : []), { label: "Save", color: "var(--blue)", value: "save" }];
+    const p = dialog(a ? a.name : "Add an app", a ? "Leave the link empty to use the one Nova found." : "Any web page on your network, like http://192.168.1.20:8096",
+      btns, `<div class="pad">${f("name", "Name")}${f("url", a ? "Link at home (optional)" : "Link (http://…)")}${f("remote_url", "Remote link, e.g. https://photos.example.com (optional)")}${f("icon", "Icon name from dashboard-icons, e.g. jellyfin")}</div>`);
+    for (const k of Object.keys(v)) $("#ap-" + k).oninput = e => v[k] = e.target.value.trim();
+    const r = await p; if (!r) return;
+    try {
+      if (r === "del") await del(`/api/v1/apps/${enc(a.id)}`);
+      else await post("/api/v1/apps", { ...(a ? { id: a.id } : {}), ...(r === "hide" ? { hidden: !a.hidden } : v) });
+      delete iconCache[a?.id]; await get("/api/v1/apps"); draw();
+    } catch (e) { toast(e.message); }
+  };
+  ctx.handlers({ add: () => edit(null), hid: () => { showHidden = !showHidden; draw(); },
+    noreach: () => toast("This app is only on your home network or Tailscale — right-click it to add a remote link") });
+  draw(); ctx.every(30000, async () => { await get("/api/v1/apps"); draw(); }, true);
+}
+
+
+/** Pick a folder on the server by clicking through it. Resolves the path, or null. */
+export function pickFolder(start = "/") {
+  return new Promise(res => {
+    let path = start, done = false;
+    const finish = v => { if (done) return; done = true; closeSheet(); res(v); };
+    const box = sheet(`<h2>Choose a folder</h2><div class="pad" id="fp"></div><div class="acts"><button data-fp="cancel">Cancel</button><i></i><button data-fp="up">Up</button><i></i><button data-fp="pick" style="color:var(--blue)">Back up this folder</button></div>`, () => { if (!done) { done = true; res(null); } });
+    const load = async () => {
+      const el = $("#fp", box); el.innerHTML = `<p class="muted">Loading…</p>`;
+      let r; try { r = await get(`/api/v1/fs/dirs?path=${enc(path)}`); path = r.path; } catch (e) { r = { dirs: [], error: e.message }; }
+      el.innerHTML = `<div class="muted" style="font-family:ui-monospace,monospace;margin-bottom:8px;overflow-wrap:anywhere">${esc(path)}</div>
+        <div style="max-height:50vh;overflow:auto">${r.error ? `<p style="color:var(--red)">${esc(r.error)}</p>` : r.dirs.length ? r.dirs.map((d, i) => `<button class="choice" data-d="${i}"><span class="t" style="display:flex;gap:10px;align-items:center">${I("list")} ${esc(d)}</span></button>`).join("") : `<p class="muted">No folders inside</p>`}</div>`;
+      $$("[data-d]", el).forEach(b => b.onclick = () => { path = path.replace(/\/$/, "") + "/" + r.dirs[+b.dataset.d]; load(); });
+    };
+    $$("[data-fp]", box).forEach(b => b.onclick = () => {
+      const k = b.dataset.fp;
+      if (k === "cancel") finish(null);
+      else if (k === "up") { path = path.replace(/\/[^/]*\/?$/, "") || "/"; load(); }
+      else finish(path);
+    });
+    load();
+  });
+}

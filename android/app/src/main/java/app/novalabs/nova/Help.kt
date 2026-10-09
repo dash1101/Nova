@@ -23,7 +23,7 @@ object Help {
         "pool" to ("What's a pool?" to "Several drives that work as one. Nova can make two kinds: a combined pool (drives added together into one big folder) " +
             "and a RAID array (drives that keep copies or parity, so one can fail without losing anything)."),
         "combine" to ("One big drive (combined)" to "Your drives keep working as separate drives, but Nova shows them as one folder. New files go to the drive with the most free space. " +
-            "You can mix sizes and add drives later. If one drive dies you only lose the files on that drive — so back the pool up. This is how your Immich photos are stored now."),
+            "You can mix sizes and add drives later. If one drive dies you only lose the files on that drive — so back the pool up."),
         "raid0" to ("Fastest (RAID 0, stripe)" to "Every file is split across all the drives, so reading and writing are faster. But if any one drive fails, everything is lost. Only for scratch space or things you can re-download."),
         "raid1" to ("Mirror (RAID 1)" to "Every drive holds the same copy. Space = one drive. Survives all but one drive failing. Simple and very safe; great for two drives."),
         "raid5" to ("Parity (RAID 5)" to "Spreads data and a checksum (parity) across 3 or more drives. Space = all drives minus one. Survives one drive failing. " +

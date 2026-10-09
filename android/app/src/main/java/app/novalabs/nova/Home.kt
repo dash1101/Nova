@@ -127,7 +127,7 @@ import org.json.JSONObject
                 true, Icons.Rounded.Lightbulb, androidx.compose.ui.graphics.Color(0xFFFFB020), onClick = { app.go(Route.Lighting) })
         }
         Group {
-            Row1("Storage & hardware", "Drives, pools, set up drives" + (m?.optString("photo_pool_used")?.takeIf { it.isNotEmpty() }?.let { " · photos $it" } ?: ""), true, Icons.Rounded.Storage,
+            Row1("Storage & hardware", "Drives, pools, set up drives" + (storageList(m).filter { it.mount != "/" }.maxByOrNull { it.pct }?.let { " · ${it.name} ${it.pct.toInt()}%" } ?: ""), true, Icons.Rounded.Storage,
                 androidx.compose.ui.graphics.Color(0xFF3ECF6E), onClick = { app.go(Route.Hardware) })
             RowDivider()
             Row1("Backups", "What's backed up, restore files", true, Icons.Rounded.Backup, onClick = { app.go(Route.Backups) })
@@ -218,8 +218,8 @@ import org.json.JSONObject
 private data class StatCard(val icon: androidx.compose.ui.graphics.vector.ImageVector, val label: String, val value: String,
                             val sub: String, val frac: Float?, val color: Color)
 
-private val SET_NAMES = mapOf("immich" to "Photos", "home" to "Home folder", "minecraft" to "Minecraft",
-    "cold" to "Cold storage", "gaming" to "Games")
+/** A backup script's set names as shown ("home" → "Home"). */
+private object SET_NAMES { operator fun get(k: String): String? = k.takeIf { it.isNotEmpty() }?.replace('_', ' ')?.replaceFirstChar { it.uppercase() } }
 
 /** "Photos · 42% · 12 min left" — or what's known when the script reports no numbers. */
 fun backupLine(b: JSONObject): String {

@@ -1,4 +1,4 @@
-# Nova  ·  0.4.0-alpha
+# Nova  ·  0.5.4-alpha
 
 **A secure remote control for your home server, from your Android phone.**
 Status and live graphs, containers (logs, shell, start/stop), a one-tap app store, drives,
@@ -47,15 +47,14 @@ the only privileged code is a root helper with a fixed list of verbs. Details: [
 ## Install the server (Debian / Ubuntu)
 
 ```bash
-sudo apt install ./nova-server_0.4.0~alpha_all.deb     # or, from source:  sudo ./server/install.sh
-sudo nova-setup                                         # guided setup: network, Tailscale, remote, firewall
-sudo nova add                                      # shows a QR code: scan it with the app
+sudo apt install ./nova-server_*_all.deb    # from https://github.com/dash1101/Nova/releases/latest
+sudo nova setup                             # guided setup: network, Tailscale, remote, location, tools, firewall
+sudo nova add                               # shows a QR code: scan it with the app
 ```
 
 Full walkthrough, extras and troubleshooting: **[docs/SETUP.md](docs/SETUP.md)**.
 
-Handy commands: `sudo nova devices`, `sudo nova remove <id>`, `sudo nova-api log`,
-`sudo nova add --role viewer --user Alex`.
+Everything else: `sudo nova` lists all commands (`approve`, `devices`, `remove`, `status`, `update`, `backup`, …).
 
 ## Install the app
 

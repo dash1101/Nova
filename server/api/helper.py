@@ -590,6 +590,21 @@ def _guard(fn):
     except ValueError as e: fail(str(e))
     except RuntimeError as e: fail(str(e))
 
+if verb == "list-dirs" and len(args) == 1:
+    # Folder names under a path, for the backup folder picker (no files, no system folders).
+    def go():
+        p = os.path.realpath("/" + args[0].strip("/")) if args[0] != "/" else "/"
+        if any(p == x or p.startswith(x + "/") for x in ("/proc", "/sys", "/dev", "/run")): raise ValueError("not a folder you can back up")
+        if not os.path.isdir(p): raise ValueError("no such folder")
+        out = []
+        with os.scandir(p) as it:
+            for e in it:
+                if e.is_dir(follow_symlinks=False) and not (p == "/" and e.name in ("proc", "sys", "dev", "run", "lost+found")):
+                    out.append(e.name)
+                if len(out) >= 500: break
+        return {"path": p, "dirs": sorted(out, key=str.lower)}
+    _guard(go)
+
 if verb == "apps-detect" and not args:
     import apps; _guard(lambda: {"apps": apps.detect()})
 

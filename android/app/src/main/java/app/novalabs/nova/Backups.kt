@@ -2,6 +2,7 @@ package app.novalabs.nova
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -155,6 +156,7 @@ private fun lastText(j: JSONObject): Pair<String, String> {
     var step by remember { mutableIntStateOf(0) }
     var sources by remember { mutableStateOf(r.sources.toSet()) }
     var custom by remember { mutableStateOf("") }
+    var browsing by remember { mutableStateOf(false) }
     var destType by remember { mutableStateOf("local") }
     var destPath by remember { mutableStateOf(r.dest ?: "") }
     var host by remember { mutableStateOf("") }; var share by remember { mutableStateOf("") }; var subdir by remember { mutableStateOf("") }
@@ -234,7 +236,10 @@ private fun lastText(j: JSONObject): Pair<String, String> {
                         Column(Modifier.padding(16.dp)) {
                             OneTextField(custom, { custom = it.take(300) }, "Another folder, e.g. /srv/music", Modifier.fillMaxWidth())
                             Spacer(Modifier.height(8.dp))
-                            PillButton("Add folder", custom.startsWith("/")) { sources = sources + custom.trimEnd('/').ifEmpty { "/" }; custom = "" }
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                PillButton("Browse folders…") { browsing = true }
+                                PillButton("Add folder", custom.startsWith("/")) { sources = sources + custom.trimEnd('/').ifEmpty { "/" }; custom = "" }
+                            }
                         }
                     }
                 }
@@ -321,6 +326,7 @@ private fun lastText(j: JSONObject): Pair<String, String> {
                 }
             }
         }
+        if (browsing) FolderPicker(app, { browsing = false }) { p -> sources = sources + p; browsing = false }
         CancelSavePill({ if (step > 0) step-- else app.back() }, {
             if (step < 4) step++ else app.act {
                 val res = app.api.post("/api/v1/backups", job())
@@ -393,6 +399,37 @@ fun kotlinx.coroutines.CoroutineScope.launchCatching(onError: (String) -> Unit, 
                 pick = null; app.act { val t = app.stepUp("Restore ${p.substringAfterLast('/')}", "POST", "/api/v1/backups/${r.id}/restore",
                     JSONObject().put("snapshot", r.snap).put("path", p).put("to", "beside")); app.go(Route.Task(t.optString("id"))) } }
             DialogChoice("Cancel", null, false) { pick = null }
+        }
+    }
+}
+
+
+/** Pick a folder on the server by tapping through it (for backup sources). */
+@Composable fun FolderPicker(app: AppState, onDismiss: () -> Unit, onPick: (String) -> Unit) {
+    var path by remember { mutableStateOf("/") }
+    var dirs by remember { mutableStateOf<List<String>?>(null) }
+    var err by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(path) {
+        dirs = null; err = null
+        try { dirs = app.api.get("/api/v1/fs/dirs?path=" + java.net.URLEncoder.encode(path, "UTF-8")).optJSONArray("dirs").strs() } catch (e: Exception) { err = e.message }
+    }
+    OneDialog(onDismiss, "Choose a folder", path, listOf(
+        DialogButton("Cancel") { onDismiss() },
+        DialogButton("Up", enabled = path != "/") { path = path.trimEnd('/').substringBeforeLast('/').ifEmpty { "/" } },
+        DialogButton("Back up this folder", N.blue) { onPick(path) })) {
+        Column(Modifier.heightIn(max = 360.dp).verticalScroll(androidx.compose.foundation.rememberScrollState())) {
+            when {
+                err != null -> Text(err!!, color = N.red, modifier = Modifier.padding(horizontal = 26.dp))
+                dirs == null -> Text("Loading…", color = N.sub, modifier = Modifier.padding(horizontal = 26.dp))
+                dirs!!.isEmpty() -> Text("No folders inside", color = N.sub, modifier = Modifier.padding(horizontal = 26.dp))
+                else -> dirs!!.forEach { d ->
+                    Row(Modifier.fillMaxWidth().clickable { path = (path.trimEnd('/') + "/" + d) }.padding(horizontal = 26.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        androidx.compose.material3.Icon(Icons.Rounded.Folder, null, tint = N.blue, modifier = Modifier.size(22.dp)); Spacer(Modifier.width(14.dp))
+                        Text(d, color = N.text, fontSize = 16.sp, maxLines = 1, modifier = Modifier.weight(1f))
+                        androidx.compose.material3.Icon(Icons.Rounded.ChevronRight, null, tint = N.sub)
+                    }
+                }
+            }
         }
     }
 }

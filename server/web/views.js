@@ -9,14 +9,14 @@ import * as ST from "./storage.js";
 
 // ── catalogs (same ids as the app, so the two read alike) ───────────────────────
 export const SHORTCUTS = [
-  ["inbox", "bell", "Inbox", "inbox"], ["quick", "widgets", "Quick panel", "quick", null, "Quick"], ["containers", "box", "Containers", "containers"],
+  ["inbox", "bell", "Inbox", "inbox"], ["apps", "apps", "Apps", "apps"], ["quick", "widgets", "Quick panel", "quick", null, "Quick"], ["containers", "box", "Containers", "containers"],
   ["storage", "disk", "Storage", "hardware"], ["status", "status", "Status", "status"], ["lighting", "bulb", "Lighting", "lighting", "lighting"],
   ["terminal", "term", "Terminal", "terminal", "ssh"], ["store", "store", "Store", "store", "store"], ["dashboard", "dash", "Dashboard", "dashboard"],
   ["schedules", "clock", "Schedules", "schedules", "lighting"], ["devices", "group", "Devices", "devices"], ["settings", "gear", "Settings", "settings"],
 ].map(([id, icon, label, route, feature, short]) => ({ id, icon, label, route, feature, short: short || label }));
 const sc = id => SHORTCUTS.find(s => s.id === id);
 export const NAV_TABS = [{ id: "home", icon: "dns", label: "Home", route: "home" }, { id: "store", icon: "store", label: "Store", route: "store", feature: "store" },
-  { id: "menu", icon: "list", label: "Menu", route: "menu" }, ...["status", "containers", "storage", "inbox", "quick", "lighting"].map(sc)];
+  { id: "menu", icon: "list", label: "Menu", route: "menu" }, ...["apps", "status", "containers", "storage", "inbox", "quick", "lighting"].map(sc)];
 export const navTabs = () => {
   const t = prefs.navTabs.map(id => NAV_TABS.find(x => x.id === id)).filter(x => x && (!x.feature || has(x.feature)));
   return t.some(x => x.id === "home") ? t : [NAV_TABS[0], ...t];
@@ -49,7 +49,7 @@ export async function showDisconnected() {
   if (r) { await refresh(); return true; }
 }
 function backupLine(b) {
-  const p = b?.progress, NAMES = { immich: "Photos", home: "Home folder", minecraft: "Minecraft", cold: "Cold storage", gaming: "Games" };
+  const p = b?.progress, NAMES = new Proxy({}, { get: (_, k) => typeof k === "string" && k ? k.replace(/_/g, " ").replace(/^./, c => c.toUpperCase()) : k });
   if (!p) return "Backing up…";
   const set = NAMES[p.set] || p.set;
   if (p.phase === "copying") return `Backing up ${set} · ${p.pct}%` + (p.eta && p.eta !== "0:00:00" ? ` · ${p.eta} left` : "");
@@ -66,7 +66,7 @@ function topBanner() {
 /** Mounted storage: the monitor's list on any machine, or the older fixed keys. */
 function storageList(m) {
   if (Array.isArray(m?.storage) && m.storage.length) return m.storage.map(x => ({ name: x.name, pct: x.pct, free: bytes(x.free) + " free" }));
-  return [["System drive", "root_used"], ["Photos", "photo_pool_used"], ["Cold storage", "cold_storage_used"], ["Backup drive", "backup_drive_used"]].filter(x => m?.[x[1]])
+  return [["System drive", "root_used"]].filter(x => m?.[x[1]])
     .map(([n, k]) => ({ name: n, pct: pct(m[k]) ?? 0, free: (/\(([^)]*)\)/.exec(m[k]) || [])[1] || m[k] }));
 }
 const activeAlerts = () => (S.overview?.status?.active || []).filter(a => a.level !== "ok");
@@ -170,7 +170,7 @@ export async function menu(ctx) {
         + row("Terminal", { sub: "Container shells here · SSH in the phone app", icon: "term", tint: "#8e8e93", click: "go:terminal" }))}
       ${group(row("Inbox", { sub: S.unread ? `${S.unread} new` : "Alerts, logins and server events", blue: true, icon: "bell", tint: "#ff5a5a", click: "go:inbox" })
         + row("Notifications", { sub: "Discord, logins, USB", icon: "bell", click: "go:notify" }))}
-      ${has("store") ? group(row("App store", { sub: "Install apps & programs", blue: true, icon: "store", tint: "#bf5af2", click: "tab:store" })) : ""}
+      ${has("store") ? group(row("App store", { sub: "Install apps & programs", blue: true, icon: "store", tint: "#bf5af2", click: navTabs().some(t => t.route === "store") ? "tab:store" : "go:store" })) : ""}
       ${group(row("Users & devices", { sub: "Who can reach this server", blue: true, icon: "group", click: "go:devices" })
         + row("Settings", { icon: "gear", tint: "var(--sub)", click: "go:settings" })
         + row("About Nova", { sub: "Nova web", icon: "info", tint: "var(--sub)", click: "go:about" }))}`,
@@ -211,7 +211,7 @@ export async function status(ctx) {
         + row("Drives", { sub: `${m.drives || "—"} · ${m.drive_temps || ""}`, blue: true, icon: "disk", click: "go:hardware" }))}
       ${(() => { const rows = [...(backupRunning || m.data_backup ? [row("Data backup", { sub: backupRunning ? backupLine(S.cache["/api/v1/backup"]) : m.data_backup, blue: backupRunning, icon: "backup" })] : []),
           ...[["Backup sets", m.backup_sets], ["Photo check", (m.backup_verify || "").replace("✗", "").trim()], ["Server settings backup", m.config_backup],
-              ...Object.keys(m).filter(k => k.endsWith("_db_backup")).map(k => [k === "immich_db_backup" ? "Photo database backup" : cap(k.slice(0, -10).replace(/_/g, " ")) + " database backup", m[k]])].filter(x => x[1]).map(([l, v]) => row(l, { sub: v }))];
+              ...Object.keys(m).filter(k => k.endsWith("_db_backup")).map(k => [cap(k.slice(0, -10).replace(/_/g, " ")) + " database backup", m[k]])].filter(x => x[1]).map(([l, v]) => row(l, { sub: v }))];
         return rows.length ? sec("Backups") + group(rows.join("")) : ""; })()}
       ${sec("Services")}${group([["Containers", m.containers], ["Websites", m.websites], ["Swap", m.swap]].filter(x => x[1]).map(([l, v]) => row(l, { sub: v })).join("") || row("—"))}`,
       { title: "Server status" });
@@ -413,40 +413,73 @@ async function storeItem(ctx, id) {
 
 // ═════════════════════════════════════ INBOX ════════════════════════════════════
 export async function inbox(ctx) {
-  let filter = 0;
+  let filter = 0, picked = new Set(), last = null;
+  const mouse = matchMedia("(any-pointer: fine)").matches || navigator.maxTouchPoints === 0;     // a mouse or trackpad (touch screens keep swiping)
   const shown = () => (S.cache["/api/v1/events?since=0"]?.events || []).filter(e => filter === 1 ? ["warning", "critical"].includes(e.level) : filter === 2 ? e.level === "critical" : filter === 3 ? e.category === "login" : true);
   const draw = () => {
     const all = S.cache["/api/v1/events?since=0"]?.events, ev = shown();
+    picked = new Set([...picked].filter(t => ev.some(e => String(e.t) === t)));
     const days = {}; ev.forEach(e => (days[new Date(e.t * 1000).toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" })] ||= []).push(e));
+    const bar = picked.size ? `<div class="selbar glass"><b>${picked.size} selected</b><span class="sp"></span><button class="pillbtn press" data-act="selall">Select all</button>
+        <button class="pillbtn press" data-act="selnone">Clear</button><button class="btn" style="height:40px;padding:0 18px;font-size:15px" data-act="archsel">${I("down")} Archive ${picked.size}</button></div>` : "";
     ctx.show(`${attentionHtml()}${segmented(["All", "Issues", "Critical", "Logins"], filter, "f")}
-      ${ev.length ? `<p class="note" style="margin-top:6px">Swipe left to archive — it's kept on the server (Inbox → Archive), for every device.</p>` : ""}
-      ${Object.entries(days).map(([d, l]) => sec(d) + group(l.map(e => `<div class="swipe" data-key="${e.t}" data-left="Archive"><div class="swbg"></div><div class="swfg"><div class="row" style="align-items:flex-start"><span class="dot" style="margin-top:7px;background:${levelColor(e.level)}"></span><div class="t"><b style="font-size:16px">${esc(cleanTitle(e.title))}</b>${e.detail ? `<small>${esc(e.detail)}</small>` : ""}</div><span class="end" style="font-size:13px">${hm(e.t)}</span><button class="xbtn" data-act="del:${e.t}" aria-label="Archive">${I("down")}</button></div></div></div>`).join(""))).join("")
+      ${ev.length ? `<p class="note" style="margin-top:6px">${mouse ? "Tick events to archive several at once, or use the archive button on a row. Keys: <b>x</b> select · <b>e</b> archive · <b>Shift</b>-click a range." : "Swipe left to archive"} — archived events are kept on the server (Inbox → Archive), for every device.</p>` : ""}
+      ${bar}
+      ${Object.entries(days).map(([d, l]) => sec(d) + group(l.map(e => { const k = String(e.t), on = picked.has(k);
+          return `<div class="swipe${mouse ? " mouse" : ""}${on ? " picked" : ""}" data-key="${e.t}" data-left="Archive" tabindex="0"><div class="swbg"></div><div class="swfg"><div class="row" style="align-items:flex-start">
+            ${mouse ? `<button class="tick${on ? " on" : ""}" data-act="pick:${k}" aria-label="Select">${on ? I("check") : ""}</button>` : `<span class="dot" style="margin-top:7px;background:${levelColor(e.level)}"></span>`}
+            <div class="t">${mouse ? `<span class="dot" style="display:inline-block;margin-right:8px;background:${levelColor(e.level)}"></span>` : ""}<b style="font-size:16px;display:inline">${esc(cleanTitle(e.title))}</b>${e.detail ? `<small>${esc(e.detail)}</small>` : ""}</div>
+            <span class="end" style="font-size:13px">${hm(e.t)}</span><button class="xbtn" data-act="del:${e.t}" aria-label="Archive" title="Archive">${I("down")}</button></div></div></div>`; }).join(""))).join("")
         || note(all ? "Nothing here — all quiet." : "Loading…")}`,
       { title: "Inbox", actions: [{ icon: "book", label: "Archive", act: "go:archive" }, { icon: "del", label: "Archive everything", act: "clear" }, { icon: "gear", label: "Notification settings", act: "go:notify" }] });
-    wireCommon(ctx.root, { onSeg: (_, i) => { filter = i; draw(); } });
+    wireCommon(ctx.root, { onSeg: (_, i) => { filter = i; picked.clear(); draw(); } });
     swipeable(ctx.root, { onRight: key => dismissAlert(key, draw), onLeft: t => remove([+t]) });
+    $$(".swipe.mouse", ctx.root).forEach(el => el.onfocus = () => { last = el.dataset.key; });
   };
   const remove = async ts => {
     if (!isAdmin()) return viewOnly();
     const c = S.cache["/api/v1/events?since=0"];
-    await archiveMerge((c?.events || []).filter(e => ts.some(t => Math.abs(t - e.t) < .0005)), true);   // kept in this browser's history
     if (c) c.events = c.events.filter(e => !ts.some(t => Math.abs(t - e.t) < .0005));
+    ts.forEach(t => picked.delete(String(t)));
     draw();
-    try { await post("/api/v1/events/delete", { t: ts }); } catch (e) { toast(e.message); await get("/api/v1/events?since=0").catch(() => {}); draw(); }
+    try { await post("/api/v1/events/delete", { t: ts }); toast(ts.length > 1 ? `Archived ${ts.length}` : "Archived"); }
+    catch (e) { toast(e.message); await get("/api/v1/events?since=0").catch(() => {}); draw(); }
+  };
+  const toggle = (k, shift) => {
+    const ev = shown().map(e => String(e.t));
+    if (shift && last && ev.includes(last)) { const [a, b] = [ev.indexOf(last), ev.indexOf(k)].sort((x, y) => x - y); ev.slice(a, b + 1).forEach(t => picked.add(t)); }
+    else picked.has(k) ? picked.delete(k) : picked.add(k);
+    last = k; draw();
   };
   const keyOf = a => { a.pop(); return a.join(":"); };
   ctx.handlers({
     alert: (...a) => alertMenu(keyOf(a), draw), ignore: (...a) => dismissAlert(keyOf(a), draw), del: t => remove([+t]),
+    pick: (k, el) => toggle(k, lastClickShift), selall: () => { shown().forEach(e => picked.add(String(e.t))); draw(); }, selnone: () => { picked.clear(); draw(); },
+    archsel: () => remove([...picked].map(Number)),
     clear: async () => {
-      if (!(await confirm("Archive everything?", filter === 0 ? "The server's inbox is emptied for every device; everything stays in the server's Archive. Active alerts stay until they're fixed or ignored." : `The ${shown().length} event(s) shown leave the server's inbox; they stay in the server's Archive.`, "Archive", "var(--blue)"))) return;
+      if (!(await confirm("Archive everything?", filter === 0 ? "The server's inbox is emptied for every device; everything stays in the server's Archive. Active alerts stay until they're fixed or ignored." : `The ${shown().length} event(s) shown leave the inbox; they stay in the server's Archive.`, "Archive", "var(--blue)"))) return;
       if (!isAdmin()) return viewOnly();
       if (filter !== 0) return remove(shown().map(e => e.t));
-      const c = S.cache["/api/v1/events?since=0"]; await archiveMerge(c?.events || [], true); if (c) c.events = []; draw();
+      const c = S.cache["/api/v1/events?since=0"]; if (c) c.events = []; draw();
       try { await post("/api/v1/events/delete", { all: true }); toast("Archived — see Inbox → Archive"); } catch (e) { toast(e.message); }
     },
   });
+  // keyboard: x = select the focused row, e / Delete = archive it (or the selection)
+  const onKey = e => {
+    if (!ctx.alive()) return removeEventListener("keydown", onKey);
+    if (/INPUT|TEXTAREA/.test(document.activeElement?.tagName)) return;
+    const row = document.activeElement?.closest?.(".swipe"); const k = row?.dataset.key;
+    if (e.key === "x" && k) { e.preventDefault(); toggle(k, false); }
+    else if ((e.key === "e" || e.key === "Delete") && (picked.size || k)) { e.preventDefault(); remove(picked.size ? [...picked].map(Number) : [+k]); }
+    else if ((e.key === "j" || e.key === "ArrowDown" || e.key === "k" || e.key === "ArrowUp") && row) {
+      const rows = $$(".swipe", ctx.root), i = rows.indexOf(row) + (e.key === "j" || e.key === "ArrowDown" ? 1 : -1); rows[i]?.focus(); e.preventDefault();
+    }
+  };
+  let lastClickShift = false; const onDown = e => { lastClickShift = e.shiftKey; };
+  addEventListener("keydown", onKey); addEventListener("mousedown", onDown, true);
+  ctx.onLeave?.(() => { removeEventListener("keydown", onKey); removeEventListener("mousedown", onDown, true); });
   draw();
-  ctx.every(15000, async () => { const r = await get("/api/v1/events?since=0"); archiveMerge(r.events); if (r.events?.[0]) { prefs.lastEventSeen = r.events[0].t; S.unread = 0; } await refresh(); draw(); }, true);
+  ctx.every(15000, async () => { const r = await get("/api/v1/events?since=0"); if (r.events?.[0]) { prefs.lastEventSeen = r.events[0].t; S.unread = 0; } await refresh(); draw(); }, true);
 }
 export async function archive(ctx) {
   // The archive lives on the server (any device can read it). This browser's own copy fills gaps
@@ -787,7 +820,10 @@ export async function schedule(ctx) {
 
 // ═══════════════════════════════ STORAGE & HARDWARE ═════════════════════════════
 const driveName = d => { const m = d.model || "", gbn = Math.round(d.size / 1e9), gb = gbn >= 1000 ? Math.round(gbn / 1000) + "TB" : Math.round(gbn / 10) * 10 + "GB";
-  return /^CT.*MX500/.test(m) ? `Crucial MX500 ${gb}` : m.startsWith("SanDisk") ? `SanDisk SSD ${gb}` : /^ST.*LM/.test(m) ? `Seagate laptop HDD ${gb}` : m.startsWith("HFM") ? `SK hynix NVMe ${gb}` : m ? `${m} ${gb}` : d.name; };
+  const brand = [["CT", "Crucial"], ["ST", "Seagate"], ["WDC", "WD"], ["WD", "WD"], ["Samsung", "Samsung"], ["SAMSUNG", "Samsung"], ["SanDisk", "SanDisk"], ["HFM", "SK hynix"], ["HFS", "SK hynix"],
+    ["KINGSTON", "Kingston"], ["TOSHIBA", "Toshiba"], ["INTEL", "Intel"], ["Micron", "Micron"], ["HGST", "HGST"]].find(([p]) => m.startsWith(p))?.[1];
+  const kind = d.bus === "nvme" || (d.name || "").startsWith("nvme") ? "NVMe" : d.ssd ? "SSD" : "HDD";
+  return !m ? d.name : brand ? `${brand} ${kind} ${gb}` : `${m} ${gb}`; };
 const health = d => d.smart_passed === false ? ["Failing", "critical"] : (d.realloc > 0 || d.uncorrect > 0 || d.pending > 0) ? ["Worn — keep an eye on it", "warning"] : d.crc > 50 ? ["Healthy*", "ok"] : ["Healthy", "ok"];
 export async function hardware(ctx) {
   const [serial] = ctx.args;
@@ -795,7 +831,7 @@ export async function hardware(ctx) {
   const draw = () => {
     const hw = S.cache["/api/v1/hardware"], t = hw?.temps, ds = hw?.drives || [];
     const roles = {}; ds.forEach(d => (roles[d.role || "Other"] ||= []).push(d));
-    const ord = r => { const i = ["Photo pool", "Backup drive", "Cold storage", "Boot drive"].indexOf(r); return i < 0 ? 9 : i; };
+    const ord = r => r === "Boot drive" ? 1 : 0;
     ctx.show(`${ST.overviewHtml()}${t ? sec("Temperatures") + group(row("CPU", { sub: t.cpu_temp || "—", icon: "cpu" }) + row("Boot NVMe", { sub: t.nvme_temp || "—", icon: "ssd" }) + row("Drives", { sub: t.drive_temps || "—", icon: "disk" })) : ""}
       ${Object.entries(roles).sort(([a], [b]) => ord(a) - ord(b)).map(([r, l]) => sec(r) + group(l.map(d => { const [h, lv] = health(d), u = d.usage?.find(x => x.mount === "/") || d.usage?.[0], f = u ? u.used / Math.max(1, u.total) : 0;
           return `<div class="row click" data-act="open:${esc(d.serial)}" style="display:block"><div style="display:flex;align-items:center;gap:8px"><div class="t"><b>${esc(driveName(d))}</b><small>${bytes(d.size)} · ${d.ssd ? "SSD" : "HDD"} · ${esc((d.bus || "").toUpperCase())}${d.temp ? ` · ${d.temp}°C` : ""}</small></div><b style="color:${levelColor(lv)};font-size:14px">${h}</b></div>

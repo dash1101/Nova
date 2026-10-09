@@ -145,9 +145,8 @@ fun storageList(m: JSONObject?): List<StorageUse> {
     val list = m?.optJSONArray("storage")
     if (list != null && list.length() > 0) return (0 until list.length()).map { list.getJSONObject(it) }.map {
         StorageUse(it.optString("name"), it.optDouble("pct").toFloat(), "${bytesHuman(it.optLong("free"))} free", it.optString("mount")) }
-    return listOf("System drive" to "root_used", "Photos" to "photo_pool_used", "Cold storage" to "cold_storage_used", "Backup drive" to "backup_drive_used")
-        .filter { m?.has(it.second) == true }.map { (label, k) -> val v = m!!.optString(k)
-            StorageUse(label, Regex("(\\d+)%").find(v)?.groupValues?.get(1)?.toFloatOrNull() ?: 0f, Regex("\\(([^)]*)\\)").find(v)?.groupValues?.get(1) ?: v, "") }
+    val root = m?.optString("root_used")?.takeIf { it.isNotEmpty() } ?: return emptyList()      // servers without the monitor's list
+    return listOf(StorageUse("System drive", Regex("(\\d+)%").find(root)?.groupValues?.get(1)?.toFloatOrNull() ?: 0f, Regex("\\(([^)]*)\\)").find(root)?.groupValues?.get(1) ?: root, "/"))
 }
 
 private fun pct(s: String?) = s?.let { Regex("(\\d+)%").find(it)?.groupValues?.get(1)?.toFloatOrNull() }
@@ -219,7 +218,7 @@ private fun uptime(s: Long) = "${s / 86400}d ${s % 86400 / 3600}h ${s % 3600 / 6
         }
         // Backups — only what this server actually reports (nova-backup, database dumps…)
         val dbRows = m?.keys()?.asSequence()?.filter { it.endsWith("_db_backup") }?.map { k ->
-            (if (k == "immich_db_backup") "Photo database backup" else k.removeSuffix("_db_backup").replace('_', ' ').replaceFirstChar { it.uppercase() } + " database backup") to m.optString(k) }?.toList() ?: emptyList()
+            (k.removeSuffix("_db_backup").replace('_', ' ').replaceFirstChar { it.uppercase() } + " database backup") to m.optString(k) }?.toList() ?: emptyList()
         val rows = listOf("Backup sets" to m?.optString("backup_sets"), "Photo check" to m?.optString("backup_verify")?.replace("✗", "")?.trim(),
             "Server settings backup" to m?.optString("config_backup")).filter { !it.second.isNullOrEmpty() } + dbRows
         if (backupRunning || !m?.optString("data_backup").isNullOrEmpty() || rows.isNotEmpty()) {

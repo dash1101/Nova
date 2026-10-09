@@ -36,7 +36,7 @@ try:                       # optional module: fan/case lighting (modules/fan-gig
 except ImportError:
     nova_rgb = None
 
-API_VERSION = "0.5.3-alpha"
+API_VERSION = "0.5.4-alpha.1"
 CONFIG = "/etc/nova-api/config.json"
 DATA = "/var/lib/nova-api"
 DEVICES = f"{DATA}/devices.json"
@@ -680,7 +680,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("X-Frame-Options", "DENY")
         self.send_header("Permissions-Policy", "camera=(), microphone=(), geolocation=(self), payment=(), usb=(), interest-cohort=()")
         self.send_header("Cross-Origin-Opener-Policy", "same-origin")
-        self.send_header("Content-Security-Policy", "default-src 'self'; img-src 'self' data:; style-src 'self'; style-src-attr 'unsafe-inline'; script-src 'self'; "
+        self.send_header("Content-Security-Policy", "default-src 'self'; img-src 'self' data: blob:; style-src 'self'; style-src-attr 'unsafe-inline'; script-src 'self'; "
                          "connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'")
         self.end_headers(); self.wfile.write(data)
 
@@ -1090,6 +1090,9 @@ class Handler(BaseHTTPRequestHandler):
             if method == "GET": rc, res = helper("backups-list", timeout=60); return (200 if rc == 0 else 502), res
             if method == "POST":
                 rc, res = helper("backup-put", json.dumps(data)[:8000]); return (200 if rc == 0 else 400), res
+        if method == "GET" and parts == ["fs", "dirs"]:
+            if role_of(dev) != "admin" or dev.get("type") == "watch": return 403, {"error": "admins only"}
+            rc, res = helper("list-dirs", urllib.parse.unquote(q.get("path", "/"))[:1000] or "/"); return (200 if rc == 0 else 400), res
         if method == "GET" and parts == ["backups", "suggest"]:
             rc, res = helper("backup-suggest", timeout=90); return (200 if rc == 0 else 502), res
         if method == "POST" and parts == ["backups", "test"]:

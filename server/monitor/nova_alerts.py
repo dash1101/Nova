@@ -161,7 +161,7 @@ def mount_name(mp, names):
     return os.path.basename(mp.rstrip("/")).replace("_", " ").replace("-", " ").capitalize() or mp
 
 # Metric names older app versions read (they're simply extra keys for everyone else).
-LEGACY_METRIC = {"/": "root", "/mnt/immich": "photo_pool", "/mnt/cold_storage": "cold_storage", "/mnt/backup": "backup_drive"}
+LEGACY_METRIC = {"/": "root"}            # older apps read root_used; everything else is in metrics["storage"]
 
 # ── state ─────────────────────────────────────────────────────────────────────
 class Monitor:
@@ -577,7 +577,7 @@ class Monitor:
             self.metrics[metric] = human_age(dage) if dage is not None else "none found"
             self.condition(f"backup:db:{metric}", dage is None or dage > t * 3600, "warning",
                            f"{d.get('name', 'Database')} backup is stale", f"Newest dump: {self.metrics[metric]}.")
-        # Data backups (nova-backup, nightly 03:30): photos, home, Minecraft, cold storage
+        # Data backups from a nova-backup script, if this server has one
         pf = "/var/lib/nova-backup/data_last_success"
         bm = self.cfg.get("backup_mount") or ""
         if os.path.exists(pf) or (bm and os.path.ismount(bm)):
@@ -596,7 +596,7 @@ class Monitor:
             v = load_json("/var/lib/nova-backup/photos_last_verify.json", {})
             if v:
                 self.metrics["backup_verify"] = ("✓ " if v.get("mismatched", 0) + v.get("missing", 0) == 0 else "✗ ") + \
-                    f"{v.get('ok', 0)} photos checked {v.get('time', '')[:10]}"
+                    f"{v.get('ok', 0)} files checked {v.get('time', '')[:10]}"
         self.condition("sys:reboot", os.path.exists("/var/run/reboot-required"), "info",
                        "Reboot needed to finish updates",
                        open("/var/run/reboot-required.pkgs").read().strip().replace("\n", ", ")

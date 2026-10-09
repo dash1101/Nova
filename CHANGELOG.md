@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.4-alpha (app and server)
+- **Apps:** the web apps on your server (detected from Docker: Immich, Home Assistant, Jellyfin, … with icons from dashboard-icons, cached on the server) in a grid. On Android they open inside Nova in a rounded frame with the app's name, the server's status, back, reload and close; open apps stay alive in the navigation pill until you close them. Rename, hide, add your own links, set a remote link. Nova web opens them in a new tab.
+- **Web Inbox with a mouse:** no dragging or text selection; tick boxes (Shift-click for a range), an Archive bar for the selection, a visible Archive button on each row, keys x / e / j / k.
+- **Folder browser** for backup sources (app and web).
+- Store, Menu and other pages that aren't in your navigation pill open as normal pages with a back button (the pill no longer slides to a tab you don't have).
+- Generic defaults: no names, mounts or drive models from one particular server; drive names come from the maker's prefix.
+
 ## 0.5.3-alpha (app and server)
 - **Approve from your watch:** Settings → *Approve from notifications* (fingerprint once) adds Approve / Deny buttons to approval notifications, on the phone and on a paired watch. It uses a separate key the server registers as an approver: it can list, approve and deny what a browser is waiting on, nothing else; it follows its phone (removed with it, and stops if the phone loses admin).
 - Security test: 142 checks, all passing.

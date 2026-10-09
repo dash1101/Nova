@@ -296,6 +296,15 @@ body.side #toast { bottom: 24px; }
 .swipe .row + .row::before { display: none; }
 .xbtn { color: var(--sub); opacity: .0; transition: opacity .2s; padding: 6px; border-radius: 50%; }
 .swipe:hover .xbtn { opacity: .8; } @media (hover: none) { .xbtn { display: none; } }
+/* inbox with a mouse: no dragging or text selection; tick boxes, a visible archive button, a selection bar */
+.swipe.mouse { user-select: none; -webkit-user-select: none; cursor: default; }
+.swipe.mouse .xbtn { opacity: .45; } .swipe.mouse:hover .xbtn, .swipe.mouse:focus-within .xbtn { opacity: 1; }
+.swipe.mouse:focus-visible { outline: 2px solid var(--blue); outline-offset: -2px; border-radius: 12px; }
+.swipe.picked .swfg > .row { background: color-mix(in srgb, var(--blue) 12%, var(--card)); }
+.tick { width: 22px; height: 22px; border-radius: 7px; box-shadow: inset 0 0 0 2px var(--sub); display: grid; place-items: center; flex: none; margin-top: 2px; color: #fff; }
+.tick.on { background: var(--blue); box-shadow: none; } .tick svg { width: 16px; height: 16px; }
+.selbar { position: sticky; top: calc(70px + env(safe-area-inset-top)); z-index: 5; display: flex; align-items: center; gap: 8px; margin: 6px var(--gutter); padding: 10px 12px 10px 18px; border-radius: 24px; flex-wrap: wrap; }
+.selbar .sp { flex: 1; }
 
 /* ── Material You Expressive (Appearance → Style) ─────────────────────────────────────────────
    Tonal surfaces tinted by the accent instead of glass, segmented lists, large titles, M3 switches,
@@ -352,3 +361,12 @@ html.material .nav button small { display: block; font-size: 12px; }
 html.material .nav.vertical button { width: 72px; }
 .nav button small { display: none; }
 .nav button .ind { display: contents; }
+
+/* apps grid */
+.appgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; padding: 8px var(--gutter); }
+.appcell { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 12px 4px; border-radius: 18px; color: var(--text); text-decoration: none; }
+.appcell:hover { background: color-mix(in srgb, var(--text) 6%, transparent); } .appcell.dim { opacity: .5; }
+.appic { width: 60px; height: 60px; border-radius: 17px; display: grid; place-items: center; font: 700 26px/1 inherit; color: var(--blue);
+  background: color-mix(in srgb, var(--blue) 18%, transparent) center / 76% no-repeat; }
+.appic.img { background-color: var(--card); }
+.appname { font-size: 13px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

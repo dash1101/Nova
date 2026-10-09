@@ -20,14 +20,12 @@ import org.json.JSONObject
 
 private fun driveName(d: JSONObject): String {
     val m = d.optString("model"); val gb = (d.optLong("size") / 1_000_000_000L).let { if (it >= 1000) "${(it + 50) / 1000}TB" else "${((it + 5) / 10) * 10}GB" }
-    return when {
-        m.startsWith("CT") && "MX500" in m -> "Crucial MX500 $gb"
-        m.startsWith("SanDisk") -> "SanDisk SSD $gb"
-        m.startsWith("ST") && "LM" in m -> "Seagate laptop HDD $gb"
-        m.startsWith("HFM") -> "SK hynix NVMe $gb"
-        m.isEmpty() -> d.optString("name")
-        else -> "$m $gb"
-    }
+    // "Crucial SSD 500GB" instead of "CT500MX500SSD1 500GB": the maker from the model's prefix, plus the kind of drive
+    val brand = listOf("CT" to "Crucial", "ST" to "Seagate", "WDC" to "WD", "WD" to "WD", "Samsung" to "Samsung", "SAMSUNG" to "Samsung",
+        "SanDisk" to "SanDisk", "HFM" to "SK hynix", "HFS" to "SK hynix", "KINGSTON" to "Kingston", "TOSHIBA" to "Toshiba", "INTEL" to "Intel",
+        "Micron" to "Micron", "HGST" to "HGST", "Hitachi" to "Hitachi").firstOrNull { m.startsWith(it.first) }?.second
+    val kind = if (d.optString("bus") == "nvme" || d.optString("name").startsWith("nvme")) "NVMe" else if (d.optBoolean("ssd")) "SSD" else "HDD"
+    return when { m.isEmpty() -> d.optString("name"); brand != null -> "$brand $kind $gb"; else -> "$m $gb" }
 }
 private fun health(d: JSONObject): Pair<String, String> {
     val bad = (d.optInt("realloc", 0) > 0) || (d.optInt("uncorrect", 0) > 0) || (d.optInt("pending", 0) > 0)
@@ -53,7 +51,7 @@ private fun health(d: JSONObject): Pair<String, String> {
                 Row1("Drives", temps.optString("drive_temps", "—"), icon = Icons.Rounded.Storage, iconTint = N.blue)
             }
         }
-        drives.groupBy { it.optString("role") }.toSortedMap(compareBy { listOf("Photo pool", "Backup drive", "Cold storage", "Boot drive").indexOf(it).let { i -> if (i < 0) 9 else i } })
+        drives.groupBy { it.optString("role") }.toSortedMap(compareBy<String> { if (it == "Boot drive") 1 else 0 }.thenBy { it })
             .forEach { (role, ds) ->
                 SectionLabel(if (role == "Other" || role.isEmpty()) "Drives" else role)
                 Group {

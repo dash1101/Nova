@@ -29,7 +29,7 @@ const ROUTES = {
   devices: V.devices, settings: V.settings, server: V.serverSettings, appearance: V.appearance, "edit-home": V.editHome,
   "edit-shortcuts": V.editShortcuts, "edit-tabs": V.editTabs, about: V.about, guide: V.guide, terminal: V.terminal,
   dashboard: V.dashboard, "edit-dash": V.editDash, archive: V.archive,
-  setup: ST.setup, pool: ST.pool, task: ST.task, backups: ST.backups, backup: ST.backup, "backup-edit": ST.backupEdit, restore: ST.restore, diag: ST.diag,
+  apps: ST.apps, setup: ST.setup, pool: ST.pool, task: ST.task, backups: ST.backups, backup: ST.backup, "backup-edit": ST.backupEdit, restore: ST.restore, diag: ST.diag,
 };
 // Wide screens and phones in landscape: the bottom bar's pill stands on its end down the left edge.
 const SIDE = matchMedia("(min-width: 900px), (orientation: landscape) and (max-height: 540px)");
@@ -46,6 +46,8 @@ if (!history.state) history.replaceState({ k: newKey(), d: 0 }, "");
 
 function go(path) { saveScroll(); history.pushState({ k: newKey(), d: depth + 1 }, "", "#/" + path); depth++; render(1); }
 function tab(path) {
+  // Only real tabs (in your navigation pill) reset the stack; anything else opens as a page with a back button
+  if (path.split("/")[0] !== "home" && !V.navTabs().some(t => t.route === path.split("/")[0])) return go(path);
   saveScroll(); const r = path.split("/")[0]; rootRoute = r;
   const here = parse()[0];
   if (r === "home") {                                  // Home is the bottom of the stack: unwind to it

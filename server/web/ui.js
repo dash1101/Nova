@@ -279,7 +279,8 @@ export function swipeable(root, { onRight, onLeft } = {}) {
   $$(".swipe", root).forEach(el => {
     const fg = $(".swfg", el), bg = $(".swbg", el);
     let x0 = null, y0 = 0, dx = 0, armed = false, horiz = null;
-    el.addEventListener("pointerdown", e => { if (e.button > 0) return; x0 = e.clientX; y0 = e.clientY; dx = 0; horiz = null; armed = false; });
+    // Swipe with a finger or pen; with a mouse, rows have buttons and checkboxes instead (dragging is slow and selects text)
+    el.addEventListener("pointerdown", e => { if (e.button > 0 || e.pointerType === "mouse") return; x0 = e.clientX; y0 = e.clientY; dx = 0; horiz = null; armed = false; });
     el.addEventListener("pointermove", e => {
       if (x0 == null) return;
       const mx = e.clientX - x0, my = e.clientY - y0;
