@@ -59,6 +59,7 @@ sealed class Route {
     data class BackupWizard(val id: String?, val sources: List<String> = emptyList(), val dest: String? = null) : Route()
     data class BackupBrowse(val id: String, val snap: String = "", val path: String = "") : Route()
     data object Diagnostics : Route()
+    data object Apps : Route(); data class AppFrame(val id: String) : Route()
 }
 
 /** Shared app state: the API, live data, navigation, messages. */
@@ -334,8 +335,10 @@ class MainActivity : ComponentActivity() {
                     StatusBarScrim(Modifier.align(Alignment.TopCenter))
                     val tabs = navTabs(app)
                     val tabIndex = tabs.indexOfFirst { it.route == app.top }
-                    if (tabIndex >= 0) FloatingNav(tabIndex, tabs.map { it.icon }, tabs.map { it.label }, { i -> app.tab(tabs[i].route) },
-                        Modifier.align(Alignment.BottomCenter), onLongClick = { app.go(Route.EditTabs) })
+                    val openApp = (app.top as? Route.AppFrame)?.id
+                    if (tabIndex >= 0 || openApp != null) FloatingNav(tabIndex, tabs.map { it.icon }, tabs.map { it.label }, { i -> app.tab(tabs[i].route) },
+                        Modifier.align(Alignment.BottomCenter), onLongClick = { app.go(Route.EditTabs) },
+                        apps = AppSessions.open, selectedApp = openApp, onApp = { id -> app.tab(Route.AppFrame(id)) })
                 } else WideLayout(app, maxWidth)
             }
             CompositionLocalProvider(LocalRootHaze provides rootHaze) {        // so the toast is real frosted glass
@@ -371,7 +374,7 @@ private fun Modifier.paneTouch(app: AppState, left: Boolean) = pointerInput(left
         if (app.top != Route.Dashboard)        // the always-on dashboard gets the whole screen
             Box(Modifier.fillMaxHeight().statusBarsPadding().navigationBarsPadding().padding(start = 12.dp, end = 4.dp), contentAlignment = Alignment.Center) {
                 VerticalNav(tabs.indexOfFirst { it.route == root }, tabs.map { it.icon }, tabs.map { it.label }, { i -> app.tab(tabs[i].route) },
-                    onLongClick = { app.go(Route.EditTabs) })
+                    onLongClick = { app.go(Route.EditTabs) }, apps = AppSessions.open, selectedApp = (root as? Route.AppFrame)?.id, onApp = { id -> app.tab(Route.AppFrame(id)) })
             }
         val parent = app.stack.getOrNull(app.stack.size - 2)
         Box(Modifier.weight(1f).fillMaxHeight()) {
@@ -427,6 +430,8 @@ private fun Modifier.paneTouch(app: AppState, left: Boolean) = pointerInput(left
         is Route.BackupWizard -> BackupWizardScreen(app, r)
         is Route.BackupBrowse -> BackupBrowseScreen(app, r)
         Route.Diagnostics -> DiagnosticsScreen(app)
+        Route.Apps -> AppsScreen(app)
+        is Route.AppFrame -> AppFrameScreen(app, r.id)
         Route.Status -> StatusScreen(app)
         Route.Ssh -> SshScreen(app)
         Route.SshTerm -> SshTermScreen(app)

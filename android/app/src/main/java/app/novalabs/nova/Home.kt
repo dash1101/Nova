@@ -118,9 +118,7 @@ import org.json.JSONObject
 @Composable fun MenuScreen(app: AppState) {
     val m = app.overview?.optJSONObject("status")?.optJSONObject("metrics")
     val cs = app.overview?.optJSONObject("containers")
-    Column(Modifier.fillMaxSize().verticalScroll(routeScroll())) {
-        Text("Menu", fontSize = 32.sp, fontWeight = FontWeight.Bold, color = N.text,
-            modifier = Modifier.statusBarsPadding().padding(start = Space.gutter + 8.dp, top = 28.dp, bottom = 16.dp))
+    TabOrPage(app, "Menu") {
         Group {
             Row1("Containers", cs?.let { "${it.optInt("running")} of ${it.optInt("total")} running" }, true,
                 Icons.Rounded.ViewInAr, onClick = { app.go(Route.Containers) })

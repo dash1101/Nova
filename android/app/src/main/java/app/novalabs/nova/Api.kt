@@ -184,6 +184,8 @@ class NovaApi(private val pairing: Pairing) {
             if (pairing.remoteUrl.isNotEmpty()) add("remote" to pairing.remoteUrl)
         }.let { if (preferRemote) it.reversed() else it }
         if (routes.isEmpty()) throw ApiException(0, "Not paired")
+        // HTTPS only for Nova's own API (plain http is allowed app-wide only for the Apps frame)
+        if (routes.any { !it.second.startsWith("https://") }) throw ApiException(0, "This pairing uses plain HTTP — open Nova on your home Wi-Fi to upgrade it, or pair again")
         var last: Exception = IOException("unreachable")
         val notes = mutableListOf<String>()
         for ((name, base) in routes) {

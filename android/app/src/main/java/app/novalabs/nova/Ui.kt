@@ -222,7 +222,8 @@ val LocalWide = staticCompositionLocalOf { false }
 /** The floating bottom bar. The "you are here" bead is its own little pane of frosted glass that
  *  slides from tab to tab; hold the bar to choose its tabs. */
 @Composable fun FloatingNav(selected: Int, icons: List<ImageVector>, labels: List<String>, onSelect: (Int) -> Unit,
-                            modifier: Modifier = Modifier, onLongClick: (() -> Unit)? = null) {
+                            modifier: Modifier = Modifier, onLongClick: (() -> Unit)? = null,
+                            apps: List<AppSessions.Session> = emptyList(), selectedApp: String? = null, onApp: (String) -> Unit = {}) {
     val itemW = 76.dp; val gap = 4.dp
     val x by androidx.compose.animation.core.animateDpAsState((itemW + gap) * selected.coerceAtLeast(0),
         if (reduceMotion()) androidx.compose.animation.core.snap() else androidx.compose.animation.core.spring(dampingRatio = 0.72f, stiffness = 420f), label = "bead")
@@ -242,6 +243,7 @@ val LocalWide = staticCompositionLocalOf { false }
                     Text(labels[i], fontSize = 12.sp, fontWeight = if (on) FontWeight.Bold else FontWeight.Medium, color = if (on) N.text else N.sub, maxLines = 1, modifier = Modifier.padding(top = 4.dp))
                 }
             }
+            PillApps(apps, selectedApp, onApp, vertical = false)
         }
         return
     }
@@ -251,13 +253,14 @@ val LocalWide = staticCompositionLocalOf { false }
         if (selected >= 0) Box(Modifier.offset(x = x).size(width = itemW, height = 56.dp)
             .frosted(LocalRootHaze.current, RoundedCornerShape(28.dp), 4.dp)
             .background(if (N.dark) Color.White.copy(alpha = 0.10f) else Color.Black.copy(alpha = 0.05f)))
-        Row(horizontalArrangement = Arrangement.spacedBy(gap)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(gap), verticalAlignment = Alignment.CenterVertically) {
             icons.forEachIndexed { i, ic ->
                 Box(Modifier.size(width = itemW, height = 56.dp).clip(RoundedCornerShape(28.dp))
                     .bouncy(onLongClick = onLongClick) { onSelect(i) }, contentAlignment = Alignment.Center) {
                     Icon(ic, labels[i], tint = N.text, modifier = Modifier.size(26.dp))
                 }
             }
+            PillApps(apps, selectedApp, onApp, vertical = false)
         }
     }
 }
@@ -285,10 +288,29 @@ val LocalWide = staticCompositionLocalOf { false }
 }
 
 /** One UI segmented tabs (pill). */
+/** Open apps in the navigation pill: a hairline, then each app's icon (a ring on the one you're in). */
+@Composable fun PillApps(apps: List<AppSessions.Session>, selected: String?, onApp: (String) -> Unit, vertical: Boolean) {
+    if (apps.isEmpty()) return
+    if (vertical) Box(Modifier.padding(vertical = 4.dp).width(32.dp).height(1.dp).background(N.sub.copy(alpha = 0.35f)))
+    else Box(Modifier.padding(horizontal = 4.dp).width(1.dp).height(30.dp).background(N.sub.copy(alpha = 0.35f)))
+    apps.forEach { s ->
+        val on = s.id == selected
+        Box(Modifier.size(if (vertical) 64.dp else 52.dp, 56.dp).clip(RoundedCornerShape(28.dp)).bouncy { onApp(s.id) }, contentAlignment = Alignment.Center) {
+            Box(Modifier.size(34.dp).clip(RoundedCornerShape(10.dp)).background(if (on) N.blue else Color.Transparent).padding(if (on) 2.dp else 0.dp)
+                .clip(RoundedCornerShape(9.dp)).background(N.card), contentAlignment = Alignment.Center) {
+                val b = s.icon
+                if (b != null) androidx.compose.foundation.Image(b, s.app.optString("name"), Modifier.fillMaxSize().padding(3.dp))
+                else Text(s.app.optString("name").take(1).uppercase(), color = N.blue, fontWeight = FontWeight.Bold)
+            }
+        }
+    }
+}
+
 /** The same floating pill, stood on its end for landscape and tablets: down the left edge, same
  *  frosted glass, same sliding bead, same tabs (hold it to choose them). */
 @Composable fun VerticalNav(selected: Int, icons: List<ImageVector>, labels: List<String>, onSelect: (Int) -> Unit,
-                            modifier: Modifier = Modifier, onLongClick: (() -> Unit)? = null) {
+                            modifier: Modifier = Modifier, onLongClick: (() -> Unit)? = null,
+                            apps: List<AppSessions.Session> = emptyList(), selectedApp: String? = null, onApp: (String) -> Unit = {}) {
     val itemH = 64.dp; val gap = 4.dp
     val y by androidx.compose.animation.core.animateDpAsState((itemH + gap) * selected.coerceAtLeast(0),
         if (reduceMotion()) androidx.compose.animation.core.snap() else androidx.compose.animation.core.spring(dampingRatio = 0.72f, stiffness = 420f), label = "vbead")
@@ -307,6 +329,7 @@ val LocalWide = staticCompositionLocalOf { false }
                     Text(labels[i], fontSize = 11.sp, fontWeight = if (on) FontWeight.Bold else FontWeight.Medium, color = if (on) N.text else N.sub, maxLines = 1, modifier = Modifier.padding(top = 3.dp))
                 }
             }
+            PillApps(apps, selectedApp, onApp, vertical = true)
         }
         return
     }
@@ -314,13 +337,14 @@ val LocalWide = staticCompositionLocalOf { false }
         if (selected >= 0) Box(Modifier.offset(y = y).size(width = 64.dp, height = itemH)
             .frosted(LocalRootHaze.current, RoundedCornerShape(28.dp), 4.dp)
             .background(if (N.dark) Color.White.copy(alpha = 0.10f) else Color.Black.copy(alpha = 0.05f)))
-        Column(verticalArrangement = Arrangement.spacedBy(gap)) {
+        Column(verticalArrangement = Arrangement.spacedBy(gap), horizontalAlignment = Alignment.CenterHorizontally) {
             icons.forEachIndexed { i, ic ->
                 Box(Modifier.size(width = 64.dp, height = itemH).clip(RoundedCornerShape(28.dp))
                     .bouncy(onLongClick = onLongClick) { onSelect(i) }, contentAlignment = Alignment.Center) {
                     Icon(ic, labels[i], tint = N.text, modifier = Modifier.size(26.dp))
                 }
             }
+            PillApps(apps, selectedApp, onApp, vertical = true)
         }
     }
 }

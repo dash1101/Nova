@@ -590,6 +590,9 @@ def _guard(fn):
     except ValueError as e: fail(str(e))
     except RuntimeError as e: fail(str(e))
 
+if verb == "apps-detect" and not args:
+    import apps; _guard(lambda: {"apps": apps.detect()})
+
 if verb == "storage-map" and not args:
     import storage; _guard(storage.storage_map)
 

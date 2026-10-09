@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- HTTPS only. On the home network Nova uses the server's own certificate, pinned at pairing
-     (see NovaApi.pinned); remotely, Cloudflare's. No plain HTTP anywhere. -->
+<!-- Nova's own connection to the server is HTTPS only — enforced in NovaApi (pinned certificate at
+     home, Cloudflare's remotely). Plain HTTP is allowed here only so the Apps frame can open the
+     web apps on your server, which are usually plain http on the home network. -->
 <network-security-config>
-    <base-config cleartextTrafficPermitted="false" />
+    <base-config cleartextTrafficPermitted="true" />
 </network-security-config>

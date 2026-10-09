@@ -127,6 +127,8 @@ function render(dir = 0) {
       if (!ctx.alive()) return;
       ensureShell();
       const main = $("#main"), first = !main.dataset.seq || main.dataset.seq !== String(my);
+      // Store / Menu are tab roots only when they're in your navigation pill and you came to them as a tab
+      if (o.root && !(depth === 0 && V.navTabs().some(t => t.route === r))) o = { ...o, root: false };
       const header = o.noHeader ? "" : o.root ? `<div class="ph root"><h1>${esc(o.title || "")}</h1></div>` : `<div class="ph"><h1>${esc(o.title || "")}</h1></div>`;
       const wide = o.narrow === false || r === "home";
       const keepY = scrollY;

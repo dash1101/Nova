@@ -114,6 +114,19 @@ data class TopAction(val icon: ImageVector, val label: String, val onClick: () -
     }
 }
 
+/** A page that can also be a tab in the navigation pill (Store, Menu): as the current tab it has a big
+ *  title and no back button; opened from somewhere else (Menu → Store) it's a normal page with one. */
+@Composable fun TabOrPage(app: AppState, title: String, content: @Composable ColumnScope.() -> Unit) {
+    val isTab = app.stack.size == 1 && navTabs(app).any { it.route == app.top }
+    if (!isTab) { Page(title, app::back, content = content); return }
+    Column(Modifier.fillMaxSize().verticalScroll(routeScroll())) {
+        Text(title, fontSize = 32.sp, fontWeight = FontWeight.Bold, color = N.text,
+            modifier = Modifier.statusBarsPadding().padding(start = Space.gutter + 8.dp, top = 28.dp, bottom = 12.dp))
+        content()
+        Spacer(Modifier.height(40.dp + LocalNavPad.current))
+    }
+}
+
 /** For screens that manage their own scrolling (logs, terminal): same bar, circle always on. */
 @Composable fun FixedTopBar(title: String, onBack: () -> Unit, actions: List<TopAction> = emptyList()) {
     Box(Modifier.fillMaxWidth()) {

@@ -34,6 +34,7 @@ val SHORTCUTS = listOf(
     Shortcut("containers", Icons.Rounded.ViewInAr, "Containers", Route.Containers),
     Shortcut("storage", Icons.Rounded.Storage, "Storage", Route.Hardware),
     Shortcut("status", Icons.Rounded.MonitorHeart, "Status", Route.Status),
+    Shortcut("apps", Icons.Rounded.Apps, "Apps", Route.Apps),
     Shortcut("backups", Icons.Rounded.Backup, "Backups", Route.Backups),
     Shortcut("diagnostics", Icons.Rounded.Speed, "Diagnostics", Route.Diagnostics, short = "Tests"),
     Shortcut("lighting", Icons.Rounded.Light, "Lighting", Route.Lighting, "lighting"),
@@ -170,7 +171,7 @@ val NAV_TABS = listOf(
     Shortcut("home", Icons.Rounded.Dns, "Home", Route.Home),
     Shortcut("store", Icons.Rounded.Storefront, "Store", Route.Store, "store"),
     Shortcut("menu", Icons.AutoMirrored.Rounded.List, "Menu", Route.Menu),
-) + SHORTCUTS.filter { it.id in listOf("status", "containers", "storage", "inbox", "quick", "lighting", "terminal") }
+) + SHORTCUTS.filter { it.id in listOf("apps", "status", "containers", "storage", "inbox", "quick", "lighting", "terminal") }
 val DEFAULT_TABS = listOf("store", "home", "menu")
 const val MAX_TABS = 5
 

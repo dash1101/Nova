@@ -54,6 +54,8 @@ CLOCK_SKEW_MS = 60_000
 SHELL_APPROVE = f"{DATA}/shell-approve.json"   # written by `sudo nova approve CODE` (root only)
 PENDING = f"{DATA}/pending.json"               # what's waiting for approval, for `sudo nova approve` (root/nova-api only)
 CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+APPS = f"{DATA}/apps.json"                      # your changes to the Apps grid (names, hidden, custom links)
+ICONS = f"{DATA}/icons"                         # app icons, fetched once from dashboard-icons and kept here
 SETTINGS = f"{DATA}/settings.json"       # changeable from the app: display name, accent colour
 
 lock = threading.Lock()          # devices.json / pairing.json writes
@@ -74,6 +76,39 @@ def valid_location(v):
     if not (-90 <= lat <= 90 and -180 <= lon <= 180): raise ValueError("location out of range")
     name = "".join(c for c in str(v.get("name", "")) if c.isprintable()).strip()[:40]
     return {"lat": round(lat, 2), "lon": round(lon, 2), "name": name}     # ~1 km: plenty for the sun
+
+_apps_cache = {"t": 0, "apps": []}
+def app_list():
+    """Detected web apps (cached 30 s) + your custom links, with your changes applied."""
+    if time.time() - _apps_cache["t"] > 30:
+        rc, res = helper("apps-detect", timeout=60)
+        if rc == 0: _apps_cache.update(t=time.time(), apps=res.get("apps", []))
+    cfg = load_json(APPS, {"overrides": {}, "custom": []}); ov = cfg.get("overrides", {})
+    out = []
+    for a in _apps_cache["apps"]:
+        o = ov.get(a["id"], {})
+        out.append({**a, "name": o.get("name") or a["name"], "slug": o.get("icon") or a["slug"], "hidden": bool(o.get("hidden")),
+                    "url": o.get("url", ""), "remote_url": o.get("remote_url", "")})
+    for c in cfg.get("custom", []):
+        out.append({"id": c["id"], "name": c["name"], "slug": c.get("icon") or "", "url": c["url"], "remote_url": c.get("remote_url", ""),
+                    "hidden": bool(c.get("hidden")), "source": "custom", "port": None, "scheme": "", "path": "", "host_ip": ""})
+    return out
+
+def app_icon(aid):
+    a = next((x for x in app_list() if x["id"] == aid), None)
+    slug = (a or {}).get("slug", "")
+    if not slug or not re.fullmatch(r"[a-z0-9-]{1,60}", slug): return None
+    f = f"{ICONS}/{slug}.png"
+    if os.path.exists(f): return open(f, "rb").read() or None
+    os.makedirs(ICONS, exist_ok=True)
+    try:
+        req = urllib.request.Request(f"https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/{slug}.png", headers={"User-Agent": "nova"})
+        with urllib.request.urlopen(req, timeout=6) as r:
+            data = r.read(512 * 1024)
+        if not data.startswith(b"\x89PNG"): data = b""
+    except Exception: data = b""
+    open(f, "wb").write(data)              # empty file = no icon (don't ask again)
+    return data or None
 
 def load_json(p, default):
     try:
@@ -602,6 +637,12 @@ class Handler(BaseHTTPRequestHandler):
                 for _ in range(mb): self.wfile.write(chunk)
             except (BrokenPipeError, ConnectionResetError): pass
             return
+        if method == "GET" and len(parts) == 3 and parts[0] == "apps" and parts[2] == "icon":
+            png = app_icon(parts[1])
+            if not png: return self.send(404, {"error": "no icon"})
+            self.send_response(200); self.send_header("Content-Type", "image/png"); self.send_header("Content-Length", str(len(png)))
+            self.send_header("Cache-Control", "private, max-age=86400"); self.end_headers(); self.wfile.write(png)
+            return
         if method == "GET" and parts == ["app", "apk"]:
             meta = load_json(f"{APK_DIR}/latest.json", {})
             f = os.path.join(APK_DIR, os.path.basename(meta.get("file", "")))
@@ -993,6 +1034,41 @@ class Handler(BaseHTTPRequestHandler):
                     nova_rgb.save(st)
                 ex = nova_rgb.extras(st) if hasattr(nova_rgb, "extras") else {"effects": nova_rgb.EFFECT_NAMES}
                 return 200, {**st, **ex, "location": server_location(), "status_override": nova_rgb.status_override(st)}
+
+        # ── apps (web apps on this server, for the Apps grid) ──
+        if method == "GET" and parts == ["apps"]:
+            return 200, {"apps": app_list()}
+        if method == "POST" and parts == ["apps"]:
+            # change how an app shows (name, icon, hidden, links), or add your own (no id yet)
+            aid = str(data.get("id") or "")
+            if aid and not re.fullmatch(r"[A-Za-z0-9_.-]{1,64}", aid): raise ValueError("bad app")
+            cfg = load_json(APPS, {"overrides": {}, "custom": []})
+            o = {}
+            if "name" in data: o["name"] = "".join(c for c in str(data["name"]) if c.isprintable()).strip()[:40]
+            if "icon" in data:
+                o["icon"] = str(data["icon"]).strip().lower()[:60]
+                if o["icon"] and not re.fullmatch(r"[a-z0-9-]{1,60}", o["icon"]): raise ValueError("icon: a dashboard-icons name like 'jellyfin'")
+            if "hidden" in data: o["hidden"] = bool(data["hidden"])
+            for k in ("url", "remote_url"):
+                if k in data:
+                    v = str(data[k]).strip()[:300]
+                    if v and not re.fullmatch(r"https?://[A-Za-z0-9.\-\[\]:]+(/[^\s]*)?", v): raise ValueError(f"{k}: a link like http://192.168.1.10:8096")
+                    o[k] = v
+            if not aid:
+                if not o.get("url"): raise ValueError("give the app a link")
+                aid = "custom-" + secrets.token_hex(4)
+                cfg["custom"] = (cfg.get("custom", []) + [{"id": aid, "name": o.get("name") or "App", "url": o["url"], "icon": o.get("icon", ""), "remote_url": o.get("remote_url", "")}])[:60]
+            elif aid.startswith("custom-"):
+                cfg["custom"] = [dict(c, **o) if c["id"] == aid else c for c in cfg.get("custom", [])]
+            else:
+                cfg.setdefault("overrides", {})[aid] = {**cfg.get("overrides", {}).get(aid, {}), **o}
+            with lock: save_json(APPS, cfg)
+            return 200, {"ok": True, "id": aid, "apps": app_list()}
+        if method == "DELETE" and len(parts) == 2 and parts[0] == "apps" and parts[1].startswith("custom-"):
+            cfg = load_json(APPS, {"overrides": {}, "custom": []})
+            cfg["custom"] = [c for c in cfg.get("custom", []) if c["id"] != parts[1]]
+            with lock: save_json(APPS, cfg)
+            return 200, {"ok": True}
 
         # ── storage map, pools, background tasks ──
         if method == "GET" and parts == ["storage"]:
