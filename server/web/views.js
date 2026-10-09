@@ -5,6 +5,7 @@ import { S, $, $$, esc, get, post, del, api, sleep, prefs, levelColor, pct, rate
 import { I, row, group, sec, note, sw, radio, switchRow, links, expand, slider, segmented, bar, usageColor,
          toast, dialog, confirm, choose, ask, wireCommon, reorderable, onHold, spark, swipeable, colorPicker } from "./ui.js";
 import { animate } from "./hero.js";
+import * as ST from "./storage.js";
 
 // ── catalogs (same ids as the app, so the two read alike) ───────────────────────
 export const SHORTCUTS = [
@@ -160,7 +161,9 @@ export async function menu(ctx) {
     ctx.show(`
       ${group(row("Containers", { sub: cs ? `${cs.running} of ${cs.total} running` : null, blue: true, icon: "box", click: "go:containers" })
         + (has("lighting") ? row("Lighting", { sub: f ? (f.on !== false ? `${cap(f.effect)} · ${f.brightness}%` : "Off") : null, blue: true, icon: "bulb", tint: "#ffb020", click: "go:lighting" }) : ""))}
-      ${group(row("Storage & hardware", { sub: storageList(m).map(x => `${x.name} ${Math.round(x.pct)}%`).slice(0, 3).join(" · ") || null, blue: true, icon: "disk", tint: "#3ecf6e", click: "go:hardware" })
+      ${group(row("Storage & hardware", { sub: "Drives, pools, set up drives" + (storageList(m).length ? " · " + storageList(m).map(x => `${x.name} ${Math.round(x.pct)}%`).slice(0, 2).join(" · ") : ""), blue: true, icon: "disk", tint: "#3ecf6e", click: "go:hardware" })
+        + row("Backups", { sub: "What's backed up, restore files", blue: true, icon: "backup", click: "go:backups" })
+        + row("Diagnostics", { sub: "Speed, stress and network tests", blue: true, icon: "speed", tint: "#64d2ff", click: "go:diag" })
         + row("Quick panel", { sub: "Your shortcuts — tap ✎ to customise", blue: true, icon: "widgets", click: "go:quick" })
         + row("Server status", { sub: "Live graphs, storage, backups", blue: true, icon: "status", tint: "#3ecf6e", click: "go:status" })
         + row("Dashboard mode", { sub: "Always-on screen for a tablet or spare screen", blue: true, icon: "dash", tint: "#64d2ff", click: "go:dashboard" })
@@ -793,18 +796,19 @@ export async function hardware(ctx) {
     const hw = S.cache["/api/v1/hardware"], t = hw?.temps, ds = hw?.drives || [];
     const roles = {}; ds.forEach(d => (roles[d.role || "Other"] ||= []).push(d));
     const ord = r => { const i = ["Photo pool", "Backup drive", "Cold storage", "Boot drive"].indexOf(r); return i < 0 ? 9 : i; };
-    ctx.show(`${t ? sec("Temperatures") + group(row("CPU", { sub: t.cpu_temp || "—", icon: "cpu" }) + row("Boot NVMe", { sub: t.nvme_temp || "—", icon: "ssd" }) + row("Drives", { sub: t.drive_temps || "—", icon: "disk" })) : ""}
+    ctx.show(`${ST.overviewHtml()}${t ? sec("Temperatures") + group(row("CPU", { sub: t.cpu_temp || "—", icon: "cpu" }) + row("Boot NVMe", { sub: t.nvme_temp || "—", icon: "ssd" }) + row("Drives", { sub: t.drive_temps || "—", icon: "disk" })) : ""}
       ${Object.entries(roles).sort(([a], [b]) => ord(a) - ord(b)).map(([r, l]) => sec(r) + group(l.map(d => { const [h, lv] = health(d), u = d.usage?.find(x => x.mount === "/") || d.usage?.[0], f = u ? u.used / Math.max(1, u.total) : 0;
           return `<div class="row click" data-act="open:${esc(d.serial)}" style="display:block"><div style="display:flex;align-items:center;gap:8px"><div class="t"><b>${esc(driveName(d))}</b><small>${bytes(d.size)} · ${d.ssd ? "SSD" : "HDD"} · ${esc((d.bus || "").toUpperCase())}${d.temp ? ` · ${d.temp}°C` : ""}</small></div><b style="color:${levelColor(lv)};font-size:14px">${h}</b></div>
             ${u ? `<div style="margin-top:8px">${bar(f, usageColor(f))}</div><small class="muted" style="font-size:13px">${bytes(u.free)} free of ${bytes(u.total)}</small>` : (d.mounts || []).length ? "" : `<small style="color:var(--amber);font-size:13px">Not mounted</small>`}</div>`; }).join(""))).join("")
         || note(hw ? "No drives reported." : "Loading…")}
       ${sec("Fans")}${group(expand("CPU & case fan speed", "Run by the motherboard", "speed", "The fans follow the motherboard's own curve — set it in the BIOS (often under Smart Fan or Q-Fan). Reading or setting speeds from Linux needs a driver for the board's fan chip.", { tint: "var(--sub)" })
         + (has("lighting") ? row("Fan lighting", { sub: "Colour, effects, schedules", blue: true, icon: "bulb", tint: "var(--amber)", click: "go:lighting" }) : ""))}
-      ${links([["Quick panel (restart, shut down)", "go:quick"]])}`, { title: "Storage & hardware" });
+      ${links([["Quick panel (restart, shut down)", "go:quick"]])}`, { title: "Storage & hardware", actions: [{ icon: "add", label: "Set up drives", act: "go:setup" }] });
     wireCommon(ctx.root);
   };
-  ctx.handlers({ open: s => ctx.go("hardware/" + encodeURIComponent(s)) });
-  draw(); ctx.every(15000, async () => { await get("/api/v1/hardware"); draw(); }, true);
+  ctx.handlers({ open: s => ctx.go("hardware/" + encodeURIComponent(s)), ...ST.overviewHandlers(ctx) });
+  draw(); ST.refreshOverview().then(() => ctx.alive() && draw());
+  ctx.every(15000, async () => { await Promise.all([get("/api/v1/hardware"), ST.refreshOverview()]); draw(); }, true);
 }
 async function drive(ctx, serial) {
   let busy = false, testBusy = false;

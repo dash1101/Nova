@@ -65,10 +65,9 @@ const P = {
   book: "M18 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zM6 4h5v8l-2.5-1.5L6 12V4z",
   cloud: "M19.35 10.04A7.49 7.49 0 0 0 12 4C9.11 4 6.6 5.64 5.35 8.04A5.994 5.994 0 0 0 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96z",
   open: "M19 19H5V5h7V3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14c1.1 0 2-.9 2-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z",
-  logo: "M51,30 C53,46 59.5,52.5 75,54.5 C59.5,56.5 53,63 51,79 C49,63 42.5,56.5 27,54.5 C42.5,52.5 49,46 51,30 Z",
 };
 export const I = (n, c = "") => `<svg class="i ${c}" viewBox="0 0 24 24" aria-hidden="true"><path d="${P[n] || ""}"/></svg>`;
-export const logo = (size = 46) => `<svg class="logo" width="${size}" height="${size}" viewBox="0 0 108 108"><defs><linearGradient id="lg" x1=".1" y1="0" x2=".9" y2="1"><stop offset="0" stop-color="#3e91ff"/><stop offset="1" stop-color="#8a4dff"/></linearGradient></defs><rect width="108" height="108" rx="30" fill="url(#lg)"/><path fill="#fff" d="${P.logo}"/></svg>`;
+export const logo = (size = 46) => `<img class="logo" src="/web/icon.svg" width="${size}" height="${size}" alt="" style="border-radius:${Math.round(size * .28)}px">`;
 
 // ── building blocks (HTML strings; wiring is done by data-* attributes) ───────────
 /** Row with optional icon bubble, subtitle (blue when it's a live state), and end content. */

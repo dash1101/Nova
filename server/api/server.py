@@ -19,7 +19,7 @@ against your team's public keys — so the edge rejects strangers before they re
 and if Access is ever switched off by mistake, remote access fails closed.
 Pairing is only possible from the home LAN, with a one-time code shown by `sudo nova-api pair`.
 """
-import base64, hashlib, hmac, ipaddress, json, os, secrets, subprocess, sys, threading, time, urllib.request
+import base64, hashlib, hmac, ipaddress, json, os, re, secrets, subprocess, sys, threading, time, urllib.parse, urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from cryptography.exceptions import InvalidSignature
@@ -36,7 +36,7 @@ try:                       # optional module: fan/case lighting (modules/fan-gig
 except ImportError:
     nova_rgb = None
 
-API_VERSION = "0.4.7-alpha.1"
+API_VERSION = "0.5.0-alpha"
 CONFIG = "/etc/nova-api/config.json"
 DATA = "/var/lib/nova-api"
 DEVICES = f"{DATA}/devices.json"
@@ -289,6 +289,12 @@ def describe_action(a):
     if p[:1] == ["ssh"]: return "Let this phone log in over SSH"
     if p == ["alerts", "dismiss"]: return f"Ignore the alert “{a.get('data', {}).get('key', '')}”"
     if p == ["events", "delete"]: return "Clear the whole inbox" if a.get("data", {}).get("all") else "Delete from the inbox"
+    if p[:2] == ["storage", "task"] and len(p) == 3:
+        d = a.get("data", {}).get("spec", {}); n = len(d.get("drives") or [])
+        return {"format": f"Erase and set up {n} drive", "combine": f"Combine drives into “{d.get('name', '')}”" + (f" (erases {n})" if n else ""),
+                "raid": f"Create {str(d.get('level', 'RAID')).upper()} “{d.get('name', '')}” (erases {n} drives)", "pool-remove": "Remove a storage pool" + (" and erase its drives" if d.get("erase") else ""),
+                "pool-add": "Add a drive to a pool (erases it)"}.get(p[2], "Change storage")
+    if p[:1] == ["backups"] and p[-1:] == ["restore"]: return f"Restore {a.get('data', {}).get('path', 'files')} from a backup"
     return f"{a['method']} {a['path']}"
 
 def browser_forbidden(method, parts, dev):
@@ -300,6 +306,7 @@ def browser_forbidden(method, parts, dev):
     if parts[:1] == ["devices"] and method != "GET" and parts != ["devices", dev.get("id")]: return True
     return False
 
+STORAGE_DESTRUCTIVE = ("format", "combine", "raid", "pool-remove", "pool-add")
 ROLES = ("admin", "viewer")
 FORMS = ("phone", "tablet", "desktop")
 def role_of(d): return d.get("role") if d.get("role") in ROLES else "admin"     # devices from before roles: admin
@@ -350,6 +357,8 @@ def needs_stepup(method, parts):
     if parts[:1] == ["drives"] and parts[-1:] == ["unmount"]: return True
     if parts[:1] == ["power"]: return True
     if parts == ["ssh", "authorize"]: return True
+    if parts[:2] == ["storage", "task"] and len(parts) == 3 and parts[2] in STORAGE_DESTRUCTIVE: return True
+    if parts[:1] == ["backups"] and len(parts) == 3 and parts[2] == "restore": return True
     return False
 
 # ── Cloudflare Access JWT (remote requests) ─────────────────────────────────────
@@ -534,6 +543,17 @@ class Handler(BaseHTTPRequestHandler):
         if role_of(dev) != "admin" and not viewer_may(method, parts, dev):
             audit(device=dev["name"], path=path, result=403, why="view-only")
             return self.send(403, {"error": "view_only", "message": "This phone has view-only access."})
+        if method == "GET" and parts == ["diag", "blob"]:
+            # This device ↔ server speed test: N MB of incompressible bytes, streamed.
+            try: mb = max(1, min(200, int(urllib.parse.parse_qs(self.path.split("?", 1)[-1]).get("mb", ["20"])[0])))
+            except ValueError: mb = 20
+            chunk = os.urandom(1024 * 1024)
+            self.send_response(200); self.send_header("Content-Type", "application/octet-stream")
+            self.send_header("Content-Length", str(mb * len(chunk))); self.send_header("Cache-Control", "no-store"); self.end_headers()
+            try:
+                for _ in range(mb): self.wfile.write(chunk)
+            except (BrokenPipeError, ConnectionResetError): pass
+            return
         if method == "GET" and parts == ["app", "apk"]:
             meta = load_json(f"{APK_DIR}/latest.json", {})
             f = os.path.join(APK_DIR, os.path.basename(meta.get("file", "")))
@@ -569,7 +589,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Referrer-Policy", "no-referrer")
         self.send_header("X-Frame-Options", "DENY")
-        self.send_header("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()")
+        self.send_header("Permissions-Policy", "camera=(), microphone=(), geolocation=(self), payment=(), usb=(), interest-cohort=()")
         self.send_header("Cross-Origin-Opener-Policy", "same-origin")
         self.send_header("Content-Security-Policy", "default-src 'self'; img-src 'self' data:; style-src 'self'; style-src-attr 'unsafe-inline'; script-src 'self'; "
                          "connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'")
@@ -800,7 +820,7 @@ class Handler(BaseHTTPRequestHandler):
                          "fan": fan, "containers": {"running": sum(1 for c in cl if c["state"] == "running"), "total": len(cl)},
                          # What this server has, so the app only shows what works here.
                          "features": {"lighting": nova_rgb is not None, "monitor": os.path.exists(STATUS),
-                                      "backup": os.path.exists("/usr/local/bin/nova-backup"), "store": os.path.isdir(f"{os.path.dirname(os.path.abspath(__file__))}/store"),
+                                      "backup": True, "legacy_backup": os.path.exists("/usr/local/bin/nova-backup"), "storage": True, "diagnostics": True, "store": os.path.isdir(f"{os.path.dirname(os.path.abspath(__file__))}/store"),
                                       "ssh": bool(SSH_HOSTS), "lan_tls": True}}
         if method == "GET" and parts == ["events", "wait"]:
             # Long poll for the phone's instant alerts: return as soon as something newer than
@@ -882,6 +902,56 @@ class Handler(BaseHTTPRequestHandler):
                     nova_rgb.save(st)
                 ex = nova_rgb.extras(st) if hasattr(nova_rgb, "extras") else {"effects": nova_rgb.EFFECT_NAMES}
                 return 200, {**st, **ex, "location": server_location(), "status_override": nova_rgb.status_override(st)}
+
+        # ── storage map, pools, background tasks ──
+        if method == "GET" and parts == ["storage"]:
+            rc, res = helper("storage-map", timeout=60); return (200 if rc == 0 else 502), res
+        if method == "POST" and parts[:2] == ["storage", "task"] and len(parts) == 3:
+            spec = data.get("spec", {})
+            if not isinstance(spec, dict): raise ValueError("spec must be an object")
+            rc, res = helper("task-start", parts[2], json.dumps(spec), timeout=60)
+            return (200 if rc == 0 else 400), res
+        if method == "GET" and parts == ["tasks"]:
+            rc, res = helper("task-list"); return (200 if rc == 0 else 502), res
+        if len(parts) >= 2 and parts[0] == "tasks" and re.fullmatch(r"[0-9a-f]{12}", parts[1]):
+            if method == "GET" and len(parts) == 2:
+                rc, res = helper("task-status", parts[1]); return (200 if rc == 0 else 404), res
+            if method == "POST" and parts[2:] == ["stop"]:
+                rc, res = helper("task-stop", parts[1]); return (200 if rc == 0 else 400), res
+        # ── backups ──
+        if parts == ["backups"]:
+            if method == "GET": rc, res = helper("backups-list", timeout=60); return (200 if rc == 0 else 502), res
+            if method == "POST":
+                rc, res = helper("backup-put", json.dumps(data)[:8000]); return (200 if rc == 0 else 400), res
+        if method == "GET" and parts == ["backups", "suggest"]:
+            rc, res = helper("backup-suggest", timeout=90); return (200 if rc == 0 else 502), res
+        if method == "POST" and parts == ["backups", "test"]:
+            rc, res = helper("backup-test", json.dumps(data)[:8000], timeout=120); return (200 if rc == 0 else 400), res
+        if len(parts) >= 2 and parts[0] == "backups" and re.fullmatch(r"[a-z0-9]{1,12}", parts[1]):
+            jid = parts[1]
+            if method == "DELETE" and len(parts) == 2:
+                rc, res = helper("backup-delete", jid); return (200 if rc == 0 else 400), res
+            if method == "POST" and parts[2:] == ["run"]:
+                rc, res = helper("task-start", "backup-run", json.dumps({"job": jid, "force": bool(data.get("force"))})); return (200 if rc == 0 else 400), res
+            if method == "GET" and parts[2:] == ["snapshots"]:
+                rc, res = helper("backup-snapshots", jid, timeout=120); return (200 if rc == 0 else 400), res
+            if method == "GET" and parts[2:] == ["browse"]:
+                snap, pth = q.get("snap", ""), urllib.parse.unquote(q.get("path", "/"))
+                if not re.fullmatch(r"current|\d{4}-\d\d-\d\d_\d{4}(\d\d)?", snap): raise ValueError("bad snapshot")
+                rc, res = helper("backup-browse", jid, snap, pth[:1000], timeout=120); return (200 if rc == 0 else 400), res
+            if method == "POST" and parts[2:] == ["restore"]:
+                spec = {"job": jid, "snapshot": str(data.get("snapshot", "")), "path": str(data.get("path", ""))[:1000], "to": str(data.get("to", "beside"))}
+                rc, res = helper("task-start", "restore", json.dumps(spec)); return (200 if rc == 0 else 400), res
+        # ── diagnostics ──
+        if method == "POST" and len(parts) == 2 and parts[0] == "diag" and parts[1] in ("net-internet", "disk-speed", "cpu-stress", "mem-test"):
+            rc, res = helper("task-start", parts[1], json.dumps({k: data[k] for k in ("path", "seconds", "percent") if k in data})); return (200 if rc == 0 else 400), res
+        if method == "GET" and len(parts) == 2 and parts[0] == "diag" and parts[1] in ("ping", "trace", "dns", "port"):
+            args = [urllib.parse.unquote(q.get("host", ""))[:253]] + ([q.get("port", "")] if parts[1] == "port" else [])
+            rc, res = helper("diag-quick", parts[1], *args, timeout=120); return (200 if rc == 0 else 400), res
+        if method == "GET" and parts == ["diag", "top"]:
+            rc, res = helper("diag-top"); return (200 if rc == 0 else 502), res
+        if method == "GET" and parts == ["diag", "tools"]:
+            rc, res = helper("tools-status"); return (200 if rc == 0 else 502), res
 
         # ── containers ──
         if method == "GET" and parts == ["containers"]:

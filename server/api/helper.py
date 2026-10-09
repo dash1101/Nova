@@ -212,11 +212,39 @@ if verb == "shell" and len(args) == 1:
     os.execvp("docker", ["docker", "exec", "-i", "-e", "TERM=dumb", "-e", "PS1=\\u@\\h:\\w\\$ ", name, "sh", "-c",
                          "if command -v bash >/dev/null 2>&1; then exec bash -i 2>&1; else exec sh -i 2>&1; fi"])
 
+if verb == "backup-now" and not args and not os.path.exists("/usr/local/bin/nova-backup"):
+    sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+    import backups, tasks
+    started = []
+    for j in backups.load_jobs():
+        if j.get("enabled", True):
+            try: tasks.start("backup-run", {"job": j["id"]}); started.append(j["name"])
+            except ValueError: pass
+    out({"ok": bool(started), "note": f"Started: {', '.join(started)}" if started else "No backups set up yet — add one in Storage → Backups"})
+
 if verb == "backup-now" and not args:
     rc, so, _ = run(["systemctl", "is-active", "nova-backup.service"])
     if so.strip() in ("active", "activating"): out({"ok": True, "note": "A backup is already running"})
     rc, _, se = run(["systemctl", "start", "--no-block", "nova-backup.service"])
     out({"ok": rc == 0, "error": se.strip()[:200]}, 0 if rc == 0 else 1)
+
+def jobs_status():
+    """Home's backup line on servers without a hand-written nova-backup script: from Nova's own jobs."""
+    sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+    import backups, tasks
+    jobs = backups.overview()
+    if not jobs: return {"none": True}
+    lasts = [j["last"] for j in jobs if j.get("last")]
+    st = {"jobs": len(jobs), "sets": {j["name"]: ("ok" if (j.get("last") or {}).get("ok") else "partial" if (j.get("last") or {}).get("partial")
+                                       else "failed" if j.get("last") else "never") for j in jobs}}
+    if lasts: st["time"] = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(max(l["t"] for l in lasts)))
+    run_t = next((t for t in tasks.all_tasks() if t["state"] == "running" and t["kind"] == "backup-run"), None)
+    st["running"] = bool(run_t)
+    if run_t: st["progress"] = {"phase": "copying", "pct": run_t.get("pct", 0), "set": run_t["title"].replace("Backup: ", ""), "rate": run_t.get("note", "")}
+    return st
+
+if verb == "backup-status" and not args and not os.path.exists("/usr/local/bin/nova-backup"):
+    out(jobs_status())
 
 if verb == "backup-status" and not args:
     st = load_json("/var/lib/nova-backup/backup_status.json", {})
@@ -553,5 +581,102 @@ if verb == "update-start" and not args:
     rc, so, se = run(["systemd-run", "--unit=nova-self-update", "--collect", "--quiet", "/usr/sbin/nova-update"])
     changelog("Server update started from the Nova app")
     out({"ok": rc == 0, "error": se.strip()[:200]}, 0 if rc == 0 else 1)
+
+# ── storage, backups, diagnostics (modules next to this file) ───────────────────────
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+JOB_RE = r"[a-z0-9]{1,12}"
+def _guard(fn):
+    try: out(fn())
+    except ValueError as e: fail(str(e))
+    except RuntimeError as e: fail(str(e))
+
+if verb == "storage-map" and not args:
+    import storage; _guard(storage.storage_map)
+
+if verb == "task-start" and len(args) == 2:
+    import tasks
+    def go():
+        try: spec = json.loads(args[1])
+        except ValueError: raise ValueError("bad request")
+        return tasks.start(args[0], spec)
+    _guard(go)
+
+if verb == "task-list" and not args:
+    import tasks
+    def go(): tasks.reap(); return {"tasks": [{k: v for k, v in t.items() if k != "samples"} for t in tasks.all_tasks()[:30]]}
+    _guard(go)
+
+if verb == "task-status" and len(args) == 1 and re.fullmatch(r"[0-9a-f]{12}", args[0]):
+    import tasks
+    def go():
+        tasks.reap(); t = tasks.load(args[0])
+        if not t: raise ValueError("no such task")
+        return t
+    _guard(go)
+
+if verb == "task-stop" and len(args) == 1 and re.fullmatch(r"[0-9a-f]{12}", args[0]):
+    import tasks; _guard(lambda: tasks.stop(args[0]))
+
+if verb == "backups-list" and not args:
+    import backups, storage
+    _guard(lambda: {"jobs": backups.overview(), "legacy": storage.legacy_backup()})
+
+if verb == "backup-put" and len(args) == 1:
+    import backups
+    def go():
+        try: job = json.loads(args[0])
+        except ValueError: raise ValueError("bad request")
+        j = backups.put_job(job); changelog(f"Backup '{j['name']}' saved (from the Nova app)"); return {"ok": True, "job": j}
+    _guard(go)
+
+if verb == "backup-delete" and len(args) == 1 and re.fullmatch(JOB_RE, args[0]):
+    import backups
+    def go(): backups.delete_job(args[0]); changelog(f"Backup job {args[0]} removed (its copies stay on the drive)"); return {"ok": True}
+    _guard(go)
+
+if verb in ("backup-snapshots", "backup-browse") and 1 <= len(args) <= 3 and re.fullmatch(JOB_RE, args[0]):
+    import backups
+    def go():
+        j = next((x for x in backups.load_jobs() if x["id"] == args[0]), None)
+        if not j: raise ValueError("no such backup")
+        if verb == "backup-snapshots": return {"snapshots": backups.list_snapshots(j, log=lambda m: None)}
+        return backups.browse(j, args[1], args[2] if len(args) > 2 else "/", log=lambda m: None)
+    _guard(go)
+
+if verb == "backup-test" and len(args) == 1:
+    import backups
+    def go():
+        try: job = json.loads(args[0])
+        except ValueError: raise ValueError("bad request")
+        tid = "tst" + secrets.token_hex(4)
+        j = backups.validate({**job, "id": tid}); pw = j.pop("_password", None)
+        cred = f"{backups.SECRETS}/{tid}.cred"
+        try:
+            if j["dest"]["type"] == "smb":
+                old = f"{backups.SECRETS}/{job.get('id')}.cred" if re.fullmatch(JOB_RE, str(job.get("id", ""))) else ""
+                os.makedirs(backups.SECRETS, exist_ok=True); os.chmod(backups.SECRETS, 0o700)
+                if pw is None and old and os.path.exists(old): shutil.copy(old, cred)
+                else:
+                    fd = os.open(cred, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+                    with os.fdopen(fd, "w") as f: f.write(f"username={j['dest'].get('user') or 'guest'}\npassword={pw or ''}\n")
+            return backups.test_dest(j, log=lambda m: None)
+        finally:
+            try: os.remove(cred)
+            except OSError: pass
+    _guard(go)
+
+if verb == "backup-suggest" and not args:
+    import backups; _guard(backups.suggest_sources)
+
+if verb == "diag-quick" and 2 <= len(args) <= 3 and args[0] in ("ping", "trace", "dns", "port"):
+    import diag
+    _guard(lambda: getattr(diag, args[0])(*args[1:]))
+
+if verb == "diag-top" and not args:
+    import diag; _guard(diag.top)
+
+if verb == "tools-status" and not args:
+    import storage
+    _guard(lambda: {"tools": {t: storage.have(t) for t in storage.TOOLS}, "missing": storage.missing_packages(list(storage.TOOLS))})
 
 fail("unknown verb", 2)

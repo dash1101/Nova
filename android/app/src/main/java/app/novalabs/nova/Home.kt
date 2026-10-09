@@ -129,8 +129,13 @@ import org.json.JSONObject
                 true, Icons.Rounded.Lightbulb, androidx.compose.ui.graphics.Color(0xFFFFB020), onClick = { app.go(Route.Lighting) })
         }
         Group {
-            Row1("Storage & hardware", m?.optString("photo_pool_used")?.let { "Photos $it" }, true, Icons.Rounded.Storage,
+            Row1("Storage & hardware", "Drives, pools, set up drives" + (m?.optString("photo_pool_used")?.takeIf { it.isNotEmpty() }?.let { " · photos $it" } ?: ""), true, Icons.Rounded.Storage,
                 androidx.compose.ui.graphics.Color(0xFF3ECF6E), onClick = { app.go(Route.Hardware) })
+            RowDivider()
+            Row1("Backups", "What's backed up, restore files", true, Icons.Rounded.Backup, onClick = { app.go(Route.Backups) })
+            RowDivider()
+            Row1("Diagnostics", "Speed, stress and network tests", true, Icons.Rounded.Speed, androidx.compose.ui.graphics.Color(0xFF64D2FF),
+                onClick = { app.go(Route.Diagnostics) })
             RowDivider()
             Row1("Quick panel", "Your shortcuts — tap ✎ to customise", true, Icons.Rounded.Widgets, onClick = { app.go(Route.QuickPanel) })
             RowDivider()

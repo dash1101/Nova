@@ -3,6 +3,7 @@
 import { S, $, $$, esc, sleep, kv, pemOf, get, post, prefs, has, refresh, onApproval, ApiError, webForm } from "./core.js";
 import { I, logo, toast, waitApproval, closeSheet } from "./ui.js";
 import * as V from "./views.js";
+import * as ST from "./storage.js";
 
 onApproval(id => waitApproval(id, get));
 
@@ -24,6 +25,7 @@ const ROUTES = {
   devices: V.devices, settings: V.settings, server: V.serverSettings, appearance: V.appearance, "edit-home": V.editHome,
   "edit-shortcuts": V.editShortcuts, "edit-tabs": V.editTabs, about: V.about, guide: V.guide, terminal: V.terminal,
   dashboard: V.dashboard, "edit-dash": V.editDash, archive: V.archive,
+  setup: ST.setup, pool: ST.pool, task: ST.task, backups: ST.backups, backup: ST.backup, "backup-edit": ST.backupEdit, restore: ST.restore, diag: ST.diag,
 };
 const RAIL = () => [["home", "dns", "Home"], ["status", "status", "Status"], ["containers", "box", "Containers"],
   ...(has("store") ? [["store", "store", "Store"]] : []), ["dashboard", "dash", "Dashboard"], ["menu", "list", "Menu"]];
@@ -155,6 +157,7 @@ document.addEventListener("click", e => {
   const el = e.target.closest("[data-act]"); if (!el || !el.dataset.act || el.closest("[disabled]")) return;
   const [name, ...a] = el.dataset.act.split(":"), h = current?.handlers || {};
   if (h[name]) return h[name](...a, el);
+  if (name === "help") return ST.showHelp(a[0]);
   if (name === "go") return go(a.join(":"));
   if (name === "tab") return tab(a.join(":"));
   if (name === "back") return back();

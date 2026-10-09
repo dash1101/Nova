@@ -5,12 +5,14 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ChevronRight
+import androidx.compose.material.icons.rounded.Done
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -35,6 +37,8 @@ data class NovaColors(
     val bg: Color, val glow: Color, val glow2: Color, val card: Color, val pill: Color, val nav: Color,
     val navSel: Color, val text: Color, val sub: Color, val blue: Color, val link: Color,
     val divider: Color, val green: Color, val amber: Color, val red: Color, val dark: Boolean,
+    /** Material You Expressive style (Settings → Appearance → Style) instead of the default One UI-like look. */
+    val material: Boolean = false, val onBlue: Color = Color.White, val blueContainer: Color = Color(0x333E91FF), val onBlueContainer: Color = Color(0xFF3E91FF),
 )
 val DarkTokens = NovaColors(Color.Black, Color(0xFF2E2560), Color(0xFF1A2550), Color(0xFF1E1E22), Color(0xFF2A2A2F),
     Color(0xFF242428), Color(0xFF3A3A40), Color.White, Color(0xFF9E9EA4), Color(0xFF3E91FF), Color(0xFF6E9DFF),
@@ -45,9 +49,20 @@ val LightTokens = NovaColors(Color(0xFFF4F3F8), Color(0xFFE2DBF7), Color(0xFFDCE
 val LocalNova = staticCompositionLocalOf { DarkTokens }
 val N: NovaColors @Composable get() = LocalNova.current
 
+/** Tokens for Material You: the wallpaper's dynamic colour scheme, mapped onto Nova's roles. */
+fun materialTokens(c: ColorScheme, dark: Boolean) = NovaColors(
+    bg = c.surfaceContainer, glow = Color.Transparent, glow2 = Color.Transparent,
+    card = if (dark) c.surfaceContainerHighest else c.surfaceBright, pill = c.surfaceContainerHigh, nav = c.surfaceContainerHigh,
+    navSel = c.secondaryContainer, text = c.onSurface, sub = c.onSurfaceVariant, blue = c.primary, link = c.primary,
+    divider = c.surfaceContainer, green = if (dark) Color(0xFF7DDC8E) else Color(0xFF2E7D45), amber = if (dark) Color(0xFFFFC66B) else Color(0xFFA15C00),
+    red = c.error, dark = dark, material = true, onBlue = c.onPrimary, blueContainer = c.primaryContainer, onBlueContainer = c.onPrimaryContainer)
+
 @Composable fun NovaTheme(content: @Composable () -> Unit) {
     val dark = when (AppPrefs.theme) { "dark" -> true; "light" -> false; else -> isSystemInDarkTheme() }
-    val t = if (dark) DarkTokens else LightTokens
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val material = materialStyle()
+    val dyn = if (material) (if (dark) dynamicDarkColorScheme(ctx) else dynamicLightColorScheme(ctx)) else null
+    val t = if (dyn != null) materialTokens(dyn, dark) else if (dark) DarkTokens else LightTokens
     val view = androidx.compose.ui.platform.LocalView.current
     if (!view.isInEditMode) SideEffect {                // status/nav bar icons follow the app's theme, not just the phone's
         (view.context as? android.app.Activity)?.window?.let { w ->
@@ -55,7 +70,7 @@ val N: NovaColors @Composable get() = LocalNova.current
                 isAppearanceLightStatusBars = !dark; isAppearanceLightNavigationBars = !dark }
         }
     }
-    val scheme = if (t.dark) darkColorScheme(primary = t.blue, background = t.bg, surface = t.card, onSurface = t.text)
+    val scheme = dyn ?: if (t.dark) darkColorScheme(primary = t.blue, background = t.bg, surface = t.card, onSurface = t.text)
                  else lightColorScheme(primary = t.blue, background = t.bg, surface = t.card, onSurface = t.text)
     CompositionLocalProvider(LocalNova provides t) { MaterialTheme(colorScheme = scheme, content = content) }
 }
@@ -63,8 +78,8 @@ val N: NovaColors @Composable get() = LocalNova.current
 /** Per-server accent colour (set in Settings → Server) replaces the blue throughout. */
 @Composable fun AccentTheme(hex: String?, content: @Composable () -> Unit) {
     val c = hex?.takeIf { it.length == 7 }?.let { runCatching { Color(android.graphics.Color.parseColor(it)) }.getOrNull() }
-    if (c == null) { content(); return }
     val t = N
+    if (c == null || t.material) { content(); return }          // Material You: the wallpaper's colours win
     CompositionLocalProvider(LocalNova provides t.copy(blue = c, link = lerp(c, Color.White, if (t.dark) 0.25f else 0f)), content = content)
 }
 
@@ -80,6 +95,7 @@ fun levelColor(level: String, t: NovaColors) = when (level) {
 /** The background colour + glow on its own (pages paint it again inside their blur source). */
 @Composable fun GlowLayer() {
     val t = N
+    if (t.material) { Box(Modifier.fillMaxSize().background(t.bg)); return }
     Canvas(Modifier.fillMaxSize().background(t.bg)) {
         drawRect(Brush.radialGradient(listOf(t.glow.copy(alpha = if (t.dark) 0.9f else 0.8f), Color.Transparent),
             center = Offset(size.width * 0.85f, size.height * 0.18f), radius = size.width * 0.95f))
@@ -90,16 +106,18 @@ fun levelColor(level: String, t: NovaColors) = when (level) {
 
 // ── Headers ───────────────────────────────────────────────────────────────────────
 @Composable fun SectionLabel(text: String) =
-    Text(text, color = N.sub, fontSize = 14.sp, fontWeight = FontWeight.Medium,
+    Text(text, color = if (N.material) N.blue else N.sub, fontSize = 14.sp, fontWeight = if (N.material) FontWeight.SemiBold else FontWeight.Medium,
         modifier = Modifier.padding(start = Space.gutter + Space.inner - 6.dp, end = 30.dp, top = 18.dp, bottom = 8.dp))
 
 // ── Group cards ───────────────────────────────────────────────────────────────────
 @Composable fun Group(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
     Column(modifier.fillMaxWidth().padding(horizontal = Space.gutter, vertical = 6.dp)
-        .glassCard(RoundedCornerShape(26.dp)), content = content)
+        .glassCard(RoundedCornerShape(if (N.material) 24.dp else 26.dp)), content = content)
 }
 
-@Composable fun RowDivider() = HorizontalDivider(Modifier.padding(horizontal = 22.dp), thickness = 0.8.dp, color = N.divider)
+/** Default: a hairline. Material You: a small gap, so a group reads as Android 16's segmented list. */
+@Composable fun RowDivider() = if (N.material) Box(Modifier.fillMaxWidth().height(3.dp).background(N.bg))
+    else HorizontalDivider(Modifier.padding(horizontal = 22.dp), thickness = 0.8.dp, color = N.divider)
 
 @Composable fun Row1(title: String, subtitle: String? = null, subtitleBlue: Boolean = false,
                      icon: ImageVector? = null, iconTint: Color? = null, enabled: Boolean = true,
@@ -227,6 +245,24 @@ val LocalWide = staticCompositionLocalOf { false }
     val x by androidx.compose.animation.core.animateDpAsState((itemW + gap) * selected.coerceAtLeast(0),
         if (reduceMotion()) androidx.compose.animation.core.snap() else androidx.compose.animation.core.spring(dampingRatio = 0.72f, stiffness = 420f), label = "bead")
     val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
+    if (N.material) {                         // M3 Expressive: a floating bar, pill indicator behind the icon, labels
+        Row(modifier.navigationBarsPadding().padding(bottom = 12.dp).frosted(null, RoundedCornerShape(32.dp), 6.dp)
+            .pointerInput(onLongClick) { detectTapGestures(onLongPress = { onLongClick?.let { l -> haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress); l() } }) }
+            .padding(horizontal = 8.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            icons.forEachIndexed { i, ic ->
+                val on = i == selected
+                val w by androidx.compose.animation.core.animateDpAsState(if (on) 64.dp else 40.dp, if (reduceMotion()) androidx.compose.animation.core.snap() else androidx.compose.animation.core.spring(0.55f, 380f), label = "ind")
+                Column(Modifier.width(80.dp).clip(RoundedCornerShape(20.dp)).bouncy(onLongClick = onLongClick) { onSelect(i) }.padding(vertical = 4.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally) {
+                    Box(Modifier.size(width = w, height = 32.dp).clip(RoundedCornerShape(16.dp)).background(if (on) N.navSel else Color.Transparent), contentAlignment = Alignment.Center) {
+                        Icon(ic, labels[i], tint = if (on) N.text else N.sub, modifier = Modifier.size(24.dp))
+                    }
+                    Text(labels[i], fontSize = 12.sp, fontWeight = if (on) FontWeight.Bold else FontWeight.Medium, color = if (on) N.text else N.sub, maxLines = 1, modifier = Modifier.padding(top = 4.dp))
+                }
+            }
+        }
+        return
+    }
     Box(modifier.navigationBarsPadding().padding(bottom = 14.dp).frosted(LocalRootHaze.current, RoundedCornerShape(40.dp), 18.dp)
         .pointerInput(onLongClick) { detectTapGestures(onLongPress = { onLongClick?.let { l -> haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress); l() } }) }
         .padding(6.dp)) {
@@ -245,10 +281,10 @@ val LocalWide = staticCompositionLocalOf { false }
 }
 
 @Composable fun CancelSavePill(onCancel: () -> Unit, onSave: () -> Unit, saveEnabled: Boolean = true,
-                               saveLabel: String = "Save", modifier: Modifier = Modifier) {
+                               saveLabel: String = "Save", modifier: Modifier = Modifier, cancelLabel: String = "Cancel") {
     Row(modifier.navigationBarsPadding().padding(bottom = 14.dp).frosted(null, RoundedCornerShape(40.dp), 18.dp)
         .padding(horizontal = 10.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text("Cancel", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = N.text,
+        Text(cancelLabel, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = N.text,
             modifier = Modifier.clip(RoundedCornerShape(24.dp)).clickable(onClick = onCancel).padding(horizontal = 28.dp, vertical = 14.dp))
         Box(Modifier.width(1.dp).height(22.dp).background(N.divider))
         Text(saveLabel, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = if (saveEnabled) N.text else N.sub,
@@ -268,6 +304,22 @@ val LocalWide = staticCompositionLocalOf { false }
 
 /** One UI segmented tabs (pill). */
 @Composable fun Segmented(options: List<String>, selected: Int, onSelect: (Int) -> Unit) {
+    if (N.material) {                       // M3 Expressive connected button group
+        Row(Modifier.padding(horizontal = Space.gutter, vertical = 6.dp).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+            options.forEachIndexed { i, o ->
+                val on = i == selected
+                val r by androidx.compose.animation.core.animateDpAsState(if (on) 24.dp else 8.dp, androidx.compose.animation.core.spring(0.6f, 500f), label = "seg")
+                val shape = RoundedCornerShape(topStart = if (i == 0 || on) 24.dp else r, bottomStart = if (i == 0 || on) 24.dp else r,
+                    topEnd = if (i == options.lastIndex || on) 24.dp else r, bottomEnd = if (i == options.lastIndex || on) 24.dp else r)
+                Row(Modifier.weight(1f).height(48.dp).clip(shape).background(if (on) N.blue else N.pill).clickable { onSelect(i) }.padding(horizontal = 6.dp),
+                    horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+                    if (on) { Icon(androidx.compose.material.icons.Icons.Rounded.Done, null, tint = N.onBlue, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(4.dp)) }
+                    Text(o, color = if (on) N.onBlue else N.text, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+            }
+        }
+        return
+    }
     Row(Modifier.padding(horizontal = Space.gutter, vertical = 6.dp).fillMaxWidth().glassCard(RoundedCornerShape(24.dp), 3.dp)
         .padding(4.dp)) {
         options.forEachIndexed { i, o ->
@@ -290,6 +342,16 @@ val LocalWide = staticCompositionLocalOf { false }
 @Composable fun PrimaryButton(text: String, modifier: Modifier = Modifier, enabled: Boolean = true,
                               color: Color? = null, onClick: () -> Unit) {
     val bg = color ?: N.blue
+    if (N.material) {                        // Expressive: taller pill whose corners tighten while pressed
+        val src = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+        val pressed by src.collectIsPressedAsState()
+        val r by androidx.compose.animation.core.animateDpAsState(if (pressed && !reduceMotion()) 12.dp else 28.dp, androidx.compose.animation.core.spring(0.55f, 600f), label = "btn")
+        Box(modifier.height(56.dp).clip(RoundedCornerShape(r)).background(if (enabled) bg else bg.copy(alpha = 0.35f))
+            .clickable(src, androidx.compose.material3.ripple(), enabled = enabled, onClick = onClick).padding(horizontal = 24.dp), contentAlignment = Alignment.Center) {
+            Text(text, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = if (bg == N.pill || bg == N.card) N.text else if (bg == N.blue) N.onBlue else Color.White)
+        }
+        return
+    }
     Box(modifier.height(52.dp).clip(RoundedCornerShape(26.dp)).background(if (enabled) bg else bg.copy(alpha = 0.35f))
         .clickable(enabled = enabled, onClick = onClick).padding(horizontal = 24.dp), contentAlignment = Alignment.Center) {
         Text(text, fontSize = 16.sp, fontWeight = FontWeight.Bold,

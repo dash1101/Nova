@@ -145,6 +145,7 @@ input[type=range]:disabled { opacity: .45; }
 .btn[disabled] { opacity: .45; cursor: default; }
 .pillbtn { padding: 9px 18px; border-radius: 18px; background: color-mix(in srgb, var(--text) 8%, transparent); color: var(--blue); font-weight: 700; font-size: 15px; flex: none; }
 .pillbtn.red { color: var(--red); } .pillbtn.plain { color: var(--text); }
+.help { width: 26px; height: 26px; border-radius: 13px; background: color-mix(in srgb, var(--sub) 18%, transparent); color: var(--text); font-weight: 700; font-size: 15px; flex: none; display: inline-grid; place-items: center; padding: 0; }
 .field { width: 100%; padding: 14px 18px; border-radius: 22px; background: color-mix(in srgb, var(--text) 7%, transparent); border: 0; outline: none; font-size: 17px; }
 .field:focus { box-shadow: 0 0 0 2px var(--blue) inset; }
 .code-block { font: 13px/1.5 ui-monospace, "JetBrains Mono", monospace; background: color-mix(in srgb, var(--text) 7%, transparent); border-radius: 14px; padding: 12px; white-space: pre-wrap; overflow-wrap: anywhere; margin-top: 10px; }

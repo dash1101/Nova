@@ -20,13 +20,16 @@ network, and optionally from anywhere through Cloudflare Access, without a VPN.
 | **Status** | CPU, memory, temperature and network graphs (last hour), storage, backups, services |
 | **Containers** | Every Docker Compose container: logs, a shell inside it, start/stop/restart, update, restart policy |
 | **App store** | One-tap installs of popular self-hosted apps (Jellyfin, Vaultwarden, Uptime Kuma, …) and apt programs |
-| **Storage** | Drives with SMART health and temperatures |
+| **Storage** | A map of every drive and pool with suggestions; a step-by-step wizard to combine drives into one, build RAID 0/1/5/6/10, set up a backup drive, grow a pool or replace a failed drive (with "?" help everywhere); SMART health, temperatures and drive self-tests |
+| **Backups** | Scheduled, versioned snapshots of any folders to another drive or a NAS (SMB / NFS), missing-drive protection, history, browse & restore |
+| **Diagnostics** | Internet speed (down/up/ping/jitter/loss), phone ↔ server speed, drive speed (sequential + random), CPU stress with live temperature/clock/power, memory test, ping/traceroute/DNS/port tools, top processes |
 | **Terminal** | Real SSH to the server, with a key that lives in the phone's secure chip |
 | **Quick panel** | Your own tiles: back up, free RAM, lights, pause alerts, restart a container… |
 | **Alerts** | Inbox plus instant notifications (no Google push service, no third party) |
 | **Several servers** | Pair with as many machines as you like and switch between them, each with its own name and colour |
 | **Users & roles** | Named users, each Admin or View only; invite phones by QR, approve browsers from your phone |
 | **Tablets & dashboard** | One UI tablet layout (rail + list/detail) and an always-on, customisable dashboard mode |
+| **Two looks** | Default (One UI-style frosted glass) or Material You Expressive with wallpaper colours — chosen automatically by phone maker, switchable in Appearance |
 | **Nova web** | The same design in any browser, at `https://<server>:8495/`. Risky actions are approved on your phone |
 | **Optional modules** | Case/fan lighting (Gigabyte RGB Fusion 2); plug in your own monitor for alerts |
 
@@ -108,5 +111,5 @@ app uses). See docs/REMOTE.md.
 - Fan **speed** control needs a kernel driver for your board's fan chip. Fan/case **lighting** is
   supported only on Gigabyte RGB Fusion 2 boards for now (the module is small, so other controllers
   are welcome).
-- Alerts and rich status come from a monitor you provide (any script that writes two JSON files,
-  see docs/MODULES.md). Without one, Nova shows a basic built-in status.
+- Monitoring and alerts are built in (docs/MONITOR.md); you can still plug in your own monitor.
+- Pools use mergerfs (combined) or Linux software RAID (mdadm); ZFS isn't offered from the app yet.

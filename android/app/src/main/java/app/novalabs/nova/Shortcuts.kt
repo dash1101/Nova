@@ -34,6 +34,8 @@ val SHORTCUTS = listOf(
     Shortcut("containers", Icons.Rounded.ViewInAr, "Containers", Route.Containers),
     Shortcut("storage", Icons.Rounded.Storage, "Storage", Route.Hardware),
     Shortcut("status", Icons.Rounded.MonitorHeart, "Status", Route.Status),
+    Shortcut("backups", Icons.Rounded.Backup, "Backups", Route.Backups),
+    Shortcut("diagnostics", Icons.Rounded.Speed, "Diagnostics", Route.Diagnostics, short = "Tests"),
     Shortcut("lighting", Icons.Rounded.Light, "Lighting", Route.Lighting, "lighting"),
     Shortcut("terminal", Icons.Rounded.Terminal, "Terminal", Route.Ssh, "ssh"),
     Shortcut("store", Icons.Rounded.Storefront, "Store", Route.Store, "store"),

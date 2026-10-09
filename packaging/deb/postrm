@@ -2,7 +2,7 @@
 set -e
 if [ "$1" = purge ]; then
     # Removes settings and paired devices. Your containers and data are never touched.
-    rm -rf /etc/nova-api /var/lib/nova-api /var/log/nova-api /var/lib/nova-rgb /var/lib/nova-alerts /etc/nova-alerts
+    rm -rf /etc/nova-api /var/lib/nova-api /var/log/nova-api /var/lib/nova-rgb /var/lib/nova-alerts /etc/nova-alerts /etc/nova-backup /var/lib/nova-backups
     rm -f /etc/systemd/system/nova-api.service.d/rgb.conf /etc/udev/rules.d/60-nova-rgb.rules
     getent passwd nova-api >/dev/null && userdel nova-api || true
 fi

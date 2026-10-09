@@ -4,8 +4,8 @@ Section: admin
 Priority: optional
 Architecture: all
 Installed-Size: @SIZE@
-Depends: python3 (>= 3.11), python3-cryptography, qrencode, iproute2, systemd
-Recommends: docker.io | docker-ce, ufw, smartmontools
+Depends: python3 (>= 3.11), python3-cryptography, qrencode, iproute2, systemd, rsync, parted, util-linux
+Recommends: docker.io | docker-ce, ufw, smartmontools, mergerfs, mdadm, xfsprogs, btrfs-progs, exfatprogs, nfs-common, cifs-utils, fio, stress-ng, iputils-tracepath, iputils-ping, attr
 Suggests: tailscale, cloudflared
 Maintainer: Nova contributors <nova@localhost>
 Homepage: https://github.com/

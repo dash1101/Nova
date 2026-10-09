@@ -60,15 +60,20 @@ function cloudflareSays(code) {
 let approvalHook = null;          // set by the UI: shows "approve on your phone"
 export function onApproval(fn) { approvalHook = fn; }
 
-export async function api(method, path, body) {
+/** A signed request; returns the raw Response (for streaming — e.g. the speed test). */
+export async function signedFetch(method, path, body) {
   const bodyStr = body === undefined ? "" : JSON.stringify(body);
   const ts = String(Date.now()), nonce = b64url(crypto.getRandomValues(new Uint8Array(18)));
   const digest = hex(await crypto.subtle.digest("SHA-256", enc(bodyStr)));
   const sig = await crypto.subtle.sign({ name: "ECDSA", hash: "SHA-256" }, S.keys.privateKey, enc(`${method}\n${path}\n${ts}\n${nonce}\n${digest}`));
+  return fetch(path, { method, body: method === "GET" ? undefined : bodyStr, credentials: "same-origin", cache: "no-store",
+    headers: { "Content-Type": "application/json", "X-Nova-Device": S.device, "X-Nova-Time": ts, "X-Nova-Nonce": nonce, "X-Nova-Signature": b64(sig) } });
+}
+
+export async function api(method, path, body) {
   let r;
   try {
-    r = await fetch(path, { method, body: method === "GET" ? undefined : bodyStr, credentials: "same-origin", cache: "no-store",
-      headers: { "Content-Type": "application/json", "X-Nova-Device": S.device, "X-Nova-Time": ts, "X-Nova-Nonce": nonce, "X-Nova-Signature": b64(sig) } });
+    r = await signedFetch(method, path, body);
   } catch (e) {
     S.lastAttempt = navigator.onLine === false ? "This device is offline" : `Nothing answered at ${location.host} (the server is off, or this network can't reach it)`;
     throw new ApiError(0, "Disconnected", true);

@@ -124,6 +124,25 @@ class NovaApi(private val pairing: Pairing) {
         out
     }
 
+    /** Speed test: stream a download, reporting (bytes so far, ms since the first byte); returns the same at the end. */
+    suspend fun speedDown(path: String, onProgress: (Long, Long) -> Unit): Pair<Long, Long> = withContext(Dispatchers.IO) {
+        var res = 0L to 0L
+        route("GET") { name, base ->
+            client(name).newCall(build(name, base, prepare("GET", path, null), null)).execute().use { r ->
+                if (!r.isSuccessful) throw ApiException(r.code, "Speed test failed (${r.code})")
+                val src = r.body.byteStream(); val buf = ByteArray(64 * 1024)
+                var n = 0L; val t0 = System.nanoTime(); var last = 0L
+                while (true) {
+                    val k = src.read(buf); if (k < 0) break
+                    n += k; val ms = (System.nanoTime() - t0) / 1_000_000
+                    if (ms - last > 200) { last = ms; onProgress(n, ms) }
+                }
+                res = n to (System.nanoTime() - t0) / 1_000_000; ""
+            }
+        }
+        res
+    }
+
     /** The request certainly never reached the server, so sending it again is always safe. */
     private fun notSent(e: IOException) = e is java.net.ConnectException || e is java.net.UnknownHostException ||
         e is java.net.UnknownServiceException ||           // plain http refused by the security policy (old pairings)

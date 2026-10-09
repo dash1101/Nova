@@ -22,4 +22,7 @@ PY
 chown nova-api:nova-api "$DIR/latest.json"
 ls -1t "$DIR"/Nova-*.apk | tail -n +4 | xargs -r rm -f      # keep the 3 newest
 echo "published $vn (code $vc, $size bytes, sha256 ${sha:0:16}…)"
-/usr/local/bin/nova-log claude "Published Nova app $vn to the in-app updater."
+/usr/local/bin/nova-log claude "Published Nova app $vn to the in-app updater." 2>/dev/null || true
+# Tell the phones (each one ignores it if it already has this version or newer).
+A=$(command -v nova-alert || echo /usr/sbin/nova-alert)
+[ -x "$A" ] && NOVA_ALERT_CATEGORY="app-update:$vc" "$A" info "Nova app $vn is ready" "${NOTES:-Open Nova → Settings → Software update to install it.}" >/dev/null 2>&1 || true

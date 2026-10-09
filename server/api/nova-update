@@ -129,6 +129,15 @@ def main():
         avail_newer = not cur or newer(ver, cur)
         status(state="available" if avail_newer else "current", current=cur, available=ver)
         if "--check" in FLAGS:
+            prev = {}
+            try: prev = json.load(open(STATUS))
+            except Exception: pass
+            if avail_newer and prev.get("notified") != ver:            # once per new version
+                a = shutil.which("nova-alert") or "/usr/sbin/nova-alert"
+                if os.path.exists(a):
+                    subprocess.run([a, "info", f"Server update available: Nova {ver}", f"You have {cur}. Install it from Nova → Settings → Software update (or: sudo nova-update)."],
+                                   env={**os.environ, "NOVA_ALERT_CATEGORY": "update"}, capture_output=True)
+                status(notified=ver)
             say(f"installed {cur or 'none'} · release {ver} · {'update available' if avail_newer else 'up to date'}"); return
         if not avail_newer and "--allow-downgrade" not in FLAGS and "--reinstall" not in FLAGS:
             say(f"✓ already up to date ({cur})"); return

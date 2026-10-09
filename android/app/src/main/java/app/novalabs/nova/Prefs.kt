@@ -22,6 +22,7 @@ import androidx.compose.ui.unit.sp
 object AppPrefs {
     private lateinit var sp: android.content.SharedPreferences
     var theme by mutableStateOf("system"); private set            // system | light | dark
+    var style by mutableStateOf("auto"); private set              // auto | default (One UI-like) | material (Material You Expressive)
     var reduceMotion by mutableStateOf(false); private set
     var appLock by mutableStateOf(false); private set
     var hideInRecents by mutableStateOf(false); private set
@@ -36,7 +37,7 @@ object AppPrefs {
     fun init(ctx: Context) {
         if (::sp.isInitialized) return
         sp = ctx.getSharedPreferences("nova_prefs", Context.MODE_PRIVATE)
-        theme = sp.getString("theme", "system")!!; reduceMotion = sp.getBoolean("reduce_motion", false)
+        theme = sp.getString("theme", "system")!!; style = sp.getString("style", "auto")!!; reduceMotion = sp.getBoolean("reduce_motion", false)
         appLock = sp.getBoolean("app_lock", false); hideInRecents = sp.getBoolean("hide_recents", false)
         homeHero = sp.getBoolean("home_hero", true); homeShortcuts = sp.getBoolean("home_shortcuts", true); homeStats = sp.getBoolean("home_stats", true)
         homeOrder = sp.getString("home_order", null)?.split(",")?.filter { it in HOME_SECTIONS }?.let { it + (HOME_SECTIONS - it.toSet()) } ?: HOME_SECTIONS
@@ -46,7 +47,7 @@ object AppPrefs {
     }
     fun set(key: String, v: Any) {
         when (key) {
-            "theme" -> theme = v as String; "reduce_motion" -> reduceMotion = v as Boolean; "app_lock" -> appLock = v as Boolean
+            "theme" -> theme = v as String; "style" -> style = v as String; "reduce_motion" -> reduceMotion = v as Boolean; "app_lock" -> appLock = v as Boolean
             "hide_recents" -> hideInRecents = v as Boolean; "home_hero" -> homeHero = v as Boolean
             "home_shortcuts" -> homeShortcuts = v as Boolean; "home_stats" -> homeStats = v as Boolean
             "home_order" -> homeOrder = (v as String).split(",")
@@ -57,6 +58,12 @@ object AppPrefs {
         sp.edit().apply { if (v is Boolean) putBoolean(key, v) else putString(key, v.toString()) }.apply()
     }
 }
+
+/** Phones whose own UI is One UI- or iOS-like get Nova's default look; everyone else (Pixel, Motorola,
+ *  Nothing, Sony, OnePlus…) gets Material You Expressive, so Nova matches the rest of the phone. */
+private val DEFAULT_LOOK_MAKERS = setOf("samsung", "xiaomi", "redmi", "poco", "huawei", "honor", "vivo", "iqoo", "oppo", "realme", "meizu")
+fun autoMaterial(): Boolean = android.os.Build.MANUFACTURER.lowercase() !in DEFAULT_LOOK_MAKERS && android.os.Build.BRAND.lowercase() !in DEFAULT_LOOK_MAKERS
+fun materialStyle(): Boolean = when (AppPrefs.style) { "material" -> true; "default" -> false; else -> autoMaterial() }
 
 /** Honour both the app setting and Android's "remove animations". */
 fun reduceMotion(): Boolean = AppPrefs.reduceMotion
@@ -99,15 +106,27 @@ object AppLock {
 /** Settings → Appearance & privacy. */
 @Composable fun AppearanceScreen(app: AppState) {
     Page("Appearance & privacy", app::back) {
+        SectionLabel("Style")
+        Group {
+            val autoName = if (autoMaterial()) "Material You" else "Default"
+            listOf("auto" to ("Automatic" to "$autoName — matches how ${android.os.Build.MANUFACTURER.replaceFirstChar { it.uppercase() }} phones look"),
+                   "default" to ("Default" to "Nova's own look: frosted glass, soft glow, One UI-style"),
+                   "material" to ("Material You" to "Google's Material 3 Expressive: colours from your wallpaper, bolder shapes, springy motion"))
+                .forEachIndexed { i, (k, l) ->
+                    if (i > 0) RowDivider()
+                    Row1(l.first, l.second, onClick = { AppPrefs.set("style", k) }) { OneRadio(AppPrefs.style == k) }
+                }
+        }
         SectionLabel("Theme")
         Group {
-            listOf("system" to "Same as the phone", "light" to "Light", "dark" to "Dark").forEachIndexed { i, (k, l) ->
+            val look = if (materialStyle()) "Material" else "Default"
+            listOf("system" to "Same as the ${DeviceForm.noun}", "light" to "$look light", "dark" to "$look dark").forEachIndexed { i, (k, l) ->
                 if (i > 0) RowDivider()
                 Row1(l, null, onClick = { AppPrefs.set("theme", k) }) { OneRadio(AppPrefs.theme == k) }
             }
         }
         Group {
-            SwitchRow("Reduce motion", "Simple fades instead of slides and bounces", AppPrefs.reduceMotion) { AppPrefs.set("reduce_motion", it) }
+            SwitchRow("Reduce motion", "Simple fades instead of slides and bounces, and no back-gesture animation", AppPrefs.reduceMotion) { AppPrefs.set("reduce_motion", it) }
         }
         SectionLabel("Home")
         Group {

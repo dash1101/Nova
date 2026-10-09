@@ -53,6 +53,12 @@ sealed class Route {
     data object Servers : Route(); data object ServerSettings : Route(); data object Dashboard : Route(); data object Approvals : Route()
     data object Appearance : Route(); data object SetupGuide : Route(); data object EditShortcuts : Route(); data object EditHome : Route(); data object EditTabs : Route(); data object Archive : Route()
     data object Settings : Route(); data object Devices : Route(); data object About : Route()
+    data class StorageWizard(val goal: String? = null, val drives: List<String> = emptyList(), val pool: String? = null) : Route()
+    data class Pool(val id: String) : Route(); data class Task(val id: String, val then: String? = null) : Route()
+    data object Backups : Route(); data class Backup(val id: String) : Route()
+    data class BackupWizard(val id: String?, val sources: List<String> = emptyList(), val dest: String? = null) : Route()
+    data class BackupBrowse(val id: String, val snap: String = "", val path: String = "") : Route()
+    data object Diagnostics : Route()
 }
 
 /** Shared app state: the API, live data, navigation, messages. */
@@ -196,10 +202,12 @@ class AppState(val activity: Activity, val pairing: Pairing, val scope: Coroutin
 }
 
 var openApprovals by mutableStateOf(false)
+var openUpdate by mutableStateOf(false)
 
 class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: android.content.Intent) {
         super.onNewIntent(intent); if (intent.getStringExtra("open") == "approvals") openApprovals = true
+        if (intent.getStringExtra("open") == "update") openUpdate = true
     }
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
@@ -209,6 +217,7 @@ class MainActivity : ComponentActivity() {
             requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1)
         val openInbox = intent?.getStringExtra("open") == "inbox"
         openApprovals = intent?.getStringExtra("open") == "approvals"
+        openUpdate = intent?.getStringExtra("open") == "update"
         Alerts.start(this)
         AppPrefs.init(this); applySecureFlag(this)
         setContent { NovaTheme {
@@ -262,7 +271,9 @@ class MainActivity : ComponentActivity() {
     val backExit = remember { androidx.compose.animation.core.Animatable(0f) }
     val backScope = rememberCoroutineScope()
     var backEdge by remember { mutableIntStateOf(androidx.activity.BackEventCompat.EDGE_LEFT) }
-    androidx.activity.compose.PredictiveBackHandler(enabled = app.backTarget != null) { events ->
+    // Reduce motion: back still works, just without the page following your thumb.
+    androidx.activity.compose.BackHandler(enabled = app.backTarget != null && reduceMotion()) { app.back() }
+    androidx.activity.compose.PredictiveBackHandler(enabled = app.backTarget != null && !reduceMotion()) { events ->
         try {
             events.collect { e -> backEdge = e.swipeEdge; backP.snapTo(e.progress) }
             val finish = androidx.compose.animation.core.tween<Float>(if (reduceMotion()) 0 else 200, easing = androidx.compose.animation.core.FastOutSlowInEasing)
@@ -279,6 +290,7 @@ class MainActivity : ComponentActivity() {
         }
     }
     LaunchedEffect(openApprovals) { if (openApprovals) { openApprovals = false; app.go(Route.Approvals) } }
+    LaunchedEffect(openUpdate) { if (openUpdate) { openUpdate = false; app.go(Route.Settings) } }
 
     val rootHaze = remember { dev.chrisbanes.haze.HazeState() }
     GlowBackground {
@@ -337,7 +349,10 @@ class MainActivity : ComponentActivity() {
 fun navTransition(dir: Int, reduce: Boolean): androidx.compose.animation.ContentTransform {
     if (dir == 2) return androidx.compose.animation.EnterTransition.None togetherWith androidx.compose.animation.ExitTransition.None
     if (reduce || dir == 0) return fadeIn(androidx.compose.animation.core.tween(160)) togetherWith fadeOut(androidx.compose.animation.core.tween(120))
-    val spec = androidx.compose.animation.core.tween<androidx.compose.ui.unit.IntOffset>(320, easing = androidx.compose.animation.core.FastOutSlowInEasing)
+    // Material You Expressive: spring physics (a touch of overshoot) instead of a fixed curve
+    val spec: androidx.compose.animation.core.FiniteAnimationSpec<androidx.compose.ui.unit.IntOffset> = if (materialStyle())
+        androidx.compose.animation.core.spring(dampingRatio = 0.82f, stiffness = 380f, visibilityThreshold = androidx.compose.ui.unit.IntOffset(1, 1))
+        else androidx.compose.animation.core.tween(320, easing = androidx.compose.animation.core.FastOutSlowInEasing)
     return (androidx.compose.animation.slideInHorizontally(spec) { w -> if (dir > 0) w / 3 else -w / 6 } + fadeIn(androidx.compose.animation.core.tween(260))) togetherWith
         (androidx.compose.animation.slideOutHorizontally(spec) { w -> if (dir > 0) -w / 6 else w / 3 } + fadeOut(androidx.compose.animation.core.tween(180)))
 }
@@ -408,6 +423,14 @@ private fun Modifier.paneTouch(app: AppState, left: Boolean) = pointerInput(left
         Route.EditHome -> EditHomeScreen(app)
         Route.EditTabs -> EditTabsScreen(app)
         Route.Archive -> ArchiveScreen(app)
+        is Route.StorageWizard -> StorageWizardScreen(app, r)
+        is Route.Pool -> PoolScreen(app, r.id)
+        is Route.Task -> TaskScreen(app, r)
+        Route.Backups -> BackupsScreen(app)
+        is Route.Backup -> BackupScreen(app, r.id)
+        is Route.BackupWizard -> BackupWizardScreen(app, r)
+        is Route.BackupBrowse -> BackupBrowseScreen(app, r)
+        Route.Diagnostics -> DiagnosticsScreen(app)
         Route.Status -> StatusScreen(app)
         Route.Ssh -> SshScreen(app)
         Route.SshTerm -> SshTermScreen(app)

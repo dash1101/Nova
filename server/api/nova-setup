@@ -138,12 +138,26 @@ def main():
         os.chmod(tmp, 0o640); os.replace(tmp, settings_f)
         print(f"  {G}✓{X} Saved — change it any time in the app (Settings → Server, or Lighting → Schedules)")
 
-    step(8, "Lighting module")
+    step(8, "Tools for drives, backups and tests")
+    try:
+        from storage import missing_packages, TOOLS
+        miss = missing_packages(list(TOOLS))
+    except ImportError: miss = []
+    if not miss: print(f"  {G}✓{X} Everything is installed (pools, RAID, NAS backups, speed and stress tests).")
+    else:
+        print(f"  {D}Pools, RAID, NAS backups and the diagnostics use: {', '.join(miss)}.{X}")
+        print(f"  {D}(Skipping is fine — Nova installs each one the first time a feature needs it.){X}")
+        if yes("Install them now?", True):
+            env = {**os.environ, "DEBIAN_FRONTEND": "noninteractive"}
+            r = subprocess.run(["apt-get", "install", "-y", "--no-install-recommends", *miss], env=env)
+            print(f"  {G}✓{X} Installed" if r.returncode == 0 else f"  {Y}Some didn't install — run: sudo apt-get install {' '.join(miss)}{X}")
+
+    step(9, "Lighting module")
     lit = any("048D:00005702" in open(u).read().upper() for u in glob.glob("/sys/class/hidraw/hidraw*/device/uevent"))
     if lit: print(f"  Found a Gigabyte RGB Fusion 2 controller.  Install it with:  {B}sudo nova-setup-lighting{X}")
     else: print(f"  {D}No supported lighting controller found — skipped.{X}")
 
-    step(9, "Firewall")
+    step(10, "Firewall")
     rc, st = sh("ufw", "status")
     if rc == 0 and "Status: active" in st:
         if yes(f"Allow {subnet} to reach Nova (port 8495, encrypted)?", True):
@@ -152,7 +166,7 @@ def main():
             print(f"  {G}✓{X} Firewall rules added")
     else: print(f"  {D}ufw isn't active — make sure your firewall lets {subnet} reach tcp 8495 (and udp 8496 for discovery).{X}")
 
-    step(10, "Start Nova")
+    step(11, "Start Nova")
     sh("systemctl", "daemon-reload")
     sh("systemctl", "enable", "--now", "nova-helper.socket")
     sh("systemctl", "enable", "nova-api.service"); sh("systemctl", "restart", "nova-api.service")

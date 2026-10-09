@@ -43,7 +43,8 @@ private fun health(d: JSONObject): Pair<String, String> {
     val hw by live(app, "/api/v1/hardware", 15_000)
     val drives = hw?.optJSONArray("drives")?.let { a -> (0 until a.length()).map { a.getJSONObject(it) } } ?: emptyList()
     val temps = hw?.optJSONObject("temps")
-    Page("Storage & hardware", app::back) {
+    Page("Storage & hardware", app::back, listOf(TopAction(Icons.Rounded.Add, "Set up drives") { app.go(Route.StorageWizard()) })) {
+        StorageOverview(app)
         if (temps != null) {
             SectionLabel("Temperatures")
             Group {
@@ -54,7 +55,7 @@ private fun health(d: JSONObject): Pair<String, String> {
         }
         drives.groupBy { it.optString("role") }.toSortedMap(compareBy { listOf("Photo pool", "Backup drive", "Cold storage", "Boot drive").indexOf(it).let { i -> if (i < 0) 9 else i } })
             .forEach { (role, ds) ->
-                SectionLabel(role)
+                SectionLabel(if (role == "Other" || role.isEmpty()) "Drives" else role)
                 Group {
                     ds.forEachIndexed { i, d ->
                         if (i > 0) RowDivider()

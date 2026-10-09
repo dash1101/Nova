@@ -50,6 +50,17 @@ object Alerts {
             val e = ev.getJSONObject(i); val t = e.optDouble("t")
             if (t <= since) continue
             if (t > newest) newest = t
+            val cat = e.optString("category")
+            if (cat.startsWith("app-update:")) {           // a new app: only if this phone doesn't have it yet
+                val code = cat.substringAfter(":").toIntOrNull() ?: 0
+                if (code > ctx.packageManager.getPackageInfo(ctx.packageName, 0).longVersionCode && since > 0)
+                    Notifier.post(ctx, 4242, "info", e.optString("title"), e.optString("detail"), open = "update")
+                continue
+            }
+            if (cat == "update" && since > 0) {             // server update: always worth a nudge, whatever the level filter
+                Notifier.post(ctx, 4243 xor pairing.profile.hashCode(), "info", if (many) "$name · ${e.optString("title")}" else e.optString("title"), e.optString("detail"), open = "update")
+                continue
+            }
             if (since <= 0 || !Notifier.atLeast(e.optString("level"), pairing.phoneNotifyLevel)) continue
             if (t < fresh) { stale++; continue }
             Notifier.post(ctx, (t * 1000).toLong().toInt() xor pairing.profile.hashCode(), e.optString("level"),

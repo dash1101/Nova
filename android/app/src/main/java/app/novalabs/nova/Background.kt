@@ -23,7 +23,7 @@ import java.io.File
 import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
 
-const val APP_VERSION = "0.4.8-alpha"
+const val APP_VERSION = "0.5.0-alpha"
 
 class NovaApp : Application() {
     override fun onCreate() {
@@ -79,17 +79,17 @@ object Notifier {
             .apply { description = "A paired browser wants to do something that needs your fingerprint" })
         val open = PendingIntent.getActivity(ctx, id, Intent(ctx, MainActivity::class.java).putExtra("open", "approvals")
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
-        val n = NotificationCompat.Builder(ctx, "approvals").setSmallIcon(R.drawable.ic_notification).setColor(0xFF3E91FF.toInt())
+        val n = NotificationCompat.Builder(ctx, "approvals").setSmallIcon(R.drawable.ic_notification).setColor(0xFF6E56CF.toInt())
             .setContentTitle(title).setContentText(text).setStyle(NotificationCompat.BigTextStyle().bigText(text))
             .setContentIntent(open).setAutoCancel(true).setCategory(NotificationCompat.CATEGORY_RECOMMENDATION).build()
         runCatching { NotificationManagerCompat.from(ctx).notify(id, n) }
     }
 
-    fun post(ctx: Context, id: Int, level: String, title: String, text: String) {
+    fun post(ctx: Context, id: Int, level: String, title: String, text: String, open: String = "inbox") {
         val ch = if (level == "resolved") "info" else level
-        val open = PendingIntent.getActivity(ctx, 0, Intent(ctx, MainActivity::class.java).putExtra("open", "inbox"),
+        val open = PendingIntent.getActivity(ctx, if (open == "inbox") 0 else 9, Intent(ctx, MainActivity::class.java).putExtra("open", open),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
-        val n = NotificationCompat.Builder(ctx, ch).setSmallIcon(R.drawable.ic_notification).setColor(0xFF3E91FF.toInt())
+        val n = NotificationCompat.Builder(ctx, ch).setSmallIcon(R.drawable.ic_notification).setColor(0xFF6E56CF.toInt())
             .setContentTitle(title).setContentText(text).setStyle(NotificationCompat.BigTextStyle().bigText(text))
             .setContentIntent(open).setAutoCancel(true).setGroup("nova").build()
         runCatching { NotificationManagerCompat.from(ctx).notify(id, n) }

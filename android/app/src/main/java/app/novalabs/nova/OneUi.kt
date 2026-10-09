@@ -34,6 +34,8 @@ import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
@@ -99,7 +101,9 @@ data class TopAction(val icon: ImageVector, val label: String, val onClick: () -
             Row(Modifier.fillMaxWidth().statusBarsPadding()
                 .padding(start = 68.dp, end = 12.dp + 52.dp * actions.size, top = 18.dp, bottom = 10.dp)
                 .heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(title, fontSize = 24.sp, fontWeight = FontWeight.Bold, color = N.text, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                if (N.material) Text(title, fontSize = 32.sp, fontWeight = FontWeight.Normal, color = N.text, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                    lineHeight = 38.sp, modifier = Modifier.padding(top = 14.dp))          // M3 large top app bar
+                else Text(title, fontSize = 24.sp, fontWeight = FontWeight.Bold, color = N.text, maxLines = 2, overflow = TextOverflow.Ellipsis)
             }
             content()
             Spacer(Modifier.height(bottom + LocalNavPad.current))
@@ -145,6 +149,13 @@ data class TopAction(val icon: ImageVector, val label: String, val onClick: () -
 /** One UI toast: a small rounded grey bubble, centred above the bottom bar. */
 @Composable fun OneToastHost(state: SnackbarHostState, modifier: Modifier = Modifier) {
     SnackbarHost(state, modifier) { data ->
+        if (N.material) {
+            Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp), contentAlignment = Alignment.Center) {
+                Text(data.visuals.message, color = MaterialTheme.colorScheme.inverseOnSurface, fontSize = 15.sp,
+                    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.inverseSurface).padding(horizontal = 18.dp, vertical = 14.dp))
+            }
+            return@SnackbarHost
+        }
         Box(Modifier.fillMaxWidth().padding(horizontal = 36.dp), contentAlignment = Alignment.Center) {
             Text(data.visuals.message, color = if (N.dark) Color(0xFFF2F2F4) else Color(0xFF1B1B1D), fontSize = 15.sp,
                 textAlign = TextAlign.Center, modifier = Modifier.frosted(LocalRootHaze.current, RoundedCornerShape(22.dp), 10.dp)
@@ -159,6 +170,25 @@ data class DialogButton(val label: String, val color: Color? = null, val enabled
 /** One UI dialog: floats at the bottom of the screen, big rounded card, text buttons split by a hairline. */
 @Composable fun OneDialog(onDismiss: () -> Unit, title: String? = null, text: String? = null,
                           buttons: List<DialogButton> = emptyList(), content: (@Composable ColumnScope.() -> Unit)? = null) {
+    if (N.material) {                       // M3 dialog: centred, 28dp corners, text buttons on the right
+        Dialog(onDismiss, DialogProperties(usePlatformDefaultWidth = false)) {
+            Column(Modifier.padding(horizontal = 24.dp).widthIn(max = 560.dp).fillMaxWidth().clip(RoundedCornerShape(28.dp))
+                .background(MaterialTheme.colorScheme.surfaceContainerHigh).padding(top = 24.dp, bottom = 12.dp)) {
+                if (title != null) Text(title, color = N.text, fontSize = 24.sp, modifier = Modifier.padding(horizontal = 24.dp))
+                if (text != null) Text(text, color = N.sub, fontSize = 14.sp, lineHeight = 20.sp,
+                    modifier = Modifier.padding(start = 24.dp, end = 24.dp, top = if (title != null) 16.dp else 0.dp))
+                if (content != null) Column(Modifier.padding(top = 12.dp)) { content() }
+                if (buttons.isNotEmpty()) Row(Modifier.fillMaxWidth().padding(top = 16.dp, start = 12.dp, end = 12.dp), horizontalArrangement = Arrangement.End) {
+                    buttons.forEach { b ->
+                        Box(Modifier.clip(RoundedCornerShape(20.dp)).clickable(enabled = b.enabled, onClick = b.onClick).padding(horizontal = 14.dp, vertical = 10.dp)) {
+                            Text(b.label, color = if (!b.enabled) N.sub else b.color?.takeIf { it == N.red } ?: N.blue, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                        }
+                    }
+                }
+            }
+        }
+        return
+    }
     Dialog(onDismiss, DialogProperties(usePlatformDefaultWidth = false)) {
         val view = LocalView.current
         SideEffect { (view.parent as? DialogWindowProvider)?.window?.setGravity(Gravity.BOTTOM) }
@@ -211,6 +241,10 @@ data class DialogButton(val label: String, val color: Color? = null, val enabled
 // ── Controls ──────────────────────────────────────────────────────────────────────
 /** One UI switch: blue track with the white thumb inside; grey when off. */
 @Composable fun OneSwitch(checked: Boolean, onChange: (Boolean) -> Unit, enabled: Boolean = true) {
+    if (N.material) {
+        androidx.compose.material3.Switch(checked, onChange, enabled = enabled, thumbContent = if (checked) { { Icon(Icons.Rounded.Check, null, Modifier.size(16.dp)) } } else null)
+        return
+    }
     val x by animateDpAsState(if (checked) 22.dp else 0.dp, spring(stiffness = Spring.StiffnessMediumLow), label = "sw")
     val track by animateColorAsState(if (checked) N.blue else if (N.dark) Color(0xFF5A5A60) else Color(0xFFB9B9BF), label = "swc")
     Box(Modifier.size(50.dp, 28.dp).graphicsLayer { alpha = if (enabled) 1f else 0.4f }.clip(CircleShape).background(track)
@@ -220,6 +254,7 @@ data class DialogButton(val label: String, val color: Color? = null, val enabled
 }
 
 @Composable fun OneRadio(selected: Boolean, enabled: Boolean = true) {
+    if (N.material) { androidx.compose.material3.RadioButton(selected, null, enabled = enabled); return }
     val c = if (!enabled) N.sub.copy(alpha = 0.5f) else if (selected) N.blue else N.sub
     Box(Modifier.size(24.dp).border(2.dp, c, CircleShape), contentAlignment = Alignment.Center) {
         if (selected) Box(Modifier.size(12.dp).clip(CircleShape).background(c))
@@ -279,8 +314,10 @@ data class DialogButton(val label: String, val color: Color? = null, val enabled
 /** Filled rounded text field (no Material outline/label animation). */
 @Composable fun OneTextField(value: String, onChange: (String) -> Unit, placeholder: String, modifier: Modifier = Modifier,
                              mono: Boolean = false, keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
-                             keyboardActions: KeyboardActions = KeyboardActions.Default) {
+                             keyboardActions: KeyboardActions = KeyboardActions.Default,
+                             visualTransformation: androidx.compose.ui.text.input.VisualTransformation = androidx.compose.ui.text.input.VisualTransformation.None) {
     BasicTextField(value, onChange, modifier, singleLine = true, keyboardOptions = keyboardOptions, keyboardActions = keyboardActions,
+        visualTransformation = visualTransformation,
         textStyle = TextStyle(color = N.text, fontSize = 17.sp, fontFamily = if (mono) FontFamily.Monospace else null),
         cursorBrush = SolidColor(N.blue),
         decorationBox = { inner ->

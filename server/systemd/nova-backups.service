@@ -1,0 +1,8 @@
+[Unit]
+Description=Nova backups: start any backup that is due (each runs as its own task)
+After=local-fs.target remote-fs.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 -I /usr/local/lib/nova-api/backups.py tick
+TimeoutStartSec=120
