@@ -36,7 +36,7 @@ try:                       # optional module: fan/case lighting (modules/fan-gig
 except ImportError:
     nova_rgb = None
 
-API_VERSION = "0.5.2-alpha"
+API_VERSION = "0.5.3-alpha"
 CONFIG = "/etc/nova-api/config.json"
 DATA = "/var/lib/nova-api"
 DEVICES = f"{DATA}/devices.json"
@@ -342,7 +342,7 @@ def browser_forbidden(method, parts, dev):
 
 STORAGE_DESTRUCTIVE = ("format", "combine", "raid", "pool-remove", "pool-add")
 ROLES = ("admin", "viewer")
-FORMS = ("phone", "tablet", "desktop")
+FORMS = ("phone", "tablet", "desktop", "watch")
 def role_of(d): return d.get("role") if d.get("role") in ROLES else "admin"     # devices from before roles: admin
 
 def viewer_may(method, parts, dev):
@@ -381,6 +381,7 @@ def browser_needs_phone(method, parts):
 def needs_stepup(method, parts):
     if method == "DELETE" and parts[:1] == ["devices"]: return True
     if method == "POST" and parts == ["devices", "remove-all"]: return True
+    if method == "POST" and parts == ["devices", "watch"]: return True
     if method == "POST" and parts == ["browser", "approve"]: return True
     if method == "POST" and parts == ["server", "update"]: return True
     if method == "POST" and parts[:1] == ["approvals"] and parts[-1:] == ["approve"]: return True
@@ -555,6 +556,19 @@ class Handler(BaseHTTPRequestHandler):
         if not isinstance(data, dict): return self.send(400, {"error": "expected an object"})
 
         parts = [p for p in path.split("/") if p][2:]
+        if dev.get("type") == "watch":
+            # A watch is an approver and nothing else: it lists what's waiting and approves or denies it.
+            # Its key lives in the watch's hardware and only works while the watch is unlocked (on the wrist),
+            # so its signature counts as the fingerprint step for approving.
+            ok = (method == "GET" and (parts in (["whoami"], ["approvals"]) or (len(parts) == 2 and parts[0] == "approvals"))) \
+                or (method == "POST" and len(parts) == 3 and parts[0] == "approvals" and parts[2] in ("approve", "deny"))
+            owner = load_json(DEVICES, {}).get(dev.get("owner", ""))
+            if not owner or role_of(owner) != "admin":           # a watch can only do what its (admin) phone can
+                return self.send(403, {"error": "this watch's phone isn't an admin any more"})
+            if not ok:
+                audit(device=dev["name"], path=path, result=403, why="watches only approve")
+                return self.send(403, {"error": "watch_only_approves"})
+            dev["stepup_ok"] = True
         if dev.get("type") == "browser" and browser_forbidden(method, parts, dev):
             audit(device=dev["name"], path=path, result=403, why="phones only")
             return self.send(403, {"error": "phones_only", "message": "Do this from the Nova app on an admin phone."})
@@ -737,6 +751,22 @@ class Handler(BaseHTTPRequestHandler):
                                       "role": role_of(v), "user": v.get("user", ""), "type": v.get("type", "phone"),
                                       "form": v.get("form") or ("desktop" if v.get("type") == "browser" else "phone")}
                                      for k, v in load_json(DEVICES, {}).items()]}
+        if method == "POST" and parts == ["devices", "watch"]:
+            # Fingerprint-confirmed, from an admin phone: register the watch it's paired with as an approver.
+            if dev.get("type") in ("browser", "watch") or role_of(dev) != "admin": return 403, {"error": "set up a watch from an admin phone"}
+            pem = str(data.get("public_key", ""))
+            pub = serialization.load_pem_public_key(pem.encode())
+            if not isinstance(pub, ec.EllipticCurvePublicKey) or pub.curve.name != "secp256r1": raise ValueError("need a P-256 public key")
+            name = "".join(c for c in str(data.get("name", "Watch")) if c.isprintable()).strip()[:40] or "Watch"
+            wid = secrets.token_urlsafe(12)
+            with lock:
+                devs = load_json(DEVICES, {})
+                for k in [k for k, v in devs.items() if v.get("owner") == dev["id"]]: devs.pop(k)        # one watch per phone
+                devs[wid] = {"name": name, "public_key": pem, "type": "watch", "form": "watch", "role": "admin", "owner": dev["id"],
+                             "user": dev.get("user", ""), "created": time.strftime("%Y-%m-%d %H:%M")}
+                save_json(DEVICES, devs)
+            helper("notify-paired", "".join(c for c in name if c.isalnum() or c in " -_")[:40] or "watch")
+            return 200, {"ok": True, "device_id": wid}
         if method == "POST" and parts == ["devices", "remove-all"]:
             # Fingerprint-confirmed. keep_self=true removes every *other* phone; false removes all, this one included.
             keep = bool(data.get("keep_self", True))
@@ -744,7 +774,7 @@ class Handler(BaseHTTPRequestHandler):
                 devs = load_json(DEVICES, {})
                 gone = [v["name"] for k, v in devs.items() if not (keep and k == dev["id"])]
                 gone_ids = [k for k in devs if not (keep and k == dev["id"])]
-                devs = {k: v for k, v in devs.items() if keep and k == dev["id"]}
+                devs = {k: v for k, v in devs.items() if keep and (k == dev["id"] or v.get("owner") == dev["id"])}
                 save_json(DEVICES, devs)
             for k in gone_ids: helper("ssh-unauthorize", k)
             helper("notify-revoked", str(len(gone)))
@@ -801,7 +831,9 @@ class Handler(BaseHTTPRequestHandler):
                          "location": server_location()}
         if method == "DELETE" and len(parts) == 2 and parts[0] == "devices":
             with lock:
-                devs = load_json(DEVICES, {}); gone = devs.pop(parts[1], None); save_json(DEVICES, devs)
+                devs = load_json(DEVICES, {}); gone = devs.pop(parts[1], None)
+                for k in [k for k, v in devs.items() if v.get("owner") == parts[1]]: devs.pop(k)     # its watch goes with it
+                save_json(DEVICES, devs)
             if not gone: return 404, {"error": "no such device"}
             helper("ssh-unauthorize", parts[1])
             return 200, {"ok": True, "revoked": gone["name"]}

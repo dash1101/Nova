@@ -36,6 +36,7 @@ fun labelOf(app: AppState, id: String) = Pairing(app.activity, id).let { p ->
 /** "Phone", "Tablet", "Browser on a computer"… from what the device told the server. */
 private fun formLabel(d: JSONObject): String {
     val f = d.optString("form").ifEmpty { if (d.optString("type") == "browser") "desktop" else "phone" }
+    if (d.optString("type") == "watch") return "Approves from notifications"
     val n = when (f) { "tablet" -> "Tablet"; "desktop" -> "Computer"; else -> "Phone" }
     return if (d.optString("type") == "browser") "Browser · $n" else n
 }
@@ -175,7 +176,7 @@ fun roleLabel(r: String) = if (r == "viewer") "View only" else "Admin"
                                 (d.optString("via").takeIf { it.isNotEmpty() && it != "null" }?.let { " via $it" } ?: "") +
                                 if (d.optString("type") == "browser") " · risky actions approved on a phone" else if (!d.optBoolean("stepup")) " · no fingerprint key" else "",
                             false, when (d.optString("form").ifEmpty { if (d.optString("type") == "browser") "desktop" else "phone" }) {
-                                "tablet" -> Icons.Rounded.TabletAndroid; "desktop" -> Icons.Rounded.Computer; else -> Icons.Rounded.PhoneAndroid },
+                                "tablet" -> Icons.Rounded.TabletAndroid; "desktop" -> Icons.Rounded.Computer; "watch" -> Icons.Rounded.Watch; else -> Icons.Rounded.PhoneAndroid },
                             if (me) N.green else if (viewer) N.sub else N.blue, onClick = { if (app.isAdmin) menu = d }) {
                             if (app.isAdmin) Icon(Icons.Rounded.MoreVert, "Options", tint = N.sub)
                         }

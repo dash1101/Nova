@@ -23,7 +23,7 @@ import java.io.File
 import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
 
-const val APP_VERSION = "0.5.2-alpha"
+const val APP_VERSION = "0.5.3-alpha"
 
 class NovaApp : Application() {
     override fun onCreate() {
@@ -73,7 +73,7 @@ object Notifier {
         levels.indexOf(if (level == "resolved") "info" else level) >= levels.indexOf(min)
 
     /** A browser asked for something risky: open Nova's Approvals screen. */
-    fun approval(ctx: Context, id: Int, title: String, text: String) {
+    fun approval(ctx: Context, id: Int, title: String, text: String, approvalId: String = "", profile: String = "") {
         val nm = ctx.getSystemService(NotificationManager::class.java)
         nm.createNotificationChannel(NotificationChannel("approvals", "Approval requests", NotificationManager.IMPORTANCE_HIGH)
             .apply { description = "A paired browser wants to do something that needs your fingerprint" })
@@ -81,7 +81,24 @@ object Notifier {
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         val n = NotificationCompat.Builder(ctx, "approvals").setSmallIcon(R.drawable.ic_notification).setColor(0xFF6E56CF.toInt())
             .setContentTitle(title).setContentText(text).setStyle(NotificationCompat.BigTextStyle().bigText(text))
-            .setContentIntent(open).setAutoCancel(true).setCategory(NotificationCompat.CATEGORY_RECOMMENDATION).build()
+            .setContentIntent(open).setAutoCancel(true).setCategory(NotificationCompat.CATEGORY_RECOMMENDATION)
+            .apply {
+                // Opt-in quick approve: Approve / Deny right on the notification (and on a paired watch)
+                if (approvalId.isNotEmpty() && Pairing(ctx, profile).quickApproverId.isNotEmpty()) {
+                    fun act(ok: Boolean) = PendingIntent.getBroadcast(ctx, (approvalId + ok).hashCode(),
+                        Intent(ctx, ApprovalReceiver::class.java).putExtra("approval", approvalId).putExtra("profile", profile).putExtra("ok", ok).putExtra("nid", id),
+                        PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+                    addAction(0, "Approve", act(true)); addAction(0, "Deny", act(false))
+                    extend(NotificationCompat.WearableExtender().addAction(NotificationCompat.Action(0, "Approve", act(true))).addAction(NotificationCompat.Action(0, "Deny", act(false))))
+                }
+            }.build()
+        runCatching { NotificationManagerCompat.from(ctx).notify(id, n) }
+    }
+
+    /** Replace an approval notification with the outcome. */
+    fun approvalDone(ctx: Context, id: Int, text: String) {
+        val n = NotificationCompat.Builder(ctx, "approvals").setSmallIcon(R.drawable.ic_notification).setColor(0xFF6E56CF.toInt())
+            .setContentTitle(text).setAutoCancel(true).setTimeoutAfter(15_000).build()
         runCatching { NotificationManagerCompat.from(ctx).notify(id, n) }
     }
 
@@ -168,6 +185,24 @@ class UpdateReceiver : BroadcastReceiver() {
             (intent.getParcelableExtra<Intent>(Intent.EXTRA_INTENT))?.let {
                 ctx.startActivity(it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             }
+        }
+    }
+}
+
+/** The Approve / Deny buttons on an approval notification (on the phone or a paired watch). */
+class ApprovalReceiver : android.content.BroadcastReceiver() {
+    override fun onReceive(ctx: Context, intent: Intent) {
+        val id = intent.getStringExtra("approval") ?: return
+        val ok = intent.getBooleanExtra("ok", false); val nid = intent.getIntExtra("nid", 0)
+        val p = Pairing(ctx, intent.getStringExtra("profile") ?: "")
+        if (p.quickApproverId.isEmpty()) return
+        val pending = goAsync()
+        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+            try {
+                val r = NovaApi(p).quickDecide(id, ok)
+                Notifier.approvalDone(ctx, nid, if (!ok) "Denied" else if (r.optBoolean("ok", true)) "Approved ✓" else "Approved, but it failed: ${r.optJSONObject("result")?.optString("error") ?: ""}")
+            } catch (e: Exception) { Notifier.approvalDone(ctx, nid, "Couldn't ${if (ok) "approve" else "deny"}: ${e.message}") }
+            finally { pending.finish() }
         }
     }
 }

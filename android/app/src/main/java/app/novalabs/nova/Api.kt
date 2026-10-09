@@ -61,6 +61,16 @@ class NovaApi(private val pairing: Pairing) {
         return Prepared(method, path, bytes, ts, nonce, "$method\n$path\n$ts\n$nonce\n$digest".toByteArray())
     }
 
+    /** Approve or deny a waiting request with the quick-approve key (notification / watch buttons). */
+    suspend fun quickDecide(approvalId: String, approve: Boolean): JSONObject = withContext(Dispatchers.IO) {
+        val pr = prepare("POST", "/api/v1/approvals/$approvalId/${if (approve) "approve" else "deny"}", null)
+        val text = route("POST") { name, base ->
+            client(name).newCall(build(name, base, pr, null, quick = true)).execute().use { r ->
+                val t = r.body.string(); if (!r.isSuccessful) throw ApiException(r.code, runCatching { JSONObject(t).optString("error") }.getOrNull()?.ifEmpty { null } ?: "HTTP ${r.code}"); t }
+        }
+        runCatching { JSONObject(text) }.getOrDefault(JSONObject())
+    }
+
     suspend fun get(path: String) = call("GET", path, null)
     suspend fun post(path: String, body: JSONObject = JSONObject()) = call("POST", path, body)
     suspend fun delete(path: String) = call("DELETE", path, null)
@@ -200,10 +210,10 @@ class NovaApi(private val pairing: Pairing) {
 
     private fun client(route: String) = if (route == "home") lanClient else remoteClient
 
-    private fun build(route: String, base: String, pr: Prepared, stepUpSig: String?): Request {
-        val sig = pairing.keys.sign(pr.message)
+    private fun build(route: String, base: String, pr: Prepared, stepUpSig: String?, quick: Boolean = false): Request {
+        val sig = if (quick) pairing.keys.signQuick(pr.message) else pairing.keys.sign(pr.message)
         val rb = Request.Builder().url(base.trimEnd('/') + pr.path)
-            .header("X-Nova-Device", pairing.deviceId).header("X-Nova-Time", pr.ts)
+            .header("X-Nova-Device", if (quick) pairing.quickApproverId else pairing.deviceId).header("X-Nova-Time", pr.ts)
             .header("X-Nova-Nonce", pr.nonce).header("X-Nova-Signature", sig)
         if (stepUpSig != null) rb.header("X-Nova-StepUp", stepUpSig)
         if (route == "remote" && pairing.cfClientId.isNotEmpty()) {

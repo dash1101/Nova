@@ -137,6 +137,7 @@ def remove(args):
     devs = load(DEVICES, {}); hit = [k for k, d in devs.items() if args[0] in (k, d["name"])]
     if not hit: sys.exit(f"Nothing called {args[0]!r} — see: sudo nova devices")
     for k in hit: devs.pop(k)
+    for k in [k for k, v in devs.items() if v.get("owner") in hit]: devs.pop(k); hit.append(k)       # a phone's watch goes with it
     save(DEVICES, devs, mode=0o640)
     for k in hit:                    # and its SSH key, if the app installed one
         h = f"{LIB}/helper" if os.path.exists(f"{LIB}/helper") else None

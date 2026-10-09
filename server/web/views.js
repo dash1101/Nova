@@ -859,7 +859,7 @@ async function drive(ctx, serial) {
 
 // ════════════════════════════ DEVICES, SETTINGS, ABOUT ═════════════════════════
 const formOf = d => d.form || (d.type === "browser" ? "desktop" : "phone");
-const formLabel = d => { const n = { tablet: "Tablet", desktop: "Computer" }[formOf(d)] || "Phone"; return d.type === "browser" ? "Browser · " + n : n; };
+const formLabel = d => { if (d.type === "watch") return "Approves from notifications"; const n = { tablet: "Tablet", desktop: "Computer" }[formOf(d)] || "Phone"; return d.type === "browser" ? "Browser · " + n : n; };
 export async function devices(ctx) {
   const draw = () => {
     const l = S.cache["/api/v1/devices"]?.devices || [], by = {};

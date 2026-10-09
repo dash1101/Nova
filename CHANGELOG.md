@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.5.3-alpha (app and server)
+- **Approve from your watch:** Settings → *Approve from notifications* (fingerprint once) adds Approve / Deny buttons to approval notifications, on the phone and on a paired watch. It uses a separate key the server registers as an approver: it can list, approve and deny what a browser is waiting on, nothing else; it follows its phone (removed with it, and stops if the phone loses admin).
+- Security test: 142 checks, all passing.
+
 ## 0.5.2-alpha (app and server)
 - **One command:** `sudo nova` lists everything; `nova add` pairs a phone (with a live countdown), `nova approve CODE` approves a browser's pairing code or an action a browser is waiting on (`nova approve` alone lists what's waiting), plus `devices`, `remove`, `status`, `setup`, `update`, `lighting`, `backup`, `log`, `alert`, `publish`. `nova-api` still works as an alias.
 - Shell approvals are a one-time file only root can write, valid for 2 minutes and for one code; announced like any pairing.

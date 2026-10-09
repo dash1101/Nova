@@ -188,6 +188,26 @@ import java.util.*
                     if (app.pairing.stepUpRegistered) N.green else N.amber)
             }
             RowDivider()
+            var quickOn by remember { mutableStateOf(app.pairing.quickApproverId.isNotEmpty()) }
+            SwitchRow("Approve from notifications", if (quickOn) "Approve / Deny buttons on approval notifications — also on your watch"
+                else "Adds Approve / Deny buttons to approval notifications, so you can answer from your watch", quickOn, enabled = app.isAdmin) { on ->
+                app.act {
+                    if (on) {
+                        val pem = app.pairing.keys.ensureQuick()
+                        val r = app.stepUp("Approve from notifications", "POST", "/api/v1/devices/watch",
+                            org.json.JSONObject().put("public_key", pem).put("name", "${android.os.Build.MODEL} notifications"))
+                        app.pairing.quickApproverId = r.optString("device_id"); quickOn = true
+                        app.toast("On — approval notifications get Approve and Deny buttons")
+                    } else {
+                        val id = app.pairing.quickApproverId
+                        if (id.isNotEmpty()) runCatching { app.stepUp("Turn off approving from notifications", "DELETE", "/api/v1/devices/$id") }
+                        app.pairing.quickApproverId = ""; app.pairing.keys.dropQuick(); quickOn = false
+                    }
+                }
+            }
+            Text("The buttons don't ask for your fingerprint, so anyone holding your unlocked phone or watch could tap them. They can only approve or deny something a paired browser is waiting on — nothing else.",
+                color = N.sub, fontSize = 13.sp, modifier = Modifier.padding(start = 22.dp, end = 22.dp, bottom = 14.dp))
+            RowDivider()
             ExpandRow("Connection", when (app.api.via) { "home" -> "Home Wi-Fi (direct)"; "remote" -> "Cloudflare (from anywhere)"; else -> "—" },
                 true, Icons.Rounded.Wifi) {
                 Detail("At home Nova talks to the server directly. Elsewhere it goes through Cloudflare Access, which turns away anyone without this app's access token before they ever reach the server.")

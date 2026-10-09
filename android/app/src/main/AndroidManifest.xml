@@ -60,5 +60,6 @@
 
         <!-- In-app updater: receives the PackageInstaller result -->
         <receiver android:name=".UpdateReceiver" android:exported="false" />
+        <receiver android:name=".ApprovalReceiver" android:exported="false" />
     </application>
 </manifest>

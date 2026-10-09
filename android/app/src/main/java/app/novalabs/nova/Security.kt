@@ -28,6 +28,7 @@ class DeviceKey(profile: String) {
     private val DEVICE_KEY = "nova-device-key$sfx"
     private val SECRET_KEY = "nova-secret-key$sfx"
     private val STEPUP_KEY = "nova-stepup-key$sfx"
+    private val QUICK_KEY = "nova-quick-approve-key$sfx"
     private val ks: KeyStore get() = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
 
     fun ensure(): Boolean /* true = StrongBox */ {
@@ -64,11 +65,30 @@ class DeviceKey(profile: String) {
     }
 
     fun wipe() {
-        for (a in listOf(DEVICE_KEY, SECRET_KEY, STEPUP_KEY)) if (ks.containsAlias(a)) ks.deleteEntry(a)
+        for (a in listOf(DEVICE_KEY, SECRET_KEY, STEPUP_KEY, QUICK_KEY)) if (ks.containsAlias(a)) ks.deleteEntry(a)
     }
 
     // ── Step-up key: a second signing key that only works right after a fingerprint
     //    (or phone PIN) for THAT operation. The server demands it for risky actions.
+    // ── Quick-approve key (opt-in): lets the Approve/Deny buttons on a notification — also on a watch —
+    //    work without a fingerprint. The server registers it as an approver that can do nothing else.
+    fun hasQuick() = ks.containsAlias(QUICK_KEY)
+    fun ensureQuick(): String {
+        if (!hasQuick()) {
+            fun gen(sb: Boolean) = KeyPairGenerator.getInstance(KeyProperties.KEY_ALGORITHM_EC, "AndroidKeyStore").apply {
+                initialize(KeyGenParameterSpec.Builder(QUICK_KEY, KeyProperties.PURPOSE_SIGN).setAlgorithmParameterSpec(ECGenParameterSpec("secp256r1"))
+                    .setDigests(KeyProperties.DIGEST_SHA256).setIsStrongBoxBacked(sb).build()) }.generateKeyPair()
+            try { gen(true) } catch (e: StrongBoxUnavailableException) { gen(false) }
+        }
+        val b64 = Base64.encodeToString(ks.getCertificate(QUICK_KEY).publicKey.encoded, Base64.NO_WRAP).chunked(64).joinToString("\n")
+        return "-----BEGIN PUBLIC KEY-----\n$b64\n-----END PUBLIC KEY-----\n"
+    }
+    fun signQuick(data: ByteArray): String {
+        val key = ks.getKey(QUICK_KEY, null) as PrivateKey
+        return Base64.encodeToString(Signature.getInstance("SHA256withECDSA").apply { initSign(key); update(data) }.sign(), Base64.NO_WRAP)
+    }
+    fun dropQuick() { if (hasQuick()) ks.deleteEntry(QUICK_KEY) }
+
     fun hasStepUp() = ks.containsAlias(STEPUP_KEY)
 
     fun ensureStepUp() {
@@ -153,6 +173,10 @@ class Pairing(ctx: Context, val profile: String = Servers.active(ctx)) {
         get() = p.getString("user", "")!!
         set(v) { p.edit().putString("user", v).apply() }
 
+    /** Server id of this phone's quick-approve key ("" = off). */
+    var quickApproverId: String
+        get() = p.getString("quick_approver", "")!!
+        set(v) { p.edit().putString("quick_approver", v).apply() }
     var stepUpRegistered: Boolean
         get() = p.getBoolean("stepup_registered", false)
         set(v) { p.edit().putBoolean("stepup_registered", v).apply() }

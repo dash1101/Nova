@@ -104,7 +104,8 @@ class AlertService : Service() {
                 Alerts.handle(applicationContext, p, r.optJSONArray("events"))
                 r.optJSONArray("approvals")?.let { a -> for (i in 0 until a.length()) { val o = a.getJSONObject(i)
                     if (shown.add(o.optString("id"))) Notifier.approval(applicationContext, o.optString("id").hashCode(),
-                        "Approve: ${o.optString("what")}?", "Requested by ${o.optString("device_name")}${o.optString("user").takeIf { it.isNotEmpty() }?.let { " ($it)" } ?: ""} — tap to review") } }
+                        "Approve: ${o.optString("what")}?", "Requested by ${o.optString("device_name")}${o.optString("user").takeIf { it.isNotEmpty() }?.let { " ($it)" } ?: ""}" +
+                            if (p.quickApproverId.isNotEmpty()) "" else " — tap to review", approvalId = o.optString("id"), profile = id) } }
                 backoff = 5_000L
             } catch (e: Exception) {
                 delay(backoff); backoff = (backoff * 2).coerceAtMost(5 * 60_000L)    // offline: back off, don't drain battery
