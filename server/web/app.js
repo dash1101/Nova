@@ -5,7 +5,7 @@ import { I, logo, toast, waitApproval, closeSheet } from "./ui.js";
 import * as V from "./views.js";
 import * as ST from "./storage.js";
 
-onApproval(id => waitApproval(id, get));
+onApproval((id, code) => waitApproval(id, get, code));
 
 // ── theme ────────────────────────────────────────────────────────────────────────
 function applyTheme() {
@@ -198,17 +198,22 @@ async function pairScreen() {
       const r = await fetch("/api/v1/browser/request", { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ public_key: await pemOf(keys.publicKey), name }) });
       const j = await r.json().catch(() => ({}));
       if (!r.ok) { $("#go").disabled = false; return toast(j.error || (r.status === 403 ? "Cloudflare or the server turned this browser away" : `Couldn't start pairing (${r.status})`)); }
-      $("#app").innerHTML = `<div class="pair"><h1 style="font-size:34px">Approve on your phone</h1>
+      const until = Date.now() + (j.expires_in || 600) * 1000;
+      $("#app").innerHTML = `<div class="pair"><h1 style="font-size:34px">Approve this browser</h1>
         <p class="lead">On an admin phone open <b>Nova → Menu → Users &amp; devices → Approve a browser</b> and enter:</p>
         <div class="code">${esc(j.code)}</div>
-        <div class="center"><div class="spinner" style="margin:auto"></div><p class="note">Waiting… the code expires in 10 minutes.</p></div></div>`;
-      for (let i = 0; i < 300; i++) {
+        <p class="note" style="text-align:center">…or on the server: <code>sudo nova approve ${esc(j.code)}</code></p>
+        <div class="center"><div class="spinner" style="margin:auto"></div><p class="note" id="left" style="font-size:16px"></p></div></div>`;
+      const tick = () => { const s = Math.max(0, Math.round((until - Date.now()) / 1000)), el = $("#left");
+        if (el) { el.innerHTML = `Waiting… <b>${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}</b> left`; el.style.color = s < 60 ? "var(--amber)" : ""; } };
+      tick(); const timer = setInterval(tick, 1000);
+      for (let i = 0; i < 300 && Date.now() < until; i++) {
         await sleep(2000);
         const s = await fetch(`/api/v1/browser/request/${j.id}`, { credentials: "same-origin" }).then(x => x.json()).catch(() => ({}));
-        if (s.state === "approved") { await kv("device", { id: s.device_id, keys }); toast("This browser is paired"); unauthorizedShown = false; return start(); }
+        if (s.state === "approved") { clearInterval(timer); await kv("device", { id: s.device_id, keys }); toast("This browser is paired"); unauthorizedShown = false; return start(); }
         if (s.state === "expired") break;
       }
-      toast("The code expired — try again"); pairScreen();
+      clearInterval(timer); toast("The code expired — get a new one"); pairScreen();
     } catch (e) { toast(e.message); $("#go").disabled = false; }
   };
 }

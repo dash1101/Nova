@@ -123,12 +123,12 @@ import java.util.concurrent.atomic.AtomicBoolean
             }
             Box(Modifier.padding(start = 20.dp)) { PillButton("Cancel", color = N.text) { scanning = false } }
         } else Group {
-            Row1("Scan pairing code", "Run  sudo nova-api pair  on the server, on home Wi-Fi", false, Icons.Rounded.QrCodeScanner,
+            Row1("Scan pairing code", "Run  sudo nova add  on the server, on home Wi-Fi", false, Icons.Rounded.QrCodeScanner,
                 onClick = { if (ctx.checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) scanning = true
                             else camPerm.launch(Manifest.permission.CAMERA) })
         }
         if (!scanning) DiscoveredServers(app) { srv -> address = srv.optString("lan_url").substringAfter("//"); error = null
-            android.widget.Toast.makeText(ctx, "Now type the code shown by  sudo nova-api pair  on ${srv.optString("name")}", android.widget.Toast.LENGTH_LONG).show() }
+            android.widget.Toast.makeText(ctx, "Now type the code shown by  sudo nova add  on ${srv.optString("name")}", android.widget.Toast.LENGTH_LONG).show() }
         SectionLabel(if (address.isNotEmpty() && PairHint.name != null) "Pair with ${PairHint.name}" else "Or type the code")
         Group {
             Column(Modifier.padding(20.dp)) {
@@ -148,7 +148,7 @@ import java.util.concurrent.atomic.AtomicBoolean
         error?.let { Text(it, color = N.red, modifier = Modifier.padding(horizontal = 28.dp, vertical = 12.dp)) }
         confirm?.let { (url, pin) ->
             OneDialog({ confirm = null }, "Is this your server?",
-                "Check that the code below matches the \"Certificate\" line shown by  sudo nova-api pair  on the server.",
+                "Check that the code below matches the \"Certificate\" line shown by  sudo nova add  on the server.",
                 listOf(DialogButton("Cancel") { confirm = null }, DialogButton("It matches", N.blue) { confirm = null; pair(url, code, pin) })) {
                 Text(pin.take(12).uppercase().chunked(4).joinToString(" "), color = N.text, fontSize = 28.sp, fontFamily = Mono,
                     modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
@@ -158,7 +158,7 @@ import java.util.concurrent.atomic.AtomicBoolean
         Box(Modifier.padding(horizontal = 22.dp, vertical = 4.dp)) { PillButton(if (guide) "Hide setup guide" else "New to Nova? How to set up your server") { guide = !guide } }
         androidx.compose.animation.AnimatedVisibility(guide) { Column { SetupGuideBody() } }
         if (onCancel != null) Box(Modifier.padding(horizontal = 22.dp, vertical = 8.dp)) { PillButton("Back to my servers", color = N.text, onClick = onCancel) }
-        Text("On the server, run  sudo nova-api pair  and scan the code it shows (or type the address and code). Pairing only works on the server's home network.",
+        Text("On the server, run  sudo nova add  and scan the code it shows (or type the address and code). Pairing only works on the server's home network.",
             color = N.sub, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 28.dp, vertical = 12.dp))
     }
 }
@@ -187,7 +187,7 @@ import java.util.concurrent.atomic.AtomicBoolean
     Step(2, "Run the setup wizard", "It finds your home network, asks a few questions (press Enter for the suggested answers) and starts Nova.",
         "sudo nova-setup")
     Step(3, "Pair this ${DeviceForm.noun}", "On home Wi-Fi, show a pairing code on the server and scan it here. The code works once and expires in 10 minutes.",
-        "sudo nova-api pair")
+        "sudo nova add")
     Step(4, "Optional: use it away from home", "Without a VPN, put Nova behind Cloudflare Access (free) — the README's docs/REMOTE.md walks you through it, then run nova-setup again. With Tailscale, nova-setup turns it on for you.")
     Step(5, "Optional: other people, tablets, browsers", "Menu → Users & devices: invite phones as Admin or View only, and approve browsers (Nova web at https://<server>:8495). A spare tablet makes a nice always-on Dashboard.")
     Text("Security in a sentence: every request is signed by a key in this ${DeviceForm.noun}'s secure chip, and anything risky also needs your fingerprint.",

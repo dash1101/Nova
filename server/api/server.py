@@ -17,7 +17,7 @@ The private key is generated inside the phone's hardware keystore and never leav
 Remote requests (via Cloudflare) must also carry a valid Cloudflare Access JWT, verified
 against your team's public keys — so the edge rejects strangers before they reach us,
 and if Access is ever switched off by mistake, remote access fails closed.
-Pairing is only possible from the home LAN, with a one-time code shown by `sudo nova-api pair`.
+Pairing is only possible from the home LAN, with a one-time code shown by `sudo nova add`.
 """
 import base64, hashlib, hmac, ipaddress, json, os, re, secrets, subprocess, sys, threading, time, urllib.parse, urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -36,7 +36,7 @@ try:                       # optional module: fan/case lighting (modules/fan-gig
 except ImportError:
     nova_rgb = None
 
-API_VERSION = "0.5.1-alpha"
+API_VERSION = "0.5.2-alpha"
 CONFIG = "/etc/nova-api/config.json"
 DATA = "/var/lib/nova-api"
 DEVICES = f"{DATA}/devices.json"
@@ -51,6 +51,9 @@ EVENTS = "/var/lib/nova-alerts/www/events.json"
 APK_DIR = f"{DATA}/apk"
 CRASH_DIR = "/var/log/nova-api/crash"
 CLOCK_SKEW_MS = 60_000
+SHELL_APPROVE = f"{DATA}/shell-approve.json"   # written by `sudo nova approve CODE` (root only)
+PENDING = f"{DATA}/pending.json"               # what's waiting for approval, for `sudo nova approve` (root/nova-api only)
+CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 SETTINGS = f"{DATA}/settings.json"       # changeable from the app: display name, accent colour
 
 lock = threading.Lock()          # devices.json / pairing.json writes
@@ -274,9 +277,40 @@ approvals = {}             # id -> {id, device, device_name, method, path, data,
 def new_approval(dev, method, path, data):
     aid = secrets.token_urlsafe(9)
     approvals[aid] = {"id": aid, "device": dev["id"], "device_name": dev["name"], "user": dev.get("user", ""),
-                      "method": method, "path": path, "data": data, "created": time.time(), "state": "pending"}
+                      "method": method, "path": path, "data": data, "created": time.time(), "state": "pending",
+                      "code": "".join(secrets.choice(CODE_ALPHABET) for _ in range(6))}
     for k in [k for k, v in approvals.items() if time.time() - v["created"] > 3600]: approvals.pop(k, None)
+    write_pending()
     return approvals[aid]
+
+def write_pending():
+    """What's waiting (browser pairing codes, browser actions held for approval) — so `sudo nova approve`
+    can list it. In the API's own 0700 data folder, mode 0600: only root and nova-api can read it."""
+    now = time.time()
+    try:
+        save_json(PENDING, {"t": now,
+            "browsers": [{"code": v["code"], "name": v["name"], "from": v["from"], "expires": v["expires"]}
+                         for v in browser_requests.values() if v["state"] == "pending" and v["expires"] > now],
+            "approvals": [{"code": a["code"], "what": describe_action(a), "device": a["device_name"], "expires": a["created"] + 600}
+                          for a in approvals.values() if a["state"] == "pending" and now - a["created"] < 600]})
+        os.chmod(PENDING, 0o600)
+    except Exception: pass
+
+def shell_approval(code):
+    """The root-written one-time approval for this code, if there is one (and use it up)."""
+    try:
+        st = os.stat(SHELL_APPROVE)
+        if st.st_uid != 0 or st.st_mode & 0o022: os.remove(SHELL_APPROVE); return None      # only root may write it
+        ap = json.load(open(SHELL_APPROVE))
+    except (OSError, ValueError): return None
+    if time.time() - ap.get("t", 0) > 120:
+        try: os.remove(SHELL_APPROVE)
+        except OSError: pass
+        return None
+    if not hmac.compare_digest(str(ap.get("code", "")).strip().upper(), code): return None
+    try: os.remove(SHELL_APPROVE)
+    except OSError: return None                      # someone else used it first
+    return ap
 
 def describe_action(a):
     p = [x for x in a["path"].split("/") if x][2:]
@@ -341,7 +375,7 @@ def basic_status():
 def browser_needs_phone(method, parts):
     """Harmless from a phone (hardware key, one swipe), but from a browser they could hide what
     happened — silence an alert, erase the login history — so a browser asks a phone first."""
-    return method == "POST" and parts in (["alerts", "dismiss"], ["events", "delete"])
+    return method == "POST" and parts == ["alerts", "dismiss"]
 
 # Actions that need the fingerprint-bound step-up key (second signature).
 def needs_stepup(method, parts):
@@ -534,7 +568,7 @@ class Handler(BaseHTTPRequestHandler):
             except ValueError: data0 = {}
             a = new_approval(dev, method, path, data0)
             audit(device=dev["name"], path=path, result=202, why="sent to a phone for approval")
-            return self.send(202, {"approval": a["id"], "message": "Approve this on your phone (Nova app)."})
+            return self.send(202, {"approval": a["id"], "code": a["code"], "message": "Approve this on your phone (Nova app), or on the server: sudo nova approve " + a["code"]})
         if needs_stepup(method, parts) and not dev.get("stepup_ok"):
             audit(device=dev["name"], path=path, result=403, why="step-up required")
             return self.send(403, {"error": "stepup_required",
@@ -617,10 +651,27 @@ class Handler(BaseHTTPRequestHandler):
             code = "".join(secrets.choice("ABCDEFGHJKLMNPQRSTUVWXYZ23456789") for _ in range(6))
             browser_requests[rid] = {"pem": pem, "name": name or "Browser", "code": code, "expires": now + 600, "state": "pending",
                                      "from": ip, "via": where}
+            write_pending()
             return self.send(200, {"id": rid, "code": code, "expires_in": 600})
         if method == "GET" and path.startswith("/api/v1/browser/request/"):
             rq = browser_requests.get(path.rsplit("/", 1)[1])
             if not rq: return self.send(404, {"state": "expired"})
+            # Approved from the server's shell (`sudo nova approve CODE`): a one-time file in
+            # Nova's private data folder, which only root or the service itself can write.
+            ap = shell_approval(rq["code"]) if rq["state"] == "pending" and rq["expires"] > time.time() else None
+            if ap:
+                role = ap.get("role") if ap.get("role") in ROLES else "admin"
+                dev_id = secrets.token_urlsafe(12)
+                with lock:
+                    devs = load_json(DEVICES, {})
+                    devs[dev_id] = {"name": rq["name"][:40], "public_key": rq["pem"], "type": "browser", "created": time.strftime("%Y-%m-%d %H:%M"),
+                                    "paired_from": rq["from"], "role": role, "approved_by": "shell",
+                                    "user": "".join(c for c in str(ap.get("user", "")) if c.isprintable()).strip()[:40]}
+                    save_json(DEVICES, devs)
+                rq.update(state="approved", device_id=dev_id, role=role)
+                audit(device=rq["name"], path="/api/v1/browser/approve", result=200, why="approved from the server shell")
+                helper("notify-paired", "".join(c for c in rq["name"] if c.isalnum() or c in " -_")[:40] or "browser")
+                write_pending()
             return self.send(200, {"state": rq["state"], "device_id": rq.get("device_id"), "role": rq.get("role"),
                                    "server": load_json(SETTINGS, {}).get("display_name") or os.uname().nodename})
         return self.send(404, {"error": "not found"})
@@ -636,6 +687,22 @@ class Handler(BaseHTTPRequestHandler):
         fn = f"{CRASH_DIR}/{time.strftime('%Y%m%d-%H%M%S')}-{''.join(c for c in who if c.isalnum())[:20]}.txt"
         with open(fn, "w") as f: f.write(f"device: {who}\nversion: {ver}\n\n{text}")
         return {"ok": True}
+
+    def run_approval(self, a, approver, dev):
+        """Do what a browser asked for, now that a phone (fingerprint) or root (shell) approved it."""
+        bdev = load_json(DEVICES, {}).get(a["device"])
+        if not bdev: a["state"] = "denied"; write_pending(); return 404, {"error": "that browser was removed"}
+        if role_of(bdev) != "admin": a["state"] = "denied"; write_pending(); return 403, {"error": "that browser is view-only now"}
+        bdev = dict(bdev, id=a["device"], via=dev["via"], ip=dev["ip"], stepup_ok=True)
+        a["state"] = "running"
+        try:
+            code, res = self.dispatch(a["method"], a["path"], a["data"], bdev)
+        except ValueError as e: code, res = 400, {"error": str(e)}
+        except Exception as e: code, res = 500, {"error": "server error"}; audit(path=a["path"], result=500, error=repr(e)[:200])
+        a.update(state="done" if code < 400 else "failed", result=res, status=code, approved_by=approver)
+        audit(device=approver, path=a["path"], result=code, approved_for=a["device_name"], stepup=True)
+        write_pending()
+        return code, res
 
     def dispatch(self, method, path, data, dev):
         parts = [p for p in path.split("/") if p][2:]       # after /api/v1
@@ -698,7 +765,7 @@ class Handler(BaseHTTPRequestHandler):
                 save_json(DEVICES, devs)
             return 200, {"ok": True, "role": role_of(d), "user": d.get("user", "")}
         if method == "POST" and parts == ["devices", "invite"]:
-            # Fingerprint-confirmed: a one-time pairing code (like `nova-api pair`) for a new phone.
+            # Fingerprint-confirmed: a one-time pairing code (like `nova add`) for a new phone.
             role = data.get("role", "viewer")
             if role not in ROLES: raise ValueError("role must be admin or viewer")
             user = "".join(c for c in str(data.get("user", "")) if c.isprintable()).strip()[:40]
@@ -763,24 +830,16 @@ class Handler(BaseHTTPRequestHandler):
         if len(parts) == 2 and parts[0] == "approvals" and method == "GET":
             a = approvals.get(parts[1])
             if not a or (a["device"] != dev["id"] and role_of(dev) != "admin"): return 404, {"error": "no such approval"}
+            if a["state"] == "pending" and time.time() - a["created"] < 600 and shell_approval(a["code"]):
+                self.run_approval(a, "the server shell (sudo nova approve)", dev)
             return 200, {k: v for k, v in a.items() if k != "data"} | {"what": describe_action(a)}
         if len(parts) == 3 and parts[0] == "approvals" and method == "POST" and parts[2] in ("approve", "deny"):
             # Only an admin *phone*, with its fingerprint key (step-up), can approve.
             a = approvals.get(parts[1])
             if not a or a["state"] != "pending": return 404, {"error": "nothing waiting with that id"}
             if time.time() - a["created"] > 600: a["state"] = "expired"; return 410, {"error": "that request expired"}
-            if parts[2] == "deny": a["state"] = "denied"; return 200, {"ok": True}
-            bdev = load_json(DEVICES, {}).get(a["device"])
-            if not bdev: a["state"] = "denied"; return 404, {"error": "that browser was removed"}
-            if role_of(bdev) != "admin": a["state"] = "denied"; return 403, {"error": "that browser is view-only now"}
-            bdev = dict(bdev, id=a["device"], via=dev["via"], ip=dev["ip"], stepup_ok=True)
-            a["state"] = "running"
-            try:
-                code, res = self.dispatch(a["method"], a["path"], a["data"], bdev)
-            except ValueError as e: code, res = 400, {"error": str(e)}
-            except Exception as e: code, res = 500, {"error": "server error"}; audit(path=a["path"], result=500, error=repr(e)[:200])
-            a.update(state="done" if code < 400 else "failed", result=res, code=code, approved_by=dev["name"])
-            audit(device=dev["name"], path=a["path"], result=code, approved_for=a["device_name"], stepup=True)
+            if parts[2] == "deny": a["state"] = "denied"; write_pending(); return 200, {"ok": True}
+            code, res = self.run_approval(a, dev["name"], dev)
             return 200, {"ok": code < 400, "result": res}
         if parts[:2] == ["server", "update"]:
             if method == "GET" and len(parts) == 2:
@@ -1071,7 +1130,7 @@ class Handler(BaseHTTPRequestHandler):
 
         return 404, {"error": "no such endpoint"}
 
-    # ── pairing (home LAN only, one-time code from `sudo nova-api pair`) ──
+    # ── pairing (home LAN only, one-time code from `sudo nova add`) ──
     def pair(self, body):
         where, ip = self.origin()
         if where not in ("lan", "local"): return self.fail(ip, 403, "pairing only works on the home network")

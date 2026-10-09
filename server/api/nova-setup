@@ -175,8 +175,8 @@ def main():
     print(f"  {G}✓{X} Nova is running.  App: pair below · Web: https://{host}:8495/")
 
     if yes("\nPair your phone now?", True) and not YES:
-        os.execvp("nova-api", ["nova-api", "pair"])
-    print(f"\nWhen you're ready:  {B}sudo nova-api pair{X}   (scan the QR with the Nova app on your home Wi-Fi)")
+        os.execvp("nova", ["nova", "add"])
+    print(f"\nWhen you're ready:  {B}sudo nova add{X}   (scan the QR with the Nova app on your home Wi-Fi)")
 
 
 if __name__ == "__main__":

@@ -15,7 +15,7 @@ Nova controls a whole server, so it's designed so that losing any one piece is n
 
 ## Pairing
 
-`sudo nova-api pair` creates a 10-character single-use code (valid 10 minutes, stored only as a hash).
+`sudo nova add` creates a 10-character single-use code (valid 10 minutes, stored only as a hash).
 Pairing is accepted only from the LAN. The QR code also carries the SHA-256 of the server's TLS
 certificate, which the app pins. If you type the code instead, the app shows the certificate's
 first 12 hex digits for you to compare with the CLI output. Every new pairing raises an alert.
@@ -36,7 +36,7 @@ Every phone or browser belongs to a named user and has a role:
   wall-mounted dashboard.
 
 Admins invite phones from the app (Users & devices → Invite a phone: a single-use QR code with the
-role baked in) or with `sudo nova-api pair --role viewer --user Alex`. Changing roles needs a
+role baked in) or with `sudo nova add --role viewer --user Alex`. Changing roles needs a
 fingerprint. The server refuses to demote the last admin.
 
 ## Browsers (Nova web)

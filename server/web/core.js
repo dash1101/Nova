@@ -86,7 +86,7 @@ export async function api(method, path, body) {
   }
   if (r.status === 403 && !("error" in j) && /cloudflare/i.test(text))
     throw new ApiError(403, "Cloudflare Access turned this browser away — log in at the Cloudflare page first");
-  if (r.status === 202 && j.approval) return approvalHook ? approvalHook(j.approval) : j;     // risky: approve on the phone
+  if (r.status === 202 && j.approval) return approvalHook ? approvalHook(j.approval, j.code) : j;     // risky: approve on the phone
   if (r.status === 401) throw new ApiError(401, "This browser isn't authorized anymore");
   if (!r.ok) throw new ApiError(r.status, j.message || j.error || `HTTP ${r.status}`);
   S.lastContact = Date.now();
@@ -106,7 +106,7 @@ export async function waitJob(job, onUpdate) {
 
 // ── preferences (this browser) — same choices as the app's Appearance screens ───
 const PREF_DEFAULTS = {
-  theme: "system", style: "auto", reduceMotion: false,
+  theme: "system", style: "auto", reduceMotion: true,       // browsers start calm; turn motion on in Appearance
   homeOrder: ["hero", "shortcuts", "stats"], homeHero: true, homeShortcuts: true, homeStats: true,
   homeChips: ["inbox", "quick", "containers", "storage"],
   navTabs: ["store", "home", "menu"],

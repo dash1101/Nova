@@ -281,7 +281,7 @@ if verb == "free-ram" and not args:
 if verb == "notify-paired" and len(args) == 1:
     name = "".join(ch for ch in args[0] if ch.isalnum() or ch in " -_")[:40] or "device"
     notify("warning", f"New device paired with the Nova app: {name}",
-           f"If this wasn't you, run: sudo nova-api revoke '{name}'")
+           f"If this wasn't you, run: sudo nova remove '{name}'")
     changelog(f"New device paired: {name}")
     out({"ok": True})
 

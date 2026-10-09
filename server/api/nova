@@ -1,0 +1,193 @@
+#!/usr/bin/python3
+"""Nova — everything you do on the server, in one command.  (run with sudo)
+
+  Devices
+    sudo nova add                  pair a phone or tablet (shows a QR code and a code to type)
+         --viewer                  …as view-only     --user NAME   …for a person     --minutes N   (default 10)
+    sudo nova approve CODE         approve a code shown in a browser: adding the browser, or an action it's waiting on
+         --viewer  --user NAME     (when adding a browser)
+    sudo nova approve              list what's waiting for approval
+    sudo nova devices              list paired phones, tablets and browsers
+    sudo nova remove NAME|ID       remove one (it can never connect again)
+
+  Server
+    sudo nova status               version, services and addresses
+    sudo nova setup                guided setup (network, remote access, location, tools…)
+    sudo nova update [--check]     install the newest signed release
+    sudo nova lighting             set up the fan/case lighting module
+    sudo nova backup [now|list]    back up now, or list backups
+    sudo nova log [N]              the last N actions from the audit log
+    sudo nova alert LEVEL TITLE [DETAIL]   send an alert (info, warning, critical)
+    sudo nova publish APK [NOTES]  put an app build in the in-app updater
+"""
+import hashlib, json, os, secrets, shutil, subprocess, sys, time
+
+DATA = "/var/lib/nova-api"; DEVICES = f"{DATA}/devices.json"; PAIRING = f"{DATA}/pairing.json"
+SHELL_APPROVE = f"{DATA}/shell-approve.json"; PENDING = f"{DATA}/pending.json"
+LIB = "/usr/lib/nova-api"
+B, D, G, Y, R, X = "\033[1m", "\033[2m", "\033[32m", "\033[33m", "\033[31m", "\033[0m"
+if not sys.stdout.isatty(): B = D = G = Y = R = X = ""
+
+def load(p, d):
+    try: return json.load(open(p))
+    except Exception: return d
+
+def save(p, o, mode=0o640, owner="nova-api"):
+    import pwd, grp
+    tmp = p + ".tmp"
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, mode)
+    with os.fdopen(fd, "w") as f: json.dump(o, f, indent=1)
+    os.chown(tmp, pwd.getpwnam(owner).pw_uid if owner != "root" else 0, grp.getgrnam("nova-api").gr_gid)
+    os.chmod(tmp, mode); os.replace(tmp, p)
+
+def opt(args, name, default=None):
+    return args[args.index(name) + 1] if name in args and args.index(name) + 1 < len(args) else default
+
+def clock(sec): sec = max(0, int(sec)); return f"{sec // 60}:{sec % 60:02d}"
+
+def run(*cmd): os.execvp(cmd[0], list(cmd))
+
+def help_(): print(__doc__.rstrip()); sys.exit(0)
+
+
+def add(args):
+    """Pair a phone/tablet: one-time code (+ QR), with a live countdown until it's used or runs out."""
+    cfg = load("/etc/nova-api/config.json", {})
+    mins = int(opt(args, "--minutes", 10)); role = "viewer" if "--viewer" in args else opt(args, "--role", "admin")
+    if role not in ("admin", "viewer"): sys.exit("--role must be admin or viewer")
+    user = (opt(args, "--user", "") or "")[:40]
+    code = "".join(secrets.choice("ABCDEFGHJKLMNPQRSTUVWXYZ23456789") for _ in range(10))
+    expires = time.time() + mins * 60
+    save(PAIRING, {"code_sha256": hashlib.sha256(code.encode()).hexdigest(), "expires": expires, "role": role, "user": user})
+    lan, pin = cfg.get("lan_url", ""), ""
+    try:      # the encrypted home-network listener: the app pins this exact certificate
+        from cryptography import x509
+        from cryptography.hazmat.primitives import serialization
+        der = x509.load_pem_x509_certificate(open(f"{DATA}/tls/cert.pem", "rb").read()).public_bytes(serialization.Encoding.DER)
+        pin = hashlib.sha256(der).hexdigest()
+        lan = f"https://{cfg.get('lan_host') or '127.0.0.1'}:{cfg.get('tls_port', 8495)}"
+    except Exception: pass
+    payload = json.dumps({"nova": 1, "lan": lan, "pin": pin, "remote": cfg.get("remote_url", ""), "code": code}, separators=(",", ":"))
+    subprocess.run(["qrencode", "-t", "ANSIUTF8", "-m", "2", payload])
+    print(f"\nScan this with the Nova app on your {B}home Wi-Fi{X}, or type it in:")
+    print(f"  Server address  {B}{cfg.get('lan_host', '')}{X}      Code  {B}{code}{X}      Certificate  {pin[:4].upper()} {pin[4:8].upper()} {pin[8:12].upper()}")
+    print(f"  It will be {'an Admin (full control)' if role == 'admin' else 'View only'}" + (f", for {user}" if user else "") + ". Single use.\n")
+    before = set(load(DEVICES, {}))
+    try:
+        while True:
+            left = expires - time.time()
+            if not os.path.exists(PAIRING):
+                new = [d for k, d in load(DEVICES, {}).items() if k not in before]
+                print(f"\r  {G}✓ Paired{X} {new[0]['name'] if new else ''}" + " " * 30); return
+            if left <= 0:
+                try: os.remove(PAIRING)
+                except OSError: pass
+                print(f"\r  {Y}The code expired.{X} Run {B}sudo nova add{X} for a new one." + " " * 20); sys.exit(1)
+            print(f"\r  Waiting for the phone… {B}{clock(left)}{X} left  {D}(Ctrl-C to stop waiting; the code stays valid){X}  ", end="", flush=True)
+            time.sleep(1)
+    except KeyboardInterrupt:
+        print(f"\n  The code stays valid for {clock(expires - time.time())}.")
+
+
+def approve(args):
+    pend = load(PENDING, {}); now = time.time()
+    browsers = [b for b in pend.get("browsers", []) if b["expires"] > now]
+    actions = [a for a in pend.get("approvals", []) if a["expires"] > now]
+    codes = [a for a in args if not a.startswith("--") and a not in (opt(args, "--user", "\0"), opt(args, "--role", "\0"))]
+    if not codes:
+        if not browsers and not actions:
+            print("Nothing is waiting for approval."); print(f"{D}A browser shows its code under “Get a code”; an action it's waiting on shows one too.{X}"); return
+        for b in browsers: print(f"  {B}{b['code']}{X}  add the browser “{b['name']}” (from {b['from']}) · {clock(b['expires'] - now)} left")
+        for a in actions: print(f"  {B}{a['code']}{X}  {a['what']} — asked by {a['device']} · {clock(a['expires'] - now)} left")
+        print(f"\nApprove one with: {B}sudo nova approve CODE{X}"); return
+    code = codes[0].strip().upper().replace("-", "").replace(" ", "")
+    b = next((x for x in browsers if x["code"].replace("-", "") == code), None)
+    a = next((x for x in actions if x["code"] == code), None)
+    if b: code = b["code"]
+    role = "viewer" if "--viewer" in args else opt(args, "--role", "admin")
+    if role not in ("admin", "viewer"): sys.exit("--role must be admin or viewer")
+    what = (f"add the browser “{b['name']}” as {'Admin' if role == 'admin' else 'View only'}" if b else a["what"] if a else f"code {code}")
+    if pend and not b and not a and now - pend.get("t", 0) < 600:
+        print(f"{Y}Nothing is waiting with that code{X} (they expire after 10 minutes). Waiting codes:"); return approve([])
+    save(SHELL_APPROVE, {"code": code, "role": role, "user": (opt(args, "--user", "") or "")[:40], "t": now}, mode=0o640, owner="root")
+    print(f"Approving: {what}  {D}(the browser picks it up within a few seconds — keep its page open){X}")
+    try:
+        for i in range(45):
+            time.sleep(1)
+            if not os.path.exists(SHELL_APPROVE): print(f"  {G}✓ Done.{X}"); return
+            print(f"\r  waiting {clock(45 - i)} ", end="", flush=True)
+    except KeyboardInterrupt: pass
+    try: os.remove(SHELL_APPROVE)
+    except OSError: pass
+    sys.exit(f"\n  {Y}The browser didn't pick it up{X} — is its page still open? (Approvals made here last 2 minutes.)")
+
+
+def devices(args):
+    devs = load(DEVICES, {})
+    if not devs: print("No devices yet. Pair one with: sudo nova add"); return
+    for k, d in sorted(devs.items(), key=lambda kv: kv[1].get("created", "")):
+        kind = d.get("form") or ("desktop" if d.get("type") == "browser" else "phone")
+        kind = {"desktop": "computer"}.get(kind, kind) + (" (browser)" if d.get("type") == "browser" else "")
+        print(f"  {B}{d['name'][:26]:26}{X} {kind:20} {'Admin' if d.get('role', 'admin') == 'admin' else 'View only':10} "
+              f"{D}{d.get('user') or '':12} last seen {d.get('last_seen') or 'never'} {('via ' + d['last_via']) if d.get('last_via') else ''}  id {k}{X}")
+
+
+def remove(args):
+    if not args: sys.exit("Which one? sudo nova remove NAME   (see: sudo nova devices)")
+    devs = load(DEVICES, {}); hit = [k for k, d in devs.items() if args[0] in (k, d["name"])]
+    if not hit: sys.exit(f"Nothing called {args[0]!r} — see: sudo nova devices")
+    for k in hit: devs.pop(k)
+    save(DEVICES, devs, mode=0o640)
+    for k in hit:                    # and its SSH key, if the app installed one
+        h = f"{LIB}/helper" if os.path.exists(f"{LIB}/helper") else None
+        if h: subprocess.run([h, "ssh-unauthorize", k], capture_output=True)
+    print(f"{G}✓ Removed{X} {', '.join(hit)}")
+
+
+def status(args):
+    cfg = load("/etc/nova-api/config.json", {})
+    ver = subprocess.run(["dpkg-query", "-W", "-f=${Version}", "nova-server"], capture_output=True, text=True).stdout or "?"
+    print(f"{B}Nova {ver}{X}")
+    for u in ("nova-api", "nova-helper.socket", "nova-alerts.timer", "nova-backups.timer", "nova-update-check.timer", "nova-rgb-anim", "nova-rgb-tick.timer"):
+        st = subprocess.run(["systemctl", "is-active", u], capture_output=True, text=True).stdout.strip()
+        if st != "inactive" or u.startswith("nova-api"): print(f"  {(G + '●') if st == 'active' else (R + '●')}{X} {u:26} {st}")
+    print(f"  Home network   {cfg.get('lan_url', '—')}")
+    if cfg.get("tailnet_host"): print(f"  Tailscale      https://{cfg['tailnet_host']}:{cfg.get('tls_port', 8495)}")
+    if cfg.get("remote_url"): print(f"  Remote         {cfg['remote_url']}")
+    print(f"  Devices        {len(load(DEVICES, {}))}   (sudo nova devices)")
+
+
+def backup(args):
+    sub = args[0] if args else "now"
+    if sub == "now":
+        r = subprocess.run([f"{LIB}/helper", "backup-now"], capture_output=True, text=True); print(r.stdout.strip() or r.stderr.strip())
+    elif sub == "list": run("/usr/bin/python3", "-I", f"{LIB}/backups.py", "list")
+    else: sys.exit("sudo nova backup [now|list]")
+
+
+def log(args):
+    n = int(args[0]) if args and args[0].isdigit() else 20
+    for l in open("/var/log/nova-api/audit.log").readlines()[-n:]: print(l.rstrip())
+
+
+if __name__ == "__main__":
+    a = sys.argv[1:]
+    cmd = a[0] if a else "help"
+    if cmd in ("help", "-h", "--help"): help_()
+    if os.geteuid() != 0: sys.exit(f"Run it with sudo:  sudo nova {' '.join(a)}")
+    rest = a[1:]
+    # the old command names still work (nova-api pair, revoke, approve-browser)
+    cmd = {"pair": "add", "revoke": "remove", "approve-browser": "approve", "rm": "remove", "list": "devices"}.get(cmd, cmd)
+    if cmd == "add": add(rest)
+    elif cmd == "approve": approve(rest)
+    elif cmd == "devices": devices(rest)
+    elif cmd == "remove": remove(rest)
+    elif cmd == "status": status(rest)
+    elif cmd == "setup": run("/usr/sbin/nova-setup", *rest)
+    elif cmd == "update": run("/usr/sbin/nova-update", *rest)
+    elif cmd == "lighting": run("/usr/sbin/nova-setup-lighting", *rest)
+    elif cmd == "backup": backup(rest)
+    elif cmd == "log": log(rest)
+    elif cmd == "alert": run("/usr/sbin/nova-alert", *rest)
+    elif cmd == "publish": run("/usr/sbin/nova-app-publish", *rest)
+    else: print(f"{Y}Unknown command: {cmd}{X}\n"); help_()

@@ -42,7 +42,7 @@ defaults.
 ## 3. Pair your phone
 
 1. Install the Nova app (the APK from a release, or build it, see the README).
-2. On home Wi-Fi run `sudo nova-api pair` and scan the QR code with the app.
+2. On home Wi-Fi run `sudo nova add` and scan the QR code with the app.
    - Typing instead: enter the server address and code, and check the certificate code matches.
 3. The first time you open the app at home, fingerprint confirmation for risky actions is set up automatically.
 
@@ -81,4 +81,4 @@ sudo apt purge nova-server         # removes them too (your containers and data 
 | Pairing says *only on the home network* | You're on mobile data or a guest network. Join the same network as the server |
 | Installs / Free RAM fail | `systemctl status nova-helper.socket` (the privileged helper) |
 | Browser warns about the certificate | Expected: Nova uses its own certificate. Continue once; the app pins it, and browsers sign every request |
-| Lost your phone | From another admin device: Users & devices → remove it. Or on the server: `sudo nova-api revoke <name or id>` |
+| Lost your phone | From another admin device: Users & devices → remove it. Or on the server: `sudo nova remove <name or id>` |

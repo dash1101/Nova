@@ -39,7 +39,7 @@ Every request is signed by an ECDSA key that is generated inside the phone's har
 (StrongBox when available) and never leaves it. Requests carry a timestamp and a single-use nonce,
 so they can't be replayed. Risky actions (shells, stopping things, installs, unmounting, power,
 removing devices) also need a second, fingerprint-bound signature. Phones are added only on the
-server's own network, with a single-use code from `sudo nova-api pair`. On the home network the app
+server's own network, with a single-use code from `sudo nova add`. On the home network the app
 talks HTTPS to a self-signed certificate that it pins at pairing time. Remotely, Cloudflare Access
 stops strangers before they reach your machine. The API runs as an unprivileged, sandboxed user;
 the only privileged code is a root helper with a fixed list of verbs. Details: [docs/SECURITY.md](docs/SECURITY.md).
@@ -49,13 +49,13 @@ the only privileged code is a root helper with a fixed list of verbs. Details: [
 ```bash
 sudo apt install ./nova-server_0.4.0~alpha_all.deb     # or, from source:  sudo ./server/install.sh
 sudo nova-setup                                         # guided setup: network, Tailscale, remote, firewall
-sudo nova-api pair                                      # shows a QR code: scan it with the app
+sudo nova add                                      # shows a QR code: scan it with the app
 ```
 
 Full walkthrough, extras and troubleshooting: **[docs/SETUP.md](docs/SETUP.md)**.
 
-Handy commands: `sudo nova-api devices`, `sudo nova-api revoke <id>`, `sudo nova-api log`,
-`sudo nova-api pair --role viewer --user Alex`.
+Handy commands: `sudo nova devices`, `sudo nova remove <id>`, `sudo nova-api log`,
+`sudo nova add --role viewer --user Alex`.
 
 ## Install the app
 

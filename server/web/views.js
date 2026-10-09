@@ -1003,7 +1003,7 @@ export async function guide(ctx) {
   ctx.show(`${note("Nova has two parts: the app (phone, or this web version), and a small server package on the Linux machine you want to control (Debian or Ubuntu).")}
     ${step(1, "Install the server package", "On the server, install the Nova package (nova-server_….deb) — or build it from the source code.", "sudo apt install ./nova-server_*.deb\n# or from source:\ngit clone <repo> && cd nova && sudo ./server/install.sh")}
     ${step(2, "Run the setup wizard", "It finds your home network, asks a few questions (press Enter for the suggested answers) and starts Nova.", "sudo nova-setup")}
-    ${step(3, "Pair your phone", "On home Wi-Fi, show a pairing code on the server and scan it with the Nova app. The code works once and expires in 10 minutes.", "sudo nova-api pair")}
+    ${step(3, "Pair your phone", "On home Wi-Fi, show a pairing code on the server and scan it with the Nova app. The code works once and expires in 10 minutes.", "sudo nova add")}
     ${step(4, "Optional: use it away from home", "Without a VPN, put Nova behind Cloudflare Access (free) — docs/REMOTE.md walks you through it. For this web version away from home, add an Allow policy for your email to the same Access application.")}
     ${step(5, "Optional: other people, tablets, browsers", "In the app: Menu → Users & devices — invite phones as Admin or View only, and approve browsers (open https://&lt;server&gt;:8495, choose “Get a code”).")}
     ${note("Security in a sentence: every request is signed by a key the device can't give away, and anything risky also needs your fingerprint on a phone.")}`, { title: "Setup guide" });

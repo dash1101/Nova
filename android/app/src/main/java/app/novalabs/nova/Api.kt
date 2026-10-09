@@ -277,7 +277,7 @@ class NovaApi(private val pairing: Pairing) {
                     pinned(OkHttpClient.Builder().connectTimeout(4, TimeUnit.SECONDS), pin).build().newCall(req).execute().use { r ->
                         val o = runCatching { JSONObject(r.body.string()) }.getOrDefault(JSONObject())
                         if (!r.isSuccessful) throw ApiException(r.code, when (r.code) {
-                            401 -> "That code is wrong or expired. Run `sudo nova-api pair` again."
+                            401 -> "That code is wrong or expired. Run `sudo nova add` again."
                             403 -> "Pairing only works on your home Wi-Fi."
                             else -> o.optString("error", "Pairing failed (${r.code})")
                         })
