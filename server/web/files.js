@@ -1,9 +1,22 @@
 // Nova web — Files: browse the server as your normal account, open and edit text, upload,
 // download, new files and folders, rename, move, copy, and delete (to the Trash).
-import { S, $, $$, esc, get, post, bytes, isAdmin, signedFetch, signedRaw, prefs } from "./core.js";
+import { S, $, $$, esc, get, post as rawPost, bytes, isAdmin, signedFetch, signedRaw as rawPut, prefs } from "./core.js";
 import { I, row, group, sec, note, toast, dialog, confirm, switchRow, sheet, closeSheet } from "./ui.js";
 
 const enc = encodeURIComponent;
+// A browser changes files only after your phone approves it (then for 15 minutes): ask once, then retry.
+let unlocking = null;
+async function unlocked(fn) {
+  try { return await fn(); }
+  catch (e) {
+    if (e.kind !== "files_locked") throw e;
+    unlocking ||= rawPost("/api/v1/files/unlock").finally(() => { unlocking = null; });
+    const r = await unlocking; if (!r?.ok) throw new Error("File changes weren't approved");
+    return fn();
+  }
+}
+const post = (p, b) => b?.op === "read" ? rawPost(p, b) : unlocked(() => rawPost(p, b));
+const signedRaw = (m, p, data) => unlocked(() => rawPut(m, p, data));
 const CHUNK = 4 * 1024 * 1024;
 const join = (d, n) => (d === "/" ? "" : d) + "/" + n;
 const when = t => { const d = new Date(t * 1000), now = new Date();

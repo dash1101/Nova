@@ -48,7 +48,7 @@ export const S = {
   unread: 0,
 };
 export class ApiError extends Error {
-  constructor(code, msg, offline = false) { super(msg); this.code = code; this.offline = offline; }
+  constructor(code, msg, offline = false, kind = "") { super(msg); this.code = code; this.offline = offline; this.kind = kind; }
 }
 
 function cloudflareSays(code) {
@@ -79,7 +79,7 @@ export async function signedRaw(method, path, bytes) {
   const r = await fetch(path, { method, body: buf, credentials: "same-origin", cache: "no-store",
     headers: { "Content-Type": "application/octet-stream", "X-Nova-Device": S.device, "X-Nova-Time": ts, "X-Nova-Nonce": nonce, "X-Nova-Signature": b64(sig) } });
   let j = {}; try { j = await r.json(); } catch {}
-  if (!r.ok) throw new ApiError(r.status, j.error || j.message || `HTTP ${r.status}`);
+  if (!r.ok) throw new ApiError(r.status, j.message || j.error || `HTTP ${r.status}`, false, j.error || "");
   return j;
 }
 export async function api(method, path, body) {
@@ -100,7 +100,7 @@ export async function api(method, path, body) {
     throw new ApiError(403, "Cloudflare Access turned this browser away — log in at the Cloudflare page first");
   if (r.status === 202 && j.approval) return approvalHook ? approvalHook(j.approval, j.code) : j;     // risky: approve on the phone
   if (r.status === 401) throw new ApiError(401, "This browser isn't authorized anymore");
-  if (!r.ok) throw new ApiError(r.status, j.message || j.error || `HTTP ${r.status}`);
+  if (!r.ok) throw new ApiError(r.status, j.message || j.error || `HTTP ${r.status}`, false, j.error || "");
   S.lastContact = Date.now();
   if (method === "GET" && !path.startsWith("/api/v1/stats?")) S.cache[path] = j;      // not the per-second deltas
   return j;

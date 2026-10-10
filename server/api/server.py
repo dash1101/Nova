@@ -38,7 +38,7 @@ try:                       # optional module: fan/case lighting (modules/fan-gig
 except ImportError:
     nova_rgb = None
 
-API_VERSION = "0.5.9-alpha"
+API_VERSION = "0.5.9-alpha.2"
 CONFIG = "/etc/nova-api/config.json"
 DATA = "/var/lib/nova-api"
 DEVICES = f"{DATA}/devices.json"
@@ -50,6 +50,7 @@ MAX_BODY = 64 * 1024
 UPLOAD_CHUNK = 4 * 1024 * 1024 + 1024
 LABS = {"cloudflare_sync": {"name": "Cloudflare auto-setup", "about": "Put an app on your own domain in one step: Nova adds the Cloudflare tunnel route, the DNS record and the Access login for you. Needs a Cloudflare API token."}}
 RAW_BODY_PATHS = ("/api/v1/files/upload", "/api/v1/files/save")
+FILE_UNLOCK = {}          # browser device id → until when it may change files (after a phone approved it)
 NOTIFY_KEYS = {"push_min_level": ("info", "warning", "critical"), "push_logins": bool, "push_usb": bool,
                "discord_paused": bool}
 EVENTS = "/var/lib/nova-alerts/www/events.json"
@@ -420,9 +421,20 @@ def shell_approval(code):
     except OSError: return None                      # someone else used it first
     return ap
 
+def shell_account():
+    """Name of the normal account the terminal and file manager use (for approval texts)."""
+    if CFG.get("shell_user"): return CFG["shell_user"]
+    try:
+        import pwd
+        ok = set(l.strip() for l in open("/etc/shells") if l.startswith("/"))
+        people = [u.pw_name for u in pwd.getpwall() if 1000 <= u.pw_uid < 60000 and u.pw_shell in ok]
+        return people[0] if len(people) == 1 else "your account"
+    except Exception: return "your account"
+
 def describe_action(a):
     p = [x for x in a["path"].split("/") if x][2:]
-    if p == ["terminal"]: return "Open a terminal on the server (as your normal user)"
+    if p == ["terminal"]: return f"Open a terminal on the server as {shell_account()} — that's full control if the account can use sudo or Docker"
+    if p == ["files", "unlock"]: return f"Let this browser change files on the server as {shell_account()} for 15 minutes"
     if p == ["cloudflare", "publish"]: return f"Put {a.get('data', {}).get('host', '?')} on the internet through your Cloudflare tunnel (behind your Access login)"
     if p == ["cloudflare", "remove"]: return f"Take {a.get('data', {}).get('host', '?')} off your Cloudflare tunnel"
     if p == ["cloudflare", "token"]: return "Save a Cloudflare API token on the server"
@@ -500,8 +512,8 @@ def basic_status():
 
 def browser_needs_phone(method, parts):
     """Harmless from a phone (hardware key, one swipe), but from a browser they could hide what
-    happened — silence an alert, erase the login history — so a browser asks a phone first."""
-    return method == "POST" and parts == ["alerts", "dismiss"]
+    happened — silence an alert, erase the login history — or (files) act as your account, so a browser asks a phone first."""
+    return method == "POST" and parts in (["alerts", "dismiss"], ["files", "unlock"])
 
 # Actions that need the fingerprint-bound step-up key (second signature).
 def needs_stepup(method, parts):
@@ -748,9 +760,16 @@ class Handler(BaseHTTPRequestHandler):
                 for _ in range(mb): self.wfile.write(chunk)
             except (BrokenPipeError, ConnectionResetError): pass
             return
-        if parts[:1] == ["files"]:
+        if parts[:1] == ["files"] and parts != ["files", "unlock"]:
             # the file manager — as your normal account on the server (files.py), admins only
             if role_of(dev) != "admin" or dev.get("type") in ("watch", "head"): return self.send(403, {"error": "admins only"})
+            # A browser changes files only after a phone approved it (then for 15 minutes): files written as your
+            # account can be as powerful as that account (~/.ssh, ~/.bashrc, ~/bin, a Docker-capable user…).
+            try: op0 = json.loads(body or b"{}").get("op") if parts == ["files"] else None
+            except (ValueError, AttributeError): op0 = None
+            writing = method == "POST" and (parts != ["files"] or op0 != "read")
+            if writing and dev.get("type") == "browser" and FILE_UNLOCK.get(dev["id"], 0) < time.time():
+                return self.send(403, {"error": "files_locked", "message": "Approve file changes on your phone first (they're then allowed for 15 minutes)."})
             fq = {k: v[0] for k, v in urllib.parse.parse_qs(self.path.split("?", 1)[1] if "?" in self.path else "").items()}
             def reply(rc, res): return self.send(200 if rc == 0 else 400, res)
             if method == "GET" and parts == ["files"]:
@@ -1119,7 +1138,7 @@ class Handler(BaseHTTPRequestHandler):
                       for a in approvals.values() if a["state"] == "pending" and role_of(dev) == "admin"
                       and dev.get("type") != "browser" and time.time() - a["created"] < 600]
                 tk = live_tasks()
-                if any(t["state"] == "running" for t in tk): end = min(end, wait_started + 4)   # progress: answer every few seconds
+                if any(t["state"] == "running" for t in tk): end = min(end, wait_started + 20)  # progress for the notification, without waking the phone too often
                 if ev or ("seen" in q and [a for a in ap if a["id"] not in seen]) or time.time() >= end:
                     return 200, {"events": ev[:50], "approvals": ap, "tasks": tk}
                 time.sleep(2)
@@ -1412,6 +1431,9 @@ class Handler(BaseHTTPRequestHandler):
             if method == "POST" and parts[2:] == ["shell"]:
                 sh = open_shell(dev["id"], name)
                 return 200, {"session": sh["id"], "container": name}
+        if method == "POST" and parts == ["files", "unlock"]:
+            if role_of(dev) != "admin" or dev.get("type") != "browser": return 400, {"error": "only browsers need this"}
+            FILE_UNLOCK[dev["id"]] = time.time() + 900; return 200, {"ok": True, "until": FILE_UNLOCK[dev["id"]]}
         if method == "POST" and parts == ["terminal"]:
             # a login shell on the server as your normal user (approved with your fingerprint; sudo asks its password)
             if role_of(dev) != "admin": return 403, {"error": "admins only"}

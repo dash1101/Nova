@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.9-alpha.2 (server)
+- **Security fix — file changes from a browser now need your phone.** In 0.5.9 a paired browser could change files as your normal account without approval. Because that account can be as powerful as root (it may use sudo or Docker, and files like `~/.ssh/authorized_keys` or `~/.bashrc` control how it logs in), a browser's first change — upload, save, new, rename, move, copy or delete — is now held for approval on your phone, and then allowed for 15 minutes. Reading and downloading are unchanged; phones are unchanged.
+- The approval for the server terminal now says plainly that it's full control when the account can use sudo or Docker.
+- The phone's progress notification refreshes every 20 seconds instead of every 4 (less battery during long backups).
+- Security test: 247 checks, all passing.
+
 ## 0.5.9-alpha (app and server)
 - **Server terminal in the browser:** Terminal → *Server terminal* (also in Apps). A real terminal — colors, nano, htop, less — as your normal account on the server, never root; `sudo` asks your password as usual. Opening one is approved on your phone (or with `sudo nova approve`), announced in the Inbox, and closes after 10 minutes unused.
 - **Files** (app and web, also in Apps and Menu): browse the server as your normal account; open and edit text files; upload (drag and drop on the web, any size, in chunks), download, new files and folders, rename, move, copy; delete goes to the server's Trash so it can be undone. It can only do what your account can — root-only files stay out of reach.
