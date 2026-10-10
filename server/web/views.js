@@ -824,42 +824,53 @@ const swatchRow = (sel, key, dis, noChange) => `<div class="swatches">${noChange
 const lookOf = f => Object.fromEntries(["on", "effect", "color", "color2", "brightness", "speed", "rainbow", "palette"].filter(k => f?.[k] !== undefined).map(k => [k, f[k]]));
 const palBg = cols => cols.length > 1 ? `linear-gradient(90deg,${cols.join(",")})` : cols[0];
 const chip = (label, act, on, icon) => `<button class="chip" style="font-family:inherit;font-size:14px;display:inline-flex;align-items:center;gap:6px;${on ? "background:var(--blue);color:#fff" : ""}" data-act="${act}">${icon ? I("block") : ""}${esc(label)}</button>`;
+// Which light the Lighting page is showing ("main" = the one the rest of Nova calls the fan light).
+let litCur = "main";
+const zoneOf = id => (S.lights?.zones || []).find(z => z.id === id);
 export async function lighting(ctx) {
   const draw = () => {
-    const f = S.fan || {}, lit = f.on !== false, on = lit && isAdmin(), eff = f.effect || "static", nsch = (f.schedules || []).length, pal = f.palette || [], rb = f.rainbow !== false;
+    const zs = S.lights?.zones || [], z = litCur === "main" ? null : zoneOf(litCur);
+    if (litCur !== "main" && !z) litCur = "main";
+    const main = !z, rgbOnly = (S.lights?.targets || []).find(t => t.id === (z || zs[0] || {}).target)?.kind === "rgb";
+    const f = z || S.fan || {}, lit = f.on !== false, on = lit && isAdmin(), eff = f.effect || "static", nsch = (f.schedules || []).length, pal = f.palette || [], rb = f.rainbow !== false;
+    const mainName = zs[0]?.name || "Fan", shape = (z || zs[0] || {}).shape || "fan";
     const presets = f.presets || [], soft = SOFT.has(eff) || eff === "cycle", mode = soft ? (pal.length >= 2 && !(eff !== "fire" && rb) ? 2 : rb ? 0 : 1) : -1;
     const pfx = !soft && PALETTE_FX.has(eff), pmode = pal.length >= 2 ? 1 : 0;      // static, pulse, flash, gradient: color(s) or a palette
     const palEditor = () => `<div style="padding:14px 20px"><div style="display:flex;flex-wrap:wrap;gap:12px">${pal.map((c, i) => `<button class="swatch" style="width:44px;height:44px;background:${c}" data-act="${on ? "pal:" + i : ""}" data-pi="${i}" aria-label="${c}"></button>`).join("")}
                 ${pal.length < 8 && on ? `<button class="swatch" style="width:44px;height:44px;border:1.5px dashed var(--sub)" data-act="paladd">${I("add")}</button>` : ""}</div>
               <p class="muted" style="font-size:12px;margin:8px 0 10px">Tap a color to change it, hold (or right-click) to remove it.</p>
               <div style="display:flex;gap:8px;overflow-x:auto;scrollbar-width:none">${PALS.map(([n, c]) => `<button style="display:flex;flex-direction:column;align-items:center;gap:4px;padding:4px" data-act="${on ? "palset:" + n : ""}"><span style="width:64px;height:22px;border-radius:11px;background:${palBg(c)}"></span><small class="muted">${n}</small></button>`).join("")}</div></div>`;
-    ctx.show(`<canvas class="fanhero" id="fh"></canvas>
-      ${f.status_override ? `<p class="note" style="color:var(--amber);font-size:14px">Showing server status right now — your setting comes back when it's resolved.</p>` : ""}
+    const chips = S.lights ? `<div class="chips litchips" style="padding:0 var(--gutter);margin-bottom:6px">${zs.map(x => chip(x.name, "lit:" + x.id, x.id === litCur)).join("")}
+        ${isAdmin() ? `<button class="chip press" data-act="go:lights" aria-label="Your lights">${I("tune")} Your lights</button>` : ""}</div>` : "";
+    ctx.show(`${chips}${main && shape === "fan" ? `<canvas class="fanhero" id="fh"></canvas>` : ""}
+      ${!main ? note(`Presets, schedules and the status light are for ${esc(mainName)} for now.`) : ""}
+      ${main && f.status_override ? `<p class="note" style="color:var(--amber);font-size:14px">Showing server status right now — your setting comes back when it's resolved.</p>` : ""}
       ${!isAdmin() ? note("View-only access — an admin can change the lighting.") : ""}
-      ${group(switchRow("Fan light", lit ? "On" : "Off", lit, isAdmin() ? "set:on" : "", { dis: !isAdmin() }))}
+      ${group(switchRow(main && shape === "fan" && zs.length < 2 ? "Fan light" : esc(f.name || mainName), lit ? "On" : "Off", lit, isAdmin() ? "set:on" : "", { dis: !isAdmin() }))}
       ${group(slider("Brightness", "brightness", f.brightness ?? 50, 0, 100, (f.brightness ?? 50) + "%", !on))}
-      ${sec("Presets")}<div class="chips" style="padding:0 var(--gutter)">${presets.map(p => { const st = p.set || {}, pc = (st.palette || []).length > 1 ? st.palette : [st.color || "#3e91ff"];
+      ${main ? sec("Presets") : ""}<div class="chips" style="padding:0 var(--gutter);${main ? "" : "display:none"}">${presets.map(p => { const st = p.set || {}, pc = (st.palette || []).length > 1 ? st.palette : [st.color || "#3e91ff"];
           return `<button class="tile glass press" style="height:48px;padding:0 14px;width:auto" data-act="preset:${esc(p.id)}" data-pid="${esc(p.id)}"><span style="width:22px;height:22px;border-radius:50%;background:${st.rainbow && (SOFT.has(st.effect) || st.effect === "cycle") ? "conic-gradient(red,yellow,lime,cyan,blue,magenta,red)" : palBg(pc)}"></span><b>${esc(p.name)}</b></button>`; }).join("")}
         ${isAdmin() ? `<button class="tile glass press" style="height:48px;padding:0 14px;width:auto;color:var(--blue)" data-act="savepreset">${I("add")}<b>Save current</b></button>` : ""}</div>
-      ${presets.length ? note("Hold a preset (or right-click) to update, rename or delete it.") : note("Save the look you have now to switch back to it in one tap — or to use it in a schedule.")}
-      ${sec("Effect")}${group(EFFECTS2.map(([k, l, d]) => row(l, { sub: d, blue: eff === k, end: radio(eff === k), click: on ? "set:effect:" + k : "", dis: !on })).join(""))}
+      ${!main ? "" : presets.length ? note("Hold a preset (or right-click) to update, rename or delete it.") : note("Save the look you have now to switch back to it in one tap — or to use it in a schedule.")}
+      ${rgbOnly ? note("A 12 V RGB header lights every LED in the same color, so the effects that move along the LEDs aren't offered.") : ""}
+      ${sec("Effect")}${group(EFFECTS2.filter(e => !rgbOnly || (S.lights?.rgb_effects || []).includes(e[0])).map(([k, l, d]) => row(l, { sub: d, blue: eff === k, end: radio(eff === k), click: on ? "set:effect:" + k : "", dis: !on })).join(""))}
       ${sec("Color")}${group(soft ? segmented(eff === "fire" ? ["Flame", "One color", "Palette"] : ["Rainbow", "One color", "Palette"], mode, "cmode")
           + (mode === 2 ? palEditor() : mode === 1 ? swatchRow(f.color, "color", !on) : eff === "fire" ? `<p class="note" style="margin:14px 22px">A warm flame (dark red → orange → yellow). Pick One color for a flame in your color, or Palette for your own.</p>` : "")
         : pfx ? segmented([eff === "gradient" ? "Two colors" : "One color", "Palette"], pmode, "pmode")
           + (pmode === 1 ? palEditor() : swatchRow(f.color, "color", !on) + (eff === "gradient" ? `<div class="sec" style="margin:4px 22px 0">Blend into</div>${swatchRow(f.color2, "color2", !on)}` : ""))
         : swatchRow(f.color, "color", !on))}
       ${ANIM.has(eff) ? group(slider("Speed", "speed", f.speed ?? 50, 1, 100, speedLabel(f.speed ?? 50), !on) + `<div style="display:flex;justify-content:space-between;padding:0 22px 12px" class="muted"><small>Slower</small><small>Faster</small></div>`) : ""}
-      ${eff === "gradient" || soft || (pfx && pmode === 1) ? group(slider("LEDs on the fan", "led_count", f.led_count ?? 12, 4, 40, String(f.led_count ?? 12), !on)
-        + `<p class="note" style="margin:0 22px 14px">Match this to your fan so the effect fits the ring exactly (most 120 mm fans have 8–18).</p>`
-        + switchRow("Picture spins the other way", "If the effect here goes round the opposite way to your fan", localStorage.getItem("nova.fanReverse") === "true", "rev", { blue: false })) : ""}
-      ${sec("Automation")}${group(switchRow("Status light", "Turns amber for warnings and pulses red for critical alerts, then goes back to your color", !!f.status_light, isAdmin() ? "set:status_light" : "", { blue: false, dis: !isAdmin() })
-        + row("Schedules", { sub: f.schedules_paused ? "Paused" : nsch ? `${nsch} schedule${nsch > 1 ? "s" : ""}` : "Wake up gently, dim at sunset, off while you sleep…", blue: nsch > 0, click: "go:schedules" }))}
-      ${links([["Notifications", "go:notify"], ["Storage & hardware", "go:hardware"]])}`, { title: "Lighting" });
-    animate($("#fh"), "fan");
+      ${!rgbOnly && (eff === "gradient" || soft || (pfx && pmode === 1)) ? group(slider(shape === "strip" ? "LEDs on the strip" : shape === "fan" ? "LEDs on the fan" : "LEDs", "led_count", f.led_count ?? 12, 4, 40, String(f.led_count ?? 12), !on)
+        + `<p class="note" style="margin:0 22px 14px">${shape === "fan" ? "Match this to your fan so the effect fits the ring exactly (most 120 mm fans have 8–18)." : "Count the LEDs (or check the box) so effects fit the whole length."}</p>`
+        + (shape !== "fan" ? "" : switchRow("Picture spins the other way", "If the effect here goes round the opposite way to your fan", localStorage.getItem("nova.fanReverse") === "true", "rev", { blue: false }))) : ""}
+      ${main ? sec("Automation") + group(switchRow("Status light", "Turns amber for warnings and pulses red for critical alerts, then goes back to your color", !!f.status_light, isAdmin() ? "set:status_light" : "", { blue: false, dis: !isAdmin() })
+        + row("Schedules", { sub: f.schedules_paused ? "Paused" : nsch ? `${nsch} schedule${nsch > 1 ? "s" : ""}` : "Wake up gently, dim at sunset, off while you sleep…", blue: nsch > 0, click: "go:schedules" })) : ""}
+      ${links([["Your lights", "go:lights"], ["Notifications", "go:notify"], ["Storage & hardware", "go:hardware"]])}`, { title: "Lighting" });
+    if ($("#fh")) animate($("#fh"), "fan");
     wireCommon(ctx.root, {
-      onRangeInput: (k, v) => { const l = $(`[data-lbl="${k}"]`); if (l) l.textContent = k === "speed" ? speedLabel(v) : k === "brightness" ? v + "%" : String(v); if (k === "brightness") S.fan = { ...S.fan, brightness: v }; },
+      onRangeInput: (k, v) => { const l = $(`[data-lbl="${k}"]`); if (l) l.textContent = k === "speed" ? speedLabel(v) : k === "brightness" ? v + "%" : String(v); if (k === "brightness" && litCur === "main") S.fan = { ...S.fan, brightness: v }; },
       onRange: (k, v) => set({ [k]: v }),
-      onSeg: (key, m) => { const f2 = S.fan || {};
+      onSeg: (key, m) => { const f2 = look();
         if (key === "pmode") return set(m === 0 ? { palette: [] } : { rainbow: false, palette: (f2.palette || []).length >= 2 ? f2.palette : [f2.color || "#3e91ff", f2.color2 || "#bf5af2"] });
         if (m === 0) set(f2.effect === "fire" ? { palette: [], rainbow: true } : { rainbow: true });
         else if (m === 1) set({ rainbow: false, palette: [] });
@@ -868,7 +879,15 @@ export async function lighting(ctx) {
     $$("[data-pid]").forEach(b => onHold(b, () => presetMenu(b.dataset.pid)));
     $$("[data-pi]").forEach(b => onHold(b, () => { const p = [...(S.fan.palette || [])]; if (p.length > 2) { p.splice(+b.dataset.pi, 1); set({ palette: p }); } }));
   };
-  const set = async patch => { try { const p = changeFan(patch); draw(); await p; } catch (e) { toast(e.message); } if (ctx.alive()) draw(); };
+  const setZone = async (id, patch) => {
+    if (!isAdmin()) throw new Error("This browser has view-only access");
+    const z = zoneOf(id), before = { ...z }; Object.assign(z, patch); draw();
+    try { const { led_count, ...look } = patch;
+      if (led_count != null) S.lights = await post(`/api/v1/lights/${id}/setup`, { led_count });
+      if (Object.keys(look).length) S.lights = await post(`/api/v1/lights/${id}`, look); }
+    catch (e) { Object.assign(z, before); throw e; }
+  };
+  const set = async patch => { try { if (litCur !== "main") await setZone(litCur, patch); else { const p = changeFan(patch); draw(); await p; } } catch (e) { toast(e.message); } if (ctx.alive()) draw(); };
   const savePresets = list => set({ presets: list });
   const presetMenu = async id => {
     if (!isAdmin()) return viewOnly();
@@ -878,18 +897,63 @@ export async function lighting(ctx) {
     if (v === "rename") { const n = await ask("Rename preset", "Name", p.name); if (n) savePresets(list.map(x => x.id === id ? { ...x, name: n } : x)); }
     if (v === "delete") savePresets(list.filter(x => x.id !== id));
   };
+  const look = () => (litCur !== "main" && zoneOf(litCur)) || S.fan || {};
   ctx.handlers({
-    set: (k, v) => { const f = S.fan || {}; set({ [k]: v !== undefined ? v : k === "on" ? f.on === false : k === "rainbow" ? f.rainbow === false : !f[k] }); },
+    lit: id => { litCur = id; draw(); },
+    set: (k, v) => { const f = look(); set({ [k]: v !== undefined ? v : k === "on" ? f.on === false : k === "rainbow" ? f.rainbow === false : !f[k] }); },
     col: (k, h) => set({ [k]: h }),
-    pick: async k => { const c = await colorPicker(S.fan?.[k] || "#3e91ff"); if (c) set({ [k]: c }); },
-    pal: async i => { const p = [...(S.fan.palette || [])], c = await colorPicker(p[+i]); if (c) { p[+i] = c; set({ palette: p, rainbow: false }); } },
-    paladd: () => { const p = [...(S.fan.palette || [])]; p.push(p.at(-1) || "#ffffff"); set({ palette: p, rainbow: false }); },
+    pick: async k => { const c = await colorPicker(look()[k] || "#3e91ff"); if (c) set({ [k]: c }); },
+    pal: async i => { const p = [...(look().palette || [])], c = await colorPicker(p[+i]); if (c) { p[+i] = c; set({ palette: p, rainbow: false }); } },
+    paladd: () => { const p = [...(look().palette || [])]; p.push(p.at(-1) || "#ffffff"); set({ palette: p, rainbow: false }); },
     palset: n => set({ palette: PALS.find(x => x[0] === n)[1], rainbow: false }),
     preset: id => { const p = (S.fan.presets || []).find(x => x.id === id); if (!p) return; if (!isAdmin()) return viewOnly(); set({ ...p.set, on: p.set.on !== false }); toast(`${p.name} on`); },
     savepreset: async () => { const n = await ask("Save as a preset", "e.g. Movie night", ""); if (n) savePresets([...(S.fan.presets || []), { name: n, set: lookOf(S.fan) }]); },
     rev: () => { try { localStorage.setItem("nova.fanReverse", String(localStorage.getItem("nova.fanReverse") !== "true")); } catch {} draw(); },
   });
   draw(); try { S.fan = await get("/api/v1/fan"); if (ctx.alive()) draw(); } catch (e) { toast(e.message); }
+  try { S.lights = await get("/api/v1/lights"); if (ctx.alive()) draw(); } catch {}      // older servers: just the one light
+}
+// Lighting → Your lights: what's plugged in where (a fan ring, a strip, a 12 V header…), each with its own look.
+const SHAPE_NAME = { fan: "Fan", strip: "LED strip", other: "Something else" };
+export async function lights(ctx) {
+  const tgt = id => (S.lights?.targets || []).find(t => t.id === id) || { label: id, tested: false };
+  const draw = () => {
+    const L = S.lights;
+    if (!L) return ctx.show(note("Loading…"), { title: "Your lights" });
+    ctx.show(`${note("Each light plugged into the server, with its own effect and color. Add one for every fan, strip or header you light up.")}
+      ${group(L.zones.map((z, i) => row(z.name, { sub: `${SHAPE_NAME[z.shape] || "Light"} · ${tgt(z.target).label}${tgt(z.target).tested ? "" : " · untested"}${tgt(z.target).kind === "rgb" ? "" : ` · ${z.led_count} LEDs`}${i === 0 ? " · main" : ""}`,
+          icon: z.shape === "strip" ? "viewday" : z.shape === "fan" ? "sync" : "bulb", click: isAdmin() ? "edit:" + z.id : "lit:" + z.id })).join("")
+        + (isAdmin() && L.targets.some(t => !t.used_by) ? row("Add a light", { icon: "add", blue: true, click: "add" }) : ""))}
+      ${note("“Untested” headers follow the controller's documented protocol but haven't been tried on real hardware yet — if one doesn't light up, tell us which board you have. The main light is the one Presets, Schedules, the status light and the Home picture use.")}`,
+      { title: "Your lights" });
+  };
+  const post2 = async (path, body, method = "POST") => { try { S.lights = method === "DELETE" ? await del(path) : await post(path, body); } catch (e) { toast(e.message); } draw(); };
+  const pickTarget = async (cur, self) => {
+    const opts = S.lights.targets.filter(t => !t.used_by || t.id === cur || t.used_by === self).map(t => [t.id, t.label + (t.tested ? "" : " (untested)") + (t.kind === "rgb" ? " — one color at a time" : "")]);
+    return opts.length ? choose("Where is it plugged in?", opts, cur) : (toast("Every header is in use"), null);
+  };
+  ctx.handlers({
+    lit: id => { litCur = id; ctx.go("lighting"); },
+    add: async () => {
+      const target = await pickTarget(null); if (!target) return;
+      const shape = await choose("What is it?", [["fan", "A fan (a ring of LEDs)"], ["strip", "An LED strip"], ["other", "Something else"]], "strip"); if (!shape) return;
+      const name = await ask("Name it", "e.g. Case strip, Rear fan", shape === "fan" ? "Fan 2" : shape === "strip" ? "LED strip" : "Light"); if (!name) return;
+      let led_count = shape === "strip" ? 30 : 12;
+      if (tgt(target).kind !== "rgb") { const n = await ask("How many LEDs?", shape === "fan" ? "Most 120 mm fans have 8–18" : "Count them, or check the box", String(led_count)); if (n === null) return; led_count = Math.max(1, Math.min(120, parseInt(n) || led_count)); }
+      await post2("/api/v1/lights", { name, target, shape, led_count }); toast(`${name} added`);
+    },
+    edit: async id => {
+      const z = S.lights.zones.find(x => x.id === id); if (!z) return;
+      const v = await choose(z.name, [["look", "Change its look"], ["rename", "Rename"], ["where", "Where it's plugged in"], ["what", "What it is"], ...(tgt(z.target).kind !== "rgb" ? [["leds", "Number of LEDs"]] : []), ...(id !== "main" ? [["rm", "Remove"]] : [])], null);
+      if (v === "look") { litCur = id; return ctx.go("lighting"); }
+      if (v === "rename") { const n = await ask("Rename", "Name", z.name); if (n) post2(`/api/v1/lights/${id}/setup`, { name: n }); }
+      if (v === "where") { const t = await pickTarget(z.target, z.name); if (t && t !== z.target) post2(`/api/v1/lights/${id}/setup`, { target: t }); }
+      if (v === "what") { const sh = await choose("What is it?", [["fan", "A fan (a ring of LEDs)"], ["strip", "An LED strip"], ["other", "Something else"]], z.shape); if (sh) post2(`/api/v1/lights/${id}/setup`, { shape: sh }); }
+      if (v === "leds") { const n = await ask("How many LEDs?", "1–120", String(z.led_count)); if (n) post2(`/api/v1/lights/${id}/setup`, { led_count: Math.max(1, Math.min(120, parseInt(n) || z.led_count)) }); }
+      if (v === "rm" && await confirm(`Remove ${z.name}?`, "It's switched off and leaves the list. Nothing on the server changes otherwise.", "Remove")) { if (litCur === id) litCur = "main"; post2(`/api/v1/lights/${id}`, null, "DELETE"); }
+    },
+  });
+  draw(); try { S.lights = await get("/api/v1/lights"); if (ctx.alive()) draw(); } catch (e) { ctx.show(note(e.message), { title: "Your lights" }); }
 }
 const DAYS = ["M", "T", "W", "T", "F", "S", "S"], DAYN = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 function describeSet(s) {

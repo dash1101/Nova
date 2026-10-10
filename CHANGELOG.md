@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.13-alpha (app and server)
+- **Lighting for more than one light:** Lighting → *Your lights* lists what's plugged in where — a fan, an LED strip or something else — and *Add a light* puts another one on a free header (the board's second ARGB header, or its 12 V RGB header). Each light has its own effect, color, brightness and LED count; pick one with the chips at the top of Lighting. A 12 V RGB header only offers the one-color effects. Presets, schedules, the status light and the Home picture stay with the main light for now. The whole controller is set in one pass, so changing one light never resets another, and the animator draws every moving effect together. Only the first ARGB header has been tried on real hardware so far; the others are marked “untested”.
+- **Weekly container updates check the disk first:** before each download Nova needs about 8 GB (or 8% of the drive) free, and stops with an alert instead of filling the drive. Each update now also removes the version from two updates ago, so only one old version is kept per container.
+- Finished background tasks no longer post to Discord (they're in the Inbox and on your phone); failed ones still do.
+- Tapping a notification opens the right screen again with a custom app icon.
+- Security test: 278 checks, all passing.
+
 ## 0.5.12-alpha (app and server)
 - **Security fixes** (found by trying to break Nova):
   - Root no longer writes through files the service account could have tampered with. Several root tools (the root helper, updates, Labs, `nova`, `nova-update`, `nova-setup`, `nova-app-publish`) wrote into Nova's own folders by following paths; if the API were ever compromised, a planted symlink could have made root overwrite, or hand over, a system file. They now write with `safeio` (no symlinks followed, unpredictable temp files, ownership set on the open file).

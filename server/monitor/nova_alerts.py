@@ -609,7 +609,9 @@ class Monitor:
             try: os.remove(p)
             except Exception: pass
             if m and m.get("level") in LEVELS:
-                self.event(m["level"], m.get("title", "(no title)"), m.get("detail", ""), m.get("category", "script"))
+                cat = m.get("category", "script")
+                # a finished background task is Inbox news (the phone shows it too), not a Discord ping; failures still go out
+                self.event(m["level"], m.get("title", "(no title)"), m.get("detail", ""), cat, push=not (cat == "task" and m["level"] == "info"))
 
     # ── 3. delivery ──────────────────────────────────────────────────────────
     def deliver(self):

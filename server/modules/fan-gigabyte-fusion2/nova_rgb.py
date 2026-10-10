@@ -21,7 +21,19 @@ APPLIED = "/var/lib/nova-rgb/applied.json"     # what's physically on the fan ri
 STATUS = "/var/lib/nova-alerts/www/status.json"
 DEFAULT = {"on": True, "effect": "static", "color": "#005aff", "color2": "#bf5af2", "brightness": 50,
            "speed": 50, "speed_v": 2, "rainbow": True, "led_count": 12, "status_light": False, "schedules": [],
-           "palette": [], "presets": [], "schedules_paused": False, "location": None}
+           "palette": [], "presets": [], "schedules_paused": False, "location": None,
+           # the main light (the fields above are its look) and any extra ones, each with its own look
+           "name": "Fan", "shape": "fan", "target": "fusion2:argb", "zones": []}
+
+# Where a light can be plugged in. Only the first ARGB header has been tried on real hardware.
+TARGETS = {
+    "fusion2:argb":  {"header": "argb",  "kind": "argb", "label": "ARGB header 1 (D_LED1)", "tested": True},
+    "fusion2:argb2": {"header": "argb2", "kind": "argb", "label": "ARGB header 2 (D_LED2)", "tested": False},
+    "fusion2:rgb":   {"header": "rgb",   "kind": "rgb",  "label": "12 V RGB header (LED_C)", "tested": False},
+}
+SHAPES = ("fan", "strip", "other")
+RGB_EFFECTS = ["static", "pulse", "blink", "cycle"]        # a plain 12 V RGB header is one color at a time
+ZONE_LOOK = ("on", "effect", "color", "color2", "brightness", "speed", "rainbow", "palette")
 EFFECT_NAMES = ["static", "pulse", "blink", "cycle", "wave", "random", "gradient",
                 "comet", "scanner", "twinkle", "fire", "breathe"]
 SETTABLE = ("on", "effect", "color", "color2", "brightness", "speed", "rainbow", "led_count", "palette")
@@ -132,35 +144,97 @@ def validate(patch, allow_schedules=True):
                             "preset": preset, "trigger": trig, "offset": off, "fade": fade, "until": until or None,
                             "skip_next": bool(s.get("skip_next", False)), "if_on": bool(s.get("if_on", False))})
             out[k] = sch
-        elif k not in ("effects", "speed_v", "status_override", "period_ms", "sun", "running"):
+        elif k not in ("effects", "speed_v", "status_override", "period_ms", "sun", "running", "name", "shape", "target", "zones", "targets"):   # setup fields change through /lights
             raise ValueError(f"unknown setting {k}")
     return out
+
+def _name(v, fallback):
+    return "".join(c for c in str(v or "") if c.isprintable()).strip()[:30] or fallback
+
+def validate_setup(d, st, zid=None):
+    """Where a light is plugged in and what it is: name, target, shape, led_count."""
+    out = {}
+    if "name" in d: out["name"] = _name(d["name"], "Light")
+    if "shape" in d:
+        if d["shape"] not in SHAPES: raise ValueError("shape: fan, strip or other")
+        out["shape"] = d["shape"]
+    if "led_count" in d:
+        v = int(d["led_count"])
+        if not 1 <= v <= 120: raise ValueError("led_count 1-120")
+        out["led_count"] = v
+    if "target" in d:
+        if d["target"] not in TARGETS: raise ValueError("unknown target")
+        used = {z["target"]: z["id"] for z in all_zones(st)}
+        if used.get(d["target"], zid) != zid: raise ValueError("another light already uses that header")
+        out["target"] = d["target"]
+    return out
+
+def validate_look(patch, target):
+    """A zone's look: the usual checks, and only one-color effects on a 12 V RGB header."""
+    out = validate({k: v for k, v in patch.items() if k in ZONE_LOOK}, allow_schedules=False)
+    if TARGETS.get(target, {}).get("kind") == "rgb" and out.get("effect") and out["effect"] not in RGB_EFFECTS:
+        raise ValueError("a 12 V RGB header shows one color at a time: static, pulse, blink or cycle")
+    return out
+
+def all_zones(st):
+    """The main light first (its look is the top-level fields), then the extra ones."""
+    main = {"id": "main", **{k: st.get(k, DEFAULT.get(k)) for k in ("name", "shape", "target", "led_count", *ZONE_LOOK)}}
+    return [main] + [z for z in st.get("zones", []) if z.get("target") in TARGETS]
+
+def new_zone(st, setup):
+    if len(st.get("zones", [])) >= 7: raise ValueError("that's a lot of lights — remove one first")
+    if "target" not in setup: raise ValueError("pick where it's plugged in")
+    kind = TARGETS[setup["target"]]["kind"]
+    z = {"id": uuid.uuid4().hex[:8], "name": setup.get("name", "Light"), "shape": setup.get("shape", "strip"),
+         "target": setup["target"], "led_count": setup.get("led_count", 30 if setup.get("shape") == "strip" else 12),
+         "on": True, "effect": "static", "color": st.get("color", "#005aff"), "color2": st.get("color2", "#bf5af2"),
+         "brightness": st.get("brightness", 50), "speed": 50, "rainbow": kind != "rgb", "palette": []}
+    st.setdefault("zones", []).append(z)
+    return z
 
 def _scaled(rgb, pct):
     return tuple(round(c * pct / 100) for c in rgb)
 
 def apply(st, override=None):
-    """Push a state to the hardware. `override` (status light) replaces effect/color."""
-    eff = dict(st)
-    if override: eff.update({"palette": [], **override})      # the status light is its own color, never your palette
-    anim = bool(eff["on"]) and is_software(eff)
-    with fusion2.Fusion2() as f:          # holds the hardware lock until the end of this block
-        if not eff["on"]:
-            f.set_effect("argb", "off", (0, 0, 0), 0)
-        elif eff["effect"] == "gradient" and not anim:
-            n = eff["led_count"]; a, b = hex_rgb(eff["color"]), hex_rgb(eff["color2"])
-            cols = [tuple(round(a[i] + (b[i] - a[i]) * (j / max(1, n - 1))) for i in range(3)) for j in range(n)]
-            f.set_direct([_scaled(c, eff["brightness"]) for c in cols])
-        elif anim:
-            f.set_direct([_scaled(c, eff["brightness"]) for c in frame(eff, time.time())])
-        else:
-            f.set_effect("argb", eff["effect"], hex_rgb(eff["color"]),
-                         round(255 * eff["brightness"] / 100), eff["speed"], eff.get("rainbow", True))
+    """Push every light to the hardware in one pass (the controller's direct-mode mask and its reset
+    cover all headers at once, so one light is never set without the others). `override` (the status
+    light) replaces the main light's effect/color."""
+    looks = []
+    for z in all_zones(st):
+        eff = dict(z)
+        if z["id"] == "main" and override: eff.update({"palette": [], **override})   # the status light is its own color, never your palette
+        looks.append(eff)
+    direct, anims = [], []
+    with fusion2.Fusion2() as f:          # resets every header; holds the hardware lock until the end
+        for eff in looks:
+            t = TARGETS[eff["target"]]; hdr = t["header"]
+            if t["kind"] == "rgb":         # one color: the controller's own effects only
+                e = eff["effect"] if eff["effect"] in RGB_EFFECTS else "static"
+                f.set_effect(hdr, e if eff["on"] else "off", hex_rgb(eff["color"]), round(255 * eff["brightness"] / 100) if eff["on"] else 0,
+                             eff["speed"], eff.get("rainbow", True))
+                continue
+            anim = bool(eff["on"]) and is_software(eff)
+            if not eff["on"]:
+                f.set_effect(hdr, "off", (0, 0, 0), 0)
+            elif anim or eff["effect"] == "gradient":
+                direct.append((hdr, eff, anim))
+            else:
+                f.set_effect(hdr, eff["effect"], hex_rgb(eff["color"]), round(255 * eff["brightness"] / 100), eff["speed"], eff.get("rainbow", True))
+        if direct:
+            hs = tuple(h for h, _, _ in direct); orders = f.direct_setup(hs)
+            if len(hs) == 1: orders = {hs[0]: orders}
+            for hdr, eff, anim in direct:
+                if anim: cols = frame(eff, time.time()); anims.append({"header": hdr, **{k: eff.get(k) for k in ("effect", "color", "color2", "brightness", "speed", "rainbow", "led_count", "palette")}})
+                else:
+                    n = eff["led_count"]; a, b = hex_rgb(eff["color"]), hex_rgb(eff["color2"])
+                    cols = [tuple(round(a[i] + (b[i] - a[i]) * (j / max(1, n - 1))) for i in range(3)) for j in range(n)]
+                f.set_direct([_scaled(c, eff["brightness"]) for c in cols], orders[hdr], hdr)
         # Written under the lock, so the animator can never draw a frame over a newer setting.
+        main_anim = next((a for a in anims if a["header"] == TARGETS[st.get("target", "fusion2:argb")]["header"]), None)
         tmp = APPLIED + ".tmp"
         with open(tmp, "w") as fh:
-            json.dump({"t": time.time(), "override": override or None,
-                       "anim": {k: eff.get(k) for k in ("effect", "color", "color2", "brightness", "speed", "rainbow", "led_count", "palette")} if anim else None}, fh)
+            json.dump({"t": time.time(), "override": override or None, "anim": main_anim, "anims": anims,
+                       "direct": [h for h, _, _ in direct]}, fh)
         os.replace(tmp, APPLIED)
 
 # ── software effects: one frame from the clock (the Nova app draws the same maths, in sync) ──────
@@ -255,47 +329,56 @@ def wave_frame(eff, t):                    # (older name, still used by the boot
     return frame({**eff, "effect": "wave"}, t)
 
 def animate(fps=30):
-    """Service loop: draw software effects while applied.json says one is active."""
-    order, dev, seen, cur = None, None, None, None
+    """Service loop: draw the software effects of every light in applied.json, one frame for all of them."""
+    orders, dev, seen, cur, hs = None, None, None, [], ()
     while True:
         try:
             m = os.stat(APPLIED).st_mtime_ns
             if m != seen:
-                seen = m; cur = json.load(open(APPLIED)).get("anim"); order = None
+                seen = m; a = json.load(open(APPLIED)); orders = None
+                cur = a.get("anims") if "anims" in a else ([{"header": "argb", **a["anim"]}] if a.get("anim") else [])
+                hs = tuple(a.get("direct") or [x["header"] for x in cur])
             if not cur:
                 if dev: dev.close(); dev = None
                 time.sleep(0.25); continue
             if dev is None: dev = fusion2.Fusion2(init=False, lock=False)
             with fusion2.hwlock():
                 if os.stat(APPLIED).st_mtime_ns != seen: continue      # changed while we waited
-                if order is None: order = dev.direct_setup()
-                dev.set_direct([_scaled(c, cur["brightness"]) for c in frame(cur, time.time())], order)
+                if orders is None:
+                    orders = dev.direct_setup(hs)
+                    if len(hs) == 1: orders = {hs[0]: orders}
+                now = time.time()
+                for z in cur: dev.set_direct([_scaled(c, z["brightness"]) for c in frame(z, now)], orders[z["header"]], z["header"])
             time.sleep(1 / fps)
         except Exception as e:                      # unplugged / re-enumerated: retry quietly
             print("animate:", e, flush=True)
             try: dev and dev.close()
             except Exception: pass
-            dev, order = None, None; time.sleep(2)
+            dev, orders = None, None; time.sleep(2)
 
 def intro(st, seconds=2.6, fps=30):
     """Boot: a wave in your color (or rainbow) fades in and comes up to your brightness; the
     caller then applies your real setting."""
     look = {**st, "effect": "wave", "speed": max(55, st.get("speed", 50))}
     target = max(20, st.get("brightness", 50)) if st.get("on", True) else 35
+    hdr = TARGETS.get(st.get("target"), TARGETS["fusion2:argb"])["header"]
+    if hdr not in fusion2.ARGB: return                                 # a 12 V header can't draw a wave
     with fusion2.Fusion2() as f:
-        order = f.direct_setup(); t0 = time.time()
+        order = f.direct_setup((hdr,)); t0 = time.time()
         while (el := time.time() - t0) < seconds:
             k = min(1.0, el / (seconds * 0.6))                       # fade in over the first 60%
-            f.set_direct([_scaled(c, target * k * k) for c in wave_frame(look, time.time())], order)
+            f.set_direct([_scaled(c, target * k * k) for c in wave_frame(look, time.time())], order, hdr)
             time.sleep(1 / fps)
 
 def off():
     """Shutdown: every LED dark (the setting itself is kept for the next boot)."""
+    hdrs = {TARGETS[z["target"]]["header"] for z in all_zones(load())}
     with fusion2.Fusion2() as f:
-        try: f.set_direct([(0, 0, 0)] * 32)
-        except Exception: pass
+        for h in hdrs & set(fusion2.ARGB):
+            try: f.set_direct([(0, 0, 0)] * 32, None, h)
+            except Exception: pass
         f.init()                                                      # back to controller effects…
-        f.set_effect("argb", "off", (0, 0, 0), 0)                     # …and switch the header off
+        for h in hdrs: f.set_effect(h, "off", (0, 0, 0), 0)           # …and switch every header off
         tmp = APPLIED + ".tmp"
         with open(tmp, "w") as fh: json.dump({"t": time.time(), "override": None, "anim": None, "off": True}, fh)
         os.replace(tmp, APPLIED)                                      # the animator stops drawing

@@ -38,7 +38,7 @@ try:                       # optional module: fan/case lighting (modules/fan-gig
 except ImportError:
     nova_rgb = None
 
-API_VERSION = "0.5.12-alpha"
+API_VERSION = "0.5.13-alpha"
 CONFIG = "/etc/nova-api/config.json"
 DATA = "/var/lib/nova-api"
 DEVICES = f"{DATA}/devices.json"
@@ -1204,6 +1204,40 @@ class Handler(BaseHTTPRequestHandler):
                 with lock: save_json(NOTIFY_FILE, app)
             return 200, {**(base if rc == 0 else {}), **app}
 
+        # ── lights: the main one (same as /fan) and any extra ones, each with its own look ──
+        if parts[:1] == ["lights"]:
+            if not nova_rgb or not hasattr(nova_rgb, "all_zones"): return 404, {"error": "this server has no lighting module"}
+            if parts[1:] == ["main"] and method == "POST": parts = ["fan"]             # the main light's look: exactly /fan
+            else:
+                with rgb_lock:
+                    st = nova_rgb.load()
+                    def view():
+                        used = {z["target"]: z["name"] for z in nova_rgb.all_zones(st)}
+                        return {"zones": nova_rgb.all_zones(st), "effects": nova_rgb.EFFECT_NAMES, "rgb_effects": nova_rgb.RGB_EFFECTS,
+                                "targets": [{"id": k, **v, "used_by": used.get(k)} for k, v in nova_rgb.TARGETS.items()],
+                                "status_override": nova_rgb.status_override(st)}
+                    if method == "GET" and parts == ["lights"]: return 200, view()
+                    if role_of(dev) != "admin": return 403, {"error": "admins only"}
+                    zid = parts[1] if len(parts) > 1 else None
+                    if zid is not None and not re.fullmatch(r"main|[0-9a-f]{8}", zid): return 404, {"error": "no such light"}
+                    z = next((x for x in st.get("zones", []) if x["id"] == zid), None)
+                    if zid not in (None, "main") and not z: return 404, {"error": "no such light"}
+                    if method == "POST" and parts == ["lights"]:                     # add a light
+                        nova_rgb.new_zone(st, nova_rgb.validate_setup(data, st))
+                    elif method == "POST" and len(parts) == 3 and parts[2] == "setup":  # name, where it's plugged in, shape, LED count
+                        setup = nova_rgb.validate_setup(data, st, zid)
+                        if zid == "main": st.update(setup)
+                        else:
+                            z.update(setup)
+                            if nova_rgb.TARGETS[z["target"]]["kind"] == "rgb" and z["effect"] not in nova_rgb.RGB_EFFECTS: z["effect"] = "static"
+                    elif method == "POST" and len(parts) == 2:                        # an extra light's look
+                        z.update(nova_rgb.validate_look(data, z["target"]))
+                    elif method == "DELETE" and len(parts) == 2 and z:
+                        z["on"] = False; nova_rgb.apply(st, nova_rgb.status_override(st))   # dark first, then forgotten
+                        st["zones"] = [x for x in st["zones"] if x["id"] != zid]
+                    else: return 404, {"error": "no such endpoint"}
+                    nova_rgb.apply(st, nova_rgb.status_override(st)); nova_rgb.save(st)
+                    return 200, view()
         # ── fan light ──
         if parts[:1] == ["fan"] and not nova_rgb:
             return 404, {"error": "this server has no lighting module"}

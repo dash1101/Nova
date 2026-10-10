@@ -12,7 +12,12 @@ import fcntl, glob, os, struct
 
 VID_PID = "0000048D:00005702"
 EFFECTS = {"off": 0, "static": 1, "pulse": 2, "blink": 3, "cycle": 4, "wave": 6, "random": 8}
-ZONES = {"argb": 5, "rgb": 1}           # D_LED1, LED_C
+ZONES = {"argb": 5, "rgb": 1, "argb2": 6}     # D_LED1, LED_C, D_LED2
+# The addressable (ARGB) headers: effect slot, per-LED report id, bit in the 0xCC 0x32 "built-in
+# effects off" mask, and where the info report keeps that header's color byte order.
+# (Values per OpenRGB's GigabyteFusion2USB_Devices.h / controller: HDR_D_LED1 = 5, HDR_D_LED2 = 6,
+#  HDR_D_LED1_ARGB = 0x58, HDR_D_LED2_ARGB = 0x59, cal_strip0 @44, cal_strip1 @48.)
+ARGB = {"argb": {"report": 0x58, "bit": 0x01, "cal": 44}, "argb2": {"report": 0x59, "bit": 0x02, "cal": 48}}
 
 def _ioc(nr, size): return (3 << 30) | (size << 16) | (ord('H') << 8) | nr
 
@@ -110,29 +115,35 @@ class Fusion2:
         self._send(b"\xCC\x28\xFF\x00")       # fast-apply (this firmware needs it)
 
     # ── Direct (per-LED) mode on the ARGB header — used for gradients ─────────────
-    def byte_order(self):
+    def byte_order(self, header="argb"):
         """(r_idx, g_idx, b_idx) inside each 3-byte LED slot, from the controller's
-        calibration (this board reports GRB)."""
+        calibration for that header (this board reports GRB)."""
         self._send(b"\xCC\x60")
         buf = bytearray(64); buf[0] = 0xCC
         fcntl.ioctl(self.fd, _ioc(0x07, 64), buf)
-        cal = struct.unpack_from("<I", buf, 44)[0] or 0x00010002
+        cal = struct.unpack_from("<I", buf, ARGB[header]["cal"])[0] or 0x00010002
         return (cal >> 16) & 0xFF, (cal >> 8) & 0xFF, cal & 0xFF
 
-    def direct_setup(self):
-        """Switch D_LED1 to per-LED control. Returns the byte order for direct_frame."""
+    def direct_setup(self, headers=("argb",)):
+        """Switch these ARGB headers to per-LED control (the others keep the controller's own effects).
+        The 0x32 mask is for the whole controller, so always pass every header that should be direct.
+        Returns the byte order: for one header (the old call) that tuple, else {header: order}."""
+        mask = 0
+        for h in headers: mask |= ARGB[h]["bit"]
         self._send(b"\xCC\x34\x00\x00\x00")      # LED count class: 32 on every header (enough for any fan)
-        self._send(b"\xCC\x32\x01")              # built-in effects OFF on D_LED1 -> direct control
-        return self.byte_order()
+        self._send(bytes((0xCC, 0x32, mask)))     # built-in effects OFF on these headers -> direct control
+        orders = {h: self.byte_order(h) for h in headers}
+        return orders[headers[0]] if len(headers) == 1 else orders
 
-    def set_direct(self, colors, order=None):
-        """colors: list of (r,g,b) for LED 0..n-1 on the ARGB header (D_LED1).
+    def set_direct(self, colors, order=None, header="argb"):
+        """colors: list of (r,g,b) for LED 0..n-1 on an ARGB header (D_LED1 unless `header` says D_LED2).
         Pass `order` (from direct_setup) to send a frame without re-doing the setup."""
-        ro, go, bo = order or self.direct_setup()
+        ro, go, bo = order or self.direct_setup((header,))
+        report = ARGB[header]["report"]
         sent, k = 0, 0
         while k < len(colors):
             chunk = colors[k:k + 19]
-            p = bytearray(64); p[0] = 0xCC; p[1] = 0x58
+            p = bytearray(64); p[0] = 0xCC; p[1] = report
             struct.pack_into("<HB", p, 2, sent, len(chunk) * 3)
             for i, (r, g, b) in enumerate(chunk):
                 o = 5 + i * 3

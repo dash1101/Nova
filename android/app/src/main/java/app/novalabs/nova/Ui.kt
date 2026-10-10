@@ -127,7 +127,7 @@ fun levelColor(level: String, t: NovaColors) = when (level) {
 @Composable fun ExpandableSub(text: String, color: Color, lines: Int = 3) {
     var open by remember(text) { mutableStateOf(false) }
     var more by remember(text) { mutableStateOf(false) }
-    Row(Modifier.padding(top = 2.dp).animateContentSize(), verticalAlignment = Alignment.Bottom) {
+    Row(Modifier.padding(top = 2.dp).then(if (more || open) Modifier.animateContentSize() else Modifier), verticalAlignment = Alignment.Bottom) {   // only rows that can open pay for it
         Text(text, fontSize = 14.sp, color = color, maxLines = if (open) Int.MAX_VALUE else lines, overflow = TextOverflow.Ellipsis,
             onTextLayout = { if (!open) more = it.hasVisualOverflow }, modifier = Modifier.weight(1f, fill = false))
         if (more || open) {

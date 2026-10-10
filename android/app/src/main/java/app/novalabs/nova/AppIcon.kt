@@ -43,7 +43,8 @@ object AppIcon {
     /** An intent that opens Nova through whichever launcher entry is on (a disabled MainActivity can't be started by name). */
     fun launch(ctx: Context): android.content.Intent {
         val c = all.firstOrNull { it.id == current(ctx) } ?: all[0]
-        return android.content.Intent(android.content.Intent.ACTION_MAIN).setComponent(comp(ctx, c.cls)).addCategory(android.content.Intent.CATEGORY_LAUNCHER)
+        // just the component (no MAIN/LAUNCHER): a launcher-style intent would only bring Nova forward and drop the extras
+        return android.content.Intent().setComponent(comp(ctx, c.cls))
     }
 
     fun current(ctx: Context): String {

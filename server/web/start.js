@@ -16,7 +16,7 @@ export const PLACES = [
   ["Diagnostics", "speed test internet ping traceroute dns port cpu stress memory test disk speed", "speed", "diag"],
   ["Updates", "upgrade packages apt containers images nova update", "update", "updates"], ["Inbox", "alerts notifications events history", "bell", "inbox"],
   ["Archive", "old events history export", "book", "archive"], ["Notifications", "discord webhook alerts levels logins usb", "bell", "notify"],
-  ["Lighting", "fan rgb led color color effect brightness wave", "bulb", "lighting"], ["Light schedules", "schedule sunrise sunset fade timer", "clock", "schedules"],
+  ["Lighting", "fan rgb led color color effect brightness wave", "bulb", "lighting"], ["Your lights", "lights zones strip argb header add light second fan d_led 12v rgb setup", "tune", "lights"], ["Light schedules", "schedule sunrise sunset fade timer", "clock", "schedules"],
   ["Quick panel", "shortcuts tiles restart shut down power free ram", "widgets", "quick"], ["Dashboard mode", "always on tablet wall display", "dash", "dashboard"],
   ["Users & devices", "devices phones browsers users roles remove", "group", "devices"], ["Settings", "software update connection this browser", "gear", "settings"],
   ["Appearance", "theme dark light material you style reduce motion home layout navigation pill tabs start page open on start", "palette", "appearance"],

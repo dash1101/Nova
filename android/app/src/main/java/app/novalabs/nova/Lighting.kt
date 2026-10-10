@@ -131,9 +131,18 @@ private fun lookOf(f: JSONObject?): JSONObject = JSONObject().also { o ->
     listOf("on", "effect", "color", "color2", "brightness", "speed", "rainbow", "palette").forEach { k -> f?.opt(k)?.let { o.put(k, it) } } }
 
 @OptIn(ExperimentalLayoutApi::class)
+/** Lighting: the main light (app.fan, the one Presets/Schedules/Home use) or one of the others, picked with the chips on top. */
 @Composable fun LightingScreen(app: AppState) {
     LaunchedEffect(Unit) { runCatching { app.api.get("/api/v1/fan") }.onSuccess { if (app.fanInFlight == 0) app.fan = it } }
-    val f = app.fan
+    LaunchedEffect(Unit) { runCatching { app.api.get("/api/v1/lights") }.onSuccess { app.lights = it } }       // older servers: just the one light
+    val zones = app.lights?.optJSONArray("zones").objs()
+    val zone = zones.firstOrNull { it.optString("id") == app.lightCur && app.lightCur != "main" }
+    val main = zone == null
+    val kindOf = { t: String -> app.lights?.optJSONArray("targets").objs().firstOrNull { it.optString("id") == t }?.optString("kind") ?: "argb" }
+    val rgbOnly = kindOf((zone ?: zones.firstOrNull())?.optString("target") ?: "") == "rgb"
+    val shape = (zone ?: zones.firstOrNull())?.optString("shape")?.ifEmpty { null } ?: "fan"
+    val mainName = zones.firstOrNull()?.optString("name")?.ifEmpty { null } ?: "Fan"
+    val f = zone ?: app.fan
     val fb = f?.optInt("brightness") ?: 50; val fs = f?.optInt("speed") ?: 50; val fl = f?.optInt("led_count") ?: 12
     var bright by remember(fb) { mutableFloatStateOf(fb.toFloat()) }
     var speed by remember(fs) { mutableFloatStateOf(fs.toFloat()) }
@@ -141,7 +150,18 @@ private fun lookOf(f: JSONObject?): JSONObject = JSONObject().also { o ->
     var picker by remember { mutableStateOf<Pair<String, (String) -> Unit>?>(null) }      // initial color + where it goes
     var presetMenu by remember { mutableStateOf<JSONObject?>(null) }
     var naming by remember { mutableStateOf<JSONObject?>(null) }      // preset being saved/renamed
-    fun set(patch: JSONObject) = app.changeFan(patch)
+    fun set(patch: JSONObject) {
+        if (main) { app.changeFan(patch); return }
+        val id = zone!!.optString("id")
+        val before = app.lights
+        app.lights = JSONObject(before.toString()).also { L -> val arr = L.getJSONArray("zones")      // shows the change right away
+            for (i in 0 until arr.length()) { val z = arr.getJSONObject(i); if (z.optString("id") == id) patch.keys().forEach { k -> z.put(k, patch.get(k)) } } }
+        app.act { try {
+            if (patch.has("led_count")) app.lights = app.api.post("/api/v1/lights/$id/setup", JSONObject().put("led_count", patch.getInt("led_count")))
+            val look = JSONObject(patch.toString()).apply { remove("led_count") }
+            if (look.length() > 0) app.lights = app.api.post("/api/v1/lights/$id", look)
+        } catch (e: Exception) { app.lights = before; throw e } }
+    }
     val lit = f?.optBoolean("on") ?: true
     val on = lit && app.isAdmin
     val eff = f?.optString("effect") ?: "static"
@@ -151,17 +171,26 @@ private fun lookOf(f: JSONObject?): JSONObject = JSONObject().also { o ->
     val presets = f?.optJSONArray("presets")?.let { a -> List(a.length()) { a.getJSONObject(it) } } ?: emptyList()
 
     Page("Lighting", app::back) {
-        FanHero(f, app.clockSkew, Modifier.fillMaxWidth().height(250.dp))
-        if (override != null) Text("Showing server status right now — your setting comes back when it's resolved.",
+        if (zones.isNotEmpty()) Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = Space.gutter, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            zones.forEach { z -> val sel = z.optString("id") == (if (main) "main" else app.lightCur)
+                Box(Modifier.height(40.dp).clip(RoundedCornerShape(20.dp)).background(if (sel) N.blue else N.pill).clickable { app.lightCur = z.optString("id") }.padding(horizontal = 16.dp), contentAlignment = Alignment.Center) {
+                    Text(z.optString("name"), color = if (sel) Color.White else N.text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold) } }
+            if (app.isAdmin) Row(Modifier.height(40.dp).clip(RoundedCornerShape(20.dp)).background(N.pill).clickable { app.go(Route.Lights) }.padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Rounded.Tune, null, tint = N.blue, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("Your lights", color = N.blue, fontSize = 15.sp, fontWeight = FontWeight.SemiBold) }
+        }
+        if (main && shape == "fan") FanHero(f, app.clockSkew, Modifier.fillMaxWidth().height(250.dp))
+        if (!main) Text("Presets, schedules and the status light are for $mainName for now.", color = N.sub, fontSize = 14.sp, modifier = Modifier.padding(horizontal = 30.dp, vertical = 4.dp))
+        if (main && override != null) Text("Showing server status right now — your setting comes back when it's resolved.",
             color = N.amber, fontSize = 14.sp, modifier = Modifier.padding(horizontal = 30.dp, vertical = 4.dp))
         if (!app.isAdmin) Text("View-only access — an admin can change the lighting.", color = N.sub, fontSize = 14.sp,
             modifier = Modifier.padding(horizontal = 30.dp, vertical = 4.dp))
-        Group { SwitchRow("Fan light", if (lit) "On" else "Off", lit, enabled = app.isAdmin, subtitleBlue = lit) { set(JSONObject().put("on", it)) } }
+        Group { SwitchRow(if (main && shape == "fan" && zones.size < 2) "Fan light" else (f?.optString("name")?.ifEmpty { null } ?: mainName), if (lit) "On" else "Off", lit, enabled = app.isAdmin, subtitleBlue = lit) { set(JSONObject().put("on", it)) } }
         Group {
             SliderRow("Brightness", bright, 0f..100f, "${bright.toInt()}%", on, onChange = { bright = it }) {
                 set(JSONObject().put("brightness", bright.toInt())) }
         }
         // ── presets ──
+        if (main) {
         SectionLabel("Presets")
         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = Space.gutter), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             presets.forEach { p ->
@@ -186,10 +215,13 @@ private fun lookOf(f: JSONObject?): JSONObject = JSONObject().also { o ->
         }
         if (presets.isEmpty()) Text("Save the look you have now to switch back to it in one tap — or to use it in a schedule. Hold a preset to change it.",
             color = N.sub, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 30.dp, vertical = 6.dp))
+        }
+        if (rgbOnly) Text("A 12 V RGB header lights every LED in the same color, so the effects that move along the LEDs aren't offered.", color = N.sub, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 30.dp, vertical = 6.dp))
         // ── effect ──
         SectionLabel("Effect")
         Group {
-            EFFECTS.forEachIndexed { i, (key, v) ->
+            val rgbFx = app.lights?.optJSONArray("rgb_effects").strings()
+            EFFECTS.filter { !rgbOnly || it.first in rgbFx }.forEachIndexed { i, (key, v) ->
                 if (i > 0) RowDivider()
                 Row1(v.first, v.second, eff == key, enabled = on, onClick = { set(JSONObject().put("effect", key)) }) { OneRadio(eff == key, on) }
             }
@@ -249,17 +281,17 @@ private fun lookOf(f: JSONObject?): JSONObject = JSONObject().also { o ->
                 Text("Slower", color = N.sub, fontSize = 13.sp, modifier = Modifier.weight(1f)); Text("Faster", color = N.sub, fontSize = 13.sp)
             }
         }
-        if (eff == "gradient" || LightFx.isSoftware(eff, palette, rainbow)) Group {
-            SliderRow("LEDs on the fan", leds, 4f..40f, "${leds.toInt()}", on, onChange = { leds = it }) {
+        if (!rgbOnly && (eff == "gradient" || LightFx.isSoftware(eff, palette, rainbow))) Group {
+            SliderRow(when (shape) { "strip" -> "LEDs on the strip"; "fan" -> "LEDs on the fan"; else -> "LEDs" }, leds, 4f..(if (shape == "strip") 120f else 40f), "${leds.toInt()}", on, onChange = { leds = it }) {
                 set(JSONObject().put("led_count", leds.toInt())) }
-            Text("Match this to your fan so the effect fits the ring exactly (most 120 mm fans have 8–18).",
+            Text(if (shape == "fan") "Match this to your fan so the effect fits the ring exactly (most 120 mm fans have 8–18)." else "Count the LEDs (or check the box) so effects fit the whole length.",
                 color = N.sub, fontSize = 13.sp, modifier = Modifier.padding(start = 22.dp, end = 22.dp, bottom = 16.dp))
-            RowDivider()
+            if (shape == "fan") { RowDivider()
             SwitchRow("Picture spins the other way", "If the effect in the app goes round the opposite way to your fan", AppPrefs.fanReverse) {
-                AppPrefs.set("fan_reverse", it) }
+                AppPrefs.set("fan_reverse", it) } }
         }
-        SectionLabel("Automation")
-        Group {
+        if (main) SectionLabel("Automation")
+        if (main) Group {
             val sl = f?.optBoolean("status_light") ?: false
             SwitchRow("Status light", "Turns amber for warnings and pulses red for critical alerts, then goes back to your color",
                 sl) { set(JSONObject().put("status_light", it)) }
@@ -268,7 +300,7 @@ private fun lookOf(f: JSONObject?): JSONObject = JSONObject().also { o ->
             Row1("Schedules", if (f?.optBoolean("schedules_paused") == true) "Paused" else if (n == 0) "Wake up gently, dim at sunset, off while you sleep…" else "$n schedule${if (n > 1) "s" else ""}",
                 n > 0, onClick = { app.go(Route.Schedules) })
         }
-        LinksCard(listOf("Notifications" to { app.go(Route.NotifySettings) }, "Storage & hardware" to { app.go(Route.Hardware) }))
+        LinksCard(listOf("Your lights" to { app.go(Route.Lights) }, "Notifications" to { app.go(Route.NotifySettings) }, "Storage & hardware" to { app.go(Route.Hardware) }))
     }
     picker?.let { (initial, put) -> ColorPickerDialog(initial, { picker = null }) { picker = null; put(it) } }
     presetMenu?.let { p ->
@@ -521,4 +553,85 @@ private fun actionText(s: JSONObject, presets: List<JSONObject>): String =
         CancelSavePill(app::back, ::save, days.isNotEmpty() && (action != 2 || preset != null) && changes, modifier = Modifier.align(Alignment.BottomCenter))
     }
     if (picker) ColorPickerDialog(setColor ?: "#3e91ff", { picker = false }) { setColor = it; picker = false }
+}
+
+// ═══════════════════════════════ your lights ═════════════════════════════════════
+
+private val SHAPE_NAMES = mapOf("fan" to "Fan", "strip" to "LED strip", "other" to "Something else")
+private val SHAPE_CHOICES = listOf("fan" to "A fan (a ring of LEDs)", "strip" to "An LED strip", "other" to "Something else")
+
+/** Lighting → Your lights: what's plugged in where, each with its own look. */
+@Composable fun LightsScreen(app: AppState) {
+    LaunchedEffect(Unit) { runCatching { app.api.get("/api/v1/lights") }.onSuccess { app.lights = it } }
+    val L = app.lights
+    val zones = L?.optJSONArray("zones").objs(); val targets = L?.optJSONArray("targets").objs()
+    fun tgt(id: String) = targets.firstOrNull { it.optString("id") == id }
+    var menu by remember { mutableStateOf<JSONObject?>(null) }
+    var step by remember { mutableStateOf<String?>(null) }           // adding: "where" → "what" → "name"
+    var draft by remember { mutableStateOf(JSONObject()) }
+    var edit by remember { mutableStateOf<Pair<String, JSONObject>?>(null) }   // field being changed + the light
+    fun post(path: String, body: JSONObject, ok: String? = null) = app.act(ok) { app.lights = app.api.post(path, body) }
+    Page("Your lights", app::back) {
+        Text("Each light plugged into the server, with its own effect and color. Add one for every fan, strip or header you light up.",
+            color = N.sub, fontSize = 14.sp, modifier = Modifier.padding(horizontal = 30.dp, vertical = 6.dp))
+        if (L == null) Text("Loading…", color = N.sub, modifier = Modifier.padding(30.dp))
+        else Group {
+            zones.forEachIndexed { i, z -> if (i > 0) RowDivider()
+                val t = tgt(z.optString("target"))
+                Row1(z.optString("name"), listOfNotNull(SHAPE_NAMES[z.optString("shape")] ?: "Light", t?.optString("label"),
+                        if (t?.optBoolean("tested") == false) "untested" else null, if (t?.optString("kind") != "rgb") "${z.optInt("led_count")} LEDs" else null, if (i == 0) "main" else null).joinToString(" · "),
+                    icon = when (z.optString("shape")) { "strip" -> Icons.Rounded.LinearScale; "fan" -> Icons.Rounded.Toys; else -> Icons.Rounded.Lightbulb },
+                    onClick = { if (app.isAdmin) menu = z else { app.lightCur = z.optString("id"); app.go(Route.Lighting) } })
+            }
+            if (app.isAdmin && targets.any { it.isNull("used_by") || it.optString("used_by").isEmpty() }) { RowDivider()
+                Row1("Add a light", null, false, Icons.Rounded.Add, onClick = { draft = JSONObject(); step = "where" }) }
+        }
+        Text("“Untested” headers follow the controller's documented protocol but haven't been tried on real hardware yet — if one doesn't light up, tell us which board you have. The main light is the one Presets, Schedules, the status light and the Home picture use.",
+            color = N.sub, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 30.dp, vertical = 6.dp))
+    }
+    // adding a light, step by step
+    when (step) {
+        "where" -> OneDialog({ step = null }, "Where is it plugged in?", buttons = listOf(DialogButton("Cancel") { step = null })) {
+            targets.filter { it.isNull("used_by") || it.optString("used_by").isEmpty() }.forEach { t ->
+                DialogChoice(t.optString("label"), listOfNotNull(if (!t.optBoolean("tested")) "Untested" else null, if (t.optString("kind") == "rgb") "One color at a time" else null).joinToString(" · ").ifEmpty { null }, false) {
+                    draft = JSONObject(draft.toString()).put("target", t.optString("id")); step = "what" } } }
+        "what" -> OneDialog({ step = null }, "What is it?", buttons = listOf(DialogButton("Cancel") { step = null })) {
+            SHAPE_CHOICES.forEach { (k, l) -> DialogChoice(l, null, false) { draft = JSONObject(draft.toString()).put("shape", k)
+                .put("name", when (k) { "fan" -> "Fan ${zones.size + 1}"; "strip" -> "LED strip"; else -> "Light" }).put("led_count", if (k == "strip") 30 else 12); step = "name" } } }
+        "name" -> { var name by remember { mutableStateOf(draft.optString("name")) }; var n by remember { mutableStateOf(draft.optInt("led_count").toString()) }
+            val rgb = tgt(draft.optString("target"))?.optString("kind") == "rgb"
+            OneDialog({ step = null }, "Name it", buttons = listOf(DialogButton("Cancel") { step = null }, DialogButton("Add", N.blue, enabled = name.isNotBlank()) {
+                step = null; post("/api/v1/lights", JSONObject(draft.toString()).put("name", name.trim()).put("led_count", (n.toIntOrNull() ?: 12).coerceIn(1, 120)), "${name.trim()} added") })) {
+                Column(Modifier.padding(horizontal = 22.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    OneTextField(name, { name = it.take(30) }, "e.g. Case strip, Rear fan", Modifier.fillMaxWidth())
+                    if (!rgb) OneTextField(n, { n = it.filter { c -> c.isDigit() }.take(3) }, "How many LEDs", Modifier.fillMaxWidth(),
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number))
+                }
+            } }
+    }
+    menu?.let { z -> val id = z.optString("id"); val rgb = tgt(z.optString("target"))?.optString("kind") == "rgb"
+        OneDialog({ menu = null }, z.optString("name"), buttons = listOf(DialogButton("Close") { menu = null })) {
+            DialogChoice("Change its look", null, false) { menu = null; app.lightCur = id; app.go(Route.Lighting) }
+            DialogChoice("Rename", null, false) { menu = null; edit = "name" to z }
+            DialogChoice("Where it's plugged in", tgt(z.optString("target"))?.optString("label"), false) { menu = null; edit = "target" to z }
+            DialogChoice("What it is", SHAPE_NAMES[z.optString("shape")], false) { menu = null; edit = "shape" to z }
+            if (!rgb) DialogChoice("Number of LEDs", "${z.optInt("led_count")}", false) { menu = null; edit = "leds" to z }
+            if (id != "main") DialogChoice("Remove", null, false) { menu = null; edit = "rm" to z }
+        } }
+    edit?.let { (k, z) -> val id = z.optString("id"); val path = "/api/v1/lights/$id/setup"
+        when (k) {
+            "name", "leds" -> { var v by remember(k, id) { mutableStateOf(if (k == "name") z.optString("name") else z.optInt("led_count").toString()) }
+                OneDialog({ edit = null }, if (k == "name") "Rename" else "How many LEDs?", buttons = listOf(DialogButton("Cancel") { edit = null }, DialogButton("Save", N.blue, enabled = v.isNotBlank()) {
+                    edit = null; post(path, if (k == "name") JSONObject().put("name", v.trim()) else JSONObject().put("led_count", (v.toIntOrNull() ?: 12).coerceIn(1, 120))) })) {
+                    OneTextField(v, { v = if (k == "name") it.take(30) else it.filter { c -> c.isDigit() }.take(3) }, if (k == "name") "Name" else "1–120", Modifier.fillMaxWidth().padding(horizontal = 22.dp)) } }
+            "target" -> OneDialog({ edit = null }, "Where is it plugged in?", buttons = listOf(DialogButton("Cancel") { edit = null })) {
+                targets.filter { it.optString("used_by").isEmpty() || it.isNull("used_by") || it.optString("id") == z.optString("target") }.forEach { t ->
+                    DialogChoice(t.optString("label"), if (!t.optBoolean("tested")) "Untested" else null, t.optString("id") == z.optString("target")) {
+                        edit = null; if (t.optString("id") != z.optString("target")) post(path, JSONObject().put("target", t.optString("id"))) } } }
+            "shape" -> OneDialog({ edit = null }, "What is it?", buttons = listOf(DialogButton("Cancel") { edit = null })) {
+                SHAPE_CHOICES.forEach { (s, l) -> DialogChoice(l, null, s == z.optString("shape")) { edit = null; post(path, JSONObject().put("shape", s)) } } }
+            else -> OneDialog({ edit = null }, "Remove ${z.optString("name")}?", "It's switched off and leaves the list. Nothing on the server changes otherwise.",
+                listOf(DialogButton("Cancel") { edit = null }, DialogButton("Remove", N.red) { edit = null; if (app.lightCur == id) app.lightCur = "main"
+                    app.act { app.lights = app.api.delete("/api/v1/lights/$id") } }))
+        } }
 }

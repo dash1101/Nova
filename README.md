@@ -1,4 +1,4 @@
-# Nova  ·  0.5.12-alpha
+# Nova  ·  0.5.13-alpha
 
 **A secure remote control for your home server, from your Android phone.**
 Status and live graphs, containers (logs, shell, start/stop), a one-tap app store, drives,
@@ -49,7 +49,8 @@ network, and optionally from anywhere through Cloudflare Access, without a VPN.
 | **Tablets & dashboard** | One UI tablet layout (rail + list/detail) and an always-on, customizable dashboard mode |
 | **Two looks** | Default (One UI-style frosted glass) or Material You Expressive with wallpaper colors — chosen automatically by phone maker, switchable in Appearance |
 | **Nova web** | The same design in any browser, at `https://<server>:8495/`. Risky actions are approved on your phone |
-| **Optional modules** | Case/fan lighting (Gigabyte RGB Fusion 2); plug in your own monitor for alerts |
+| **Lighting** | Fans and LED strips on a Gigabyte RGB Fusion 2 board: several lights, each with its own effect (wave, comet, fire, gradients, palettes…), presets, schedules with sunrise/sunset and fades, and a status light |
+| **Optional modules** | Lighting (above); plug in your own monitor for alerts |
 
 ## Security in one paragraph
 

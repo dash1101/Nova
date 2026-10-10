@@ -59,7 +59,7 @@ sealed class Route {
     data class BackupWizard(val id: String?, val sources: List<String> = emptyList(), val dest: String? = null) : Route()
     data class BackupBrowse(val id: String, val snap: String = "", val path: String = "") : Route()
     data object Diagnostics : Route()
-    data object Apps : Route(); data class AppFrame(val id: String) : Route(); data object Updates : Route(); data object Search : Route(); data object Start : Route(); data object StartEdit : Route(); data object EditFavorites : Route(); data object NewContainer : Route(); data object ProgramSearch : Route(); data class Files(val path: String = "") : Route(); data class FileEdit(val path: String) : Route(); data object Labs : Route()
+    data object Apps : Route(); data class AppFrame(val id: String) : Route(); data object Updates : Route(); data object Search : Route(); data object Start : Route(); data object StartEdit : Route(); data object EditFavorites : Route(); data object NewContainer : Route(); data object ProgramSearch : Route(); data class Files(val path: String = "") : Route(); data class FileEdit(val path: String) : Route(); data object Labs : Route(); data object Lights : Route()
 }
 
 /** Shared app state: the API, live data, navigation, messages. */
@@ -69,6 +69,8 @@ class AppState(val activity: Activity, val pairing: Pairing, val scope: Coroutin
     val snack = SnackbarHostState()
     val stack = mutableStateListOf<Route>(Route.Home)
     var overview by mutableStateOf(Cache["/api/v1/overview"])      // last known, so nothing flashes empty
+    var lights by mutableStateOf<JSONObject?>(null)                 // /api/v1/lights: every light and where it's plugged in
+    var lightCur by mutableStateOf("main")                          // which one the Lighting page shows
     var liveTasks by mutableStateOf(listOf<JSONObject>())           // Inbox → In progress, kept between visits
     val liveSeen = mutableSetOf<String>()
     val liveHidden = mutableSetOf<String>()                          // finished ones you swiped away                            // tasks already shown once (they slide in only then)
@@ -502,6 +504,7 @@ private fun Modifier.paneTouch(app: AppState, left: Boolean) = pointerInput(left
         is Route.Files -> FilesScreen(app, r.path)
         is Route.FileEdit -> FileEditScreen(app, r.path)
         Route.Labs -> LabsScreen(app)
+        Route.Lights -> LightsScreen(app)
         is Route.AppFrame -> AppFrameScreen(app, r.id)
         Route.Status -> StatusScreen(app)
         Route.Ssh -> SshScreen(app)

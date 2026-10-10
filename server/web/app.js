@@ -28,7 +28,7 @@ matchMedia("(prefers-color-scheme: light)").addEventListener?.("change", applyTh
 // ── routes ───────────────────────────────────────────────────────────────────────
 const ROUTES = {
   home: V.home, menu: V.menu, status: V.status, containers: V.containers, store: V.store, inbox: V.inbox, notify: V.notify,
-  quick: V.quick, "edit-quick": V.editQuick, lighting: V.lighting, schedules: V.schedules, schedule: V.schedule, hardware: V.hardware,
+  quick: V.quick, "edit-quick": V.editQuick, lighting: V.lighting, lights: V.lights, schedules: V.schedules, schedule: V.schedule, hardware: V.hardware,
   devices: V.devices, settings: V.settings, server: V.serverSettings, appearance: V.appearance, "edit-home": V.editHome,
   "edit-shortcuts": V.editShortcuts, "edit-tabs": V.editTabs, about: V.about, guide: V.guide, terminal: V.terminal,
   dashboard: V.dashboard, "edit-dash": V.editDash, archive: V.archive,

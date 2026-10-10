@@ -113,13 +113,18 @@ def containers(spec, log=print, progress=lambda p, n="": None):
         if not want: log("Everything is up to date."); progress(100); return {"updated": [], "rolled_back": []}
     cs = {c["name"]: c for c in compose_containers()}
     names = list(cs) if want == "all" else [n for n in (want or []) if n in cs]
-    rolled = []
+    rolled, skipped_space = [], []
     if want != "all" and (not names or len(names) != len(want or [])): raise ValueError("no such container")
     done = []
     for i, n in enumerate(names):
         c = cs[n]
         if not (c["service"] and c["dir"].startswith("/") and os.path.isdir(c["dir"])): log(f"{n}: not from a Compose file — skipped"); continue
         progress(100 * i / len(names), n)
+        short = low_space()
+        if short:                                                       # a pull keeps the old image too: don't fill the drive
+            log(f"Stopping here: {short}"); skipped_space.extend(names[i:])
+            notify_warn("Container updates paused: low disk space", f"{short}. Not updated: {', '.join(names[i:])}. Free some space (Labs → Clean up old images can help), then update again.")
+            break
         base = f"nova-rollback/{re.sub(r'[^a-z0-9_.-]', '-', n.lower())}"
         keep = f"{base}:candidate"                                      # the running image, held while we find out whether the new one works
         run(["docker", "tag", c["image_id"], keep], timeout=30)
@@ -140,13 +145,27 @@ def containers(spec, log=print, progress=lambda p, n="": None):
             rolled.append(n); notify_warn(f"{n}: update rolled back", "The new version wouldn't start, so Nova put the previous one back. Check its release notes for changes it needs.")
             continue
         # keep the version it replaced, so Troubleshoot → "Go back to the previous version" works later
+        rc0, old_prev, _ = run(["docker", "image", "inspect", f"{base}:previous", "--format", "{{.Id}}"], timeout=30)
         run(["docker", "tag", keep, f"{base}:previous"], timeout=30); run(["docker", "rmi", keep], timeout=30)
+        if rc0 == 0 and old_prev.strip() and old_prev.strip() != c["image_id"]:
+            run(["docker", "rmi", old_prev.strip()], timeout=120)       # the version before last: only one is kept (fails harmlessly if in use)
         done.append(n)
     try: check(log=lambda m: None)
     except Exception: pass
     progress(100); log(f"Updated {len(done)} of {len(names)}." + (f" Rolled back: {', '.join(rolled)}." if rolled else ""))
+    if skipped_space and not done: raise RuntimeError("not enough free disk space to update — see the log")
     if names and not done: raise RuntimeError("nothing could be updated" + (f" — {', '.join(rolled)} wouldn't start on the new version, so the previous one was put back" if rolled else " — see the log"))
     return {"updated": done, "rolled_back": rolled}
+
+def low_space():
+    """Why there isn't room to pull another image (keeping the old one), or None."""
+    import shutil
+    rc, so, _ = run(["docker", "info", "--format", "{{.DockerRootDir}}"], timeout=30)
+    root = so.strip() if rc == 0 and so.strip().startswith("/") else "/var/lib/docker"
+    try: du = shutil.disk_usage(root)
+    except OSError: return None
+    floor = max(8 * 1024**3, du.total // 12)                            # 8 GB, or about 8% of the drive
+    return f"only {du.free / 1e9:.1f} GB free on the drive Docker uses (needs {floor / 1e9:.0f} GB)" if du.free < floor else None
 
 def settled(name, log, wait=40):
     """True once the container is running (and healthy, if it has a health check) and stays up; False if it keeps crashing."""

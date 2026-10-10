@@ -51,6 +51,7 @@ val PLACES: List<Triple<String, String, Pair<ImageVector, Route>>> = listOf(
     Triple("Archive", "old events history export", Icons.Rounded.Inventory2 to Route.Archive),
     Triple("Notifications", "discord webhook alerts levels logins usb", Icons.Rounded.NotificationsActive to Route.NotifySettings),
     Triple("Lighting", "fan rgb led color color effect brightness wave", Icons.Rounded.Lightbulb to Route.Lighting),
+    Triple("Your lights", "lights zones strip argb header add light second fan d_led 12v rgb setup", Icons.Rounded.Tune to Route.Lights),
     Triple("Light schedules", "schedule sunrise sunset fade timer", Icons.Rounded.Schedule to Route.Schedules),
     Triple("Quick panel", "shortcuts tiles restart shut down power free ram", Icons.Rounded.Widgets to Route.QuickPanel),
     Triple("Terminal", "ssh shell command line", Icons.Rounded.Terminal to Route.Ssh),
