@@ -1,0 +1,11 @@
+{
+ "id": "cyberchef",
+ "name": "CyberChef",
+ "category": "Utilities",
+ "icon": "cyberchef",
+ "port": 8484,
+ "path": "/",
+ "image": "ghcr.io/gchq/cyberchef:latest",
+ "description": "The cyber Swiss-army knife: encode, decode, convert, analyze.",
+ "compose": "services:\n  cyberchef:\n    image: ghcr.io/gchq/cyberchef:latest\n    container_name: cyberchef\n    restart: unless-stopped\n    ports:\n      - \"{PORT}:80\"\n"
+}

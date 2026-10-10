@@ -1,0 +1,11 @@
+{
+ "id": "bazarr",
+ "name": "Bazarr",
+ "category": "Downloads",
+ "icon": "bazarr",
+ "port": 6767,
+ "path": "/",
+ "image": "lscr.io/linuxserver/bazarr:latest",
+ "description": "Subtitles for your movies and shows, found automatically.",
+ "compose": "services:\n  bazarr:\n    image: lscr.io/linuxserver/bazarr:latest\n    container_name: bazarr\n    restart: unless-stopped\n    ports:\n      - \"{PORT}:6767\"\n    environment:\n      PUID: \"1000\"\n      PGID: \"1000\"\n      TZ: \"{TZ}\"\n    volumes:\n      - {DATA}/config:/config\n      - /srv/media:/media\n"
+}

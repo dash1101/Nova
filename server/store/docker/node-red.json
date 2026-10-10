@@ -1,0 +1,11 @@
+{
+ "id": "node-red",
+ "name": "Node-RED",
+ "category": "Smart home",
+ "icon": "node-red",
+ "port": 1880,
+ "path": "/",
+ "image": "nodered/node-red:latest",
+ "description": "Wire devices and services together with flows.",
+ "compose": "services:\n  node-red:\n    image: nodered/node-red:latest\n    container_name: node-red\n    restart: unless-stopped\n    ports:\n      - \"{PORT}:1880\"\n    environment:\n      TZ: \"{TZ}\"\n    volumes:\n      - {DATA}/data:/data\n"
+}

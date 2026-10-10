@@ -1,0 +1,11 @@
+{
+ "id": "drawio",
+ "name": "draw.io",
+ "category": "Utilities",
+ "icon": "drawio",
+ "port": 8585,
+ "path": "/",
+ "image": "jgraph/drawio:latest",
+ "description": "Diagrams and flowcharts in your browser.",
+ "compose": "services:\n  drawio:\n    image: jgraph/drawio:latest\n    container_name: drawio\n    restart: unless-stopped\n    ports:\n      - \"{PORT}:8080\"\n"
+}

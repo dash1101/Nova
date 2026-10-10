@@ -1,0 +1,11 @@
+{
+ "id": "heimdall",
+ "name": "Heimdall",
+ "category": "Dashboards",
+ "icon": "heimdall",
+ "port": 8095,
+ "path": "/",
+ "image": "lscr.io/linuxserver/heimdall:latest",
+ "description": "A simple start page for your apps.",
+ "compose": "services:\n  heimdall:\n    image: lscr.io/linuxserver/heimdall:latest\n    container_name: heimdall\n    restart: unless-stopped\n    ports:\n      - \"{PORT}:80\"\n    environment:\n      PUID: \"1000\"\n      PGID: \"1000\"\n      TZ: \"{TZ}\"\n    volumes:\n      - {DATA}/config:/config\n"
+}

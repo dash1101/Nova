@@ -58,6 +58,10 @@ fun localTime(utc: String): String = runCatching {
             Spacer(Modifier.width(8.dp))
             Text(if (list == null) "Loading…" else "$up of ${items.size} running", color = N.sub, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
         }
+        if (app.overview?.optJSONObject("features")?.optBoolean("docker", true) == false) Group {
+            Row1("Docker isn't installed", "Containers need it. Programs from the store work without it.", false, Icons.Rounded.ViewInAr, N.amber)
+            if (app.isAdmin) { RowDivider(); Row1("Install Docker", "In the app store", true, Icons.Rounded.Download, onClick = { app.go(Route.Store) }) }
+        }
         // Stacks with several containers get their own card; one-container apps share an "Apps" card.
         val stacks = items.groupBy { it.optString("stack") }
         val singles = stacks.filter { it.value.size == 1 }.values.flatten()

@@ -33,7 +33,8 @@ def save(p, d):
     import safeio; safeio.write_json(p, d, 0o644)          # the nova-api account owns this folder
 
 def run(cmd, timeout=60):
-    r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    try: r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    except FileNotFoundError: return 127, "", f"{cmd[0]} isn't installed"     # e.g. no Docker on this server
     return r.returncode, r.stdout, r.stderr
 
 def on(k): return bool(load(SETTINGS, {}).get("labs", {}).get(k))

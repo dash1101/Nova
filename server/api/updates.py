@@ -15,7 +15,8 @@ ENV = {**os.environ, "DEBIAN_FRONTEND": "noninteractive", "LC_ALL": "C"}
 
 
 def run(cmd, timeout=600, **kw):
-    r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, env=ENV, **kw)
+    try: r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, env=ENV, **kw)
+    except FileNotFoundError: return 127, "", f"{cmd[0]} isn't installed"     # e.g. no Docker on this server
     return r.returncode, r.stdout, r.stderr
 
 def load_json(p):

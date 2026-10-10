@@ -283,8 +283,10 @@ export async function containers(ctx) {
     const singles = Object.values(stacks).filter(v => v.length === 1).flat();
     const groups = [...Object.entries(stacks).filter(([, v]) => v.length > 1), ...(singles.length ? [["Apps", singles]] : [])];
     const up = items.filter(x => x.state === "running").length;
+    const nod = S.overview?.features?.docker === false ? group(row("Docker isn't installed", { sub: "Containers need it. Programs from the store work without it.", icon: "box", tint: "var(--amber)" })
+      + (isAdmin() ? row("Install Docker", { sub: "In the app store", icon: "down", blue: true, click: "go:store" }) : "")) : "";
     ctx.show(`<div class="statusline" style="cursor:default"><span class="dot" style="background:${up === items.length ? "var(--green)" : "var(--amber)"}"></span>${S.cache["/api/v1/containers"] ? `${up} of ${items.length} running` : "Loading…"}</div>
-      ${groups.map(([g, cs]) => sec(cap(g)) + group(cs.map(x => row(x.name, { sub: `${x.image.split("/").pop()} · ${x.health ? x.state + ", " + x.health : x.state}`, click: "open:" + x.name, end: `<span class="dot" style="background:${stateColor(x.state, x.health)}"></span>` })).join(""))).join("")}`,
+      ${nod}${groups.map(([g, cs]) => sec(cap(g)) + group(cs.map(x => row(x.name, { sub: `${x.image.split("/").pop()} · ${x.health ? x.state + ", " + x.health : x.state}`, click: "open:" + x.name, end: `<span class="dot" style="background:${stateColor(x.state, x.health)}"></span>` })).join(""))).join("")}`,
       { title: "Containers", actions: isAdmin() ? [{ icon: "add", label: "Add a container", act: "addc" }] : [] });
   };
   ctx.handlers({ open: n => ctx.go("containers/" + encodeURIComponent(n)),
@@ -396,40 +398,60 @@ export async function store(ctx) {
   const [id] = ctx.args;
   if (id === "programs") return programSearch(ctx);
   if (id) return storeItem(ctx, id);
-  let tab = 0, busy = null, busyPct = 0;
-  const draw = () => {
-    const apps = S.cache["/api/v1/store"]?.items, progs = S.cache["/api/v1/programs"]?.items;
-    const appRow = a => `<div class="row"><span class="appicon" style="background:${CAT_COLORS[a.category] || "var(--blue)"};font-weight:700;font-size:22px">${esc((a.name || "?")[0])}</span><div class="t"><b style="font-weight:600">${esc(a.name)}</b><small>${esc(a.description)}</small></div><button class="pillbtn press" data-act="open:${esc(a.id)}">${a.installed ? "Open" : "Get"}</button></div>`;
-    let body = "";
+  let tab = 0, busy = null, busyPct = 0, q = "", hub = null, hubBusy = false, found = null, timer;
+  const appRow = a => `<div class="row"><span class="appicon" style="background:${CAT_COLORS[a.category] || "var(--blue)"};font-weight:700;font-size:22px">${esc((a.name || "?")[0])}</span><div class="t"><b style="font-weight:600">${esc(a.name)}</b><small>${esc(a.description)}</small></div><button class="pillbtn press" data-act="open:${esc(a.id)}">${a.installed ? "Open" : "Get"}</button></div>`;
+  const progRow = p => row(p.name || p.pkg, { sub: p.description,
+    end: busy === p.pkg ? `<span class="muted" style="font-variant-numeric:tabular-nums">${Math.round(busyPct || 0)}%</span><span class="spinner"></span>`
+      : (p.installed && (p.protected || p.essential)) || !isAdmin() ? `<span class="end">${p.installed ? "Installed" : ""}</span>`
+      : `<button class="pillbtn press${p.installed ? " red" : ""}" data-act="prog:${esc(p.pkg)}">${p.installed ? "Remove" : "Get"}</button>` });
+  const body = () => {
+    const ql = q.trim().toLowerCase();
     if (tab === 0) {
-      const l = apps || [], inst = l.filter(a => a.installed), cats = {};
-      l.filter(a => !a.installed).forEach(a => (cats[a.category] ||= []).push(a));
-      body = (inst.length ? sec("Installed") + group(inst.map(appRow).join("")) : "") + Object.entries(cats).map(([c, xs]) => sec(c) + group(xs.map(appRow).join(""))).join("") + (apps ? "" : note("Loading…"));
-    } else {
-      const cats = {}; (progs || []).forEach(p => (cats[p.category] ||= []).push(p));
-      body = Object.entries(cats).map(([c, xs]) => sec(c) + group(xs.map(p => row(p.name, { sub: p.description,
-        end: busy === p.pkg ? `<span class="muted" style="font-variant-numeric:tabular-nums">${Math.round(busyPct || 0)}%</span><span class="spinner"></span>` : (p.installed && p.protected) || !isAdmin() ? `<span class="end">${p.installed ? "Installed" : ""}</span>`
-          : `<button class="pillbtn press${p.installed ? " red" : ""}" data-act="prog:${esc(p.pkg)}">${p.installed ? "Remove" : "Get"}</button>` })).join(""))).join("") + (progs ? "" : note("Loading…"));
-      if (isAdmin()) body = group(row("Find any program", { sub: "Search everything in your system's package manager (apt)", blue: true, icon: "search", click: "go:store/programs" })) + body;
+      const st = S.cache["/api/v1/store"], l = st?.items || [];
+      const nodocker = st && st.docker === false ? group(row("Docker isn't installed", { sub: "Containers need it. Install Docker and Compose from your package manager — Nova sets them up to start with the server.", icon: "box", tint: "var(--amber)" })
+        + (isAdmin() ? row("Install Docker", { icon: "down", blue: true, click: "prog:docker.io", end: busy === "docker.io" ? `<span class="spinner"></span>` : "" }) : "")) : "";
+      if (!ql) {
+        const inst = l.filter(a => a.installed), feat = l.filter(a => a.featured && !a.installed), cats = {};
+        l.filter(a => !a.installed && !a.featured).forEach(a => (cats[a.category] ||= []).push(a));
+        return nodocker + (inst.length ? sec("Installed") + group(inst.map(appRow).join("")) : "") + (feat.length ? sec("Editor's choice") + group(feat.map(appRow).join("")) : "")
+          + Object.keys(cats).sort().map(c => sec(c) + group(cats[c].map(appRow).join(""))).join("") + (st ? "" : note("Loading…"));
+      }
+      const m = l.filter(a => ["name", "description", "category", "image"].some(k => (a[k] || "").toLowerCase().includes(ql)));
+      return nodocker + (m.length ? sec("In the store") + group(m.map(appRow).join("")) : "") + sec("Docker Hub")
+        + group(hub === null ? row(hubBusy ? "Searching Docker Hub…" : `Search Docker Hub for “${esc(q.trim())}”`, { sub: "Any public image — you set its ports and folders", icon: "search", blue: true, click: isAdmin() && !hubBusy ? "hub" : "" })
+          : !hub.length ? row(`Nothing on Docker Hub for “${esc(q.trim())}”`) : hub.map(r => row(r.image + (r.official ? "  ·  official" : ""), { sub: [r.description, "★ " + r.stars].filter(Boolean).join(" · "), icon: "box", click: "use:" + encodeURIComponent(r.image) })).join(""));
     }
-    ctx.show(`<p class="note" style="font-size:15px;margin:0 26px 10px">Hand-picked for your server. Installs run on Nova and show up in Containers.</p>${segmented(["Apps", "Programs"], tab, "tab")}${body}`,
-      { title: "App store", root: true, tabroot: true });
-    wireCommon(ctx.root, { onSeg: (_, i) => { tab = i; draw(); if (i === 1 && !S.cache["/api/v1/programs"]) get("/api/v1/programs").then(() => ctx.alive() && draw()).catch(() => {}); } });
+    if (ql.length >= 2) return sec("Programs") + group(found === null ? row("Searching…") : !found.length ? row(`Nothing called “${esc(q.trim())}”`) : found.map(progRow).join(""));
+    const cats = {}; (S.cache["/api/v1/programs"]?.items || []).forEach(p => (cats[p.category] ||= []).push(p));
+    return (isAdmin() ? note("Type to search everything your package manager offers. These are our picks:") : "") + Object.entries(cats).map(([c, xs]) => sec(c) + group(xs.map(progRow).join(""))).join("") + (S.cache["/api/v1/programs"] ? "" : note("Loading…"));
+  };
+  const paint = () => { const el = $("#sres"); if (el) el.innerHTML = body(); };
+  const draw = () => {
+    ctx.show(`<p class="note" style="font-size:15px;margin:0 26px 10px" id="sintro">${tab === 0 ? "Containers run in Docker, each in its own box with its own folder in /opt." : "Programs install straight onto the server with its package manager (apt), no Docker needed."}</p>
+      ${segmented(["Containers", "Programs"], tab, "tab")}
+      <div class="searchbox glass" style="margin:10px var(--gutter)">${I("search")}<input id="sq" class="sq" value="${esc(q)}" placeholder="${tab === 0 ? "Search containers" : "Search every program"}" autocomplete="off" autocapitalize="off" spellcheck="false"></div>
+      <div id="sres">${body()}</div>`, { title: "App store", root: true, tabroot: true });
+    wireCommon(ctx.root, { onSeg: (_, i) => { tab = i; q = ""; hub = null; found = null; draw(); if (i === 1 && !S.cache["/api/v1/programs"]) get("/api/v1/programs").then(() => ctx.alive() && paint()).catch(() => {}); } });
+    const inp = $("#sq");
+    inp.oninput = () => { q = inp.value; hub = null; found = null; paint(); clearTimeout(timer);
+      if (tab === 1 && q.trim().length >= 2) timer = setTimeout(async () => { const t = q; try { const r = await get(`/api/v1/programs/search?q=${encodeURIComponent(t.trim())}`); if (t === q) { found = r.items || []; paint(); } } catch (e) { toast(e.message); } }, 350); };
   };
   ctx.handlers({
     open: id => ctx.go("store/" + encodeURIComponent(id)),
+    hub: async () => { hubBusy = true; paint(); try { hub = (await get(`/api/v1/store/hub?q=${encodeURIComponent(q.trim())}`)).results || []; } catch (e) { toast(e.message); } hubBusy = false; paint(); },
+    use: img => { ctx.go("container-new/" + img); },
     prog: async pkg => {
-      const p = S.cache["/api/v1/programs"]?.items?.find(x => x.pkg === pkg); if (!p) return;
-      if (!(await confirm(`${p.installed ? "Remove" : "Install"} ${p.name}?`, "Your phone will ask you to confirm with your fingerprint.", p.installed ? "Remove" : "Install", p.installed ? "var(--red)" : "var(--blue)"))) return;
-      busy = pkg; draw();
+      const p = (found || []).find(x => x.pkg === pkg) || S.cache["/api/v1/programs"]?.items?.find(x => x.pkg === pkg) || (pkg === "docker.io" ? { pkg, name: "Docker", installed: false } : null); if (!p) return;
+      if (!(await confirm(`${p.installed ? "Remove" : "Install"} ${p.name || pkg}?`, "Your phone will ask you to confirm with your fingerprint.", p.installed ? "Remove" : "Install", p.installed ? "var(--red)" : "var(--blue)"))) return;
+      busy = pkg; paint();
       try { const r = await post(`/api/v1/programs/${pkg}/${p.installed ? "remove" : "install"}`);
-        if (r?.task) { const j = await waitTask(r.task, t => { busyPct = t.pct; if (ctx.alive()) draw(); });
-          toast(j.state === "done" ? `${p.name} ${p.installed ? "removed" : "installed"}` : `Failed: ${j.error || ""}`); }
-        await get("/api/v1/programs"); }
-      catch (e) { toast(e.message); } finally { busy = null; busyPct = 0; if (ctx.alive()) draw(); }
+        if (r?.task) { const j = await waitTask(r.task, t => { busyPct = t.pct; if (ctx.alive()) paint(); });
+          toast(j.state === "done" ? `${p.name || pkg} ${p.installed ? "removed" : "installed"}` : `Failed: ${j.error || ""}`); if (j.state === "done" && found) p.installed = !p.installed; }
+        await get("/api/v1/programs").catch(() => {}); if (pkg === "docker.io") await get("/api/v1/store").catch(() => {}); }
+      catch (e) { toast(e.message); } finally { busy = null; busyPct = 0; if (ctx.alive()) paint(); }
     },
   });
-  draw(); try { await get("/api/v1/store"); if (ctx.alive()) draw(); } catch (e) { toast(e.message); }
+  draw(); try { await get("/api/v1/store"); if (ctx.alive()) paint(); } catch (e) { toast(e.message); }
 }
 /** Any package from apt: search, install or remove (fingerprint), with apt's own progress. */
 async function programSearch(ctx) {
@@ -1171,7 +1193,8 @@ export async function settings(ctx) {
       ${group(row("Notifications", { icon: "bell", click: "go:notify" }) + row("Appearance", { sub: "Theme, Home layout, shortcuts, bottom bar", blue: true, icon: "palette", click: "go:appearance" })
         + row("Setup guide", { sub: "Install Nova on a server, remote access, browsers", blue: true, icon: "book", click: "go:guide" }))}
       ${group(row("Remove this browser", { sub: "Erases its key", icon: "del", tint: "var(--red)", click: "forget" }))}
-      ${sec("Labs")}${group(row("Labs", { sub: "Experimental features you can try", blue: true, icon: "science", tint: "#bf5af2", click: "go:labs" }))}
+      ${sec("Labs")}${group(row("Labs", { sub: "Experimental features you can try", blue: true, icon: "science", tint: "#bf5af2", click: "go:labs" })
+        + row("Features", { sub: "Switch off parts of Nova you don't use, like lighting control", blue: true, icon: "tune", click: "go:features" }))}
       ${links([["About Nova", "go:about"]])}`, { title: "Settings" });
     wireCommon(ctx.root);
   };
@@ -1222,7 +1245,7 @@ export async function appearance(ctx) {
   const draw = () => {
     const t = prefs.theme, st = prefs.style, mat = document.documentElement.classList.contains("material"), look = mat ? "Material" : "Default";
     const autoMat = /Android/i.test(navigator.userAgent) && !/SamsungBrowser|SM-[A-Z0-9]|Xiaomi|Redmi|POCO|HUAWEI|HONOR|vivo|OPPO|realme/i.test(navigator.userAgent);
-    ctx.show(`${sec("Style")}${group([["auto", "Automatic", `${autoMat ? "Material You" : "Default"} — matches this device`], ["default", "Default", "Nova's own look: frosted glass, soft glow, One UI-style"],
+    ctx.show(`${sec("Style")}${group([["auto", "Automatic", `${autoMat ? "Material You" : "Default"} — picked to suit this device`], ["default", "Default", "Nova's own look: frosted glass and a soft glow"],
         ["material", "Material You", "Google's Material 3 Expressive: tonal colors from the accent, bolder shapes, springy motion"]].map(([k, l, d]) => row(l, { sub: d, end: radio(st === k), click: "style:" + k })).join(""))}
       ${sec("Theme")}${group([["system", "Same as this device"], ["light", `${look} light`], ["dark", `${look} dark`]].map(([k, l]) => row(l, { end: radio(t === k), click: "theme:" + k })).join(""))}
       ${group(switchRow("Reduce motion", "Simple fades instead of slides and bounces", prefs.reduceMotion, "motion", { blue: false }))}

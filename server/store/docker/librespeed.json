@@ -1,0 +1,11 @@
+{
+ "id": "librespeed",
+ "name": "LibreSpeed",
+ "category": "Network",
+ "icon": "librespeed",
+ "port": 8091,
+ "path": "/",
+ "image": "lscr.io/linuxserver/librespeed:latest",
+ "description": "A speed test between your devices and the server.",
+ "compose": "services:\n  librespeed:\n    image: lscr.io/linuxserver/librespeed:latest\n    container_name: librespeed\n    restart: unless-stopped\n    ports:\n      - \"{PORT}:80\"\n    environment:\n      PUID: \"1000\"\n      PGID: \"1000\"\n      TZ: \"{TZ}\"\n    volumes:\n      - {DATA}/config:/config\n"
+}

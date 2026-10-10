@@ -1,0 +1,12 @@
+{
+ "id": "grafana",
+ "name": "Grafana",
+ "category": "Monitoring",
+ "icon": "grafana",
+ "port": 3030,
+ "path": "/",
+ "image": "grafana/grafana-oss:latest",
+ "description": "Dashboards and graphs for any data source.",
+ "notes": "Log in as admin; the password is in /opt/grafana/.nova-secrets (SECRET1).",
+ "compose": "services:\n  grafana:\n    image: grafana/grafana-oss:latest\n    container_name: grafana\n    restart: unless-stopped\n    ports:\n      - \"{PORT}:3000\"\n    environment:\n      GF_SECURITY_ADMIN_PASSWORD: \"{SECRET1}\"\n    volumes:\n      - {DATA}/data:/var/lib/grafana\n"
+}

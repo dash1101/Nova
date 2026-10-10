@@ -1,0 +1,11 @@
+{
+ "id": "sonarr",
+ "name": "Sonarr",
+ "category": "Downloads",
+ "icon": "sonarr",
+ "port": 8989,
+ "path": "/",
+ "image": "lscr.io/linuxserver/sonarr:latest",
+ "description": "Finds and organizes TV episodes automatically.",
+ "compose": "services:\n  sonarr:\n    image: lscr.io/linuxserver/sonarr:latest\n    container_name: sonarr\n    restart: unless-stopped\n    ports:\n      - \"{PORT}:8989\"\n    environment:\n      PUID: \"1000\"\n      PGID: \"1000\"\n      TZ: \"{TZ}\"\n    volumes:\n      - {DATA}/config:/config\n      - /srv/media/tv:/tv\n      - /srv/downloads:/downloads\n"
+}

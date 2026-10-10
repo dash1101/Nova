@@ -1,0 +1,12 @@
+{
+ "id": "navidrome",
+ "name": "Navidrome",
+ "category": "Media",
+ "icon": "navidrome",
+ "port": 4533,
+ "path": "/",
+ "image": "deluan/navidrome:latest",
+ "description": "Your own music streaming server, Subsonic-compatible.",
+ "notes": "Point it at /srv/music.",
+ "compose": "services:\n  navidrome:\n    image: deluan/navidrome:latest\n    container_name: navidrome\n    restart: unless-stopped\n    ports:\n      - \"{PORT}:4533\"\n    volumes:\n      - {DATA}/data:/data\n      - /srv/music:/music:ro\n"
+}

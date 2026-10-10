@@ -1,0 +1,12 @@
+{
+ "id": "gotify",
+ "name": "Gotify",
+ "category": "Notifications",
+ "icon": "gotify",
+ "port": 8094,
+ "path": "/",
+ "image": "gotify/server:latest",
+ "description": "A simple server for sending and receiving messages.",
+ "notes": "Log in as admin; the password is in /opt/gotify/.nova-secrets (SECRET1).",
+ "compose": "services:\n  gotify:\n    image: gotify/server:latest\n    container_name: gotify\n    restart: unless-stopped\n    ports:\n      - \"{PORT}:80\"\n    environment:\n      GOTIFY_DEFAULTUSER_PASS: \"{SECRET1}\"\n    volumes:\n      - {DATA}/data:/app/data\n"
+}

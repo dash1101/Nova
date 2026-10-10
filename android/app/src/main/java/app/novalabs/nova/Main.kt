@@ -1,5 +1,7 @@
 package app.novalabs.nova
 
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import android.Manifest
 import android.app.Activity
 import android.content.pm.PackageManager
@@ -59,7 +61,7 @@ sealed class Route {
     data class BackupWizard(val id: String?, val sources: List<String> = emptyList(), val dest: String? = null) : Route()
     data class BackupBrowse(val id: String, val snap: String = "", val path: String = "") : Route()
     data object Diagnostics : Route()
-    data object Apps : Route(); data class AppFrame(val id: String) : Route(); data object Updates : Route(); data object Search : Route(); data object Start : Route(); data object StartEdit : Route(); data object EditFavorites : Route(); data object NewContainer : Route(); data object ProgramSearch : Route(); data class Files(val path: String = "") : Route(); data class FileEdit(val path: String) : Route(); data object Labs : Route(); data object Lights : Route()
+    data object Apps : Route(); data class AppFrame(val id: String) : Route(); data object Updates : Route(); data object Search : Route(); data object Start : Route(); data object StartEdit : Route(); data object EditFavorites : Route(); data object NewContainer : Route(); data object ProgramSearch : Route(); data class Files(val path: String = "") : Route(); data class FileEdit(val path: String) : Route(); data object Labs : Route(); data object Lights : Route(); data object Features : Route()
 }
 
 /** Shared app state: the API, live data, navigation, messages. */
@@ -132,7 +134,11 @@ class AppState(val activity: Activity, val pairing: Pairing, val scope: Coroutin
             val o = api.get("/api/v1/overview"); overview = o
             val t1 = System.currentTimeMillis()
             o.optDouble("time").takeIf { !it.isNaN() && t1 - t0 < 3000 }?.let { clockSkew = (it * 1000 - (t0 + t1) / 2.0).toLong() }
-            o.optJSONObject("server")?.let { srv -> pairing.label = srv.optString("display_name").ifEmpty { srv.optString("name") } }
+            o.optJSONObject("server")?.let { srv -> pairing.label = srv.optString("display_name").ifEmpty { srv.optString("name") }
+                // Tailscale: the same server at its tailnet address (only https pairings; the port is the home one)
+                val th = srv.optString("tailnet_host"); val lan = android.net.Uri.parse(pairing.lanUrl)
+                val tu = if (th.isNotEmpty() && pairing.lanUrl.startsWith("https://")) "https://${if (':' in th) "[$th]" else th}:${if (lan.port > 0) lan.port else 8495}" else ""
+                if (tu != pairing.tailnetUrl) pairing.tailnetUrl = tu }
             if (fanInFlight == 0) o.optJSONObject("fan")?.let { f -> fan = JSONObject(fan?.toString() ?: "{}").also { m -> f.keys().forEach { k -> m.put(k, f.get(k)) } } }
             error = null; reconnecting = false; failures = 0; notAuthorized = false; lastContact = System.currentTimeMillis()
             if (pairing.lastEventSeen == 0.0) {     // fresh install: history isn't "new"
@@ -339,7 +345,7 @@ class MainActivity : ComponentActivity() {
                     // Pages come in from the right, so going back always moves them to the right and brings the
                     // one underneath in from the left — whichever edge you swipe from (like One UI's Settings).
                     val dirX = 1
-                    Box(Modifier.fillMaxSize().hazeSource(rootHaze)) {
+                    Box(Modifier.fillMaxSize().hazeSource(rootHaze).pageSwipe(app)) {
                     val under = app.backTarget
                     if (p > 0.001f && under != null) Box(Modifier.fillMaxSize().graphicsLayer {
                         // the page underneath comes forward from behind, sliding in slightly from the opposite side
@@ -400,6 +406,40 @@ fun navTransition(dir: Int, reduce: Boolean): androidx.compose.animation.Content
         else androidx.compose.animation.core.tween(320, easing = androidx.compose.animation.core.FastOutSlowInEasing)
     return (androidx.compose.animation.slideInHorizontally(spec) { w -> if (dir > 0) w / 3 else -w / 6 } + fadeIn(androidx.compose.animation.core.tween(260))) togetherWith
         (androidx.compose.animation.slideOutHorizontally(spec) { w -> if (dir > 0) -w / 6 else w / 3 } + fadeOut(androidx.compose.animation.core.tween(180)))
+}
+
+/** On a page from the navigation pill: swipe left for the next one, right for the previous one.
+ *  Careful not to steal touches: it only reacts in the Final pass, and gives up as soon as anything
+ *  inside used the gesture (sliders, chip rows, swipe-to-archive rows, scrolling), when the finger
+ *  starts at a screen edge (that's the system's back gesture), or when the movement isn't clearly
+ *  sideways. A swipe counts once it's long (a quarter of the screen) or quick (a flick). */
+private fun Modifier.pageSwipe(app: AppState) = pointerInput(Unit) {
+    val edge = 28.dp.toPx(); val slop = viewConfiguration.touchSlop
+    awaitEachGesture {
+        val down = awaitFirstDown(requireUnconsumed = false, pass = androidx.compose.ui.input.pointer.PointerEventPass.Final)
+        val tabs = navTabs(app); val i = tabs.indexOfFirst { it.route == app.top }
+        if (app.stack.size != 1 || i < 0 || down.position.x < edge || down.position.x > size.width - edge) return@awaitEachGesture
+        val t0 = down.uptimeMillis; var dx = 0f; var dy = 0f; var used = false
+        while (true) {
+            val ev = awaitPointerEvent(androidx.compose.ui.input.pointer.PointerEventPass.Final)
+            val ch = ev.changes.firstOrNull { it.id == down.id } ?: break
+            if (ev.changes.size > 1) { used = true }
+            if (ch.isConsumed) used = true                   // a child handled it
+            if (!ch.pressed) {
+                val ms = (ch.uptimeMillis - t0).coerceAtLeast(1); val v = dx / ms * 1000f        // px/s
+                val sideways = kotlin.math.abs(dx) > 2.2f * kotlin.math.abs(dy) && kotlin.math.abs(dx) > slop * 3
+                if (!used && sideways && (kotlin.math.abs(dx) > size.width * 0.25f || kotlin.math.abs(v) > 1400f)) {
+                    val j = if (dx < 0) i + 1 else i - 1
+                    if (j in tabs.indices) { app.tab(tabs[j].route); app.navDir = if (dx < 0) 1 else -1 }
+                }
+                break
+            }
+            val d = ch.position - ch.previousPosition; dx += d.x; dy += d.y
+            if (kotlin.math.abs(dy) > slop * 2 && kotlin.math.abs(dy) > kotlin.math.abs(dx)) used = true    // it's a scroll
+            // clearly a page swipe: take it, so the row under the finger doesn't also count it as a tap
+            if (!used && kotlin.math.abs(dx) > slop * 2 && kotlin.math.abs(dx) > 2.2f * kotlin.math.abs(dy)) ch.consume()
+        }
+    }
 }
 
 /** Remembers which pane a touch started in (tablet list/detail). */
@@ -505,6 +545,7 @@ private fun Modifier.paneTouch(app: AppState, left: Boolean) = pointerInput(left
         is Route.FileEdit -> FileEditScreen(app, r.path)
         Route.Labs -> LabsScreen(app)
         Route.Lights -> LightsScreen(app)
+        Route.Features -> FeaturesScreen(app)
         is Route.AppFrame -> AppFrameScreen(app, r.id)
         Route.Status -> StatusScreen(app)
         Route.Ssh -> SshScreen(app)

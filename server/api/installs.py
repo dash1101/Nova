@@ -24,7 +24,8 @@ ESSENTIAL = {"nova-server", "systemd", "systemd-sysv", "openssh-server", "sudo",
 
 
 def run(cmd, timeout=600, **kw):
-    r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, env=ENV, **kw)
+    try: r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, env=ENV, **kw)
+    except FileNotFoundError: return 127, "", f"{cmd[0]} isn't installed"     # e.g. no Docker on this server
     return r.returncode, r.stdout, r.stderr
 
 def port_free(port):
@@ -32,6 +33,13 @@ def port_free(port):
         s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         try: s.bind(("0.0.0.0", port)); return True
         except OSError: return False
+
+def server_tz():
+    """The server's time zone name (for apps' TZ), e.g. Europe/Berlin; UTC if unknown."""
+    try: return open("/etc/timezone").read().strip() or "UTC"
+    except OSError: pass
+    try: return os.path.realpath("/etc/localtime").split("zoneinfo/", 1)[1]
+    except (OSError, IndexError): return "UTC"
 
 def catalog():
     items = {}
@@ -82,7 +90,7 @@ def store_install(spec, log, progress):
     log(f"Setting up {d}"); progress(3)
     os.makedirs(f"{d}/data", exist_ok=True)
     alphabet = string.ascii_letters + string.digits
-    subs = {"DATA": f"{d}/data", "PORT": str(t["port"])}
+    subs = {"DATA": f"{d}/data", "PORT": str(t["port"]), "TZ": server_tz()}
     for i in range(1, 4): subs[f"SECRET{i}"] = "".join(secrets.choice(alphabet) for _ in range(32))
     compose = t["compose"]
     for k, v in subs.items(): compose = compose.replace("{" + k + "}", v)
@@ -225,6 +233,9 @@ def _apt(cmd, log, progress, lo=10, hi=98):
     rc = p.wait(); th.join(timeout=5)
     if rc != 0: raise RuntimeError("apt couldn't finish: " + " / ".join(tail[-3:])[-300:])
 
+# installed together: Docker is only useful with Compose (Nova's containers are Compose stacks)
+WITH = {"docker.io": ["docker-compose", "docker-compose-v2"]}
+
 def program_install(spec, log, progress):
     pk = str(spec.get("pkg", ""))
     if not re.fullmatch(PKG_RE, pk): raise ValueError("bad package name")
@@ -232,8 +243,11 @@ def program_install(spec, log, progress):
     run(["apt-get", "update", "-qq"], timeout=600)
     rc, so, _ = run(["apt-cache", "policy", pk], timeout=60)
     if "Candidate: (none)" in so or not so.strip(): raise ValueError(f"there's no package called {pk}")
-    _apt(["install", "--", pk], log, progress)
-    changelog(f"Installed program {pk} (from the Nova app)")
+    extra = [x for x in WITH.get(pk, []) if "Candidate: (none)" not in run(["apt-cache", "policy", x], timeout=60)[1]]
+    _apt(["install", "--", pk, *extra], log, progress)
+    if pk == "docker.io":                                           # containers need it running now and after reboots
+        run(["systemctl", "enable", "--now", "docker"], timeout=120)
+    changelog(f"Installed program {' '.join([pk, *extra])} (from the Nova app)")
     progress(100); return {"ok": True, "pkg": pk}
 
 def program_remove(spec, log, progress):

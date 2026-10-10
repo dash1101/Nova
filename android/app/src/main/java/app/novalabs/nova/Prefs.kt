@@ -125,8 +125,8 @@ object AppLock {
         SectionLabel("Style")
         Group {
             val autoName = if (autoMaterial()) "Material You" else "Default"
-            listOf("auto" to ("Automatic" to "$autoName — matches how ${android.os.Build.MANUFACTURER.replaceFirstChar { it.uppercase() }} phones look"),
-                   "default" to ("Default" to "Nova's own look: frosted glass, soft glow, One UI-style"),
+            listOf("auto" to ("Automatic" to "$autoName — picked to suit this ${DeviceForm.noun}"),
+                   "default" to ("Default" to "Nova's own look: frosted glass and a soft glow"),
                    "material" to ("Material You" to "Google's Material 3 Expressive: colors from your wallpaper, bolder shapes, springy motion"))
                 .forEachIndexed { i, (k, l) ->
                     if (i > 0) RowDivider()

@@ -1,0 +1,11 @@
+{
+ "id": "memos",
+ "name": "Memos",
+ "category": "Productivity",
+ "icon": "memos",
+ "port": 5230,
+ "path": "/",
+ "image": "neosmemo/memos:stable",
+ "description": "Quick notes, like a private Twitter for your thoughts.",
+ "compose": "services:\n  memos:\n    image: neosmemo/memos:stable\n    container_name: memos\n    restart: unless-stopped\n    ports:\n      - \"{PORT}:5230\"\n    volumes:\n      - {DATA}/data:/var/opt/memos\n"
+}

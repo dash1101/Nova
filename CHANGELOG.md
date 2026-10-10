@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.5.16-alpha (app and server)
+- **App store, reworked:** *Containers* and *Programs*, each with a search box. Containers: 51 ready-made apps (Plex, Home Assistant, Nextcloud, Paperless-ngx, Immich-style photo apps, the *arr apps, Open WebUI + Ollama, Stirling PDF, AdGuard Home and more), an **Editor's choice**, and a **Docker Hub search** for anything else — a result opens *Your own container* with the image filled in. Programs: our picks, and typing searches everything apt offers.
+- **Works without Docker:** the store and Containers say when Docker isn't there and offer **Install Docker** (with Compose). The package no longer pulls Docker in by itself.
+- **Fresh installs:** `nova-setup` offers to install Docker, Tailscale and cloudflared if they're missing (each optional; with a Cloudflare tunnel token if you have one).
+- **Settings → Features:** switch off parts of Nova — **Nova controls the lights** (off: Nova leaves the RGB controller alone for the board maker's software or OpenRGB), the server terminal, the file manager, and being found on the network.
+- **Swipe between pages:** on a page from the navigation pill, swipe left or right for the next one. It leaves sliders, chip rows, swipe-to-archive rows and scrolling alone, and ignores the screen edges (system back).
+- **Tailscale:** the app learns your server's Tailscale address and uses it when home Wi-Fi isn't reachable (before Cloudflare); apps open at the Tailscale address then too.
+- **Cloudflare auto-setup on the phone:** Labs → Cloudflare to add the API token, then hold an app → *Open it from anywhere* → **Set it up for me**.
+- Search finds the Labs features (Cloudflare, crash-loop guard, weekly updates, image cleanup, Wake-on-LAN), Features, app icons and more.
+- The Home fan spins a little slower with motion blur, so it looks smooth at 30 fps.
+- The Automatic look's description no longer mentions phone makers.
+- Security test: 303 checks, all passing.
+
 ## 0.5.15-alpha (watch and server)
 - **Watch: a screen lock is now required** to pair and to approve. Without one a watch counts as always unlocked, so anyone holding it could have approved things that need your fingerprint on the phone. Status, events and the tile still work without a lock.
 - **Watch:** if the server stops recognizing it (removed on the phone, or the watch's clock is off), the watch says so and keeps its pairing until you choose *Pair again* — it no longer forgets it by itself. An address handed to the app at launch is offered as a button instead of being used right away.

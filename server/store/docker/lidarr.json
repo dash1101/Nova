@@ -1,0 +1,11 @@
+{
+ "id": "lidarr",
+ "name": "Lidarr",
+ "category": "Downloads",
+ "icon": "lidarr",
+ "port": 8686,
+ "path": "/",
+ "image": "lscr.io/linuxserver/lidarr:latest",
+ "description": "Finds and organizes music automatically.",
+ "compose": "services:\n  lidarr:\n    image: lscr.io/linuxserver/lidarr:latest\n    container_name: lidarr\n    restart: unless-stopped\n    ports:\n      - \"{PORT}:8686\"\n    environment:\n      PUID: \"1000\"\n      PGID: \"1000\"\n      TZ: \"{TZ}\"\n    volumes:\n      - {DATA}/config:/config\n      - /srv/music:/music\n      - /srv/downloads:/downloads\n"
+}

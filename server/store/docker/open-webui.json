@@ -1,0 +1,13 @@
+{
+ "id": "open-webui",
+ "name": "Open WebUI",
+ "category": "AI",
+ "icon": "open-webui",
+ "port": 3080,
+ "path": "/",
+ "image": "ghcr.io/open-webui/open-webui:main",
+ "description": "A ChatGPT-style chat for local models (works with Ollama).",
+ "notes": "Install Ollama too (below) and pull a model; the first account you create is the admin.",
+ "featured": true,
+ "compose": "services:\n  open-webui:\n    image: ghcr.io/open-webui/open-webui:main\n    container_name: open-webui\n    restart: unless-stopped\n    ports:\n      - \"{PORT}:8080\"\n    environment:\n      OLLAMA_BASE_URL: \"http://host.docker.internal:11434\"\n    extra_hosts:\n      - \"host.docker.internal:host-gateway\"\n    volumes:\n      - {DATA}/data:/app/backend/data\n"
+}

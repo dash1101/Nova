@@ -1,0 +1,15 @@
+{
+ "id": "adguardhome",
+ "name": "AdGuard Home",
+ "category": "Network",
+ "icon": "adguard-home",
+ "port": 3002,
+ "path": "/",
+ "image": "adguard/adguardhome:latest",
+ "description": "Block ads and trackers for every device on your network.",
+ "notes": "Uses port 53 (DNS): if something else already answers DNS on the server, free it first. Then point your router's DNS at the server.",
+ "extra_ports": [
+  53
+ ],
+ "compose": "services:\n  adguardhome:\n    image: adguard/adguardhome:latest\n    container_name: adguardhome\n    restart: unless-stopped\n    ports:\n      - \"{PORT}:3000\"\n      - \"53:53/tcp\"\n      - \"53:53/udp\"\n    volumes:\n      - {DATA}/work:/opt/adguardhome/work\n      - {DATA}/conf:/opt/adguardhome/conf\n"
+}

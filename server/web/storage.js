@@ -662,6 +662,9 @@ export async function updates(ctx) {
 // ── your own container: a simple form (the server checks every field) ──────────────────────
 export async function containerNew(ctx) {
   const v = { name: "", image: "", restart: "unless-stopped", ports: [{ host: "", container: "" }], volumes: [], env: "" };
+  const hint = ctx.args.join("/");               // from the store's Docker Hub search: start with that image
+  if (hint) { const img = decodeURIComponent(hint); v.image = img.split("/").pop().includes(":") ? img : img + ":latest";
+    v.name = img.split("/").pop().split(":")[0].toLowerCase().replace(/[^a-z0-9_-]/g, "").slice(0, 40); }
   const spec = () => ({ name: v.name.trim().toLowerCase(), image: v.image.trim(), restart: v.restart,
     ports: v.ports.filter(p => p.host && p.container).map(p => ({ host: +p.host, container: +p.container, proto: p.udp ? "udp" : "tcp" })),
     volumes: v.volumes.filter(x => x.host && x.container).map(x => ({ host: x.host, container: x.container, ro: !!x.ro })),
@@ -704,6 +707,17 @@ export async function containerNew(ctx) {
     },
   });
   draw();
+}
+
+// ── Features: parts of Nova you can switch off ──────────────────────────────────────────
+export async function features(ctx) {
+  let d = null;
+  const draw = () => ctx.show(`${note("Switch off what you don't use, or what another program takes care of — for example the board maker's RGB software. Switching these needs your fingerprint (from a browser: your phone).")}
+    ${d ? group(d.features.filter(f => f.available).map(f => switchRow(f.name, f.about, f.on, isAdmin() ? "feat:" + f.id : "", { blue: f.on })).join("")) : note("Loading…")}
+    ${d && d.features.some(f => !f.available) ? note("Not shown: things this server's own settings (config.json) turned off, or that it doesn't have.") : ""}`, { title: "Features" });
+  ctx.handlers({ feat: async k => { const f = d.features.find(x => x.id === k);
+    try { d = await post("/api/v1/features", { [k]: !f.on }); toast(`${f.name}: ${f.on ? "off" : "on"}`); } catch (e) { toast(e.message); } draw(); } });
+  draw(); try { d = await get("/api/v1/features"); } catch (e) { toast(e.message); } if (ctx.alive()) draw();
 }
 
 // ── Labs: experimental features (off until you turn them on) ─────────────────────────────

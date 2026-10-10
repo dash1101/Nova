@@ -44,11 +44,18 @@ class NovaApi(private val pairing: Pairing) {
         }
         return lanClientCache!!
     }
+    // Tailscale: same certificate, a bit more patience (a relayed connection can take a few seconds)
+    private var tailClientCache: OkHttpClient? = null; private var tailPinUsed: String? = null
+    private val tailClient: OkHttpClient get() {
+        val pin = pairing.lanPin
+        if (tailClientCache == null || tailPinUsed != pin) { tailClientCache = pinned(OkHttpClient.Builder().connectTimeout(5, TimeUnit.SECONDS).readTimeout(60, TimeUnit.SECONDS), pin).build(); tailPinUsed = pin }
+        return tailClientCache!!
+    }
     private val remoteClient = OkHttpClient.Builder()
         .connectTimeout(8, TimeUnit.SECONDS).readTimeout(60, TimeUnit.SECONDS).build()
 
     @Volatile var via: String = "—"; private set
-    @Volatile private var preferRemote = false
+    @Volatile private var preferred: String? = null
 
     private class Prepared(val method: String, val path: String, val bytes: ByteArray,
                            val ts: String, val nonce: String, val message: ByteArray)
@@ -89,7 +96,7 @@ class NovaApi(private val pairing: Pairing) {
     /** After the app was in the background, pooled sockets are usually dead (NAT/Wi-Fi sleep). */
     // Closing TLS sockets does network I/O, so never on the main thread (crashed 0.2.5 off Wi-Fi).
     suspend fun wake() = withContext(Dispatchers.IO) {
-        runCatching { lanClient.connectionPool.evictAll(); remoteClient.connectionPool.evictAll() }
+        runCatching { lanClient.connectionPool.evictAll(); tailClient.connectionPool.evictAll(); remoteClient.connectionPool.evictAll() }
     }
 
     /** Risky action: fingerprint / PIN confirmation, then a second signature by the step-up key. */
@@ -182,7 +189,7 @@ class NovaApi(private val pairing: Pairing) {
     @Volatile var lastAttempts: List<String> = emptyList(); private set
 
     private fun routeName(name: String, base: String) =
-        (if (name == "home") "Home network" else "Remote (Cloudflare)") + " · " + base.substringAfter("://").substringBefore("/")
+        (when (name) { "home" -> "Home network"; "tailnet" -> "Tailscale"; else -> "Remote (Cloudflare)" }) + " · " + base.substringAfter("://").substringBefore("/")
 
     private fun describe(e: IOException): String = when (e) {
         is java.net.UnknownHostException -> "no internet, or the name can't be found"
@@ -201,8 +208,9 @@ class NovaApi(private val pairing: Pairing) {
     private inline fun route(method: String, block: (String, String) -> String): String {
         val routes = buildList {
             if (pairing.lanUrl.isNotEmpty()) add("home" to pairing.lanUrl)
+            if (pairing.tailnetUrl.isNotEmpty() && pairing.tailnetUrl != pairing.lanUrl) add("tailnet" to pairing.tailnetUrl)
             if (pairing.remoteUrl.isNotEmpty()) add("remote" to pairing.remoteUrl)
-        }.let { if (preferRemote) it.reversed() else it }
+        }.let { r -> preferred?.let { p -> r.sortedBy { if (it.first == p) 0 else 1 } } ?: r }      // whatever worked last goes first
         if (routes.isEmpty()) throw ApiException(0, "Not paired")
         // HTTPS only for Nova's own API (plain http is allowed app-wide only for the Apps frame)
         if (routes.any { !it.second.startsWith("https://") }) throw ApiException(0, "This pairing uses plain HTTP — open Nova on your home Wi-Fi to upgrade it, or pair again")
@@ -211,7 +219,7 @@ class NovaApi(private val pairing: Pairing) {
         for ((name, base) in routes) {
             for (attempt in 0..1) {
                 try {
-                    val r = block(name, base); via = name; preferRemote = name == "remote"; lastAttempts = emptyList(); return r
+                    val r = block(name, base); via = name; preferred = if (name == "home") null else name; lastAttempts = emptyList(); return r
                 } catch (e: ApiException) {
                     if (!e.offline) throw e
                     notes += "${routeName(name, base)}: ${e.message}"; last = IOException(e.message); break
@@ -230,7 +238,7 @@ class NovaApi(private val pairing: Pairing) {
         throw ApiException(0, "Disconnected", offline = true)
     }
 
-    private fun client(route: String) = if (route == "home") lanClient else remoteClient
+    private fun client(route: String) = when (route) { "home" -> lanClient; "tailnet" -> tailClient; else -> remoteClient }
 
     private fun build(route: String, base: String, pr: Prepared, stepUpSig: String?, quick: Boolean = false): Request {
         val sig = if (quick) pairing.keys.signQuick(pr.message) else pairing.keys.sign(pr.message)

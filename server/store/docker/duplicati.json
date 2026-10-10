@@ -1,0 +1,11 @@
+{
+ "id": "duplicati",
+ "name": "Duplicati",
+ "category": "Backup",
+ "icon": "duplicati",
+ "port": 8200,
+ "path": "/",
+ "image": "lscr.io/linuxserver/duplicati:latest",
+ "description": "Encrypted backups to the cloud or another disk.",
+ "compose": "services:\n  duplicati:\n    image: lscr.io/linuxserver/duplicati:latest\n    container_name: duplicati\n    restart: unless-stopped\n    ports:\n      - \"{PORT}:8200\"\n    environment:\n      PUID: \"1000\"\n      PGID: \"1000\"\n      TZ: \"{TZ}\"\n      SETTINGS_ENCRYPTION_KEY: \"{SECRET2}\"\n    volumes:\n      - {DATA}/config:/config\n      - /srv/backups:/backups\n      - /home:/source/home:ro\n"
+}

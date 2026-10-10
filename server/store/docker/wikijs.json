@@ -1,0 +1,11 @@
+{
+ "id": "wikijs",
+ "name": "Wiki.js",
+ "category": "Productivity",
+ "icon": "wiki-js",
+ "port": 3050,
+ "path": "/",
+ "image": "ghcr.io/requarks/wiki:2",
+ "description": "A beautiful wiki for notes and documentation.",
+ "compose": "services:\n  wikijs:\n    image: ghcr.io/requarks/wiki:2\n    container_name: wikijs\n    restart: unless-stopped\n    ports:\n      - \"{PORT}:3000\"\n    environment:\n      DB_TYPE: \"sqlite\"\n      DB_FILEPATH: \"/wiki/data/db.sqlite\"\n    volumes:\n      - {DATA}/data:/wiki/data\n"
+}

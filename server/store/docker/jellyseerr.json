@@ -1,0 +1,11 @@
+{
+ "id": "jellyseerr",
+ "name": "Jellyseerr",
+ "category": "Media",
+ "icon": "jellyseerr",
+ "port": 5055,
+ "path": "/",
+ "image": "fallenbagel/jellyseerr:latest",
+ "description": "Let people request movies and shows for Jellyfin, Plex or Emby.",
+ "compose": "services:\n  jellyseerr:\n    image: fallenbagel/jellyseerr:latest\n    container_name: jellyseerr\n    restart: unless-stopped\n    ports:\n      - \"{PORT}:5055\"\n    environment:\n      TZ: \"{TZ}\"\n    volumes:\n      - {DATA}/config:/app/config\n"
+}

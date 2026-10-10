@@ -1,0 +1,13 @@
+{
+ "id": "homeassistant",
+ "name": "Home Assistant",
+ "category": "Smart home",
+ "icon": "home-assistant",
+ "port": 8123,
+ "path": "/",
+ "image": "ghcr.io/home-assistant/home-assistant:stable",
+ "description": "Control and automate everything in your home.",
+ "notes": "Some devices are only found when Home Assistant uses the host network \u2014 edit /opt/homeassistant/docker-compose.yml if you need that.",
+ "featured": true,
+ "compose": "services:\n  homeassistant:\n    image: ghcr.io/home-assistant/home-assistant:stable\n    container_name: homeassistant\n    restart: unless-stopped\n    ports:\n      - \"{PORT}:8123\"\n    environment:\n      TZ: \"{TZ}\"\n    volumes:\n      - {DATA}/config:/config\n      - /etc/localtime:/etc/localtime:ro\n"
+}

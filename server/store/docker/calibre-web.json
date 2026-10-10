@@ -1,0 +1,12 @@
+{
+ "id": "calibre-web",
+ "name": "Calibre-Web",
+ "category": "Media",
+ "icon": "calibre-web",
+ "port": 8083,
+ "path": "/",
+ "image": "lscr.io/linuxserver/calibre-web:latest",
+ "description": "Browse and read your Calibre ebook library.",
+ "notes": "Default login admin / admin123 \u2014 change it right away.",
+ "compose": "services:\n  calibre-web:\n    image: lscr.io/linuxserver/calibre-web:latest\n    container_name: calibre-web\n    restart: unless-stopped\n    ports:\n      - \"{PORT}:8083\"\n    environment:\n      PUID: \"1000\"\n      PGID: \"1000\"\n      TZ: \"{TZ}\"\n    volumes:\n      - {DATA}/config:/config\n      - /srv/books:/books\n"
+}

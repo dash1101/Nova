@@ -1,0 +1,11 @@
+{
+ "id": "homepage",
+ "name": "Homepage",
+ "category": "Dashboards",
+ "icon": "homepage",
+ "port": 3010,
+ "path": "/",
+ "image": "ghcr.io/gethomepage/homepage:latest",
+ "description": "A dashboard for all your services, with live widgets.",
+ "compose": "services:\n  homepage:\n    image: ghcr.io/gethomepage/homepage:latest\n    container_name: homepage\n    restart: unless-stopped\n    ports:\n      - \"{PORT}:3000\"\n    environment:\n      HOMEPAGE_ALLOWED_HOSTS: \"*\"\n    volumes:\n      - {DATA}/config:/app/config\n"
+}

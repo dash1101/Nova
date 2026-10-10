@@ -1,0 +1,14 @@
+{
+ "id": "transmission",
+ "name": "Transmission",
+ "category": "Downloads",
+ "icon": "transmission",
+ "port": 9091,
+ "path": "/",
+ "image": "lscr.io/linuxserver/transmission:latest",
+ "description": "A light, simple torrent client.",
+ "extra_ports": [
+  51413
+ ],
+ "compose": "services:\n  transmission:\n    image: lscr.io/linuxserver/transmission:latest\n    container_name: transmission\n    restart: unless-stopped\n    ports:\n      - \"{PORT}:9091\"\n      - \"51413:51413\"\n      - \"51413:51413/udp\"\n    environment:\n      PUID: \"1000\"\n      PGID: \"1000\"\n      TZ: \"{TZ}\"\n    volumes:\n      - {DATA}/config:/config\n      - /srv/downloads:/downloads\n"
+}

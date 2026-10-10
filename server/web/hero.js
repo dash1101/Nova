@@ -63,13 +63,18 @@ function ring(c, x, y, r, look, t, spin, isDark, reverse) {
     c.globalAlpha = 1; c.lineWidth = r * .12; c.beginPath(); c.arc(x, y, r, 0, 7); c.stroke();
   } else { c.strokeStyle = "#2c2c30"; c.lineWidth = r * .12; c.beginPath(); c.arc(x, y, r, 0, 7); c.stroke(); }
   c.fillStyle = isDark ? "#0e0e10" : "#1e1e22"; c.beginPath(); c.arc(x, y, r * .93, 0, 7); c.fill();
-  c.translate(x, y); c.rotate(spin * Math.PI / 180); c.fillStyle = "#3a3a40";
-  for (let b = 0; b < 7; b++) {
-    c.rotate(2 * Math.PI / 7); c.beginPath(); c.moveTo(0, -r * .2);
-    c.bezierCurveTo(r * .55, -r * .35, r * .62, -r * .78, r * .12, -r * .86);
-    c.bezierCurveTo(r * .25, -r * .55, r * .1, -r * .32, 0, -r * .2); c.fill();
+  c.translate(x, y); c.fillStyle = "#3a3a40";
+  // motion blur: a few fading copies just behind the blades, so the spin reads smooth
+  for (const [d, al] of spin ? [[-7.5, .12], [-5, .2], [-2.5, .35], [0, 1]] : [[0, 1]]) {
+    c.save(); c.globalAlpha = al; c.rotate((spin + d) * Math.PI / 180);
+    for (let b = 0; b < 7; b++) {
+      c.rotate(2 * Math.PI / 7); c.beginPath(); c.moveTo(0, -r * .2);
+      c.bezierCurveTo(r * .55, -r * .35, r * .62, -r * .78, r * .12, -r * .86);
+      c.bezierCurveTo(r * .25, -r * .55, r * .1, -r * .32, 0, -r * .2); c.fill();
+    }
+    c.restore();
   }
-  c.restore();
+  c.globalAlpha = 1; c.restore();
   c.fillStyle = "#2e2e33"; c.beginPath(); c.arc(x, y, r * .22, 0, 7); c.fill();
   c.strokeStyle = "#45454b"; c.lineWidth = r * .02; c.stroke();
 }
@@ -144,7 +149,7 @@ export function animate(canvas, kind, statusColor = () => "#3ecf6e") {
     if (canvas.width !== Math.round(w * dpr)) { canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr); }
     const c = canvas.getContext("2d"); c.setTransform(dpr, 0, 0, dpr, 0, 0); c.clearRect(0, 0, w, h);
     const look = fanLook(S.fan), t = Date.now() + (S.skew || 0);     // server time: the wave lines up with the real fan
-    const spin = reduce() ? 0 : (t % 1400) / 1400 * 360, reverse = localStorage.getItem("nova.fanReverse") === "true";
+    const spin = reduce() ? 0 : (t % 2200) / 2200 * 360, reverse = localStorage.getItem("nova.fanReverse") === "true";
     if (kind === "server") drawServer(c, w, h, look, t, spin, statusColor(), S.overview?.status?.metrics?.drive_states, reverse);
     else drawFan(c, w, h, look, t, spin, reverse);
     requestAnimationFrame(frame);

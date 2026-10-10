@@ -1,0 +1,13 @@
+{
+ "id": "paperless",
+ "name": "Paperless-ngx",
+ "category": "Documents",
+ "icon": "paperless-ngx",
+ "port": 8010,
+ "path": "/",
+ "image": "ghcr.io/paperless-ngx/paperless-ngx:latest",
+ "description": "Scan, search and file your paperwork.",
+ "notes": "Log in as admin; the password is in /opt/paperless/.nova-secrets (SECRET1). Drop files into /opt/paperless/data/consume to import them.",
+ "featured": true,
+ "compose": "services:\n  paperless:\n    image: ghcr.io/paperless-ngx/paperless-ngx:latest\n    container_name: paperless\n    restart: unless-stopped\n    ports:\n      - \"{PORT}:8000\"\n    environment:\n      PAPERLESS_REDIS: \"redis://paperless-redis:6379\"\n      PAPERLESS_TIME_ZONE: \"{TZ}\"\n      PAPERLESS_ADMIN_USER: \"admin\"\n      PAPERLESS_ADMIN_PASSWORD: \"{SECRET1}\"\n      PAPERLESS_SECRET_KEY: \"{SECRET2}\"\n    volumes:\n      - {DATA}/data:/usr/src/paperless/data\n      - {DATA}/media:/usr/src/paperless/media\n      - {DATA}/consume:/usr/src/paperless/consume\n    depends_on:\n      - paperless-redis\n  paperless-redis:\n    image: redis:7\n    container_name: paperless-redis\n    restart: unless-stopped\n"
+}

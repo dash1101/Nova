@@ -1,0 +1,12 @@
+{
+ "id": "stirling-pdf",
+ "name": "Stirling PDF",
+ "category": "Utilities",
+ "icon": "stirling-pdf",
+ "port": 8283,
+ "path": "/",
+ "image": "stirlingtools/stirling-pdf:latest",
+ "description": "Merge, split, convert and edit PDFs \u2014 all on your server.",
+ "featured": true,
+ "compose": "services:\n  stirling-pdf:\n    image: stirlingtools/stirling-pdf:latest\n    container_name: stirling-pdf\n    restart: unless-stopped\n    ports:\n      - \"{PORT}:8080\"\n    volumes:\n      - {DATA}/data:/usr/share/tessdata\n"
+}

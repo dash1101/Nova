@@ -84,16 +84,17 @@ private fun DrawScope.fanRing(c: Offset, r: Float, look: FanLook, tMs: Double, s
         }
     } else drawCircle(Color(0xFF2C2C30), r, c, style = Stroke(r * 0.12f))
     drawCircle(if (dark) Color(0xFF0E0E10) else Color(0xFF1E1E22), r * 0.93f, c)
-    rotate(spin, c) {
-        for (b in 0 until 7) rotate(b * 360f / 7, c) {
-            val p = Path().apply {
-                moveTo(c.x, c.y - r * 0.2f)
-                cubicTo(c.x + r * 0.55f, c.y - r * 0.35f, c.x + r * 0.62f, c.y - r * 0.78f, c.x + r * 0.12f, c.y - r * 0.86f)
-                cubicTo(c.x + r * 0.25f, c.y - r * 0.55f, c.x + r * 0.1f, c.y - r * 0.32f, c.x, c.y - r * 0.2f)
-            }
-            drawPath(p, Color(0xFF3A3A40))
-        }
+    // Motion blur: the blades drawn a few more times just behind where they are, fading out — so a
+    // 30 fps picture reads as a smooth spin instead of a stutter.
+    val blade = Path().apply {
+        moveTo(c.x, c.y - r * 0.2f)
+        cubicTo(c.x + r * 0.55f, c.y - r * 0.35f, c.x + r * 0.62f, c.y - r * 0.78f, c.x + r * 0.12f, c.y - r * 0.86f)
+        cubicTo(c.x + r * 0.25f, c.y - r * 0.55f, c.x + r * 0.1f, c.y - r * 0.32f, c.x, c.y - r * 0.2f)
     }
+    val trail = if (spin == 0f) listOf(0f to 1f) else listOf(-7.5f to 0.12f, -5f to 0.2f, -2.5f to 0.35f, 0f to 1f)
+    trail.forEach { (d, a) -> rotate(spin + d, c) {
+        for (b in 0 until 7) rotate(b * 360f / 7, c) { drawPath(blade, Color(0xFF3A3A40).copy(alpha = a)) }
+    } }
     drawCircle(Color(0xFF2E2E33), r * 0.22f, c)
     drawCircle(Color(0xFF45454B), r * 0.22f, c, style = Stroke(r * 0.02f))
 }
@@ -145,7 +146,7 @@ private fun activity(i: Int, tMs: Double, pct: Int = 9): Float {
         val w = size.width; val h = size.height
         val cw = (w * 0.56f).coerceAtMost(h * 0.62f); val ch = cw * 1.42f
         val left = (w - cw) / 2; val top = (h - ch) / 2
-        val spin = if (reduceMotion()) 0f else ((t % 1400.0) / 1400.0 * 360).toFloat()
+        val spin = if (reduceMotion()) 0f else ((t % 2200.0) / 2200.0 * 360).toFloat()
         drawOval(Color.Black.copy(alpha = if (dark) 0.6f else 0.18f), Offset(left + cw * 0.05f, top + ch * 0.97f), Size(cw * 0.9f, ch * 0.06f))
         drawRoundRect(Brush.verticalGradient(listOf(Color(0xFF4A4A52), Color(0xFF26262B), Color(0xFF1B1B1F)), top, top + ch),
             Offset(left, top), Size(cw, ch), CornerRadius(cw * 0.07f))
@@ -187,7 +188,7 @@ private fun activity(i: Int, tMs: Double, pct: Int = 9): Float {
     val t by serverClock(skewMs)
     Canvas(modifier) {
         val r = size.minDimension * 0.34f; val c = Offset(size.width / 2, size.height / 2)
-        val spin = if (reduceMotion()) 0f else ((t % 1400.0) / 1400.0 * 360).toFloat()
+        val spin = if (reduceMotion()) 0f else ((t % 2200.0) / 2200.0 * 360).toFloat()
         if (look.on) drawCircle(Brush.radialGradient(listOf(ringGlow(look, t, reverse).copy(alpha = 0.2f + 0.25f * look.brightness), Color.Transparent), c, r * 1.9f), r * 1.9f, c)
         fanRing(c, r, look, t, spin, dark, reverse)
     }

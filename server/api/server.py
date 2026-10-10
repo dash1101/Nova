@@ -38,7 +38,7 @@ try:                       # optional module: fan/case lighting (modules/fan-gig
 except ImportError:
     nova_rgb = None
 
-API_VERSION = "0.5.15-alpha"
+API_VERSION = "0.5.16-alpha"
 CONFIG = "/etc/nova-api/config.json"
 DATA = "/var/lib/nova-api"
 DEVICES = f"{DATA}/devices.json"
@@ -53,6 +53,13 @@ LABS = {"cloudflare_sync": {"name": "Cloudflare auto-setup", "about": "Put an ap
         "auto_updates": {"name": "Weekly container updates", "about": "Once a week, Nova updates the containers that have a newer version. One that won't start on its new version is put back on the old one."},
         "image_cleanup": {"name": "Clean up old images", "about": "See the container images nothing uses anymore (old versions left behind by updates) and remove them to free up space. The versions Nova keeps to roll back to stay."},
         "wake_on_lan": {"name": "Wake-on-LAN", "about": "Turn on other computers on your network from Nova: the server sends them a wake-up packet."}}
+# Settings → Features: parts of Nova you can switch off (another program does it, or you don't want it).
+# Turning one off here never turns on anything the server's own config (config.json) switched off.
+FEATURES = {"lighting": {"name": "Nova controls the lights", "about": "Off: Nova leaves the RGB controller alone — use this if the board maker's software or OpenRGB runs the lights."},
+            "terminal": {"name": "Server terminal", "about": "A terminal on the server from the app and browser (as your normal account)."},
+            "files": {"name": "File manager", "about": "Browse and change files on the server from the app and browser."},
+            "discovery": {"name": "Found on the network", "about": "Answer the app's search for Nova servers on your home network."}}
+def feat_on(k): return load_json(SETTINGS, {}).get("features", {}).get(k) is not False
 WOL = f"{DATA}/wol.json"                         # Labs → Wake-on-LAN: [{id, name, mac}]
 LABS_STATE = f"{DATA}/labs-state.json"           # written by labs.py (root): last weekly update, …
 RAW_BODY_PATHS = ("/api/v1/files/upload", "/api/v1/files/save")
@@ -90,6 +97,15 @@ def valid_location(v):
     return {"lat": round(lat, 2), "lon": round(lon, 2), "name": name}     # ~1 km: plenty for the sun
 
 _apps_cache = {"t": 0, "apps": []}
+def SITE_ALLOWS(k): return CFG.get(k, True) is not False          # what config.json (root) allows at all
+
+_docker = {"t": 0, "v": False}
+def docker_present():
+    """Is Docker installed and running? (Nova works without it: no containers, the rest is the same.)"""
+    if time.time() - _docker["t"] > 60:
+        _docker.update(t=time.time(), v=os.path.exists("/var/run/docker.sock") or os.path.exists("/run/docker.sock"))
+    return _docker["v"]
+
 def app_list():
     """Detected web apps (cached 30 s) + your custom links, with your changes applied."""
     if time.time() - _apps_cache["t"] > 30:
@@ -548,6 +564,7 @@ def needs_stepup(method, parts):
     if parts == ["apps", "command"]: return True                           # what a command app runs: fingerprint
     if parts in (["cloudflare", "token"], ["cloudflare", "publish"], ["cloudflare", "remove"]): return True     # changes your Cloudflare account
     if parts[:1] == ["containers"] and parts[-1:] == ["remove-custom"]: return True
+    if parts == ["features"]: return True                                 # switching parts of Nova on/off: fingerprint
     if parts == ["labs", "images", "clean"]: return True                    # deletes images: fingerprint
     if parts == ["notify", "discord"]: return True                         # where alerts get sent: fingerprint
     if parts[:1] == ["backups"] and len(parts) == 3 and parts[2] == "restore": return True
@@ -967,6 +984,22 @@ class Handler(BaseHTTPRequestHandler):
 
     def dispatch(self, method, path, data, dev):
         parts = [p for p in path.split("/") if p][2:]       # after /api/v1
+        if parts[:1] == ["files"] and not feat_on("files"): return 403, {"error": "the file manager is turned off (Settings → Features)"}
+        if parts == ["terminal"] and not feat_on("terminal"): return 403, {"error": "the server terminal is turned off (Settings → Features)"}
+        if parts[:1] in (["fan"], ["lights"]) and nova_rgb and not feat_on("lighting") and method != "GET":
+            return 409, {"error": "Nova isn't controlling the lights (Settings → Features)"}
+        if parts == ["features"]:
+            if method == "POST":
+                if role_of(dev) != "admin": return 403, {"error": "admins only"}
+                with lock:
+                    st = load_json(SETTINGS, {}); fs = st.get("features", {})
+                    for k, v in data.items():
+                        if k in FEATURES: fs[k] = bool(v)
+                    st["features"] = fs; save_json(SETTINGS, st)
+                if nova_rgb and data.get("lighting") is True:                 # back in charge: put your setting back on the lights
+                    with rgb_lock: st2 = nova_rgb.load(); nova_rgb.apply(st2, nova_rgb.status_override(st2))
+            avail = {"lighting": nova_rgb is not None, "terminal": SITE_ALLOWS("host_shell"), "files": SITE_ALLOWS("file_manager"), "discovery": bool(CFG.get("discovery", True))}
+            return 200, {"features": [{"id": k, **v, "on": feat_on(k), "available": avail.get(k, True)} for k, v in FEATURES.items()]}
         q = dict(x.split("=", 1) for x in self.path.split("?", 1)[1].split("&") if "=" in x) if "?" in self.path else {}
 
         # ── identity / device ──
@@ -1159,12 +1192,13 @@ class Handler(BaseHTTPRequestHandler):
                          "server": {"name": os.uname().nodename, "display_name": cfg.get("display_name", ""),
                                     "accent": cfg.get("accent", ""), "board": board_name(), "cpu": cpu,
                                     "ram_gb": round(mem.get("MemTotal", 0) / 1048576), "kernel": os.uname().release,
-                                    "uptime_s": int(float(open("/proc/uptime").read().split()[0]))},
+                                    "uptime_s": int(float(open("/proc/uptime").read().split()[0])), "tailnet_host": TAILNET_HOST},
                          "status": {k: st.get(k) for k in ("level", "headline", "status", "active_count", "active", "metrics", "updated_local")},
                          "fan": fan, "containers": {"running": sum(1 for c in cl if c["state"] == "running"), "total": len(cl)},
                          "tasks": [{"title": t.get("title", ""), "pct": t.get("pct", 0)} for t in live_tasks() if t.get("state") == "running"],
                          # What this server has, so the app only shows what works here.
-                         "features": {"lighting": nova_rgb is not None, "monitor": os.path.exists(STATUS),
+                         "features": {"lighting": nova_rgb is not None and feat_on("lighting"), "lighting_installed": nova_rgb is not None, "monitor": os.path.exists(STATUS),
+                                      "terminal": feat_on("terminal"), "files": feat_on("files"), "docker": docker_present(),
                                       "backup": True, "legacy_backup": os.path.exists("/usr/local/bin/nova-backup"), "storage": True, "diagnostics": True, "store": os.path.isdir(f"{os.path.dirname(os.path.abspath(__file__))}/store"),
                                       "ssh": bool(SSH_HOSTS), "lan_tls": True}}
         if method == "GET" and parts == ["events", "wait"]:
@@ -1618,7 +1652,20 @@ class Handler(BaseHTTPRequestHandler):
 
         # ── app stores ──
         if method == "GET" and parts == ["store"]:
-            rc, res = helper("store-list", timeout=60); return 200, res
+            rc, res = helper("store-list", timeout=60); return 200, {**res, "docker": docker_present()}
+        if method == "GET" and parts == ["store", "hub"]:
+            # Docker Hub search, through the server (so the phone only talks to Nova). Results go to "Your own container".
+            if role_of(dev) != "admin": return 403, {"error": "admins only"}
+            text = urllib.parse.unquote_plus(q.get("q", ""))[:60].strip()
+            if not text: return 200, {"results": []}
+            try:
+                req = urllib.request.Request("https://hub.docker.com/v2/search/repositories/?page_size=25&query=" + urllib.parse.quote(text), headers={"User-Agent": "Nova"})
+                with urllib.request.urlopen(req, timeout=8) as r: j = json.loads(r.read(2_000_000))
+            except Exception: return 502, {"error": "Docker Hub didn't answer — try again in a moment"}
+            out = [{"image": x.get("repo_name", ""), "description": (x.get("short_description") or "")[:200], "stars": x.get("star_count", 0),
+                    "official": bool(x.get("is_official")), "pulls": x.get("pull_count", 0)} for x in j.get("results", []) if re.fullmatch(r"[a-z0-9][a-z0-9._/-]{0,200}", x.get("repo_name", ""))]
+            out.sort(key=lambda x: (not x["official"], -x["stars"]))          # the well-known ones first
+            return 200, {"results": out}
         if method == "POST" and len(parts) == 3 and parts[0] == "store" and parts[2] in ("install", "uninstall"):
             rc, res = helper("task-start", f"store-{parts[2]}", json.dumps({"id": parts[1]})); return (202 if rc == 0 else 400), ({"task": res.get("id"), **res} if rc == 0 else res)
         if method == "GET" and parts == ["programs"]:
@@ -1793,7 +1840,7 @@ def discovery_responder():
     while True:
         try:
             msg, (ip, port) = sk.recvfrom(256)
-            if not msg.startswith(b"NOVA?") or ipaddress.ip_address(ip) not in LAN: continue
+            if not msg.startswith(b"NOVA?") or ipaddress.ip_address(ip) not in LAN or not feat_on("discovery"): continue
             now = time.time()
             if now - recent.get(ip, 0) < 0.3: continue
             recent[ip] = now

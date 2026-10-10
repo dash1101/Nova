@@ -63,6 +63,19 @@ val PLACES: List<Triple<String, String, Pair<ImageVector, Route>>> = listOf(
     Triple("Servers", "multiple servers add switch", Icons.Rounded.Lan to Route.Servers),
     Triple("Setup guide", "help install how to", Icons.Rounded.Help to Route.SetupGuide),
     Triple("About", "version license", Icons.Rounded.Info to Route.About),
+    Triple("Labs", "labs experimental beta features try new", Icons.Rounded.Science to Route.Labs),
+    Triple("Cloudflare auto-setup", "cloudflare tunnel domain dns access remote from anywhere public address publish app labs", Icons.Rounded.Cloud to Route.Labs),
+    Triple("Crash-loop guard", "crash loop restart restarting container keeps crashing stop guard labs", Icons.Rounded.Shield to Route.Labs),
+    Triple("Weekly container updates", "automatic updates weekly schedule containers images auto update labs", Icons.Rounded.Update to Route.Labs),
+    Triple("Clean up old images", "docker images prune free space disk cleanup old versions labs", Icons.Rounded.CleaningServices to Route.Labs),
+    Triple("Wake-on-LAN", "wake on lan wol turn on computer pc magic packet labs", Icons.Rounded.PowerSettingsNew to Route.Labs),
+    Triple("App icon", "app icon launcher icon home screen outline glass black white material you color", Icons.Rounded.Palette to Route.Appearance),
+    Triple("Server terminal", "terminal shell bash console command line root sudo", Icons.Rounded.Terminal to Route.Ssh),
+    Triple("Approve a browser or watch", "approve browser watch wear code pair computer", Icons.Rounded.Watch to Route.Devices),
+    Triple("Add a server", "add server another server pair new server", Icons.Rounded.AddCircle to Route.Servers),
+    Triple("Troubleshoot a container", "troubleshoot crash restart loop rollback previous version recreate container fix", Icons.Rounded.Build to Route.Containers),
+    Triple("Features", "features turn off disable lighting control rgb software openrgb terminal file manager discovery", Icons.Rounded.Tune to Route.Features),
+    Triple("Install Docker", "docker install containers engine compose", Icons.Rounded.ViewInAr to Route.ProgramSearch),
 )
 
 fun searchNova(app: AppState, q0: String, data: Map<String, org.json.JSONObject?>): List<Hit> {

@@ -1,0 +1,12 @@
+{
+ "id": "photoprism",
+ "name": "PhotoPrism",
+ "category": "Photos",
+ "icon": "photoprism",
+ "port": 2342,
+ "path": "/",
+ "image": "photoprism/photoprism:latest",
+ "description": "Browse, search and organize your photos with AI tagging.",
+ "notes": "Log in as admin; the password is in /opt/photoprism/.nova-secrets (SECRET1).",
+ "compose": "services:\n  photoprism:\n    image: photoprism/photoprism:latest\n    container_name: photoprism\n    restart: unless-stopped\n    ports:\n      - \"{PORT}:2342\"\n    environment:\n      PHOTOPRISM_ADMIN_USER: \"admin\"\n      PHOTOPRISM_ADMIN_PASSWORD: \"{SECRET1}\"\n      PHOTOPRISM_DATABASE_DRIVER: \"sqlite\"\n      PHOTOPRISM_SITE_URL: \"http://localhost:2342/\"\n    volumes:\n      - {DATA}/storage:/photoprism/storage\n      - /srv/photos:/photoprism/originals\n"
+}

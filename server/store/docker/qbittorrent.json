@@ -1,0 +1,15 @@
+{
+ "id": "qbittorrent",
+ "name": "qBittorrent",
+ "category": "Downloads",
+ "icon": "qbittorrent",
+ "port": 8085,
+ "path": "/",
+ "image": "lscr.io/linuxserver/qbittorrent:latest",
+ "description": "A torrent client with a clean web interface.",
+ "notes": "The first password is printed in its log (Containers \u2192 qbittorrent \u2192 Logs).",
+ "extra_ports": [
+  6881
+ ],
+ "compose": "services:\n  qbittorrent:\n    image: lscr.io/linuxserver/qbittorrent:latest\n    container_name: qbittorrent\n    restart: unless-stopped\n    ports:\n      - \"{PORT}:8085\"\n      - \"6881:6881\"\n      - \"6881:6881/udp\"\n    environment:\n      PUID: \"1000\"\n      PGID: \"1000\"\n      TZ: \"{TZ}\"\n      WEBUI_PORT: \"8085\"\n    volumes:\n      - {DATA}/config:/config\n      - /srv/downloads:/downloads\n"
+}

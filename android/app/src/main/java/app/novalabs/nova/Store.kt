@@ -1,5 +1,6 @@
 package app.novalabs.nova
 
+import kotlinx.coroutines.delay
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.background
@@ -29,10 +30,20 @@ private fun storeIcon(name: String): ImageVector = when (name) {
     "article" -> Icons.AutoMirrored.Rounded.Article; "code" -> Icons.Rounded.Code; "terminal" -> Icons.Rounded.Terminal
     "build" -> Icons.Rounded.Build; "draw" -> Icons.Rounded.Draw; else -> Icons.Rounded.Apps
 }
+/** An app's icon: its own if we have one, else one for its category. */
+private fun storeIcon(name: String, category: String): ImageVector = storeIcon(name).takeIf { it != Icons.Rounded.Apps } ?: when (category) {
+    "Media" -> Icons.Rounded.Movie; "Photos" -> Icons.Rounded.PhotoLibrary; "Downloads" -> Icons.Rounded.Download; "Smart home" -> Icons.Rounded.Home
+    "Home" -> Icons.Rounded.Kitchen; "Documents" -> Icons.Rounded.Description; "Files" -> Icons.Rounded.FolderOpen; "Utilities" -> Icons.Rounded.Build
+    "Productivity" -> Icons.Rounded.EditNote; "Dashboards" -> Icons.Rounded.Dashboard; "AI" -> Icons.Rounded.AutoAwesome; "Privacy" -> Icons.Rounded.Shield
+    "Monitoring" -> Icons.Rounded.MonitorHeart; "Notifications" -> Icons.Rounded.Notifications; "Network" -> Icons.Rounded.Lan; "Backup" -> Icons.Rounded.Backup
+    "Security" -> Icons.Rounded.Key; "Development" -> Icons.Rounded.Code; "Management" -> Icons.Rounded.ViewInAr; else -> Icons.Rounded.Apps
+}
 private val CAT_COLORS = mapOf("Monitoring" to Color(0xFF3ECF6E), "Management" to Color(0xFF3E91FF), "Files" to Color(0xFFFFB020),
     "Media" to Color(0xFFFF5A8A), "Security" to Color(0xFFBF5AF2), "Development" to Color(0xFF00C7BE), "Utilities" to Color(0xFFFF9500),
     "Backup" to Color(0xFF5E5CE6), "Network" to Color(0xFF64D2FF), "Shell" to Color(0xFF8E8E93), "Services" to Color(0xFF3E91FF),
-    "Power" to Color(0xFFFFCC00))
+    "Power" to Color(0xFFFFCC00), "Photos" to Color(0xFFFF9F0A), "Downloads" to Color(0xFF30D158), "Smart home" to Color(0xFF64D2FF),
+    "Home" to Color(0xFFFFB020), "Documents" to Color(0xFF8E8E93), "Productivity" to Color(0xFF5E5CE6), "Dashboards" to Color(0xFF3E91FF),
+    "AI" to Color(0xFFBF5AF2), "Privacy" to Color(0xFF3ECF6E), "Notifications" to Color(0xFFFF453A), "Editor's choice" to Color(0xFF3E91FF))
 
 private fun storeItem(id: String) = Cache["/api/v1/store"]?.optJSONArray("items")?.let { a ->
     (0 until a.length()).map { a.getJSONObject(it) }.firstOrNull { it.optString("id") == id } }
@@ -47,49 +58,89 @@ private fun storeItem(id: String) = Cache["/api/v1/store"]?.optJSONArray("items"
     var tab by remember { mutableIntStateOf(0) }
     val appsLive = live(app, "/api/v1/store"); val progsLive = live(app, "/api/v1/programs")
     val apps = appsLive.value?.optJSONArray("items"); val progs = progsLive.value?.optJSONArray("items")
+    val docker = appsLive.value?.optBoolean("docker", true) ?: true
     var busy by remember { mutableStateOf<String?>(null) }
+    var q by remember { mutableStateOf("") }
+    var hub by remember { mutableStateOf<List<JSONObject>?>(null) }; var hubBusy by remember { mutableStateOf(false) }
+    var found by remember { mutableStateOf<List<JSONObject>?>(null) }      // the whole apt catalog, for the Programs search
+    var round by remember { mutableIntStateOf(0) }
+    LaunchedEffect(q, tab, round) {
+        hub = null
+        if (tab == 1 && q.trim().length >= 2) { delay(350); found = runCatching { app.api.get("/api/v1/programs/search?q=${android.net.Uri.encode(q.trim())}").optJSONArray("items").objs() }.getOrNull() }
+        else found = null
+    }
+    fun programAction(p: JSONObject, reload: () -> Unit) {
+        val pkg = p.optString("pkg"); val inst = p.optBoolean("installed"); busy = pkg
+        app.act { try {
+            val j = app.waitTask(app.stepUp("${if (inst) "Remove" else "Install"} ${p.optString("name").ifEmpty { pkg }}", "POST", "/api/v1/programs/$pkg/${if (inst) "remove" else "install"}").optString("task"))
+            app.toast(if (j.optString("state") == "done") "${p.optString("name").ifEmpty { pkg }} ${if (inst) "removed" else "installed"}" else "Failed: ${j.optString("error")}")
+            reload()
+        } finally { busy = null } }
+    }
+    @Composable fun ProgramRow(p: JSONObject, reload: () -> Unit) {
+        val pkg = p.optString("pkg"); val inst = p.optBoolean("installed")
+        Row1(p.optString("name").ifEmpty { pkg }, p.optString("description")) {
+            if (busy == pkg) OneSpinner()
+            else if ((inst && (p.optBoolean("protected") || p.optBoolean("essential"))) || !app.isAdmin) Text(if (inst) "Installed" else "", color = N.sub, fontSize = 14.sp)
+            else PillButton(if (inst) "Remove" else "Get", color = if (inst) N.red else N.blue) { programAction(p, reload) }
+        }
+    }
     TabOrPage(app, "App store") {
-        Text("Hand-picked for your server. Installs run on Nova and show up in Containers.", color = N.sub, fontSize = 15.sp,
-            modifier = Modifier.padding(start = 26.dp, end = 26.dp, top = 8.dp, bottom = 12.dp))
-        Segmented(listOf("Apps", "Programs"), tab) { tab = it }
+        Text(if (tab == 0) "Containers run in Docker, each in its own box with its own folder in /opt." else "Programs install straight onto the server with its package manager (apt), no Docker needed.",
+            color = N.sub, fontSize = 15.sp, modifier = Modifier.padding(start = 26.dp, end = 26.dp, top = 8.dp, bottom = 12.dp))
+        Segmented(listOf("Containers", "Programs"), tab) { tab = it; q = "" }
+        Box(Modifier.padding(horizontal = Space.gutter, vertical = 8.dp)) {
+            OneTextField(q, { q = it.take(60) }, if (tab == 0) "Search containers" else "Search every program", Modifier.fillMaxWidth()) }
         if (tab == 0) {
-            val items = apps?.let { a -> (0 until a.length()).map { a.getJSONObject(it) } } ?: emptyList()
-            val installed = items.filter { it.optBoolean("installed") }
-            if (installed.isNotEmpty()) { SectionLabel("Installed"); Group {
-                installed.forEachIndexed { i, it -> if (i > 0) RowDivider(); StoreRow(app, it) } } }
-            items.filterNot { it.optBoolean("installed") }.groupBy { it.optString("category") }.forEach { (cat, list) ->
-                SectionLabel(cat); Group { list.forEachIndexed { i, it -> if (i > 0) RowDivider(); StoreRow(app, it) } }
+            val items = apps.objs()
+            if (!docker) Group {
+                Row1("Docker isn't installed", "Containers need it. Install Docker and Compose from your package manager — Nova sets them up to start with the server.", false, Icons.Rounded.ViewInAr, N.amber)
+                if (app.isAdmin) { RowDivider(); Row1("Install Docker", null, false, Icons.Rounded.Download, onClick = { programAction(JSONObject().put("pkg", "docker.io").put("name", "Docker"), { appsLive.value = null; app.act { appsLive.value = app.api.get("/api/v1/store") } }) }) {
+                    if (busy == "docker.io") OneSpinner() } }
             }
-            if (apps == null) Text("Loading…", color = N.sub, modifier = Modifier.padding(30.dp))
-        } else {
-            val items = progs?.let { a -> (0 until a.length()).map { a.getJSONObject(it) } } ?: emptyList()
-            if (app.isAdmin) Group { Row1("Find any program", "Search everything in your system's package manager (apt)", true, Icons.Rounded.Search, onClick = { app.go(Route.ProgramSearch) }) }
-            items.groupBy { it.optString("category") }.forEach { (cat, list) ->
-                SectionLabel(cat)
+            val ql = q.trim().lowercase()
+            if (ql.isEmpty()) {
+                val installed = items.filter { it.optBoolean("installed") }
+                val featured = items.filter { it.optBoolean("featured") && !it.optBoolean("installed") }
+                if (installed.isNotEmpty()) { SectionLabel("Installed"); Group { installed.forEachIndexed { i, it -> if (i > 0) RowDivider(); StoreRow(app, it) } } }
+                if (featured.isNotEmpty()) { SectionLabel("Editor's choice"); Group { featured.forEachIndexed { i, it -> if (i > 0) RowDivider(); StoreRow(app, it) } } }
+                items.filterNot { it.optBoolean("installed") || it.optBoolean("featured") }.groupBy { it.optString("category") }.toSortedMap().forEach { (cat, list) ->
+                    SectionLabel(cat); Group { list.forEachIndexed { i, it -> if (i > 0) RowDivider(); StoreRow(app, it) } }
+                }
+                if (apps == null) Text("Loading…", color = N.sub, modifier = Modifier.padding(30.dp))
+            } else {
+                val m = items.filter { listOf("name", "description", "category", "image").any { k -> it.optString(k).lowercase().contains(ql) } }
+                if (m.isNotEmpty()) { SectionLabel("In the store"); Group { m.forEachIndexed { i, it -> if (i > 0) RowDivider(); StoreRow(app, it) } } }
+                SectionLabel("Docker Hub")
                 Group {
-                    list.forEachIndexed { i, p ->
-                        if (i > 0) RowDivider()
-                        val pkg = p.optString("pkg"); val inst = p.optBoolean("installed")
-                        Row1(p.optString("name"), p.optString("description")) {
-                            if (busy == pkg) OneSpinner()
-                            else if ((inst && p.optBoolean("protected")) || !app.isAdmin) Text(if (inst) "Installed" else "", color = N.sub, fontSize = 14.sp)
-                            else PillButton(if (inst) "Remove" else "Get", color = if (inst) N.red else N.blue) {
-                                busy = pkg
-                                app.act {
-                                    try {
-                                        val j = app.waitTask(app.stepUp("${if (inst) "Remove" else "Install"} ${p.optString("name")}", "POST",
-                                            "/api/v1/programs/$pkg/${if (inst) "remove" else "install"}").optString("task"))
-                                        app.toast(if (j.optString("state") == "done") "${p.optString("name")} ${if (inst) "removed" else "installed"}"
-                                                  else "Failed: ${j.optString("error")}")
-                                        progsLive.value = app.api.get("/api/v1/programs")
-                                    } finally { busy = null }
-                                }
-                            }
-                        }
-                    }
+                    val h = hub
+                    if (h == null) Row1(if (hubBusy) "Searching Docker Hub…" else "Search Docker Hub for “${q.trim()}”", "Any public image — you set its ports and folders", true, Icons.Rounded.TravelExplore,
+                        enabled = app.isAdmin && !hubBusy, onClick = { hubBusy = true; app.act { try { hub = app.api.get("/api/v1/store/hub?q=${android.net.Uri.encode(q.trim())}").optJSONArray("results").objs() } finally { hubBusy = false } } })
+                    else if (h.isEmpty()) Row1("Nothing on Docker Hub for “${q.trim()}”")
+                    else h.forEachIndexed { i, r -> if (i > 0) RowDivider()
+                        Row1(r.optString("image") + if (r.optBoolean("official")) "  ·  official" else "", listOfNotNull(r.optString("description").ifEmpty { null }, "★ ${r.optInt("stars")}").joinToString(" · "), false, Icons.Rounded.ViewInAr,
+                            onClick = { ContainerHint.image = r.optString("image"); app.go(Route.NewContainer) }) }
                 }
             }
-            if (progs == null) Text("Loading…", color = N.sub, modifier = Modifier.padding(30.dp))
+        } else {
+            val ql = q.trim()
+            if (ql.length >= 2) {
+                val f = found
+                SectionLabel("Programs")
+                Group {
+                    if (f == null) Row1("Searching…")
+                    else if (f.isEmpty()) Row1("Nothing called “$ql”")
+                    else f.forEachIndexed { i, p -> if (i > 0) RowDivider(); ProgramRow(p) { round++ } }
+                }
+            } else {
+                val items = progs.objs()
+                if (app.isAdmin) Text("Type to search everything your package manager offers. These are our picks:", color = N.sub, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 30.dp, vertical = 4.dp))
+                items.groupBy { it.optString("category") }.forEach { (cat, list) ->
+                    SectionLabel(cat)
+                    Group { list.forEachIndexed { i, p -> if (i > 0) RowDivider(); ProgramRow(p) { app.act { progsLive.value = app.api.get("/api/v1/programs") } } } }
+                }
+                if (progs == null) Text("Loading…", color = N.sub, modifier = Modifier.padding(30.dp))
+            }
         }
         Spacer(Modifier.height(130.dp))
     }
@@ -98,7 +149,7 @@ private fun storeItem(id: String) = Cache["/api/v1/store"]?.optJSONArray("items"
 @Composable private fun StoreRow(app: AppState, it: JSONObject) {
     val color = CAT_COLORS[it.optString("category")] ?: N.blue
     Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-        AppIcon(storeIcon(it.optString("icon")), color)
+        AppIcon(storeIcon(it.optString("icon"), it.optString("category")), color)
         Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
             Text(it.optString("name"), color = N.text, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
@@ -134,7 +185,7 @@ private fun storeItem(id: String) = Cache["/api/v1/store"]?.optJSONArray("items"
     val color = CAT_COLORS[it.optString("category")] ?: N.blue
     Page(it.optString("name"), app::back) {
         Column(Modifier.fillMaxWidth().padding(vertical = 20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            AppIcon(storeIcon(it.optString("icon")), color, 110)
+            AppIcon(storeIcon(it.optString("icon"), it.optString("category")), color, 110)
             Spacer(Modifier.height(14.dp))
             Text(it.optString("category"), color = color, fontWeight = FontWeight.SemiBold)
             Text(job ?: if (inst) "Installed · ${it.optString("state")}" else "Not installed", color = N.sub)

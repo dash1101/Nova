@@ -1,0 +1,11 @@
+{
+ "id": "homebox",
+ "name": "Homebox",
+ "category": "Home",
+ "icon": "homebox",
+ "port": 7745,
+ "path": "/",
+ "image": "ghcr.io/sysadminsmedia/homebox:latest",
+ "description": "Keep track of everything you own: where it is, receipts, warranties.",
+ "compose": "services:\n  homebox:\n    image: ghcr.io/sysadminsmedia/homebox:latest\n    container_name: homebox\n    restart: unless-stopped\n    ports:\n      - \"{PORT}:7745\"\n    environment:\n      TZ: \"{TZ}\"\n    volumes:\n      - {DATA}/data:/data\n"
+}

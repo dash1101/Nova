@@ -64,7 +64,36 @@ def main():
     cfg.update(lan_host=host, lan_subnet=subnet, lan_url=f"https://{host}:8495", port=cfg.get("port", 8095),
                tls_port=cfg.get("tls_port", 8495), bind=["127.0.0.1"])
 
-    step(2, "Tailscale (optional)")
+    step(2, "Extras (all optional)")
+    print(f"  {D}Nova works without these; each one adds something. Say no and add it later with nova-setup.{X}")
+    if not (shutil.which("docker") and shutil.which("docker-compose") or shutil.which("docker") and sh("docker", "compose", "version")[0] == 0):
+        if yes("Install Docker (for containers and the container app store)?", not YES):
+            env = {**os.environ, "DEBIAN_FRONTEND": "noninteractive"}
+            pk = ["docker.io"] + [p for p in ("docker-compose-v2", "docker-compose") if sh("apt-cache", "show", p)[0] == 0][:1]
+            r = subprocess.run(["apt-get", "install", "-y", *pk], env=env)
+            if r.returncode == 0: sh("systemctl", "enable", "--now", "docker"); print(f"  {G}✓{X} Docker installed")
+            else: print(f"  {Y}Docker didn't install — try: sudo apt-get install {' '.join(pk)}{X}")
+    else: print(f"  {G}✓{X} Docker is installed")
+    if not shutil.which("tailscale"):
+        if yes("Install Tailscale (reach Nova and your apps from anywhere, privately)?", False):
+            r = subprocess.run("curl -fsSL https://tailscale.com/install.sh | sh", shell=True)
+            if r.returncode == 0:
+                print(f"  {G}✓{X} Tailscale installed. Sign in (a link appears):")
+                subprocess.run(["tailscale", "up"])
+            else: print(f"  {Y}Tailscale didn't install — see tailscale.com/download/linux{X}")
+    if not shutil.which("cloudflared"):
+        if yes("Install cloudflared (Cloudflare Tunnel: Nova on your own domain, no open ports)?", False):
+            cmds = ["mkdir -p --mode=0755 /usr/share/keyrings",
+                    "curl -fsSL https://pkg.cloudflare.com/cloudflare-main.gpg -o /usr/share/keyrings/cloudflare-main.gpg",
+                    "echo 'deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg] https://pkg.cloudflare.com/cloudflared any main' > /etc/apt/sources.list.d/cloudflared.list",
+                    "apt-get update -qq", "DEBIAN_FRONTEND=noninteractive apt-get install -y cloudflared"]
+            if all(subprocess.run(c, shell=True).returncode == 0 for c in cmds):
+                print(f"  {G}✓{X} cloudflared installed.")
+                tok = ask("Tunnel token (Cloudflare Zero Trust → Networks → Tunnels → your tunnel → install; Enter to skip)", "", secret=True)
+                if tok: print(f"  {G}✓{X} Tunnel connected" if sh("cloudflared", "service", "install", tok)[0] == 0 else f"  {Y}Couldn't install the tunnel service — check the token{X}")
+            else: print(f"  {Y}cloudflared didn't install — see developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads{X}")
+
+    step(3, "Tailscale (optional)")
     rc, ts = sh("tailscale", "ip", "-4")
     if rc == 0 and ts:
         print(f"  Tailscale is running here ({ts.splitlines()[0]}).")
@@ -74,13 +103,13 @@ def main():
     else:
         print(f"  {D}Not installed — that's fine, Nova doesn't need it.{X}")
 
-    step(3, "Terminal (SSH from the app)")
+    step(4, "Terminal (SSH from the app)")
     user = ask("Account the Terminal logs in as", cfg.get("ssh_user") or os.environ.get("SUDO_USER", ""))
     hosts = [{"name": "Home network", "host": host, "port": 22}]
     if cfg.get("tailnet_host"): hosts.append({"name": "Tailscale", "host": cfg["tailnet_host"], "port": 22})
     cfg.update(ssh_user=user, ssh_hosts=hosts)
 
-    step(4, "Remote access without a VPN (optional, Cloudflare Access)")
+    step(5, "Remote access without a VPN (optional, Cloudflare Access)")
     print(f"  {D}See docs/REMOTE.md for the 5-minute Cloudflare part. You can do this later by running nova-setup again.{X}")
     if yes("Set up remote access now?", bool(cfg.get("remote_url"))):
         cfg["remote_url"] = ask("Public address (https://…)", cfg.get("remote_url", ""))
@@ -91,13 +120,13 @@ def main():
     else:
         for k in ("remote_url", "cf_access_team", "cf_access_aud", "cf_client_id", "cf_client_secret"): cfg.setdefault(k, "")
 
-    step(5, "Storage safety")
+    step(6, "Storage safety")
     print(f"  {D}Mounts listed here can never be unmounted from the app.{X}")
     prot = ask("Protected mounts (comma-separated)", ",".join(cfg.get("protected_mounts", ["/", "/boot", "/boot/efi"])))
     cfg["protected_mounts"] = sorted({p.strip() for p in prot.split(",") if p.strip()} | {"/", "/boot", "/boot/efi"})
     cfg.setdefault("drive_roles", {})
 
-    step(6, "Updates")
+    step(7, "Updates")
     print(f"  {D}Nova only installs releases signed by the Nova release key. Where should it look?{X}")
     print(f"  {D}  github:owner/repo  — the project's GitHub releases   ·   a folder — releases you copy over   ·   blank — manual only{X}")
     cfg["update_source"] = ask("Update source", cfg.get("update_source", ""))
@@ -109,7 +138,7 @@ def main():
     os.chown(tmp, 0, gid); os.chmod(tmp, 0o640); os.replace(tmp, CONF)
     print(f"\n  {G}✓{X} Saved {CONF} {D}(root:nova-api, 640){X}")
 
-    step(7, "Location (for sunrise & sunset)")
+    step(8, "Location (for sunrise & sunset)")
     print(f"  {D}Light schedules can start at sunrise or sunset. Nova works them out here, offline, from this.{X}")
     sys.path.insert(0, "/usr/lib/nova-api")
     try: from nova_tz import tz_location; tzl = tz_location()
@@ -137,7 +166,7 @@ def main():
         except KeyError: safeio.write_json(settings_f, settings, 0o640, indent=1)
         print(f"  {G}✓{X} Saved — change it any time in the app (Settings → Server, or Lighting → Schedules)")
 
-    step(8, "Alerts on Discord (optional)")
+    step(9, "Alerts on Discord (optional)")
     print(f"  {D}Alerts always show in the app. Discord is extra: in a channel's settings → Integrations → Webhooks → Copy URL.{X}")
     ap = "/etc/nova-alerts/config.json"
     try: ac = json.load(open(ap))
@@ -151,7 +180,7 @@ def main():
             print(f"  {G}✓{X} Saved — change it any time in the app (Notifications → Discord)")
         else: print(f"  {Y}That isn't a Discord webhook link — skipped.{X}")
 
-    step(9, "Tools for drives, backups and tests")
+    step(10, "Tools for drives, backups and tests")
     try:
         from storage import missing_packages, TOOLS
         miss = missing_packages(list(TOOLS))
@@ -165,12 +194,12 @@ def main():
             r = subprocess.run(["apt-get", "install", "-y", "--no-install-recommends", *miss], env=env)
             print(f"  {G}✓{X} Installed" if r.returncode == 0 else f"  {Y}Some didn't install — run: sudo apt-get install {' '.join(miss)}{X}")
 
-    step(10, "Lighting module")
+    step(11, "Lighting module")
     lit = any("048D:00005702" in open(u).read().upper() for u in glob.glob("/sys/class/hidraw/hidraw*/device/uevent"))
     if lit: print(f"  Found a Gigabyte RGB Fusion 2 controller.  Install it with:  {B}sudo nova-setup-lighting{X}")
     else: print(f"  {D}No supported lighting controller found — skipped.{X}")
 
-    step(11, "Firewall")
+    step(12, "Firewall")
     rc, st = sh("ufw", "status")
     if rc == 0 and "Status: active" in st:
         if yes(f"Allow {subnet} to reach Nova (port 8495, encrypted)?", True):
@@ -179,7 +208,7 @@ def main():
             print(f"  {G}✓{X} Firewall rules added")
     else: print(f"  {D}ufw isn't active — make sure your firewall lets {subnet} reach tcp 8495 (and udp 8496 for discovery).{X}")
 
-    step(12, "Start Nova")
+    step(13, "Start Nova")
     sh("systemctl", "daemon-reload")
     sh("systemctl", "enable", "--now", "nova-helper.socket")
     sh("systemctl", "enable", "nova-api.service"); sh("systemctl", "restart", "nova-api.service")

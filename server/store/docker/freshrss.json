@@ -1,0 +1,11 @@
+{
+ "id": "freshrss",
+ "name": "FreshRSS",
+ "category": "Productivity",
+ "icon": "freshrss",
+ "port": 8070,
+ "path": "/",
+ "image": "lscr.io/linuxserver/freshrss:latest",
+ "description": "Follow websites and blogs in one feed reader.",
+ "compose": "services:\n  freshrss:\n    image: lscr.io/linuxserver/freshrss:latest\n    container_name: freshrss\n    restart: unless-stopped\n    ports:\n      - \"{PORT}:80\"\n    environment:\n      PUID: \"1000\"\n      PGID: \"1000\"\n      TZ: \"{TZ}\"\n    volumes:\n      - {DATA}/config:/config\n"
+}

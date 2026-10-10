@@ -30,7 +30,8 @@ def out(obj, code=0):
 def fail(msg, code=1): out({"ok": False, "error": msg}, code)
 
 def run(cmd, timeout=120, **kw):
-    r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, **kw)
+    try: r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, **kw)
+    except FileNotFoundError: return 127, "", f"{cmd[0]} isn't installed"     # e.g. no Docker on this server
     return r.returncode, r.stdout, r.stderr
 
 def _tool(*paths):
@@ -500,7 +501,7 @@ if verb == "store-list" and not args:
         if inst:
             rc, so, _ = run(["docker", "compose", "ps", "--format", "{{.State}}"], cwd=f"/opt/{t['id']}", timeout=20)
             state = "running" if "running" in so else "stopped"
-        res.append({k: t.get(k) for k in ("id", "name", "description", "category", "icon", "port", "path", "notes", "image")}
+        res.append({k: t.get(k) for k in ("id", "name", "description", "category", "icon", "port", "path", "notes", "image", "featured")}
                    | {"installed": inst, "state": state, "port_free": inst or port_free(t["port"])})
     out({"items": res})
 

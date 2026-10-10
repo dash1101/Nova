@@ -1,33 +1,71 @@
 [
  {
-  "pkg": "btop",
-  "name": "btop",
-  "category": "Monitoring",
-  "description": "Beautiful live CPU, memory, disk, network and process monitor."
+  "pkg": "docker.io",
+  "name": "Docker",
+  "category": "Editor's choice",
+  "description": "Run containers (with Compose) \u2014 needed for the Containers tab."
  },
  {
-  "pkg": "htop",
-  "name": "htop",
-  "category": "Monitoring",
-  "description": "Classic interactive process viewer."
+  "pkg": "samba",
+  "name": "Samba (Windows shares)",
+  "category": "Editor's choice",
+  "description": "Share folders with Windows, Mac and phones on your network."
  },
  {
-  "pkg": "nvtop",
-  "name": "nvtop",
-  "category": "Monitoring",
-  "description": "GPU usage monitor (works with the Radeon iGPU)."
+  "pkg": "fail2ban",
+  "name": "fail2ban",
+  "category": "Editor's choice",
+  "description": "Blocks addresses that keep guessing passwords."
  },
  {
-  "pkg": "iotop",
-  "name": "iotop",
-  "category": "Monitoring",
-  "description": "Which process is hammering the disks."
+  "pkg": "unattended-upgrades",
+  "name": "Automatic security updates",
+  "category": "Editor's choice",
+  "description": "Installs security fixes by itself every day."
  },
  {
-  "pkg": "glances",
-  "name": "glances",
-  "category": "Monitoring",
-  "description": "All-in-one system monitor, with a web mode."
+  "pkg": "rclone",
+  "name": "rclone",
+  "category": "Backup",
+  "description": "Sync files to 70+ cloud providers (B2, Drive, S3\u2026) \u2014 the off-site backup tool."
+ },
+ {
+  "pkg": "restic",
+  "name": "restic",
+  "category": "Backup",
+  "description": "Encrypted, deduplicated backups (great with rclone/B2)."
+ },
+ {
+  "pkg": "borgbackup",
+  "name": "BorgBackup",
+  "category": "Backup",
+  "description": "Deduplicating, encrypted backups."
+ },
+ {
+  "pkg": "git",
+  "name": "git",
+  "category": "Development",
+  "description": "Version control.",
+  "protected": true
+ },
+ {
+  "pkg": "jq",
+  "name": "jq",
+  "category": "Development",
+  "description": "Slice and filter JSON on the command line.",
+  "protected": true
+ },
+ {
+  "pkg": "python3-pip",
+  "name": "pip",
+  "category": "Development",
+  "description": "Install Python packages."
+ },
+ {
+  "pkg": "nodejs",
+  "name": "Node.js",
+  "category": "Development",
+  "description": "Run JavaScript on the server."
  },
  {
   "pkg": "ncdu",
@@ -48,48 +86,64 @@
   "description": "Open and create .7z/.zip/.rar-style archives."
  },
  {
-  "pkg": "rclone",
-  "name": "rclone",
-  "category": "Backup",
-  "description": "Sync files to 70+ cloud providers (B2, Drive, S3\u2026) \u2014 the off-site backup tool."
- },
- {
-  "pkg": "restic",
-  "name": "restic",
-  "category": "Backup",
-  "description": "Encrypted, deduplicated backups (great with rclone/B2)."
- },
- {
-  "pkg": "tmux",
-  "name": "tmux",
-  "category": "Shell",
-  "description": "Keep terminal sessions alive after you disconnect."
- },
- {
-  "pkg": "fastfetch",
-  "name": "fastfetch",
-  "category": "Shell",
-  "description": "System info with a logo \u2014 the neofetch replacement."
- },
- {
-  "pkg": "git",
-  "name": "git",
-  "category": "Development",
-  "description": "Version control.",
-  "protected": true
- },
- {
-  "pkg": "jq",
-  "name": "jq",
-  "category": "Development",
-  "description": "Slice and filter JSON on the command line.",
-  "protected": true
+  "pkg": "duf",
+  "name": "duf",
+  "category": "Files",
+  "description": "Disk usage, nicely laid out."
  },
  {
   "pkg": "ffmpeg",
   "name": "FFmpeg",
   "category": "Media",
   "description": "Convert and process any audio/video."
+ },
+ {
+  "pkg": "minidlna",
+  "name": "MiniDLNA",
+  "category": "Media",
+  "description": "Stream media to TVs and consoles over DLNA."
+ },
+ {
+  "pkg": "btop",
+  "name": "btop",
+  "category": "Monitoring",
+  "description": "Beautiful live CPU, memory, disk, network and process monitor."
+ },
+ {
+  "pkg": "htop",
+  "name": "htop",
+  "category": "Monitoring",
+  "description": "Classic interactive process viewer."
+ },
+ {
+  "pkg": "nvtop",
+  "name": "nvtop",
+  "category": "Monitoring",
+  "description": "GPU usage monitor (AMD, Intel and NVIDIA)."
+ },
+ {
+  "pkg": "iotop",
+  "name": "iotop",
+  "category": "Monitoring",
+  "description": "Which process is hammering the disks."
+ },
+ {
+  "pkg": "glances",
+  "name": "glances",
+  "category": "Monitoring",
+  "description": "All-in-one system monitor, with a web mode."
+ },
+ {
+  "pkg": "smartmontools",
+  "name": "smartmontools",
+  "category": "Monitoring",
+  "description": "Drive health (SMART) checks and self-tests."
+ },
+ {
+  "pkg": "lm-sensors",
+  "name": "lm-sensors",
+  "category": "Monitoring",
+  "description": "Read temperatures, fan speeds and voltages."
  },
  {
   "pkg": "nmap",
@@ -116,15 +170,93 @@
   "description": "Internet speed test from the server."
  },
  {
-  "pkg": "cockpit",
-  "name": "Cockpit",
-  "category": "Services",
-  "description": "Web admin panel for the server (port 9090): logs, services, storage, updates."
+  "pkg": "nfs-kernel-server",
+  "name": "NFS server",
+  "category": "Network",
+  "description": "Share folders with Linux machines and NAS boxes."
+ },
+ {
+  "pkg": "wireguard",
+  "name": "WireGuard",
+  "category": "Network",
+  "description": "A fast, modern VPN."
+ },
+ {
+  "pkg": "ufw",
+  "name": "ufw",
+  "category": "Network",
+  "description": "A simple firewall you can actually read."
+ },
+ {
+  "pkg": "avahi-daemon",
+  "name": "Avahi (.local names)",
+  "category": "Network",
+  "description": "Reach the server as yourserver.local."
  },
  {
   "pkg": "powertop",
   "name": "PowerTOP",
   "category": "Power",
   "description": "See what's using power and tune for efficiency."
+ },
+ {
+  "pkg": "cockpit",
+  "name": "Cockpit",
+  "category": "Services",
+  "description": "Web admin panel for the server (port 9090): logs, services, storage, updates."
+ },
+ {
+  "pkg": "cups",
+  "name": "CUPS print server",
+  "category": "Services",
+  "description": "Share a USB printer with every device."
+ },
+ {
+  "pkg": "tmux",
+  "name": "tmux",
+  "category": "Shell",
+  "description": "Keep terminal sessions alive after you disconnect."
+ },
+ {
+  "pkg": "fastfetch",
+  "name": "fastfetch",
+  "category": "Shell",
+  "description": "System info with a logo \u2014 the neofetch replacement."
+ },
+ {
+  "pkg": "neovim",
+  "name": "Neovim",
+  "category": "Shell",
+  "description": "A modern Vim."
+ },
+ {
+  "pkg": "fish",
+  "name": "fish shell",
+  "category": "Shell",
+  "description": "A friendly shell with suggestions as you type."
+ },
+ {
+  "pkg": "zsh",
+  "name": "Zsh",
+  "category": "Shell",
+  "description": "A powerful, customizable shell."
+ },
+ {
+  "pkg": "fzf",
+  "name": "fzf",
+  "category": "Shell",
+  "description": "Fuzzy-find files and history in the terminal."
+ },
+ {
+  "pkg": "ripgrep",
+  "name": "ripgrep",
+  "category": "Shell",
+  "description": "Search through files, very fast."
+ },
+ {
+  "pkg": "bat",
+  "name": "bat",
+  "category": "Shell",
+  "description": "cat with syntax highlighting."
  }
 ]

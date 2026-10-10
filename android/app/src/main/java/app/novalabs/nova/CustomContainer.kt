@@ -27,8 +27,10 @@ private class PortRow(host: String = "", cont: String = "", udp: Boolean = false
 private class VolRow(host: String = "", cont: String = "", ro: Boolean = false) { var host by mutableStateOf(host); var cont by mutableStateOf(cont); var ro by mutableStateOf(ro) }
 
 @Composable fun NewContainerScreen(app: AppState) {
-    var name by remember { mutableStateOf("") }
-    var image by remember { mutableStateOf("") }
+    // picked from the store's Docker Hub search: start with that image (and a name from it)
+    val hint = remember { ContainerHint.image.also { ContainerHint.image = null } }
+    var name by remember { mutableStateOf(hint?.substringAfterLast('/')?.substringBefore(':')?.lowercase()?.filter { it.isLetterOrDigit() || it in "-_" }?.take(40) ?: "") }
+    var image by remember { mutableStateOf(hint?.let { if (':' in it.substringAfterLast('/')) it else "$it:latest" } ?: "") }
     var env by remember { mutableStateOf("") }
     var restart by remember { mutableStateOf("unless-stopped") }
     val ports = remember { mutableStateListOf(PortRow()) }
@@ -119,3 +121,6 @@ private class VolRow(host: String = "", cont: String = "", ro: Boolean = false) 
         }
     }
 }
+
+/** An image picked in the store's Docker Hub search, for "Your own container" to start from. */
+object ContainerHint { var image: String? = null }

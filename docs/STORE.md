@@ -17,8 +17,15 @@ Each file in `server/store/docker/` is one app:
 }
 ```
 
-`{PORT}` and `{DATA}` (`/opt/<id>/data`) are filled in at install time. Uninstalling stops the app
+`{PORT}`, `{DATA}` (`/opt/<id>/data`), `{TZ}` (the server's time zone) and `{SECRET1}`…`{SECRET3}`
+(random passwords, saved to `/opt/<id>/.nova-secrets`) are filled in at install time. `"featured": true`
+puts an app under *Editor's choice*. Use generic host folders (`/srv/media`, `/srv/books`…) — never a
+path from your own machine. Uninstalling stops the app
 and moves its folder to `/opt/.nova-uninstalled/`, so the data is never deleted.
 
-`server/store/programs.json` lists apt packages for the *Programs* tab (`pkg`, `name`, `category`,
+Anything not in the catalog: the store's search also looks on Docker Hub, and a result opens
+*Your own container* with the image filled in.
+
+`server/store/programs.json` lists the hand-picked apt packages for the *Programs* tab (the search
+there covers everything apt offers) (`pkg`, `name`, `category`,
 `description`, optional `"protected": true` for packages that may not be removed).

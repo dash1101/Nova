@@ -195,10 +195,17 @@ def new_zone(st, setup):
 def _scaled(rgb, pct):
     return tuple(round(c * pct / 100) for c in rgb)
 
+def hands_off():
+    """Settings → Features → "Nova controls the lights" turned off: another program (the board maker's
+    RGB software, OpenRGB…) owns the controller, so Nova sends it nothing at all."""
+    try: return json.load(open("/var/lib/nova-api/settings.json")).get("features", {}).get("lighting") is False
+    except Exception: return False
+
 def apply(st, override=None):
     """Push every light to the hardware in one pass (the controller's direct-mode mask and its reset
     cover all headers at once, so one light is never set without the others). `override` (the status
     light) replaces the main light's effect/color."""
+    if hands_off(): return
     looks = []
     for z in all_zones(st):
         eff = dict(z)
@@ -338,9 +345,9 @@ def animate(fps=30):
                 seen = m; a = json.load(open(APPLIED)); orders = None
                 cur = a.get("anims") if "anims" in a else ([{"header": "argb", **a["anim"]}] if a.get("anim") else [])
                 hs = tuple(a.get("direct") or [x["header"] for x in cur])
-            if not cur:
+            if not cur or hands_off():
                 if dev: dev.close(); dev = None
-                time.sleep(0.25); continue
+                time.sleep(0.25 if cur is not None and not cur else 2); continue
             if dev is None: dev = fusion2.Fusion2(init=False, lock=False)
             with fusion2.hwlock():
                 if os.stat(APPLIED).st_mtime_ns != seen: continue      # changed while we waited
@@ -359,6 +366,7 @@ def animate(fps=30):
 def intro(st, seconds=2.6, fps=30):
     """Boot: a wave in your color (or rainbow) fades in and comes up to your brightness; the
     caller then applies your real setting."""
+    if hands_off(): return
     look = {**st, "effect": "wave", "speed": max(55, st.get("speed", 50))}
     target = max(20, st.get("brightness", 50)) if st.get("on", True) else 35
     hdr = TARGETS.get(st.get("target"), TARGETS["fusion2:argb"])["header"]
@@ -372,6 +380,7 @@ def intro(st, seconds=2.6, fps=30):
 
 def off():
     """Shutdown: every LED dark (the setting itself is kept for the next boot)."""
+    if hands_off(): return
     hdrs = {TARGETS[z["target"]]["header"] for z in all_zones(load())}
     with fusion2.Fusion2() as f:
         for h in hdrs & set(fusion2.ARGB):
@@ -464,6 +473,7 @@ def _lerp_hex(a, b, k):
     x, y = hex_rgb(a), hex_rgb(b); return "#%02x%02x%02x" % tuple(round(x[i] + (y[i] - x[i]) * k) for i in range(3))
 
 def tick():
+    if hands_off(): return
     st = load(); changed = False
     now_t = time.time(); now = time.localtime(now_t); minute = now.tm_hour * 60 + now.tm_min
     running = st.setdefault("running", {})        # schedule id -> {"restore": look, "fade": {...}}

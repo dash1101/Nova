@@ -1,0 +1,11 @@
+{
+ "id": "prowlarr",
+ "name": "Prowlarr",
+ "category": "Downloads",
+ "icon": "prowlarr",
+ "port": 9696,
+ "path": "/",
+ "image": "lscr.io/linuxserver/prowlarr:latest",
+ "description": "One place to manage indexers for Sonarr, Radarr and Lidarr.",
+ "compose": "services:\n  prowlarr:\n    image: lscr.io/linuxserver/prowlarr:latest\n    container_name: prowlarr\n    restart: unless-stopped\n    ports:\n      - \"{PORT}:9696\"\n    environment:\n      PUID: \"1000\"\n      PGID: \"1000\"\n      TZ: \"{TZ}\"\n    volumes:\n      - {DATA}/config:/config\n"
+}

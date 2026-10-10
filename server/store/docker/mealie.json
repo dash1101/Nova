@@ -1,0 +1,11 @@
+{
+ "id": "mealie",
+ "name": "Mealie",
+ "category": "Home",
+ "icon": "mealie",
+ "port": 9925,
+ "path": "/",
+ "image": "ghcr.io/mealie-recipes/mealie:latest",
+ "description": "Recipes, meal plans and shopping lists.",
+ "compose": "services:\n  mealie:\n    image: ghcr.io/mealie-recipes/mealie:latest\n    container_name: mealie\n    restart: unless-stopped\n    ports:\n      - \"{PORT}:9000\"\n    environment:\n      TZ: \"{TZ}\"\n      ALLOW_SIGNUP: \"false\"\n    volumes:\n      - {DATA}/data:/app/data\n"
+}

@@ -6,6 +6,8 @@
  "port": 8096,
  "path": "/",
  "image": "jellyfin/jellyfin:latest",
- "description": "Stream your movies, shows and music to any device. Reads cold storage (read-only).",
- "compose": "services:\n  jellyfin:\n    image: jellyfin/jellyfin:latest\n    container_name: jellyfin\n    restart: unless-stopped\n    ports:\n      - \"{PORT}:8096\"\n    devices:\n      - /dev/dri:/dev/dri\n    volumes:\n      - {DATA}/config:/config\n      - {DATA}/cache:/cache\n      - /mnt/cold_storage:/media:ro\n"
+ "description": "Stream your movies, shows and music to any device.",
+ "compose": "services:\n  jellyfin:\n    image: jellyfin/jellyfin:latest\n    container_name: jellyfin\n    restart: unless-stopped\n    ports:\n      - \"{PORT}:8096\"\n    volumes:\n      - {DATA}/config:/config\n      - {DATA}/cache:/cache\n      - /srv/media:/media:ro\n",
+ "featured": true,
+ "notes": "Your media goes in /srv/media (change the folder in /opt/jellyfin/docker-compose.yml). For hardware video encoding add  devices: [/dev/dri:/dev/dri]  there."
 }

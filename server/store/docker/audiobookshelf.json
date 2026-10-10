@@ -1,0 +1,12 @@
+{
+ "id": "audiobookshelf",
+ "name": "Audiobookshelf",
+ "category": "Media",
+ "icon": "audiobookshelf",
+ "port": 13378,
+ "path": "/",
+ "image": "ghcr.io/advplyr/audiobookshelf:latest",
+ "description": "Audiobooks and podcasts, with apps for your phone.",
+ "featured": true,
+ "compose": "services:\n  audiobookshelf:\n    image: ghcr.io/advplyr/audiobookshelf:latest\n    container_name: audiobookshelf\n    restart: unless-stopped\n    ports:\n      - \"{PORT}:80\"\n    volumes:\n      - {DATA}/config:/config\n      - {DATA}/metadata:/metadata\n      - /srv/audiobooks:/audiobooks\n      - /srv/podcasts:/podcasts\n"
+}

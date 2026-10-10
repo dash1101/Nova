@@ -320,6 +320,8 @@ import java.util.*
             RowDivider()
             Row1("Labs", "Experimental features you can try", true, Icons.Rounded.Science, androidx.compose.ui.graphics.Color(0xFFBF5AF2), onClick = { app.go(Route.Labs) })
             RowDivider()
+            Row1("Features", "Switch off parts of Nova you don't use, like lighting control", true, Icons.Rounded.Tune, onClick = { app.go(Route.Features) })
+            RowDivider()
             Row1("Setup guide", "Install Nova on a server, remote access, browsers", true, androidx.compose.material.icons.Icons.AutoMirrored.Rounded.MenuBook, onClick = { app.go(Route.SetupGuide) })
         }
         Group { Row1("Unpair this ${DeviceForm.noun}", "Erases its keys", false, Icons.Rounded.LinkOff, N.red, onClick = { confirmUnpair = true }) }
@@ -478,6 +480,21 @@ private fun taskRoute(t: JSONObject): Route? {
 }
 
 
+/** Settings → Features: parts of Nova you can switch off (another program runs the lights, you don't use the terminal…). */
+@Composable fun FeaturesScreen(app: AppState) {
+    val live = live(app, "/api/v1/features")
+    val list = live.value?.optJSONArray("features").objs().filter { it.optBoolean("available") }
+    Page("Features", app::back) {
+        Text("Switch off what you don't use, or what another program takes care of — for example the board maker's RGB software. Switching these needs your fingerprint.",
+            color = N.sub, fontSize = 14.sp, modifier = Modifier.padding(horizontal = 30.dp, vertical = 6.dp))
+        if (live.value == null) Text("Loading…", color = N.sub, modifier = Modifier.padding(30.dp))
+        else Group { list.forEachIndexed { i, f -> if (i > 0) RowDivider()
+            SwitchRow(f.optString("name"), f.optString("about"), f.optBoolean("on"), app.isAdmin) { v -> app.act("${f.optString("name")}: ${if (v) "on" else "off"}") {
+                live.value = app.stepUp("${if (v) "Turn on" else "Turn off"} ${f.optString("name")}", "POST", "/api/v1/features", JSONObject().put(f.optString("id"), v))
+                app.refresh() } } } }
+    }
+}
+
 /** Settings → Labs: experimental features, off until you turn them on (they're the server's settings). */
 @Composable fun LabsScreen(app: AppState) {
     val live = live(app, "/api/v1/labs")
@@ -493,14 +510,42 @@ private fun taskRoute(t: JSONObject): Route? {
                 SwitchRow(a.optString("name"), a.optString("about"), on.optBoolean(k), app.isAdmin) { v -> app.act { live.value = app.api.post("/api/v1/labs", JSONObject().put(k, v)) } }
             }
         }
-        if (l?.optJSONObject("labs")?.optBoolean("cloudflare_sync") == true)
-            Text("Add the Cloudflare API token in Nova web (Settings → Labs → Cloudflare). Then hold an app in Apps → Open it from anywhere.",
-                color = N.sub, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 30.dp, vertical = 8.dp))
+        if (l?.optJSONObject("labs")?.optBoolean("cloudflare_sync") == true) LabsCloudflare(app)
         val on = l?.optJSONObject("labs") ?: JSONObject()
         if (on.optBoolean("auto_updates")) LabsSchedule(app)
         if (on.optBoolean("image_cleanup")) LabsImages(app)
         if (on.optBoolean("wake_on_lan")) LabsWol(app)
     }
+}
+
+/** Labs → Cloudflare: the API token Nova uses, and what's on your tunnel. Then: Apps → hold an app → Open it from anywhere → Set it up for me. */
+@Composable private fun LabsCloudflare(app: AppState) {
+    var st by remember { mutableStateOf<JSONObject?>(null) }; var err by remember { mutableStateOf<String?>(null) }
+    var round by remember { mutableIntStateOf(0) }
+    var tokenAsk by remember { mutableStateOf(false) }
+    LaunchedEffect(round) { try { st = app.api.get("/api/v1/cloudflare"); err = null } catch (e: Exception) { err = e.message } }
+    SectionLabel("Cloudflare")
+    Group {
+        val s = st
+        when {
+            err != null -> Row1(err!!)
+            s == null -> Row1("Checking your Cloudflare account…")
+            else -> {
+                val ok = s.optBoolean("token") && s.optString("error").isEmpty()
+                Row1(if (ok) "Connected" else if (!s.optBoolean("token")) "Add an API token to start" else "Not working", if (ok) "New app addresses get the login of “${s.optString("access_app")}”" else s.optString("error").ifEmpty { "Nova needs a Cloudflare API token to make changes for you." },
+                    false, if (ok) Icons.Rounded.Shield else Icons.Rounded.Cloud, if (ok) N.green else N.amber)
+                if (app.isAdmin) { RowDivider(); Row1(if (s.optBoolean("token")) "Change the API token" else "Add an API token", "Kept on the server, readable only by root", true, Icons.Rounded.Key, onClick = { tokenAsk = true }) }
+                s.optJSONArray("hostnames")?.let { hs -> for (i in 0 until hs.length()) { RowDivider(); Row1(hs.getString(i), if (hs.getString(i) == s.optString("nova_host")) "Nova itself" else "On your tunnel", icon = Icons.Rounded.Public) } }
+            }
+        }
+    }
+    Text("Make the token at dash.cloudflare.com → My Profile → API Tokens → Create Token → Custom, with Account · Cloudflare Tunnel · Edit, Account · Access: Apps and Policies · Edit, and Zone · DNS · Edit. Then hold an app in Apps → Open it from anywhere → Set it up for me.",
+        color = N.sub, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 30.dp, vertical = 6.dp))
+    if (tokenAsk) { var t by remember { mutableStateOf("") }
+        OneDialog({ tokenAsk = false }, "Cloudflare API token", "Paste the token you created.", listOf(DialogButton("Cancel") { tokenAsk = false },
+            DialogButton("Save", N.blue, enabled = t.length >= 30) { tokenAsk = false
+                app.act("Saved") { app.stepUp("Save the Cloudflare API token", "POST", "/api/v1/cloudflare/token", JSONObject().put("token", t.trim())); round++ } })) {
+            OneTextField(t, { t = it.trim().take(100) }, "Token", Modifier.fillMaxWidth().padding(horizontal = 22.dp), mono = true) } }
 }
 
 private val DAYS = listOf("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")

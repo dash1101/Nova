@@ -1,8 +1,8 @@
-# Nova  ·  0.5.15-alpha
+# Nova  ·  0.5.16-alpha
 
 **A secure remote control for your home server, from your Android phone.**
 Status and live graphs, containers (logs, shell, start/stop), a one-tap app store, drives,
-backups, alerts, an SSH terminal and more, in a One UI–style app. It works on your home
+backups, alerts, an SSH terminal and more, in a clean, glassy app. It works on your home
 network, and optionally from anywhere through Cloudflare Access, without a VPN.
 
 ```
@@ -47,8 +47,8 @@ network, and optionally from anywhere through Cloudflare Access, without a VPN.
 | **Watch** | A Wear OS app and tile: health at a glance, recent events, approve or deny on your wrist ([docs/WEAR.md](docs/WEAR.md)) |
 | **Several servers** | Pair with as many machines as you like and switch between them, each with its own name and color |
 | **Users & roles** | Named users, each Admin or View only; invite phones by QR, approve browsers from your phone |
-| **Tablets & dashboard** | One UI tablet layout (rail + list/detail) and an always-on, customizable dashboard mode |
-| **Two looks** | Default (One UI-style frosted glass) or Material You Expressive with wallpaper colors — chosen automatically by phone maker, switchable in Appearance |
+| **Tablets & dashboard** | Tablet layout (rail + list/detail) and an always-on, customizable dashboard mode |
+| **Two looks** | Default (frosted glass and a soft glow) or Material You Expressive with wallpaper colors — picked automatically, switchable in Appearance |
 | **Nova web** | The same design in any browser, at `https://<server>:8495/`. Risky actions are approved on your phone |
 | **Lighting** | Fans and LED strips on a Gigabyte RGB Fusion 2 board: several lights, each with its own effect (wave, comet, fire, gradients, palettes…), presets, schedules with sunrise/sunset and fades, and a status light |
 | **Optional modules** | Lighting (above); plug in your own monitor for alerts |

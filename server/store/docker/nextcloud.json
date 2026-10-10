@@ -1,0 +1,13 @@
+{
+ "id": "nextcloud",
+ "name": "Nextcloud",
+ "category": "Files",
+ "icon": "nextcloud",
+ "port": 8090,
+ "path": "/",
+ "image": "nextcloud:latest",
+ "description": "Your own cloud: files, calendar, contacts and more.",
+ "notes": "The first visit asks for an admin account; the built-in SQLite database is fine for a few people.",
+ "featured": true,
+ "compose": "services:\n  nextcloud:\n    image: nextcloud:latest\n    container_name: nextcloud\n    restart: unless-stopped\n    ports:\n      - \"{PORT}:80\"\n    volumes:\n      - {DATA}/html:/var/www/html\n"
+}

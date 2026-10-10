@@ -1,0 +1,11 @@
+{
+ "id": "radarr",
+ "name": "Radarr",
+ "category": "Downloads",
+ "icon": "radarr",
+ "port": 7878,
+ "path": "/",
+ "image": "lscr.io/linuxserver/radarr:latest",
+ "description": "Finds and organizes movies automatically.",
+ "compose": "services:\n  radarr:\n    image: lscr.io/linuxserver/radarr:latest\n    container_name: radarr\n    restart: unless-stopped\n    ports:\n      - \"{PORT}:7878\"\n    environment:\n      PUID: \"1000\"\n      PGID: \"1000\"\n      TZ: \"{TZ}\"\n    volumes:\n      - {DATA}/config:/config\n      - /srv/media/movies:/movies\n      - /srv/downloads:/downloads\n"
+}

@@ -73,7 +73,9 @@ fun appUrl(app: AppState, a: JSONObject): String? {
     if (a.optString("url").isNotEmpty() && !remote) return a.optString("url")
     if (a.isNull("port") || a.optInt("port") == 0) return a.optString("url").ifEmpty { null }
     if (remote) return null                                                // app ports aren't on the Cloudflare tunnel
-    val host = a.optString("host_ip").ifEmpty { android.net.Uri.parse(app.pairing.lanUrl).host ?: return null }
+    val lanHost = android.net.Uri.parse(app.pairing.lanUrl).host
+    val tail = if (app.api.via == "tailnet") android.net.Uri.parse(app.pairing.tailnetUrl).host else null      // over Tailscale: the app at the server's tailnet address
+    val host = a.optString("host_ip").takeIf { it.isNotEmpty() && (tail == null || it != lanHost) } ?: tail ?: lanHost ?: return null
     return "${a.optString("scheme", "http")}://${if (':' in host) "[$host]" else host}:${a.optInt("port")}${a.optString("path", "/")}"
 }
 
@@ -199,6 +201,25 @@ fun openApp(app: AppState, a: JSONObject) {
     var editing by remember { mutableStateOf(false) }
     var link by remember { mutableStateOf(a.optString("remote_url")) }
     LaunchedEffect(tick) { g = runCatching { app.api.get("/api/v1/apps/$id/remote") }.getOrNull() }
+    // Labs → Cloudflare auto-setup: Nova adds the Access login, DNS record and tunnel route itself
+    var labsCf by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { labsCf = runCatching { app.api.get("/api/v1/labs").optJSONObject("labs")?.optBoolean("cloudflare_sync") == true }.getOrDefault(false) }
+    var auto by remember { mutableStateOf<String?>(null) }          // "host" → "plan"
+    var autoHost by remember { mutableStateOf("") }
+    var plan by remember { mutableStateOf<JSONObject?>(null) }
+    val tlsSvc = g?.optString("service")?.startsWith("https") == true
+    if (auto == "host") { OneDialog({ auto = null }, "Address for ${a.optString("name")}", "On your domain, like photos.example.com.",
+        listOf(DialogButton("Cancel") { auto = null }, DialogButton("Next", N.blue, enabled = autoHost.contains('.')) {
+            app.act { plan = app.api.post("/api/v1/cloudflare/plan", JSONObject().put("host", autoHost.trim().lowercase()).put("service", g?.optString("service")).put("no_tls_verify", tlsSvc)); auto = "plan" } })) {
+        OneTextField(autoHost, { autoHost = it.trim().take(253) }, "photos.example.com", Modifier.fillMaxWidth().padding(horizontal = 22.dp)) }; return }
+    if (auto == "plan") { val p = plan ?: return
+        OneDialog({ auto = null }, "Here's what Nova will do", "In this order, so the app is never reachable without the login.",
+            listOf(DialogButton("Cancel") { auto = null }, DialogButton("Do it", N.blue) { auto = null
+                app.act { val r = app.stepUp("Put ${a.optString("name")} on ${p.optString("host")}", "POST", "/api/v1/cloudflare/publish",
+                        JSONObject().put("host", p.optString("host")).put("service", g?.optString("service")).put("no_tls_verify", tlsSvc).put("app", id))
+                    app.toast("${a.optString("name")} is at ${r.optString("url")}"); Cache.put("/api/v1/apps", app.api.get("/api/v1/apps")); link = r.optString("url"); tick++ } })) {
+            Column(Modifier.padding(horizontal = 26.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                p.optJSONArray("steps")?.let { st -> for (i in 0 until st.length()) Text("${i + 1}. ${st.getString(i)}", color = N.text, fontSize = 14.sp) } } }; return }
     val clip = androidx.compose.ui.platform.LocalClipboardManager.current
     @Composable fun copyRow(label: String, v: String) {
         if (v.isEmpty()) return
@@ -213,6 +234,8 @@ fun openApp(app: AppState, a: JSONObject) {
     OneDialog(onDone, "${a.optString("name")} from anywhere", null, listOfNotNull(
         DialogButton("Close") { onDone() },
         if (g?.optString("remote_url")?.isNotEmpty() == true) DialogButton("Check again") { tick++ } else null,
+        if (labsCf && g?.optString("remote_url").isNullOrEmpty() && g?.optString("service")?.isNotEmpty() == true && !editing)
+            DialogButton("Set it up for me", N.blue) { autoHost = g?.optString("suggested").orEmpty(); auto = "host" } else null,
         if (editing) DialogButton("Save and check", N.blue, enabled = link.startsWith("https://")) {
             app.act { app.api.post("/api/v1/apps", JSONObject().put("id", id).put("remote_url", link.trim())); Cache.put("/api/v1/apps", app.api.get("/api/v1/apps")); editing = false; tick++ } }
         else DialogButton(if (g?.optString("remote_url")?.isNotEmpty() == true) "Change link" else "Set the link", N.blue) { if (link.isEmpty() && host.isNotEmpty()) link = "https://$host"; editing = true })) {

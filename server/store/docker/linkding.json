@@ -1,0 +1,12 @@
+{
+ "id": "linkding",
+ "name": "linkding",
+ "category": "Productivity",
+ "icon": "linkding",
+ "port": 9095,
+ "path": "/",
+ "image": "sissbruecker/linkding:latest",
+ "description": "A fast, minimal bookmark manager.",
+ "notes": "Log in as admin; the password is in /opt/linkding/.nova-secrets (SECRET1).",
+ "compose": "services:\n  linkding:\n    image: sissbruecker/linkding:latest\n    container_name: linkding\n    restart: unless-stopped\n    ports:\n      - \"{PORT}:9090\"\n    environment:\n      LD_SUPERUSER_NAME: \"admin\"\n      LD_SUPERUSER_PASSWORD: \"{SECRET1}\"\n    volumes:\n      - {DATA}/data:/etc/linkding/data\n"
+}

@@ -161,6 +161,10 @@ class Pairing(ctx: Context, val profile: String = Servers.active(ctx)) {
     var lanPin: String
         get() = p.getString("lan_pin", "")!!
         set(v) { p.edit().putString("lan_pin", v).apply() }
+    /** The server's Tailscale address (https, same certificate), learned from the server: tried after home, before Cloudflare. */
+    var tailnetUrl: String
+        get() = p.getString("tailnet_url", "")!!
+        set(v) { p.edit().putString("tailnet_url", v).apply() }
     var label: String                       // what the server is called in the switcher
         get() = p.getString("label", "")!!
         set(v) { p.edit().putString("label", v).apply() }

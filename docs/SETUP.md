@@ -7,8 +7,11 @@ Nova has two parts: the **server package** on the Linux machine you want to cont
 
 ## 1. Install the server package
 
-Requirements: Debian 12+ or Ubuntu 22.04+, systemd, Python 3.11+. Docker is optional but needed for
-containers and the app store.
+Requirements: Debian 12+ or Ubuntu 22.04+, systemd, Python 3.11+. Nothing else: Docker, Tailscale
+and cloudflared are optional, and `nova-setup` offers to install each one that's missing (Docker for
+containers and the container store; Tailscale to reach Nova and your apps from anywhere privately;
+cloudflared for a Cloudflare Tunnel on your own domain). Without Docker, Containers says so and the
+store's Programs tab (apt) still works.
 
 ```bash
 # from a release:

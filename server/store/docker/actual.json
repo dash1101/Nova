@@ -1,0 +1,11 @@
+{
+ "id": "actual",
+ "name": "Actual Budget",
+ "category": "Home",
+ "icon": "actual-budget",
+ "port": 5006,
+ "path": "/",
+ "image": "actualbudget/actual-server:latest",
+ "description": "Simple, private personal budgeting.",
+ "compose": "services:\n  actual:\n    image: actualbudget/actual-server:latest\n    container_name: actual\n    restart: unless-stopped\n    ports:\n      - \"{PORT}:5006\"\n    volumes:\n      - {DATA}/data:/data\n"
+}

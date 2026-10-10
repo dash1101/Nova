@@ -1,0 +1,11 @@
+{
+ "id": "searxng",
+ "name": "SearXNG",
+ "category": "Privacy",
+ "icon": "searxng",
+ "port": 8182,
+ "path": "/",
+ "image": "searxng/searxng:latest",
+ "description": "A private metasearch engine \u2014 no tracking, no ads.",
+ "compose": "services:\n  searxng:\n    image: searxng/searxng:latest\n    container_name: searxng\n    restart: unless-stopped\n    ports:\n      - \"{PORT}:8080\"\n    volumes:\n      - {DATA}/config:/etc/searxng\n"
+}

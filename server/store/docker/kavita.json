@@ -1,0 +1,11 @@
+{
+ "id": "kavita",
+ "name": "Kavita",
+ "category": "Media",
+ "icon": "kavita",
+ "port": 5000,
+ "path": "/",
+ "image": "jvmilazz0/kavita:latest",
+ "description": "Read comics, manga and ebooks in your browser.",
+ "compose": "services:\n  kavita:\n    image: jvmilazz0/kavita:latest\n    container_name: kavita\n    restart: unless-stopped\n    ports:\n      - \"{PORT}:5000\"\n    volumes:\n      - {DATA}/config:/kavita/config\n      - /srv/books:/books\n"
+}

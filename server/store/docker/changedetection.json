@@ -1,0 +1,11 @@
+{
+ "id": "changedetection",
+ "name": "changedetection.io",
+ "category": "Utilities",
+ "icon": "changedetection",
+ "port": 5010,
+ "path": "/",
+ "image": "ghcr.io/dgtlmoon/changedetection.io:latest",
+ "description": "Get told when a web page changes (prices, stock, news).",
+ "compose": "services:\n  changedetection:\n    image: ghcr.io/dgtlmoon/changedetection.io:latest\n    container_name: changedetection\n    restart: unless-stopped\n    ports:\n      - \"{PORT}:5000\"\n    volumes:\n      - {DATA}/datastore:/datastore\n"
+}

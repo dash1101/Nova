@@ -1,0 +1,12 @@
+{
+ "id": "plex",
+ "name": "Plex",
+ "category": "Media",
+ "icon": "plex",
+ "port": 32400,
+ "path": "/web",
+ "image": "lscr.io/linuxserver/plex:latest",
+ "description": "Stream your movies, shows and music to every screen.",
+ "notes": "Your media goes in /srv/media (or change the folder in /opt/plex/docker-compose.yml).",
+ "compose": "services:\n  plex:\n    image: lscr.io/linuxserver/plex:latest\n    container_name: plex\n    restart: unless-stopped\n    ports:\n      - \"{PORT}:32400\"\n    environment:\n      PUID: \"1000\"\n      PGID: \"1000\"\n      TZ: \"{TZ}\"\n      VERSION: \"docker\"\n    volumes:\n      - {DATA}/config:/config\n      - /srv/media:/media\n"
+}

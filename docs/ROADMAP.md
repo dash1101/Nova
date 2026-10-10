@@ -19,6 +19,11 @@ small agent rather than a port of everything:
 - **First version:** status and live graphs (CPU, memory, disks, network, temperatures where the
   hardware reports them), services, processes, Docker Desktop containers, drives and free space,
   alerts, power, pairing and devices. Later: Windows Update, Storage Spaces, backups.
+- **Package manager:** where Linux uses apt, Windows uses **winget** (built into Windows 10/11), with
+  **Chocolatey** as a fallback when it's installed. The store's Programs tab searches and installs through
+  whichever is there, and updates list `winget upgrade` / `choco outdated` the same way they list apt today.
+  Containers stay on Docker Desktop (or WSL), and the Containers tab hides itself without it — the same as
+  a Linux server without Docker.
 - **Install:** a signed MSI that installs both services, opens the firewall for the home network only,
   and shows the pairing QR code (`nova add` equivalent) in a small tray window.
 - **Remote access:** the same Cloudflare Access setup works (`cloudflared` runs on Windows).

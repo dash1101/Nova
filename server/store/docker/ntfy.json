@@ -1,0 +1,11 @@
+{
+ "id": "ntfy",
+ "name": "ntfy",
+ "category": "Notifications",
+ "icon": "ntfy",
+ "port": 8093,
+ "path": "/",
+ "image": "binwiederhier/ntfy:latest",
+ "description": "Send push notifications to your phone from scripts and apps.",
+ "compose": "services:\n  ntfy:\n    image: binwiederhier/ntfy:latest\n    container_name: ntfy\n    restart: unless-stopped\n    command: serve\n    ports:\n      - \"{PORT}:80\"\n    volumes:\n      - {DATA}/cache:/var/cache/ntfy\n"
+}
