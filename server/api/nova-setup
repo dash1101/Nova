@@ -131,11 +131,10 @@ def main():
                 settings["location"] = {"lat": round(lat, 2), "lon": round(lon, 2), "name": ""}
             except ValueError: print(f"  {Y}That isn't 'latitude, longitude' (e.g. 40.71, -74.01) — kept as it was.{X}")
         os.makedirs(os.path.dirname(settings_f), exist_ok=True)
-        tmp = settings_f + ".tmp"
-        with open(tmp, "w") as f: json.dump(settings, f, indent=1)
-        try: shutil.chown(tmp, "nova-api", "nova-api")
-        except (LookupError, OSError): pass
-        os.chmod(tmp, 0o640); os.replace(tmp, settings_f)
+        sys.path.insert(0, "/usr/lib/nova-api"); sys.path.insert(1, os.path.dirname(os.path.realpath(__file__)))
+        import safeio                                     # the nova-api account owns this folder: no symlinks followed
+        try: safeio.write_json(settings_f, settings, 0o640, "nova-api", "nova-api", indent=1)
+        except KeyError: safeio.write_json(settings_f, settings, 0o640, indent=1)
         print(f"  {G}✓{X} Saved — change it any time in the app (Settings → Server, or Lighting → Schedules)")
 
     step(8, "Alerts on Discord (optional)")

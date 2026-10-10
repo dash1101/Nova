@@ -1,5 +1,8 @@
 package app.novalabs.nova
 
+import androidx.compose.material.icons.rounded.KeyboardArrowDown
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -120,6 +123,22 @@ fun levelColor(level: String, t: NovaColors) = when (level) {
 @Composable fun RowDivider() = if (N.material) Box(Modifier.fillMaxWidth().height(3.dp).background(N.bg))
     else HorizontalDivider(Modifier.padding(horizontal = 22.dp), thickness = 0.8.dp, color = N.divider)
 
+/** A row's description: three lines, and if there's more, a small arrow that opens the rest (and closes it again). */
+@Composable fun ExpandableSub(text: String, color: Color, lines: Int = 3) {
+    var open by remember(text) { mutableStateOf(false) }
+    var more by remember(text) { mutableStateOf(false) }
+    Row(Modifier.padding(top = 2.dp).animateContentSize(), verticalAlignment = Alignment.Bottom) {
+        Text(text, fontSize = 14.sp, color = color, maxLines = if (open) Int.MAX_VALUE else lines, overflow = TextOverflow.Ellipsis,
+            onTextLayout = { if (!open) more = it.hasVisualOverflow }, modifier = Modifier.weight(1f, fill = false))
+        if (more || open) {
+            val turn by animateFloatAsState(if (open) 180f else 0f, label = "more")
+            Box(Modifier.padding(start = 2.dp).size(28.dp).clip(CircleShape).clickable { open = !open }, contentAlignment = Alignment.Center) {
+                Icon(Icons.Rounded.KeyboardArrowDown, if (open) "Show less" else "Show more", tint = N.sub, modifier = Modifier.size(20.dp).graphicsLayer { rotationZ = turn })
+            }
+        }
+    }
+}
+
 @Composable fun Row1(title: String, subtitle: String? = null, subtitleBlue: Boolean = false,
                      icon: ImageVector? = null, iconTint: Color? = null, enabled: Boolean = true,
                      onClick: (() -> Unit)? = null, trailing: (@Composable () -> Unit)? = null) {
@@ -133,8 +152,7 @@ fun levelColor(level: String, t: NovaColors) = when (level) {
         }
         Column(Modifier.weight(1f)) {
             Text(title, fontSize = 17.sp, color = if (enabled) t.text else t.sub, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            if (!subtitle.isNullOrEmpty()) Text(subtitle, fontSize = 14.sp, color = if (subtitleBlue) t.link else t.sub,
-                maxLines = 3, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
+            if (!subtitle.isNullOrEmpty()) ExpandableSub(subtitle, if (subtitleBlue) t.link else t.sub)
         }
         if (trailing != null) { Spacer(Modifier.width(10.dp)); trailing() }
     }

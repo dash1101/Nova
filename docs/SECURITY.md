@@ -13,6 +13,14 @@ Nova controls a whole server, so it's designed so that losing any one piece is n
 | **Step-up (fingerprint)** | Shells, stop/restart, restart policy, installs/uninstalls, unmounting, power, and removing devices need a second signature from a key that only works right after a biometric/PIN prompt for that exact request. |
 | **Throttling** | 20 failed attempts in 10 minutes block the source address. |
 
+## Requests
+
+- Bodies are capped (64 KB, or the upload chunk size for file uploads) and the length must be a plain
+  number: negative or odd `Content-Length` values and chunked bodies are refused before anything is read.
+- Malformed or absurdly nested JSON gets a 400, never a crash. Each connection has a 30-second idle limit.
+- Browser pairing requests are limited per address (3 waiting at once), so one device can't fill the
+  queue and lock real browsers out.
+
 ## Pairing
 
 `sudo nova add` creates a 10-character single-use code (valid 10 minutes, stored only as a hash).
@@ -62,7 +70,23 @@ fingerprint. The server refuses to demote the last admin.
   Every verb is hard-coded. Arguments are checked against live state (container names must exist
   and be Compose-managed, store items must be in the catalog, drives are addressed by serial,
   protected mounts are refused). The helper never runs a shell or a caller-supplied command.
+- Root never writes through a path the `nova-api` account could have planted: files in Nova's own
+  folders (`/var/lib/nova-api`, `/var/log/nova-api`) are written by root with `safeio` — a fresh,
+  unpredictable temp file opened with `O_EXCL | O_NOFOLLOW` relative to the folder, owned through its
+  file descriptor, then renamed into place. A symlink left there (to `/etc/shadow`, say) is replaced,
+  never followed. Logrotate runs as `nova-api` for its logs.
+- Background tasks (installs, updates, backups, image cleanup) run as transient systemd units started
+  by the helper; their specs are checked again before they start.
 - The audit log is `/var/log/nova-api/audit.log`: every change, who made it, from where, and whether a fingerprint was used.
+
+## Labs
+
+Labs features are off until an admin turns them on. Each one keeps the same rules: the crash-loop
+guard and weekly updates run as root from `nova-labs.timer` but only do what their switch allows;
+cleaning up images needs a fingerprint (or phone approval from a browser) and never removes images a
+container uses or the versions kept for rolling back; Wake-on-LAN only sends a magic packet on the
+local network; Cloudflare auto-setup protects an address with your Access login before it creates
+the DNS record and tunnel route.
 
 ## The SSH terminal
 

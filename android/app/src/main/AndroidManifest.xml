@@ -30,6 +30,56 @@
             </intent-filter>
         </activity>
 
+        <!-- Other app icons (Settings → Appearance → App icon): one launcher entry is on at a time -->
+        <activity-alias android:name=".IconMaterial" android:targetActivity=".MainActivity" android:exported="true" android:enabled="false"
+            android:icon="@mipmap/ic_launcher_material" android:roundIcon="@mipmap/ic_launcher_material">
+            <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
+        </activity-alias>
+        <activity-alias android:name=".IconDark" android:targetActivity=".MainActivity" android:exported="true" android:enabled="false"
+            android:icon="@mipmap/ic_launcher_dark" android:roundIcon="@mipmap/ic_launcher_dark">
+            <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
+        </activity-alias>
+        <activity-alias android:name=".IconOutline" android:targetActivity=".MainActivity" android:exported="true" android:enabled="false"
+            android:icon="@mipmap/ic_launcher_outline" android:roundIcon="@mipmap/ic_launcher_outline">
+            <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
+        </activity-alias>
+        <activity-alias android:name=".IconOutlineLight" android:targetActivity=".MainActivity" android:exported="true" android:enabled="false"
+            android:icon="@mipmap/ic_launcher_outline_light" android:roundIcon="@mipmap/ic_launcher_outline_light">
+            <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
+        </activity-alias>
+        <activity-alias android:name=".IconBw" android:targetActivity=".MainActivity" android:exported="true" android:enabled="false"
+            android:icon="@mipmap/ic_launcher_bw" android:roundIcon="@mipmap/ic_launcher_bw">
+            <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
+        </activity-alias>
+        <activity-alias android:name=".IconWb" android:targetActivity=".MainActivity" android:exported="true" android:enabled="false"
+            android:icon="@mipmap/ic_launcher_wb" android:roundIcon="@mipmap/ic_launcher_wb">
+            <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
+        </activity-alias>
+        <activity-alias android:name=".IconGlass" android:targetActivity=".MainActivity" android:exported="true" android:enabled="false"
+            android:icon="@mipmap/ic_launcher_glass" android:roundIcon="@mipmap/ic_launcher_glass">
+            <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
+        </activity-alias>
+        <activity-alias android:name=".IconBlue" android:targetActivity=".MainActivity" android:exported="true" android:enabled="false"
+            android:icon="@mipmap/ic_launcher_blue" android:roundIcon="@mipmap/ic_launcher_blue">
+            <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
+        </activity-alias>
+        <activity-alias android:name=".IconGreen" android:targetActivity=".MainActivity" android:exported="true" android:enabled="false"
+            android:icon="@mipmap/ic_launcher_green" android:roundIcon="@mipmap/ic_launcher_green">
+            <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
+        </activity-alias>
+        <activity-alias android:name=".IconOrange" android:targetActivity=".MainActivity" android:exported="true" android:enabled="false"
+            android:icon="@mipmap/ic_launcher_orange" android:roundIcon="@mipmap/ic_launcher_orange">
+            <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
+        </activity-alias>
+        <activity-alias android:name=".IconRed" android:targetActivity=".MainActivity" android:exported="true" android:enabled="false"
+            android:icon="@mipmap/ic_launcher_red" android:roundIcon="@mipmap/ic_launcher_red">
+            <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
+        </activity-alias>
+        <activity-alias android:name=".IconPink" android:targetActivity=".MainActivity" android:exported="true" android:enabled="false"
+            android:icon="@mipmap/ic_launcher_pink" android:roundIcon="@mipmap/ic_launcher_pink">
+            <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
+        </activity-alias>
+
         <!-- Quick Settings tile: fan light on/off from the notification shade -->
         <service
             android:name=".FanTileService"

@@ -87,7 +87,7 @@ private fun LiveStats.load(j: JSONObject) {
     val t0 = remember(tick) { System.nanoTime() }
     val steps0 = remember(tick) { added.coerceIn(1, 5) }
     var frameNow by remember { mutableLongStateOf(System.nanoTime()) }
-    if (window > 0 && !reduceMotion()) LaunchedEffect(Unit) { while (true) androidx.compose.runtime.withFrameNanos { frameNow = System.nanoTime() } }
+    if (window > 0 && !reduceMotion()) LaunchedEffect(Unit) { while (true) { androidx.compose.runtime.withFrameNanos { frameNow = System.nanoTime() }; kotlinx.coroutines.delay(30) } }      // ~30 fps glide
     val peak = if (max != null) max else ((values.maxOrNull() ?: 1f) * 1.15f).coerceAtLeast(1f)
     val top by androidx.compose.animation.core.animateFloatAsState(peak, label = "scale")
     Canvas(modifier.clipToBounds()) {

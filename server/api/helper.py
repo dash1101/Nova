@@ -9,6 +9,8 @@ drives are addressed by serial and protected mounts refuse). No shell, no caller
 or commands. Output is one JSON object on stdout.
 """
 import glob, json, os, re, secrets, shutil, socket, string, subprocess, sys, time
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+import safeio  # noqa: E402  (writes into nova-api's folders without following symlinks)
 
 STORE = os.path.join(os.path.dirname(os.path.realpath(__file__)), "store")
 UNMOUNTED = "/run/nova-unmounted.json"           # intentionally unmounted (monitor stays quiet)
@@ -46,7 +48,7 @@ def changelog(msg):
     t = _tool("/usr/local/bin/nova-log", "/usr/bin/nova-log")
     try:
         if t: run([t, "app", msg]); return
-        with open("/var/log/nova-api/changes.log", "a") as f: f.write(time.strftime("%Y-%m-%d %H:%M ") + msg + "\n")
+        safeio.append("/var/log/nova-api/changes.log", time.strftime("%Y-%m-%d %H:%M ") + msg + "\n")
     except Exception: pass
 
 def load_json(p, d):
@@ -180,7 +182,7 @@ if verb == "container" and len(args) == 2:
         if name in held:
             if held[name] in ("always", "unless-stopped", "on-failure"): run(["docker", "update", "--restart", held[name], name], timeout=30)
             held.pop(name)
-            with open("/var/lib/nova-api/force-stopped.json", "w") as f: json.dump(held, f)
+            safeio.write_json("/var/lib/nova-api/force-stopped.json", held, 0o644)
     if rc == 0:
         notify("info", f"App: {action} {name}", "Done from the Nova app.")
         changelog(f"{action} container {name} (from the Nova app)")
@@ -197,7 +199,7 @@ if verb == "container-fix" and len(args) == 2:
         # stop it for good: no more automatic restarts until you start it again
         pol = (c["HostConfig"].get("RestartPolicy") or {}).get("Name") or "no"
         held = load_json("/var/lib/nova-api/force-stopped.json", {}); held[name] = pol
-        with open("/var/lib/nova-api/force-stopped.json", "w") as f: json.dump(held, f)
+        safeio.write_json("/var/lib/nova-api/force-stopped.json", held, 0o644)
         run(["docker", "update", "--restart", "no", name], timeout=30)
         rc, so, se = run(["docker", "kill", name], timeout=60)
         if rc != 0 and "is not running" not in se: rc, so, se = run(["docker", "stop", "-t", "2", name], timeout=60)

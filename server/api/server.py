@@ -38,7 +38,7 @@ try:                       # optional module: fan/case lighting (modules/fan-gig
 except ImportError:
     nova_rgb = None
 
-API_VERSION = "0.5.11-alpha"
+API_VERSION = "0.5.12-alpha"
 CONFIG = "/etc/nova-api/config.json"
 DATA = "/var/lib/nova-api"
 DEVICES = f"{DATA}/devices.json"
@@ -678,7 +678,9 @@ class Handler(BaseHTTPRequestHandler):
         return dev
 
     def read_body(self):
-        n = int(self.headers.get("Content-Length") or 0)
+        cl = (self.headers.get("Content-Length") or "0").strip()
+        if not cl.isdigit() or self.headers.get("Transfer-Encoding"): return None     # no negative/odd lengths, no chunked bodies
+        n = int(cl)
         raw_ok = self.path.split("?", 1)[0] in RAW_BODY_PATHS          # file uploads: raw bytes, bigger chunks
         if n > (UPLOAD_CHUNK if raw_ok else MAX_BODY): return None
         return self.rfile.read(n) if n else b""
@@ -712,7 +714,7 @@ class Handler(BaseHTTPRequestHandler):
         if path in RAW_BODY_PATHS: data = {"_raw": True}
         else:
             try: data = json.loads(body) if body else {}
-            except ValueError: return self.send(400, {"error": "invalid JSON"})
+            except (ValueError, RecursionError): return self.send(400, {"error": "invalid JSON"})
         if not isinstance(data, dict): return self.send(400, {"error": "expected an object"})
 
         parts = [p for p in path.split("/") if p][2:]
@@ -879,7 +881,9 @@ class Handler(BaseHTTPRequestHandler):
         for k in [k for k, v in browser_requests.items() if v["expires"] < now]: browser_requests.pop(k, None)
         if method == "POST" and path == "/api/v1/browser/request":
             fails.setdefault(ip, []).append(now)                      # counts toward the rate limit
-            if sum(1 for v in browser_requests.values() if v["state"] == "pending") >= 10: return self.send(429, {"error": "too many pending requests"})
+            pend = [v for v in browser_requests.values() if v["state"] == "pending"]
+            # per address, so one noisy device can't fill the queue and lock real browsers out
+            if sum(1 for v in pend if v["from"] == ip) >= 3 or len(pend) >= 30: return self.send(429, {"error": "too many pending requests"})
             try:
                 d = json.loads(body); pem = d["public_key"]; name = "".join(c for c in str(d.get("name", "Browser")) if c.isprintable())[:40]
                 pub = serialization.load_pem_public_key(pem.encode())

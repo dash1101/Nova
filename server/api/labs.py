@@ -30,9 +30,7 @@ def load(p, default):
     except Exception: return default
 
 def save(p, d):
-    tmp = p + ".tmp"
-    with open(tmp, "w") as f: json.dump(d, f)
-    os.replace(tmp, p)
+    import safeio; safeio.write_json(p, d, 0o644)          # the nova-api account owns this folder
 
 def run(cmd, timeout=60):
     r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)

@@ -110,7 +110,8 @@ private fun ringGlow(look: FanLook, tMs: Double, reverse: Boolean): Color {
     val t = remember { mutableDoubleStateOf(System.currentTimeMillis().toDouble()) }
     LaunchedEffect(skewMs) {
         if (reduceMotion()) { t.doubleValue = (System.currentTimeMillis() + skewMs).toDouble(); return@LaunchedEffect }
-        while (true) withFrameNanos { t.doubleValue = (System.currentTimeMillis() + skewMs).toDouble() }
+        // ~30 fps is plenty for a slow light wave, and lets a 120 Hz screen (and the blur over it) rest in between
+        while (true) { withFrameNanos { t.doubleValue = (System.currentTimeMillis() + skewMs).toDouble() }; kotlinx.coroutines.delay(30) }
     }
     return t
 }

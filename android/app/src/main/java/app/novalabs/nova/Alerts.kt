@@ -82,7 +82,7 @@ class AlertService : Service() {
         val nm = getSystemService(NotificationManager::class.java)
         nm.createNotificationChannel(NotificationChannel("watch", "Instant alerts (silent)", NotificationManager.IMPORTANCE_MIN)
             .apply { description = "Keeps a quiet connection open so alerts arrive right away. You can hide this notification." })
-        val open = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
+        val open = PendingIntent.getActivity(this, 0, AppIcon.launch(this), PendingIntent.FLAG_IMMUTABLE)
         val n: Notification = NotificationCompat.Builder(this, "watch").setSmallIcon(R.drawable.ic_notification)
             .setContentTitle("Watching your server").setContentText("Alerts arrive as they happen")
             .setOngoing(true).setSilent(true).setContentIntent(open).setPriority(NotificationCompat.PRIORITY_MIN).build()
@@ -96,11 +96,13 @@ class AlertService : Service() {
     private suspend fun watch(id: String) {
         var backoff = 5_000L
         val shown = mutableSetOf<String>()                 // approvals already notified
+        // One client for the whole watch, so each long poll reuses the open connection instead of a
+        // fresh TCP + TLS handshake every minute (the pinned LAN client follows pin changes on its own).
+        val p = Pairing(applicationContext, id); val api = NovaApi(p)
         while (currentCoroutineContext().isActive) {
-            val p = Pairing(applicationContext, id)
             if (!p.paired) return
             try {
-                val r = NovaApi(p).get("/api/v1/events/wait?since=${p.lastEventSeen}&timeout=50&seen=${shown.joinToString(",")}")
+                val r = api.get("/api/v1/events/wait?since=${p.lastEventSeen}&timeout=50&seen=${shown.joinToString(",")}")
                 Alerts.handle(applicationContext, p, r.optJSONArray("events"))
                 Notifier.tasks(applicationContext, id, r.optJSONArray("tasks"))
                 r.optJSONArray("approvals")?.let { a -> for (i in 0 until a.length()) { val o = a.getJSONObject(i)

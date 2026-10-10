@@ -1,5 +1,6 @@
 package app.novalabs.nova
 
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -94,7 +95,11 @@ import java.util.*
                 }
             }
         }
-        shown.groupBy { dayLabel(it.optDouble("t")) }.forEach { (d, list) ->
+        val selAnim = androidx.compose.animation.core.animateFloatAsState(if (selecting) 1f else 0f, androidx.compose.animation.core.tween(if (reduceMotion()) 0 else 220), label = "sel")
+        val selSlot by remember { derivedStateOf { picked.isNotEmpty() || selAnim.value > 0.01f } }      // changes twice per selection, not every frame
+        // drawn in pages: the newest 60, then more on request (a long list costs every frame it animates)
+        var limit by remember { mutableIntStateOf(60) }
+        shown.take(limit).groupBy { dayLabel(it.optDouble("t")) }.forEach { (d, list) ->
             val dayTs = list.map { it.optDouble("t") }.toSet(); val allDay = picked.containsAll(dayTs)
             // the day's title: hold it (or tap "Select day" while selecting) to pick the whole day
             Row(Modifier.fillMaxWidth().combinedClickable(onClick = { if (selecting) picked = if (allDay) picked - dayTs else picked + dayTs },
@@ -118,10 +123,11 @@ import java.util.*
                     Row(Modifier.fillMaxWidth().background(bg)
                         .combinedClickable(onClick = { if (selecting) picked = if (on) picked - t else picked + t },
                             onLongClick = { haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress); picked = if (on) picked - t else picked + t })
-                        .padding(horizontal = 20.dp, vertical = 14.dp)) {
-                        androidx.compose.animation.AnimatedVisibility(selecting,
-                            enter = androidx.compose.animation.expandHorizontally() + androidx.compose.animation.fadeIn(), exit = androidx.compose.animation.shrinkHorizontally() + androidx.compose.animation.fadeOut()) {
-                            Box(Modifier.padding(end = 14.dp, top = 1.dp).size(22.dp).clip(CircleShape)
+                        .padding(horizontal = 20.dp, vertical = 14.dp)
+                        .graphicsLayer { translationX = if (selSlot) -(1f - selAnim.value) * 36.dp.toPx() else 0f }) {
+                        // one shared animation for every row, applied while drawing (no per-row relayout each frame)
+                        if (selSlot) {
+                            Box(Modifier.padding(end = 14.dp, top = 1.dp).size(22.dp).graphicsLayer { alpha = selAnim.value; scaleX = 0.6f + 0.4f * selAnim.value; scaleY = scaleX }.clip(CircleShape)
                                 .background(if (on) N.blue else androidx.compose.ui.graphics.Color.Transparent)
                                 .then(if (on) Modifier else Modifier.border(2.dp, N.sub, CircleShape)), contentAlignment = Alignment.Center) {
                                 if (on) Icon(Icons.Rounded.Check, null, tint = androidx.compose.ui.graphics.Color.White, modifier = Modifier.size(16.dp))
@@ -139,6 +145,8 @@ import java.util.*
                 }
             }
         }
+        if (shown.size > limit) Box(Modifier.fillMaxWidth().padding(vertical = 10.dp), contentAlignment = Alignment.Center) {
+            PillButton("Show older (${shown.size - limit})", color = N.blue) { limit += 100 } }
     }
     if (clearAll) OneDialog({ clearAll = false }, "Archive everything?",
         if (filter == 0) "Everything moves from the Inbox to the Archive (kept on the server, for every device). Active alerts stay until they're fixed or ignored."

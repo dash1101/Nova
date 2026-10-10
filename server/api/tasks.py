@@ -202,7 +202,7 @@ def changelog(msg):
     try:
         if p: subprocess.run([p, "app", msg], capture_output=True, timeout=30)
         else:
-            with open("/var/log/nova-api/changes.log", "a") as f: f.write(time.strftime("%Y-%m-%d %H:%M ") + msg + "\n")
+            import safeio; safeio.append("/var/log/nova-api/changes.log", time.strftime("%Y-%m-%d %H:%M ") + msg + "\n")
     except Exception: pass
 
 def reap():

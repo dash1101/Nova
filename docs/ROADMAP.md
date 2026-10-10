@@ -45,8 +45,7 @@ The Android app can be published on Google Play (the developer account exists). 
 
 ## Also planned
 
-- A terminal for the server itself in Nova web (the phone app already has SSH).
 - Servers page, next step: manage another server right from this one's Nova web (a signed relay, so each server still checks your browser's own key and approvals), instead of opening its own Nova web.
-- Apps from anywhere, next step: create the Cloudflare hostname and Access rule automatically (needs a scoped Cloudflare API token on the server).
-- A Wear OS app with its own sign-in, approvals and a glanceable status.
+- A fuller Wear OS app: glanceable status, tiles and complications, alongside approvals.
+- Lighting for any hardware: strips, several ARGB headers or zones with their own effect, OpenRGB.
 - A reworked app store with categories, search and one-tap installs.

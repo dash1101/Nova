@@ -54,11 +54,10 @@ def status(**kv):
     try: cur = json.load(open(STATUS))
     except Exception: cur = {}
     cur.update(kv, t=int(time.time()))
-    tmp = STATUS + ".tmp"
-    with open(tmp, "w") as f: json.dump(cur, f)
-    try: shutil.chown(tmp, "nova-api", "nova-api")
-    except Exception: pass
-    os.chmod(tmp, 0o640); os.replace(tmp, STATUS)
+    sys.path.insert(0, "/usr/lib/nova-api"); sys.path.insert(1, os.path.dirname(os.path.realpath(__file__)))
+    import safeio                                         # the nova-api account owns this folder: no symlinks followed
+    try: safeio.write_json(STATUS, cur, 0o640, "nova-api", "nova-api")
+    except KeyError: safeio.write_json(STATUS, cur, 0o640)
 
 
 def fail(m, code=1):

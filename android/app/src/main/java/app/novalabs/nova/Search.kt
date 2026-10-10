@@ -57,7 +57,7 @@ val PLACES: List<Triple<String, String, Pair<ImageVector, Route>>> = listOf(
     Triple("Dashboard mode", "always on tablet wall display", Icons.Rounded.Dashboard to Route.Dashboard),
     Triple("Users & devices", "devices phones browsers users roles remove pair invite approve", Icons.Rounded.Group to Route.Devices),
     Triple("Settings", "software update fingerprint approve from notifications watch connection", Icons.Rounded.Settings to Route.Settings),
-    Triple("Appearance", "theme dark light material you style reduce motion home layout navigation pill tabs", Icons.Rounded.Palette to Route.Appearance),
+    Triple("Appearance", "theme dark light material you style reduce motion home layout navigation pill tabs app icon launcher icon outline glass black white", Icons.Rounded.Palette to Route.Appearance),
     Triple("Server", "name accent color location sunrise", Icons.Rounded.Dns to Route.ServerSettings),
     Triple("Servers", "multiple servers add switch", Icons.Rounded.Lan to Route.Servers),
     Triple("Setup guide", "help install how to", Icons.Rounded.Help to Route.SetupGuide),

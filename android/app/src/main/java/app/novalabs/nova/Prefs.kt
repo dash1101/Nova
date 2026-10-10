@@ -144,6 +144,7 @@ object AppLock {
         Group {
             SwitchRow("Reduce motion", "Simple fades instead of slides and bounces, and no back-gesture animation", AppPrefs.reduceMotion) { AppPrefs.set("reduce_motion", it) }
         }
+        AppIconPicker(app)
         SectionLabel("Home")
         Group {
             Row1("Home layout", AppPrefs.homeOrder.filter { sectionOn(it) }.joinToString(" · ") { sectionName(it) }.ifEmpty { "Just the header" }, true,

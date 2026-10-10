@@ -23,13 +23,9 @@ def load_json(p):
     except Exception: return {}
 
 def save(res):
-    tmp = OUT + ".tmp"
-    with open(tmp, "w") as f: json.dump(res, f)
-    os.chmod(tmp, 0o644)
-    try:
-        import pwd; u = pwd.getpwnam("nova-api"); os.chown(tmp, u.pw_uid, u.pw_gid)
-    except (KeyError, OSError): pass
-    os.replace(tmp, OUT)
+    import safeio                                        # the nova-api account owns this folder: no symlinks followed
+    try: safeio.write_json(OUT, res, 0o644, "nova-api", "nova-api")
+    except KeyError: safeio.write_json(OUT, res, 0o644)
 
 def apt_list():
     rc, so, _ = run(["apt", "list", "--upgradable"], timeout=120)

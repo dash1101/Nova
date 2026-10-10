@@ -34,11 +34,9 @@ def load(p, d):
 
 def save(p, o, mode=0o640, owner="nova-api"):
     import pwd, grp
-    tmp = p + ".tmp"
-    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, mode)
-    with os.fdopen(fd, "w") as f: json.dump(o, f, indent=1)
-    os.chown(tmp, pwd.getpwnam(owner).pw_uid if owner != "root" else 0, grp.getgrnam("nova-api").gr_gid)
-    os.chmod(tmp, mode); os.replace(tmp, p)
+    sys.path.insert(0, "/usr/lib/nova-api"); sys.path.insert(1, os.path.dirname(os.path.realpath(__file__)))
+    import safeio                                         # the nova-api account owns these folders: no symlinks followed
+    safeio.write_json(p, o, mode, pwd.getpwnam(owner).pw_uid if owner != "root" else 0, grp.getgrnam("nova-api").gr_gid, indent=1)
 
 def opt(args, name, default=None):
     return args[args.index(name) + 1] if name in args and args.index(name) + 1 < len(args) else default

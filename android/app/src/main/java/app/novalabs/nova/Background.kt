@@ -79,7 +79,7 @@ object Notifier {
         val nm = ctx.getSystemService(NotificationManager::class.java)
         nm.createNotificationChannel(NotificationChannel("progress", "Progress", NotificationManager.IMPORTANCE_LOW)
             .apply { description = "Installs, backups and updates while they run" })
-        val open = PendingIntent.getActivity(ctx, 7, Intent(ctx, MainActivity::class.java).putExtra("open", "inbox")
+        val open = PendingIntent.getActivity(ctx, 7, AppIcon.launch(ctx).putExtra("open", "inbox")
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         val now = mutableSetOf<String>()
         for (i in 0 until (list?.length() ?: 0)) {
@@ -104,7 +104,7 @@ object Notifier {
         val nm = ctx.getSystemService(NotificationManager::class.java)
         nm.createNotificationChannel(NotificationChannel("approvals", "Approval requests", NotificationManager.IMPORTANCE_HIGH)
             .apply { description = "A paired browser wants to do something that needs your fingerprint" })
-        val open = PendingIntent.getActivity(ctx, id, Intent(ctx, MainActivity::class.java).putExtra("open", "approvals")
+        val open = PendingIntent.getActivity(ctx, id, AppIcon.launch(ctx).putExtra("open", "approvals")
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         val n = NotificationCompat.Builder(ctx, "approvals").setSmallIcon(R.drawable.ic_notification).setColor(0xFF6E56CF.toInt())
             .setContentTitle(title).setContentText(text).setStyle(NotificationCompat.BigTextStyle().bigText(text))
@@ -131,7 +131,7 @@ object Notifier {
 
     fun post(ctx: Context, id: Int, level: String, title: String, text: String, open: String = "inbox") {
         val ch = if (level == "resolved") "info" else level
-        val open = PendingIntent.getActivity(ctx, if (open == "inbox") 0 else 9, Intent(ctx, MainActivity::class.java).putExtra("open", open),
+        val open = PendingIntent.getActivity(ctx, if (open == "inbox") 0 else 9, AppIcon.launch(ctx).putExtra("open", open),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         val n = NotificationCompat.Builder(ctx, ch).setSmallIcon(R.drawable.ic_notification).setColor(0xFF6E56CF.toInt())
             .setContentTitle(title).setContentText(text).setStyle(NotificationCompat.BigTextStyle().bigText(text))

@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.5.12-alpha (app and server)
+- **Security fixes** (found by trying to break Nova):
+  - Root no longer writes through files the service account could have tampered with. Several root tools (the root helper, updates, Labs, `nova`, `nova-update`, `nova-setup`, `nova-app-publish`) wrote into Nova's own folders by following paths; if the API were ever compromised, a planted symlink could have made root overwrite, or hand over, a system file. They now write with `safeio` (no symlinks followed, unpredictable temp files, ownership set on the open file).
+  - A negative `Content-Length` made the server read a request body with no size limit, before authentication. Odd lengths and chunked bodies are now refused at once, and absurdly nested JSON gets a 400.
+  - Browser pairing requests are limited per address, so one device can't fill the queue.
+  - Security test: 270 checks, all passing (new: HTTP parsing).
+- **App icon** (Settings → Appearance): Default, Material You (follows your wallpaper's colors), Dark, Outline, Outline light, Black on white, White on black, Glass, and Blue, Green, Orange, Red, Pink.
+- **Long descriptions** that used to end in “…” now have a small arrow to open the rest.
+- **Smoother Inbox:** starting a selection is one shared animation instead of every row re-laying itself out each frame, and the Inbox shows the newest 60 events with *Show older* below.
+- **Battery:** the server picture on Home and the live graphs draw at 30 fps instead of every frame of a 120 Hz screen, and the background alert listener keeps one connection open instead of a new TLS handshake every minute.
+- Docs: README, SECURITY and ROADMAP brought up to date.
+
 ## 0.5.11-alpha (app and server)
 - **Inbox → In progress:** a task slides in the first time you see it and then stays put (no more jumping in every time you open the Inbox). Several can run at once, with a count. When one finishes it shows *Done* for a moment and becomes an ordinary Inbox event within seconds — swipe or archive it like any other. Finished ones can also be swiped away (or dismissed with ×) right away.
 - A task that ends with an error, or is cut short by a restart, is now an Inbox event too.

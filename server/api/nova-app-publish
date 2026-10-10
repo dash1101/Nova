@@ -7,16 +7,19 @@ read -r pkg vc vn < <(/usr/bin/python3 -I /usr/lib/nova-api/apkver.py "$APK")
 DIR=/var/lib/nova-api/apk
 [ "$pkg" = "app.novalabs.nova" ] || { echo "not the Nova app ($pkg)"; exit 1; }
 [ -n "$vc" ] && [ -n "$vn" ] || { echo "couldn't read the app's version"; exit 1; }
-f="Nova-$vn.apk"; install -o nova-api -g nova-api -m 640 "$APK" "$DIR/$f"
-sha=$(sha256sum "$DIR/$f" | cut -d' ' -f1); size=$(stat -c %s "$DIR/$f")
-python3 - "$DIR/latest.json" "$vc" "$vn" "$sha" "$size" "$f" "$NOTES" <<'PY'
+f="Nova-$vn.apk"
+sha=$(sha256sum "$APK" | cut -d' ' -f1); size=$(stat -c %s "$APK")
+# The nova-api account owns $DIR, so write through safeio (no symlinks followed; nothing chown'd by path).
+/usr/bin/python3 -I -c '
 import json, sys, time
-p, vc, vn, sha, size, f, notes = sys.argv[1:]
-json.dump({"version_code": int(vc), "version_name": vn, "sha256": sha, "size": int(size), "file": f,
-           "notes": notes, "published": time.strftime("%Y-%m-%d %H:%M")}, open(p, "w"), indent=1)
-PY
-chown nova-api:nova-api "$DIR/latest.json"
-ls -1t "$DIR"/Nova-*.apk | tail -n +4 | xargs -r rm -f      # keep the 3 newest
+sys.path.insert(0, "/usr/lib/nova-api")
+import safeio
+d, apk, f, vc, vn, sha, size, notes = sys.argv[1:]
+safeio.write(f"{d}/{f}", open(apk, "rb").read(), 0o640, "nova-api", "nova-api")
+safeio.write_json(f"{d}/latest.json", {"version_code": int(vc), "version_name": vn, "sha256": sha, "size": int(size), "file": f,
+                  "notes": notes, "published": time.strftime("%Y-%m-%d %H:%M")}, 0o640, "nova-api", "nova-api", indent=1)
+' "$DIR" "$APK" "$f" "$vc" "$vn" "$sha" "$size" "$NOTES"
+find "$DIR" -maxdepth 1 -name 'Nova-*.apk' -type f -printf '%T@ %p\n' | sort -rn | tail -n +4 | cut -d' ' -f2- | xargs -r -d '\n' rm -f --      # keep the 3 newest
 echo "published $vn (code $vc, $size bytes, sha256 ${sha:0:16}…)"
 /usr/local/bin/nova-log nova "Published Nova app $vn to the in-app updater." 2>/dev/null || true
 # Tell the phones (each one ignores it if it already has this version or newer).
