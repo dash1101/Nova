@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Nova: a server with a Material You sparkle badge. Server centered; the badge sits off-center, inside the 66dp safe zone. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
+    <group android:pivotX="51" android:pivotY="57" android:scaleX="0.93" android:scaleY="0.93" android:translateX="3" android:translateY="-3">
+        <path android:fillColor="#FF1D1B20" android:pathData="M40,36H62A10,10 0 0 1 72,46V68A10,10 0 0 1 62,78H40A10,10 0 0 1 30,68V46A10,10 0 0 1 40,36Z" />
+        <path android:fillColor="#FF2B2930" android:pathData="M38.4,41H63.6A3.4,3.4 0 0 1 67,44.4V46.300000000000004A3.4,3.4 0 0 1 63.6,49.7H38.4A3.4,3.4 0 0 1 35,46.300000000000004V44.4A3.4,3.4 0 0 1 38.4,41ZM38.4,52.65H63.6A3.4,3.4 0 0 1 67,56.05V57.949999999999996A3.4,3.4 0 0 1 63.6,61.349999999999994H38.4A3.4,3.4 0 0 1 35,57.949999999999996V56.05A3.4,3.4 0 0 1 38.4,52.65ZM38.4,64.3H63.6A3.4,3.4 0 0 1 67,67.7V69.6A3.4,3.4 0 0 1 63.6,73.0H38.4A3.4,3.4 0 0 1 35,69.6V67.7A3.4,3.4 0 0 1 38.4,64.3Z" />
+        <path android:fillColor="#FF49454F" android:pathData="M40.4,43.95H45.6A1.4,1.4 0 0 1 47,45.35V45.35A1.4,1.4 0 0 1 45.6,46.75H40.4A1.4,1.4 0 0 1 39,45.35V45.35A1.4,1.4 0 0 1 40.4,43.95ZM40.4,55.6H45.6A1.4,1.4 0 0 1 47,57.0V57.0A1.4,1.4 0 0 1 45.6,58.4H40.4A1.4,1.4 0 0 1 39,57.0V57.0A1.4,1.4 0 0 1 40.4,55.6ZM40.4,67.25H45.6A1.4,1.4 0 0 1 47,68.65V68.64999999999999A1.4,1.4 0 0 1 45.6,70.05H40.4A1.4,1.4 0 0 1 39,68.64999999999999V68.65A1.4,1.4 0 0 1 40.4,67.25Z" />
+        <path android:fillColor="#FFD0BCFF" android:pathData="M50.65,45.35a1.35,1.35 0 1 0 2.7,0a1.35,1.35 0 1 0 -2.7,0ZM50.65,57a1.35,1.35 0 1 0 2.7,0a1.35,1.35 0 1 0 -2.7,0ZM50.65,68.65a1.35,1.35 0 1 0 2.7,0a1.35,1.35 0 1 0 -2.7,0Z" />
+        <path android:fillColor="#99D0BCFF" android:pathData="M55.15,45.35a1.35,1.35 0 1 0 2.7,0a1.35,1.35 0 1 0 -2.7,0ZM55.15,57a1.35,1.35 0 1 0 2.7,0a1.35,1.35 0 1 0 -2.7,0ZM55.15,68.65a1.35,1.35 0 1 0 2.7,0a1.35,1.35 0 1 0 -2.7,0Z" />
+        <path android:fillColor="#4DD0BCFF" android:pathData="M59.65,57a1.35,1.35 0 1 0 2.7,0a1.35,1.35 0 1 0 -2.7,0ZM59.65,68.65a1.35,1.35 0 1 0 2.7,0a1.35,1.35 0 1 0 -2.7,0Z" />
+        <path android:fillColor="#FF1D1B20" android:pathData="M58.8,38a11.2,11.2 0 1 0 22.4,0a11.2,11.2 0 1 0 -22.4,0Z" />
+        <path android:fillColor="#FF381E72" android:pathData="M60.8,38a9.2,9.2 0 1 0 18.4,0a9.2,9.2 0 1 0 -18.4,0Z" />
+        <path android:fillColor="#FFEADDFF" android:pathData="M68.6,31.2C69,35 70.2,36.3 74,36.8C70.2,37.3 69,38.6 68.6,42.4C68.2,38.6 67,37.3 63.2,36.8C67,36.3 68.2,35 68.6,31.2Z" />
+        <path android:fillColor="#D9EADDFF" android:pathData="M73.4,38.6C73.6,40.2 74.1,40.7 75.7,40.9C74.1,41.1 73.6,41.6 73.4,43.2C73.2,41.6 72.7,41.1 71.1,40.9C72.7,40.7 73.2,40.2 73.4,38.6Z" />
+    </group>
+</vector>

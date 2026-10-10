@@ -38,7 +38,7 @@ try:                       # optional module: fan/case lighting (modules/fan-gig
 except ImportError:
     nova_rgb = None
 
-API_VERSION = "0.5.13-alpha"
+API_VERSION = "0.5.14-alpha"
 CONFIG = "/etc/nova-api/config.json"
 DATA = "/var/lib/nova-api"
 DEVICES = f"{DATA}/devices.json"
@@ -739,6 +739,23 @@ class Handler(BaseHTTPRequestHandler):
                 audit(device=dev["name"], path=path, result=403, why="watches only approve")
                 return self.send(403, {"error": "watch_only_approves"})
             dev["stepup_ok"] = True
+        if dev.get("type") == "wear":
+            # The Nova watch app: a glance (overview, live numbers, recent events) and approvals. Nothing else.
+            # Its key is in the watch's hardware and works only while the watch is unlocked, so approving counts as the fingerprint step.
+            ok = (method == "GET" and (parts in (["whoami"], ["overview"], ["stats"], ["events"], ["approvals"]) or (len(parts) == 2 and parts[0] == "approvals"))) \
+                or (method == "POST" and len(parts) == 3 and parts[0] == "approvals" and parts[2] in ("approve", "deny")) \
+                or (method == "DELETE" and parts == ["devices", dev.get("id")])
+            owner = load_json(DEVICES, {}).get(dev.get("owner", ""))
+            if not owner or role_of(owner) != "admin":
+                return self.send(403, {"error": "this watch's phone isn't an admin any more"})
+            if not ok:
+                audit(device=dev["name"], path=path, result=403, why="watch app: glance and approvals only")
+                return self.send(403, {"error": "watch_read_only"})
+            if method == "POST": dev["stepup_ok"] = True
+            if method == "DELETE":
+                with lock:
+                    devs = load_json(DEVICES, {}); devs.pop(dev["id"], None); save_json(DEVICES, devs)
+                return self.send(200, {"ok": True})
         if dev.get("type") == "browser" and browser_forbidden(method, parts, dev):
             audit(device=dev["name"], path=path, result=403, why="phones only")
             return self.send(403, {"error": "phones_only", "message": "Do this from the Nova app on an admin phone."})
@@ -891,8 +908,9 @@ class Handler(BaseHTTPRequestHandler):
             except Exception: return self.send(400, {"error": "need a P-256 public_key"})
             rid = secrets.token_urlsafe(18)
             code = "".join(secrets.choice("ABCDEFGHJKLMNPQRSTUVWXYZ23456789") for _ in range(6))
-            browser_requests[rid] = {"pem": pem, "name": name or "Browser", "code": code, "expires": now + 600, "state": "pending",
-                                     "from": ip, "via": where}
+            kind = "wear" if d.get("kind") == "wear" else "browser"        # a Wear OS watch pairs the same way, then gets a watch's narrow access
+            browser_requests[rid] = {"pem": pem, "name": name or ("Watch" if kind == "wear" else "Browser"), "code": code, "expires": now + 600, "state": "pending",
+                                     "from": ip, "via": where, "kind": kind}
             write_pending()
             return self.send(200, {"id": rid, "code": code, "expires_in": 600})
         if method == "GET" and path.startswith("/api/v1/browser/request/"):
@@ -900,7 +918,8 @@ class Handler(BaseHTTPRequestHandler):
             if not rq: return self.send(404, {"state": "expired"})
             # Approved from the server's shell (`sudo nova approve CODE`): a one-time file in
             # Nova's private data folder, which only root or the service itself can write.
-            ap = shell_approval(rq["code"]) if rq["state"] == "pending" and rq["expires"] > time.time() else None
+            # (a watch must be approved from an admin phone: it belongs to that phone)
+            ap = shell_approval(rq["code"]) if rq["state"] == "pending" and rq["expires"] > time.time() and rq.get("kind") != "wear" else None
             if ap:
                 role = ap.get("role") if ap.get("role") in ROLES else "admin"
                 dev_id = secrets.token_urlsafe(12)
@@ -914,7 +933,7 @@ class Handler(BaseHTTPRequestHandler):
                 audit(device=rq["name"], path="/api/v1/browser/approve", result=200, why="approved from the server shell")
                 helper("notify-paired", "".join(c for c in rq["name"] if c.isalnum() or c in " -_")[:40] or "browser")
                 write_pending()
-            return self.send(200, {"state": rq["state"], "device_id": rq.get("device_id"), "role": rq.get("role"),
+            return self.send(200, {"state": rq["state"], "device_id": rq.get("device_id"), "role": rq.get("role"), "kind": rq.get("kind", "browser"),
                                    "server": load_json(SETTINGS, {}).get("display_name") or os.uname().nodename})
         return self.send(404, {"error": "not found"})
 
@@ -1074,7 +1093,13 @@ class Handler(BaseHTTPRequestHandler):
             dev_id = secrets.token_urlsafe(12)
             with lock:
                 devs = load_json(DEVICES, {})
-                devs[dev_id] = {"name": str(data.get("name") or rq["name"])[:40], "public_key": rq["pem"], "type": "browser",
+                if rq.get("kind") == "wear":
+                    # A watch belongs to the admin phone that approved it, and can only do what a watch may (see the wear gate)
+                    if dev.get("type") in ("browser", "watch", "wear", "head") or role_of(dev) != "admin": raise ValueError("approve a watch from an admin phone")
+                    devs[dev_id] = {"name": str(data.get("name") or rq["name"])[:40], "public_key": rq["pem"], "type": "wear", "form": "watch",
+                                    "role": "admin", "owner": dev["id"], "user": dev.get("user", ""), "created": time.strftime("%Y-%m-%d %H:%M"), "paired_from": rq["from"]}
+                else:
+                    devs[dev_id] = {"name": str(data.get("name") or rq["name"])[:40], "public_key": rq["pem"], "type": "browser",
                                 "created": time.strftime("%Y-%m-%d %H:%M"), "paired_from": rq["from"], "role": role,
                                 "user": "".join(c for c in str(data.get("user", "")) if c.isprintable()).strip()[:40]}
                 save_json(DEVICES, devs)

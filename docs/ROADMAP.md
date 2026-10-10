@@ -46,6 +46,6 @@ The Android app can be published on Google Play (the developer account exists). 
 ## Also planned
 
 - Servers page, next step: manage another server right from this one's Nova web (a signed relay, so each server still checks your browser's own key and approvals), instead of opening its own Nova web.
-- A fuller Wear OS app: glanceable status, tiles and complications, alongside approvals.
+- Wear OS, next: a watch-face complication, quick actions (restart a container, lights), and a Play listing.
 - Lighting for any hardware: strips, several ARGB headers or zones with their own effect, OpenRGB.
 - A reworked app store with categories, search and one-tap installs.

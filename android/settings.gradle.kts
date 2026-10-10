@@ -7,3 +7,4 @@ dependencyResolutionManagement {
 }
 rootProject.name = "Nova"
 include(":app")
+include(":wear")

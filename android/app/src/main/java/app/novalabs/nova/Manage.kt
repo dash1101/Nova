@@ -190,7 +190,7 @@ fun roleLabel(r: String) = if (r == "viewer") "View only" else "Admin"
                 Row1("Invite a phone", "Pick who it's for and whether it's an admin or view only", false, Icons.Rounded.PersonAdd, N.green,
                     onClick = { inviting = true })
                 RowDivider()
-                Row1("Approve a browser", "Use Nova from a computer — enter the code it shows", false, Icons.Rounded.Computer, N.blue,
+                Row1("Approve a browser or watch", "Use Nova from a computer or the watch app — enter the code it shows", false, Icons.Rounded.Computer, N.blue,
                     onClick = { approveBrowser = true })
                 RowDivider()
                 Row1("Approvals", "Risky actions a browser is waiting on", true, Icons.Rounded.VerifiedUser, onClick = { app.go(Route.Approvals) })
@@ -307,11 +307,13 @@ fun roleLabel(r: String) = if (r == "viewer") "View only" else "Admin"
     var code by remember { mutableStateOf("") }
     var user by remember { mutableStateOf(app.pairing.user) }
     var role by remember { mutableStateOf("admin") }
-    OneDialog(onDone, "Approve a browser", buttons = listOf(DialogButton("Cancel", onClick = onDone), DialogButton("Approve", N.blue, code.length == 6) {
-        app.act("Browser added") { app.stepUp("Add a browser", "POST", "/api/v1/browser/approve",
+    OneDialog(onDone, "Approve a browser or watch", buttons = listOf(DialogButton("Cancel", onClick = onDone), DialogButton("Approve", N.blue, code.length == 6) {
+        app.act("Added") { app.stepUp("Add a browser or watch", "POST", "/api/v1/browser/approve",
             JSONObject().put("code", code.uppercase()).put("user", user).put("role", role)); onDone() } })) {
-        Text("Open Nova in the browser (https://your-server:8495 at home, or your Cloudflare address) and enter the 6-letter code it shows.",
+        Text("Open Nova in the browser (https://your-server:8495 at home, or your Cloudflare address), or the Nova app on your watch, and enter the 6-letter code it shows. A watch can only see status and approve things, as you.",
             color = N.sub, fontSize = 14.sp, modifier = Modifier.padding(horizontal = 26.dp))
+        if (app.pairing.lanPin.isNotEmpty()) Text("A watch also shows the server's certificate: it should be ${app.pairing.lanPin.take(12).uppercase().chunked(4).joinToString(" ")}.",
+            color = N.sub, fontSize = 13.sp, modifier = Modifier.padding(start = 26.dp, end = 26.dp, top = 6.dp))
         Spacer(Modifier.height(10.dp))
         OneTextField(code, { code = it.filter { c -> c.isLetterOrDigit() }.take(6) }, "Code", Modifier.fillMaxWidth().padding(horizontal = 22.dp), mono = true)
         Spacer(Modifier.height(8.dp))

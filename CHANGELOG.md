@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.5.14-alpha (app, watch and server)
+- **Nova for Wear OS** (new, `nova-wear-0.5.14-alpha.apk`): your server's health at a glance (status, CPU temperature, memory, containers, anything running), recent events, and anything waiting for your approval — approve or deny on your wrist. Plus a **status tile**. The watch finds the server on your Wi-Fi (or type an address, e.g. Tailscale), shows a code, and you approve it on your phone (Users & devices → *Approve a browser or watch*), comparing the certificate it shows. Its key stays in the watch and works only while the watch is unlocked; the server lets it read status and approve, nothing else. See docs/WEAR.md.
+- Security test: 294 checks, all passing (new: the watch's narrow access).
+
 ## 0.5.13-alpha (app and server)
 - **Lighting for more than one light:** Lighting → *Your lights* lists what's plugged in where — a fan, an LED strip or something else — and *Add a light* puts another one on a free header (the board's second ARGB header, or its 12 V RGB header). Each light has its own effect, color, brightness and LED count; pick one with the chips at the top of Lighting. A 12 V RGB header only offers the one-color effects. Presets, schedules, the status light and the Home picture stay with the main light for now. The whole controller is set in one pass, so changing one light never resets another, and the animator draws every moving effect together. Only the first ARGB header has been tried on real hardware so far; the others are marked “untested”.
 - **Weekly container updates check the disk first:** before each download Nova needs about 8 GB (or 8% of the drive) free, and stops with an alert instead of filling the drive. Each update now also removes the version from two updates ago, so only one old version is kept per container.

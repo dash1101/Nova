@@ -1,4 +1,4 @@
-# Nova  ·  0.5.13-alpha
+# Nova  ·  0.5.14-alpha
 
 **A secure remote control for your home server, from your Android phone.**
 Status and live graphs, containers (logs, shell, start/stop), a one-tap app store, drives,
@@ -44,6 +44,7 @@ network, and optionally from anywhere through Cloudflare Access, without a VPN.
 | **Troubleshoot** | For a container that won't stay up: the last error, stop it for good, go back to the previous version, update again, recreate |
 | **Labs** | Opt-in extras: Cloudflare auto-setup, crash-loop guard, weekly container updates with automatic rollback, old-image cleanup, Wake-on-LAN |
 | **Your look** | Two styles, light/dark, and 13 app icons (Material You, outline, black and white, glass, colors…) |
+| **Watch** | A Wear OS app and tile: health at a glance, recent events, approve or deny on your wrist ([docs/WEAR.md](docs/WEAR.md)) |
 | **Several servers** | Pair with as many machines as you like and switch between them, each with its own name and color |
 | **Users & roles** | Named users, each Admin or View only; invite phones by QR, approve browsers from your phone |
 | **Tablets & dashboard** | One UI tablet layout (rail + list/detail) and an always-on, customizable dashboard mode |

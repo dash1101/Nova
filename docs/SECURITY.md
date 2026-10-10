@@ -60,6 +60,17 @@ fingerprint. The server refuses to demote the last admin.
   key. Phones remain the only things that can authorize risky actions.
 - The page is served with a strict Content-Security-Policy (no third-party scripts, no framing).
 
+## Watches
+
+- **Approver key on the phone** (Approve from notifications): a second hardware key, registered with a
+  fingerprint, that signs only approve/deny — used by the notification buttons and a paired watch's
+  notification mirror.
+- **The Nova watch app** pairs like a browser — its own P-256 key in the watch's keystore (usable only
+  while the watch is unlocked), a 6-letter code approved on an admin phone with a fingerprint (never
+  from the server shell), and the server's certificate pinned. It may read the overview, live numbers,
+  events and approvals, and approve or deny; every other request is refused by the server. It belongs
+  to the phone that approved it and stops working if that phone stops being an admin. See [WEAR.md](WEAR.md).
+
 ## Privilege separation
 
 - `nova-api` runs as an unprivileged system user in a systemd sandbox (`ProtectSystem=strict`,
