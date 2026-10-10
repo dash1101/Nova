@@ -97,6 +97,9 @@ fun appUrl(app: AppState, a: JSONObject): String? {
     val live = live(app, "/api/v1/apps", 30_000)
     var editing by remember { mutableStateOf<JSONObject?>(null) }
     var adding by remember { mutableStateOf(false) }
+    var addingWeb by remember { mutableStateOf(false) }
+    var cmdEdit by remember { mutableStateOf<JSONObject?>(null) }
+    var runAsk by remember { mutableStateOf<JSONObject?>(null) }
     var showHidden by remember { mutableStateOf(false) }
     val all = live.value?.optJSONArray("apps").objs()
     val shown = all.filter { showHidden || !it.optBoolean("hidden") }
@@ -106,6 +109,17 @@ fun appUrl(app: AppState, a: JSONObject): String? {
         if (live.value == null) Text("Looking for apps…", color = N.sub, modifier = Modifier.padding(30.dp))
         else if (shown.isEmpty()) Group { Row1("No web apps found", "Install one from the Store, or add a link with +", false, Icons.Rounded.Apps, N.blue) }
         val cols = if (LocalWide.current) 6 else 4
+        if (app.isAdmin) {
+            SectionLabel("Built in")
+            Row(Modifier.fillMaxWidth().padding(horizontal = Space.gutter, vertical = 6.dp)) {
+                listOf(Triple("Files", Icons.Rounded.Folder, N.blue) to { app.go(Route.Files()) }, Triple("Terminal", Icons.Rounded.Terminal, N.green) to { app.go(if (SshSession.active) Route.SshTerm else Route.Ssh) })
+                    .forEach { (t, go) -> Column(Modifier.weight(1f).clip(RoundedCornerShape(18.dp)).clickable { go() }.padding(vertical = 10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Box(Modifier.size(60.dp).clip(RoundedCornerShape(16.dp)).background(t.third.copy(alpha = 0.16f)), contentAlignment = Alignment.Center) { Icon(t.second, null, tint = t.third, modifier = Modifier.size(30.dp)) }
+                        Text(t.first, color = N.text, fontSize = 13.sp, modifier = Modifier.padding(top = 6.dp)) } }
+                repeat(cols - 2) { Spacer(Modifier.weight(1f)) }
+            }
+            SectionLabel("On your server")
+        }
         val cells: List<JSONObject?> = shown + if (app.isAdmin && live.value != null) listOf(null) else emptyList()     // null: the Add tile
         cells.chunked(cols).forEach { rowApps ->
             Row(Modifier.fillMaxWidth().padding(horizontal = Space.gutter, vertical = 6.dp)) {
@@ -115,7 +129,7 @@ fun appUrl(app: AppState, a: JSONObject): String? {
                         Box(Modifier.size(60.dp).clip(RoundedCornerShape(16.dp)).border(1.5.dp, N.sub.copy(alpha = 0.5f), RoundedCornerShape(16.dp)), contentAlignment = Alignment.Center) {
                             Icon(Icons.Rounded.Add, null, tint = N.blue, modifier = Modifier.size(28.dp)) }
                         Text("Add", color = N.text, fontSize = 13.sp, modifier = Modifier.padding(top = 6.dp))
-                    } else Column(Modifier.weight(1f).clip(RoundedCornerShape(18.dp)).combinedClickable(onLongClick = { if (app.isAdmin) editing = a }) { openApp(app, a) }
+                    } else Column(Modifier.weight(1f).clip(RoundedCornerShape(18.dp)).combinedClickable(onLongClick = { if (app.isAdmin) editing = a }) { if (a.optString("kind") == "command") runAsk = a else openApp(app, a) }
                         .padding(vertical = 10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                         Box { AppIcon(app, a, 60.dp); if (AppSessions.get(a.optString("id")) != null) Box(Modifier.align(Alignment.BottomEnd).size(12.dp).clip(CircleShape).background(N.green)) }
                         Text(a.optString("name"), color = if (a.optBoolean("hidden")) N.sub else N.text, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
@@ -129,8 +143,16 @@ fun appUrl(app: AppState, a: JSONObject): String? {
         if (app.api.via == "remote") Text("You're away from home: apps open through their own remote link if you've set one (hold an app → Remote link). Others need your home network or Tailscale.",
             color = N.amber, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 30.dp, vertical = 8.dp))
     }
-    editing?.let { a -> AppEditDialog(app, a, onDone = { r -> editing = null; r?.let { live.value = it } }) }
-    if (adding) AppEditDialog(app, null, onDone = { r -> adding = false; r?.let { live.value = it } })
+    editing?.let { a -> if (a.optString("kind") == "command") CommandAppDialog(app, a) { r -> editing = null; r?.let { live.value = it } }
+        else AppEditDialog(app, a, onDone = { r -> editing = null; r?.let { live.value = it } }) }
+    if (adding) AddAppChoice(onWeb = { adding = false; addingWeb = true }, onCommand = { adding = false; cmdEdit = JSONObject() }, onDismiss = { adding = false })
+    if (addingWeb) AppEditDialog(app, null, onDone = { r -> addingWeb = false; r?.let { live.value = it } })
+    cmdEdit?.let { a -> CommandAppDialog(app, a.takeIf { it.has("id") }) { r -> cmdEdit = null; r?.let { live.value = it } } }
+    runAsk?.let { a ->
+        fun run() = app.act { val r = app.api.post("/api/v1/apps/${a.optString("id")}/run"); app.go(Route.Task(r.optString("task"))) }
+        if (!a.optBoolean("confirm")) { LaunchedEffect(a) { runAsk = null; run() } }
+        else OneDialog({ runAsk = null }, "Run ${a.optString("name")}?", a.optString("command").take(200), listOf(DialogButton("Cancel") { runAsk = null }, DialogButton("Run", N.blue) { runAsk = null; run() }))
+    }
 }
 
 fun openApp(app: AppState, a: JSONObject) {
@@ -282,5 +304,32 @@ fun openApp(app: AppState, a: JSONObject) {
         OneDialog({ h.cancel(); sslAsk = null }, "Open with the server's own certificate?",
             "${s.app.optString("name")} uses a certificate your phone doesn't know (common for apps on a home server). Only continue if this is your server.",
             listOf(DialogButton("Cancel") { h.cancel(); sslAsk = null }, DialogButton("Open", N.blue) { h.proceed(); sslAsk = null }))
+    }
+}
+
+
+@Composable private fun AddAppChoice(onWeb: () -> Unit, onCommand: () -> Unit, onDismiss: () -> Unit) =
+    OneDialog(onDismiss, "Add an app", "A web page on your network opens like any other app. A command or script runs on the server with one tap and shows you its output.",
+        listOf(DialogButton("Cancel", onClick = onDismiss), DialogButton("Command or script", onClick = onCommand), DialogButton("Web page", N.blue, onClick = onWeb)))
+
+/** A command app: what it runs (as your normal account on the server). Saving asks for your fingerprint. */
+@Composable private fun CommandAppDialog(app: AppState, a: JSONObject?, onDone: (JSONObject?) -> Unit) {
+    var name by remember { mutableStateOf(a?.optString("name") ?: "") }
+    var cmd by remember { mutableStateOf(a?.optString("command") ?: "") }
+    var confirm by remember { mutableStateOf(a?.optBoolean("confirm") ?: false) }
+    var timeout by remember { mutableStateOf((a?.optInt("timeout", 600) ?: 600).toString()) }
+    OneDialog({ onDone(null) }, a?.optString("name") ?: "New command app", "It runs on the server as your normal account, and you see its output.", listOfNotNull(
+        if (a != null) DialogButton("Delete", N.red) { app.act { app.api.delete("/api/v1/apps/${a.optString("id")}"); onDone(app.api.get("/api/v1/apps")) } } else null,
+        DialogButton("Cancel") { onDone(null) },
+        DialogButton("Save", N.blue, enabled = name.isNotBlank() && cmd.isNotBlank()) { app.act {
+            val r = app.stepUp("Save the command app ${name.trim()}", "POST", "/api/v1/apps/command", JSONObject().put("name", name.trim()).put("command", cmd)
+                .put("confirm", confirm).put("timeout", timeout.toIntOrNull() ?: 600).apply { a?.let { put("id", it.optString("id")) } })
+            onDone(JSONObject().put("apps", r.optJSONArray("apps"))) } })) {
+        Column(Modifier.padding(horizontal = 22.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            OneTextField(name, { name = it.take(40) }, "Name, e.g. Clean up Docker", Modifier.fillMaxWidth())
+            OneTextField(cmd, { cmd = it.take(8000) }, "docker system prune -f", Modifier.fillMaxWidth(), mono = true, singleLine = false)
+            SwitchRow("Ask before running", null, confirm) { confirm = it }
+            OneTextField(timeout, { timeout = it.filter(Char::isDigit).take(4) }, "Time limit (seconds)", Modifier.fillMaxWidth())
+        }
     }
 }

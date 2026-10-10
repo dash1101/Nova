@@ -102,6 +102,7 @@ class AlertService : Service() {
             try {
                 val r = NovaApi(p).get("/api/v1/events/wait?since=${p.lastEventSeen}&timeout=50&seen=${shown.joinToString(",")}")
                 Alerts.handle(applicationContext, p, r.optJSONArray("events"))
+                Notifier.tasks(applicationContext, id, r.optJSONArray("tasks"))
                 r.optJSONArray("approvals")?.let { a -> for (i in 0 until a.length()) { val o = a.getJSONObject(i)
                     if (shown.add(o.optString("id"))) Notifier.approval(applicationContext, o.optString("id").hashCode(),
                         "Approve: ${o.optString("what")}?", "Requested by ${o.optString("device_name")}${o.optString("user").takeIf { it.isNotEmpty() }?.let { " ($it)" } ?: ""}" +

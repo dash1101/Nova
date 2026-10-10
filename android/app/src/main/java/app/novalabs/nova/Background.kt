@@ -72,6 +72,33 @@ object Notifier {
     fun atLeast(level: String, min: String) =
         levels.indexOf(if (level == "resolved") "info" else level) >= levels.indexOf(min)
 
+    /** Something running on the server (install, backup, update…): a quiet notification with its progress,
+     *  replaced by a short "done"/"failed" one when it ends. */
+    private val progressShown = mutableSetOf<String>()
+    fun tasks(ctx: Context, profile: String, list: org.json.JSONArray?) {
+        val nm = ctx.getSystemService(NotificationManager::class.java)
+        nm.createNotificationChannel(NotificationChannel("progress", "Progress", NotificationManager.IMPORTANCE_LOW)
+            .apply { description = "Installs, backups and updates while they run" })
+        val open = PendingIntent.getActivity(ctx, 7, Intent(ctx, MainActivity::class.java).putExtra("open", "inbox")
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        val now = mutableSetOf<String>()
+        for (i in 0 until (list?.length() ?: 0)) {
+            val t = list!!.getJSONObject(i); val key = profile + t.optString("id"); val nid = key.hashCode()
+            val running = t.optString("state") == "running"
+            if (!running && key !in progressShown) continue                  // ended before we saw it: the Inbox has it
+            now += key
+            val b = NotificationCompat.Builder(ctx, "progress").setSmallIcon(R.drawable.ic_notification).setColor(0xFF6E56CF.toInt())
+                .setContentTitle(t.optString("title")).setContentIntent(open).setSilent(true).setOnlyAlertOnce(true)
+            if (running) b.setOngoing(true).setProgress(100, t.optDouble("pct", 0.0).toInt(), t.optDouble("pct", 0.0) <= 0.0)
+                .setContentText(t.optString("note").ifEmpty { t.optString("step") })
+            else { b.setContentText(when (t.optString("state")) { "done" -> "Done"; "stopped" -> "Stopped"; else -> "Failed: ${t.optString("error").take(120)}" }).setAutoCancel(true).setTimeoutAfter(60_000) }
+            runCatching { nm.notify(nid, b.build()) }
+            if (running) progressShown += key else progressShown -= key
+        }
+        // anything we were showing that the server stopped reporting: clear it
+        progressShown.filter { it.startsWith(profile) && it !in now }.forEach { nm.cancel(it.hashCode()); progressShown -= it }
+    }
+
     /** A browser asked for something risky: open Nova's Approvals screen. */
     fun approval(ctx: Context, id: Int, title: String, text: String, approvalId: String = "", profile: String = "") {
         val nm = ctx.getSystemService(NotificationManager::class.java)

@@ -1,6 +1,7 @@
 package app.novalabs.nova
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
@@ -62,6 +63,7 @@ import java.util.*
     Page("Inbox", app::back, listOf(TopAction(Icons.Rounded.Inventory2, "Archive") { app.go(Route.Archive) },
             TopAction(Icons.Rounded.DeleteSweep, "Archive everything") { clearAll = true },
             TopAction(Icons.Rounded.Settings, "Notification settings") { app.go(Route.NotifySettings) })) {
+        LiveTasks(app)
         AttentionList(app)
         Segmented(listOf("All", "Issues", "Critical", "Logins"), filter) { filter = it }
         if (shown.isEmpty()) Text(if (data == null) "Loading…" else "Nothing here — all quiet.", color = N.sub, modifier = Modifier.padding(30.dp))
@@ -285,6 +287,8 @@ import java.util.*
             RowDivider()
             Row1("Appearance & privacy", "Theme, Home layout, app lock", true, Icons.Rounded.Palette, onClick = { app.go(Route.Appearance) })
             RowDivider()
+            Row1("Labs", "Experimental features you can try", true, Icons.Rounded.Science, androidx.compose.ui.graphics.Color(0xFFBF5AF2), onClick = { app.go(Route.Labs) })
+            RowDivider()
             Row1("Setup guide", "Install Nova on a server, remote access, browsers", true, androidx.compose.material.icons.Icons.AutoMirrored.Rounded.MenuBook, onClick = { app.go(Route.SetupGuide) })
         }
         Group { Row1("Unpair this ${DeviceForm.noun}", "Erases its keys", false, Icons.Rounded.LinkOff, N.red, onClick = { confirmUnpair = true }) }
@@ -369,5 +373,77 @@ import java.util.*
             Text("Showing the last data Nova had${ago?.let { " (from $it)" } ?: ""}. Nova keeps trying in the background and reconnects by itself when the server is back.",
                 color = N.sub, fontSize = 13.sp)
         }
+    }
+}
+
+
+/** What's running on the server right now (installs, backups, updates, drive setup…), live. */
+@Composable fun LiveTasks(app: AppState) {
+    var tasks by remember { mutableStateOf(listOf<JSONObject>()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            val l = runCatching { app.api.get("/api/v1/tasks").optJSONArray("tasks").objs() }.getOrNull()
+            if (l != null) { val now = System.currentTimeMillis() / 1000.0
+                tasks = l.filter { it.optString("state") == "running" || now - it.optDouble("finished", 0.0) < 90 } }
+            delay(if (tasks.any { it.optString("state") == "running" }) 2_000 else 15_000)
+        }
+    }
+    androidx.compose.animation.AnimatedVisibility(tasks.isNotEmpty()) {
+        Column {
+            SectionLabel("In progress")
+            Group {
+                tasks.forEachIndexed { i, t ->
+                    if (i > 0) RowDivider()
+                    val st = t.optString("state"); val pct = t.optDouble("pct", 0.0)
+                    Column(Modifier.fillMaxWidth().clickable { taskRoute(t)?.let { app.go(it) } }.padding(horizontal = 20.dp, vertical = 14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(t.optString("title"), color = N.text, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f), maxLines = 1)
+                            Text(when (st) { "running" -> "${pct.toInt()}%"; "done" -> "Done"; "stopped" -> "Stopped"; else -> "Failed" },
+                                color = when (st) { "done" -> N.green; "failed" -> N.red; else -> N.sub }, fontSize = 13.sp)
+                        }
+                        if (st == "running") {
+                            val anim by androidx.compose.animation.core.animateFloatAsState((pct / 100).toFloat(), label = "pct")
+                            LinearProgressIndicator(progress = { anim }, modifier = Modifier.fillMaxWidth().height(6.dp).clip(androidx.compose.foundation.shape.RoundedCornerShape(3.dp)), color = N.blue, trackColor = N.pill)
+                        }
+                        val sub = if (st == "running") t.optString("note").ifEmpty { t.optString("step") } else if (st == "done") t.optString("step") else t.optString("error").ifEmpty { t.optString("step") }
+                        if (sub.isNotEmpty()) Text(sub, color = N.sub, fontSize = 13.sp, maxLines = 2)
+                    }
+                }
+            }
+        }
+    }
+}
+
+private fun taskRoute(t: JSONObject): Route? {
+    val k = t.optString("kind")
+    return when {
+        k.startsWith("store-") -> Route.StoreItem(t.optString("key"))
+        k.startsWith("program-") -> Route.Store
+        k in listOf("updates-check", "apt-upgrade", "containers-update") -> Route.Updates
+        k == "backup-run" || k == "restore" -> Route.Backups
+        k.startsWith("custom-") -> Route.Containers
+        else -> Route.Task(t.optString("id"))
+    }
+}
+
+
+/** Settings → Labs: experimental features, off until you turn them on (they're the server's settings). */
+@Composable fun LabsScreen(app: AppState) {
+    val live = live(app, "/api/v1/labs")
+    val l = live.value
+    Page("Labs", app::back) {
+        Text("Experimental features. They work, but haven't had as much use as the rest of Nova — so they're off until you turn them on.",
+            color = N.sub, fontSize = 14.sp, modifier = Modifier.padding(horizontal = 30.dp, vertical = 6.dp))
+        if (l == null) Text("Loading…", color = N.sub, modifier = Modifier.padding(30.dp))
+        else Group {
+            val about = l.optJSONObject("about") ?: JSONObject(); val on = l.optJSONObject("labs") ?: JSONObject()
+            about.keys().asSequence().toList().forEachIndexed { i, k -> val a = about.getJSONObject(k)
+                if (i > 0) RowDivider()
+                SwitchRow(a.optString("name"), a.optString("about"), on.optBoolean(k), app.isAdmin) { v -> app.act { live.value = app.api.post("/api/v1/labs", JSONObject().put(k, v)) } }
+            }
+        }
+        if (l?.optJSONObject("labs")?.optBoolean("cloudflare_sync") == true)
+            Text("Add the Cloudflare API token in Nova web (Settings → Labs → Cloudflare). Then hold an app in Apps → Open it from anywhere.",
+                color = N.sub, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 30.dp, vertical = 8.dp))
     }
 }

@@ -227,7 +227,8 @@ export async function task(ctx) {
       + (state === "done" && t?.result ? resultHtml(kind, t.result) : "")
       + (kind === "backup-run" && state === "failed" && /down from/.test(t?.error || "") && isAdmin() ? group(row("I deleted those files on purpose", { sub: "Back up anyway — just this once", blue: true, icon: "backup", tint: "var(--amber)", click: "force" })) : "")
       + (state === "done" && then ? group(row("Now choose what to back up", { sub: `Your new drive is ready at ${then}`, blue: true, icon: "backup", click: "nextbackup" })) : "")
-      + (t?.log?.length ? sec("What happened") + group(`<pre style="padding:18px;margin:0;white-space:pre-wrap;font-size:13px;color:var(--sub)">${esc(t.log.slice(-40).join("\n"))}</pre>`) : "")
+      + (t?.log?.length ? sec(kind === "run-command" ? "Output" : "What happened") + group(`<pre class="${kind === "run-command" ? "cmdout" : ""}" style="padding:18px;margin:0;white-space:pre-wrap;font-size:13px;color:var(--sub)">${esc((kind === "run-command" ? t.log.slice(-200).map(l => l.replace(/^\d\d:\d\d:\d\d /, "")) : t.log.slice(-40)).join("\n"))}</pre>`)
+          + (kind === "run-command" && state !== "running" ? group(row("Run it again", { icon: "play", blue: true, click: "again" })) : "") : "")
       + (state === "running" && !["format", "combine", "raid", "pool-remove", "pool-add"].includes(kind) && isAdmin() ? `<div style="padding:18px 22px"><button class="btn" style="width:100%;background:var(--card);color:var(--text)" data-act="stop" ${stopping ? "disabled" : ""}>${stopping ? "Stopping…" : "Stop"}</button></div>` : "")
       + (state === "running" ? note("You can leave this page — it keeps going on the server, and shows under Storage & hardware.") : ""), { title: t?.title || "Working…" });
     if (t?.samples?.length > 1) chart($("#chart"), $("#leg"), t.samples);
@@ -236,6 +237,7 @@ export async function task(ctx) {
     stop: async () => { stopping = true; draw(); try { await post(`/api/v1/tasks/${id}/stop`); } catch (e) { toast(e.message); } },
     force: () => startTask(ctx, `/api/v1/backups/${t.key}/run`, { force: true }),
     nextbackup: () => ctx.go(`backup-edit/new//${enc(then)}`),
+    again: async () => { try { const r = await post(`/api/v1/apps/${enc(t.key)}/run`); if (r?.task) ctx.go("task/" + r.task); } catch (e) { toast(e.message); } },
   });
   draw();
   ctx.every(1000, async () => { if (t && t.state !== "running") return; t = await get(`/api/v1/tasks/${id}`); draw(); }, true);
@@ -498,7 +500,10 @@ export async function apps(ctx) {
   const draw = () => {
     const all = S.cache["/api/v1/apps"]?.apps || [], list = all.filter(a => showHidden || !a.hidden);
     ctx.show(note("The web apps on your server. Each opens in its own tab. Right-click (or hold) an app to rename, hide it or set a remote link.")
+      + (isAdmin() ? `${sec("Built in")}<div class="appgrid">${[["files", "Files", "folder", "#3e91ff"], ["term", "Terminal", "term", "#3ecf6e"]].map(([r, n, ic, c]) =>
+          `<button class="appcell press" data-act="go:${r}" style="border:0;background:none;font:inherit;color:var(--text);cursor:pointer"><span class="appic" style="background:color-mix(in srgb,${c} 18%,var(--card));color:${c}">${I(ic)}</span><span class="appname">${n}</span></button>`).join("")}</div>${sec("On your server")}` : "")
       + (S.cache["/api/v1/apps"] ? (list.length ? `<div class="appgrid">${list.map((a, i) => { const h = appHref(a);
+          if (a.kind === "command") return `<button class="appcell press${a.hidden ? " dim" : ""}" data-act="runcmd:${i}" data-i="${i}" style="border:0;background:none;font:inherit;color:var(--text);cursor:pointer"><span class="appic" data-id="${esc(a.id)}" style="color:var(--green)">${I("term")}</span><span class="appname">${esc(a.name)}</span></button>`;
           return `<a class="appcell${a.hidden ? " dim" : ""}" ${h ? `href="${esc(h)}" target="_blank" rel="noopener noreferrer"` : `data-act="noreach"`} data-i="${i}"><span class="appic" data-id="${esc(a.id)}">${esc((a.name || "?")[0].toUpperCase())}</span><span class="appname">${esc(a.name)}</span></a>`; }).join("")}${isAdmin() ? `<button class="appcell addapp press" data-act="add"><span class="appic">${I("add")}</span><span class="appname">Add</span></button>` : ""}</div>`
         : group(row("No web apps found", { sub: "Install one from the Store, or add a link with +", icon: "apps" }))) : note("Looking for apps…"))
       + (all.some(a => a.hidden) ? group(switchRow("Show hidden apps", null, showHidden, "hid")) : ""),
@@ -506,8 +511,35 @@ export async function apps(ctx) {
     $$(".appic", ctx.root).forEach(async el => { const u = await appIcon(el.dataset.id); if (u && ctx.alive()) { el.textContent = ""; el.style.backgroundImage = `url("${u}")`; el.classList.add("img"); } });
     $$(".appcell", ctx.root).forEach(el => el.oncontextmenu = e => { e.preventDefault(); edit(list[+el.dataset.i]); });
   };
+  // command apps: a saved command or script, run with one tap as your normal account
+  const editCommand = async a => {
+    const v = { name: a?.name || "", command: a?.command || "", timeout: a?.timeout || 600, confirm: !!a?.confirm };
+    const p = dialog(a ? a.name : "New command app", "It runs on the server as your normal account, and you see its output. Saving it asks for your fingerprint.",
+      [{ label: "Cancel", value: null }, ...(a ? [{ label: "Delete", color: "var(--red)", value: "del" }] : []), { label: "Save", color: "var(--blue)", value: "save" }],
+      `<div class="pad" style="display:grid;gap:8px"><input class="field" id="cm-name" placeholder="Name, e.g. Clean up Docker" value="${esc(v.name)}">
+        <textarea class="field" id="cm-cmd" rows="5" placeholder="docker system prune -f&#10;df -h" spellcheck="false" style="font-family:ui-monospace,monospace;font-size:14px">${esc(v.command)}</textarea>
+        <label class="chk"><input type="checkbox" id="cm-confirm" ${v.confirm ? "checked" : ""}> Ask before running</label>
+        <label class="chk">Stop it after <input class="field" id="cm-to" type="number" min="10" max="3600" value="${v.timeout}" style="width:90px;padding:6px 10px;font-size:14px"> seconds</label></div>`);
+    $("#cm-name").oninput = e => v.name = e.target.value; $("#cm-cmd").oninput = e => v.command = e.target.value;
+    $("#cm-confirm").onchange = e => v.confirm = e.target.checked; $("#cm-to").oninput = e => v.timeout = +e.target.value || 600;
+    const r = await p; if (!r) return;
+    try {
+      if (r === "del") { if (!(await confirm(`Delete ${a.name}?`, "Only the app tile goes; nothing on the server changes.", "Delete"))) return; await del(`/api/v1/apps/${enc(a.id)}`); }
+      else await post("/api/v1/apps/command", { ...(a ? { id: a.id } : {}), name: v.name.trim(), command: v.command, timeout: v.timeout, confirm: v.confirm });
+      await get("/api/v1/apps"); draw(); if (r === "save") toast("Saved");
+    } catch (e) { toast(e.message); }
+  };
+  const runCommand = async a => {
+    if (!isAdmin()) return viewOnly();
+    if (a.confirm && !(await confirm(`Run ${a.name}?`, a.command.slice(0, 200), "Run", "var(--blue)"))) return;
+    try { const r = await post(`/api/v1/apps/${enc(a.id)}/run`); if (r?.task) ctx.go("task/" + r.task); } catch (e) { toast(e.message); }
+  };
   const edit = async a => {
     if (!isAdmin()) return viewOnly();
+    if (a?.kind === "command") return editCommand(a);
+    if (!a) { const k = await dialog("Add an app", "", [{ label: "Cancel", value: null }, { label: "Command or script", value: "cmd" }, { label: "Web page", color: "var(--blue)", value: "web" }],
+        `<div class="pad"><p class="muted" style="margin:0">A web page on your network opens like any other app. A command or script runs on the server with one tap, and shows you its output.</p></div>`);
+      if (!k) return; if (k === "cmd") return editCommand(null); }
     const v = { name: a?.name || "", url: a?.url || "", remote_url: a?.remote_url || "", icon: a?.slug || "" };
     const f = (id, ph) => `<input class="field" id="ap-${id}" placeholder="${esc(ph)}" value="${esc(v[id])}" style="margin-top:8px">`;
     const btns = [{ label: "Cancel", value: null }, ...(a ? [{ label: "From anywhere…", value: "remote" }] : []), ...(a && a.source !== "custom" ? [{ label: a.hidden ? "Show" : "Hide", value: "hide" }] : []), ...(a?.source === "custom" ? [{ label: "Delete", color: "var(--red)", value: "del" }] : []), { label: "Save", color: "var(--blue)", value: "save" }];
@@ -522,13 +554,27 @@ export async function apps(ctx) {
       delete iconCache[a?.id]; await get("/api/v1/apps"); draw();
     } catch (e) { toast(e.message); }
   };
+  // Labs: Nova does the Cloudflare steps itself (protect → DNS → route), after showing exactly what it will change
+  const autoSetup = async (a, g, host) => {
+    let h = host, p;
+    const r0 = dialog("Address for " + a.name, "On your domain, like photos.example.com.", [{ label: "Cancel", value: null }, { label: "Next", color: "var(--blue)", value: "next" }], `<div class="pad"><input class="field" id="cfh" value="${esc(h)}"></div>`);
+    $("#cfh").oninput = e => h = e.target.value.trim().toLowerCase(); if ((await r0) !== "next") return;
+    const tls = /^https:/.test(g.service || "");
+    try { p = await post("/api/v1/cloudflare/plan", { host: h, service: g.service, no_tls_verify: tls }); } catch (e) { return toast(e.message); }
+    const ok = await dialog("Here's what Nova will do", "", [{ label: "Cancel", value: null }, { label: "Do it", color: "var(--blue)", value: "go" }],
+      `<div class="pad"><ol class="steps">${p.steps.map(x => `<li>${esc(x)}</li>`).join("")}</ol><p class="muted">In that order, so the app is never reachable without the login. Your phone confirms it.</p></div>`);
+    if (ok !== "go") return;
+    try { const res = await post("/api/v1/cloudflare/publish", { host: p.host, service: g.service, no_tls_verify: tls, app: a.id }); if (res?.url) { toast(`${a.name} is at ${res.url}`); await get("/api/v1/apps"); draw(); remoteSetup({ ...a, remote_url: res.url }); } }
+    catch (e) { toast(e.message); }
+  };
   // Open an app from anywhere: a public hostname on your Cloudflare tunnel, behind Cloudflare Access
   const remoteSetup = async a => {
     let g; try { g = await get(`/api/v1/apps/${enc(a.id)}/remote`); } catch (e) { return toast(e.message); }
     const chk = g.check ? `<div class="rcheck ${esc(g.check.state)}">${I(g.check.state === "protected" ? "shield" : g.check.state === "open" ? "warn" : "info")}<span>${esc(g.check.message)}</span></div>` : "";
     const step = (n, t) => `<li><b>${n}.</b> ${t}</li>`;
     const host = g.remote_url ? new URL(g.remote_url).hostname : g.suggested;
-    const r = await dialog(`${a.name} from anywhere`, "", [{ label: "Close", value: null }, ...(g.remote_url ? [{ label: "Check again", value: "check" }] : []), { label: g.remote_url ? "Change link" : "Set the link", color: "var(--blue)", value: "set" }],
+    const labsOn = (await get("/api/v1/labs").catch(() => ({})))?.labs?.cloudflare_sync;
+    const r = await dialog(`${a.name} from anywhere`, "", [{ label: "Close", value: null }, ...(g.remote_url ? [{ label: "Check again", value: "check" }] : []), ...(labsOn && !g.remote_url && g.service ? [{ label: "Set it up for me", value: "auto" }] : []), { label: g.remote_url ? "Change link" : "Set the link", color: "var(--blue)", value: "set" }],
       `<div class="pad rguide">${chk}<p class="muted">Your server already has a Cloudflare tunnel. Give this app its own address on it, protected by the same Cloudflare login as Nova — nothing reaches the app until you've signed in.</p>
         <ol>${step(1, "Cloudflare Zero Trust → <b>Networks → Tunnels</b> → your tunnel → <b>Public hostnames</b> → <b>Add a public hostname</b>.")}
         ${step(2, `Subdomain and domain: ${host ? copyCmd(host) : "e.g. photos.yourdomain.com"}`)}
@@ -536,6 +582,7 @@ export async function apps(ctx) {
         ${step(4, "<b>Access → Applications</b>: add the same address to the application that protects Nova (or use a wildcard like <code>*." + esc(g.domain || "yourdomain.com") + "</code>), with your Allow policy.")}
         ${step(5, "Set it below as the app's remote link, then <b>Check</b> — Nova makes sure Cloudflare asks for a login first.")}</ol></div>`);
     if (r === "check") return remoteSetup(a);
+    if (r === "auto") return autoSetup(a, g, host);
     if (r === "set") {
       let v = a.remote_url || (host ? "https://" + host : "");
       const p2 = dialog("Remote link", "The https:// address you added in Cloudflare.", [{ label: "Cancel", value: null }, { label: "Save and check", color: "var(--blue)", value: "save" }],
@@ -546,6 +593,7 @@ export async function apps(ctx) {
     }
   };
   ctx.handlers({ add: () => edit(null), hid: () => { showHidden = !showHidden; draw(); },
+    runcmd: i => { const all = S.cache["/api/v1/apps"]?.apps || []; const list = all.filter(a => showHidden || !a.hidden); runCommand(list[+i]); },
     noreach: () => toast("Away from home this app needs its own link — right-click it → From anywhere…") });
   draw(); ctx.every(30000, async () => { await get("/api/v1/apps"); draw(); }, true);
 }
@@ -576,6 +624,7 @@ export function pickFolder(start = "/") {
 
 
 // ── update center ──────────────────────────────────────────────────────────────
+const tick = on => `<span class="tick${on ? " on" : ""}" style="margin:0">${I("check")}</span>`;
 export async function updates(ctx) {
   let pk = null, cs = null, lastT = null;
   const draw = () => {
@@ -584,11 +633,11 @@ export async function updates(ctx) {
     const run = (S.cache["/api/v1/tasks"]?.tasks || []).find(t => t.state === "running" && ["updates-check", "apt-upgrade", "containers-update"].includes(t.kind));
     ctx.show(group(run ? taskRow(run) : row("Check for updates", { sub: u.t ? `Last checked ${ago(u.t)}` : "Not checked yet", icon: "refresh", click: isAdmin() ? "check" : "" }))
       + (u.nova ? sec("Nova") + group(row(u.nova.update ? `Nova ${u.nova.available} is ready` : "Nova is up to date", { sub: `Installed: ${u.nova.installed || "?"}`, blue: !!u.nova.update, icon: "update", click: "go:settings" })) : "")
-      + (u.t ? sec("System packages") + group((apt.length ? apt.map((p, i) => row(p.name, { sub: `${p.from} → ${p.to}${p.security ? " · security" : ""}${p.restarts === "docker" ? " · restarts Docker (every container)" : p.restarts === "server" ? " · needs a restart" : ""}`,
-            blue: p.security, end: radio(pk.has(p.name)), click: `pk:${i}` })).join("") + row(`Update ${pk.size === apt.length ? "all " + apt.length : pk.size} package${pk.size === 1 ? "" : "s"}`, { icon: "down", tint: "var(--green)", blue: true, click: pk.size && !run && isAdmin() ? "doPk" : "", dis: !pk.size || !!run })
+      + (u.t ? `<div class="sechead">${sec("System packages")}${apt.length > 1 && isAdmin() ? `<button class="pillbtn press" data-act="pkall">${pk.size === apt.length ? "Select none" : "Select all"}</button>` : ""}</div>` + group((apt.length ? apt.map((p, i) => row(p.name, { sub: `${p.from} → ${p.to}${p.security ? " · security" : ""}${p.restarts === "docker" ? " · restarts Docker (every container)" : p.restarts === "server" ? " · needs a restart" : ""}`,
+            blue: p.security, end: tick(pk.has(p.name)), click: `pk:${i}` })).join("") + row(`Update ${pk.size === apt.length ? "all " + apt.length : pk.size} package${pk.size === 1 ? "" : "s"}`, { icon: "down", tint: "var(--green)", blue: true, click: pk.size && !run && isAdmin() ? "doPk" : "", dis: !pk.size || !!run })
           : row("All packages are up to date", { icon: "okc", tint: "var(--green)" })))
-        + sec("Containers") + group((cons.length ? cons.map((c, i) => row(c.name, { sub: `${c.image} · ${c.status === "update" ? "newer image available" : c.status === "current" ? "up to date" : "couldn't check"}${c.status === "update" && !c.updatable ? " · not from a Compose file" : ""}`,
-            blue: c.status === "update", icon: "box", tint: c.status === "update" ? "var(--amber)" : "var(--sub)", end: c.status === "update" && c.updatable ? radio(cs.has(c.name)) : "", click: c.status === "update" && c.updatable ? `cs:${i}` : "" })).join("") : row("No containers", { icon: "box" }))
+        + `<div class="sechead">${sec("Containers")}${outdated.filter(c => c.updatable).length > 1 && isAdmin() ? `<button class="pillbtn press" data-act="csall">${cs.size === outdated.filter(c => c.updatable).length ? "Select none" : "Select all"}</button>` : ""}</div>` + group((cons.length ? cons.map((c, i) => row(c.name, { sub: `${c.image} · ${c.status === "update" ? "newer image available" : c.status === "current" ? "up to date" : "couldn't check"}${c.status === "update" && !c.updatable ? " · not from a Compose file" : ""}`,
+            blue: c.status === "update", icon: "box", tint: c.status === "update" ? "var(--amber)" : "var(--sub)", end: c.status === "update" && c.updatable ? tick(cs.has(c.name)) : "", click: c.status === "update" && c.updatable ? `cs:${i}` : "" })).join("") : row("No containers", { icon: "box" }))
           + (outdated.length ? row(`Update ${cs.size} container${cs.size === 1 ? "" : "s"}`, { sub: "Pulls the newest image and restarts each one", icon: "down", tint: "var(--green)", blue: true, click: cs.size && !run && isAdmin() ? "doCs" : "", dis: !cs.size || !!run }) : ""))
         + note("Big apps (Immich, Nextcloud, Home Assistant…) sometimes change how they work between versions — check their release notes before a major update.") : ""),
       { title: "Updates" });
@@ -596,6 +645,8 @@ export async function updates(ctx) {
   ctx.handlers({
     check: () => startTask(ctx, "/api/v1/updates/check", {}),
     pk: i => { const n = S.cache["/api/v1/updates"].apt[+i].name; pk.has(n) ? pk.delete(n) : pk.add(n); draw(); },
+    pkall: () => { const apt = S.cache["/api/v1/updates"].apt; pk = pk.size === apt.length ? new Set() : new Set(apt.map(p => p.name)); draw(); },
+    csall: () => { const l = S.cache["/api/v1/updates"].containers.filter(c => c.status === "update" && c.updatable); cs = cs.size === l.length ? new Set() : new Set(l.map(c => c.name)); draw(); },
     cs: i => { const n = S.cache["/api/v1/updates"].containers[+i].name; cs.has(n) ? cs.delete(n) : cs.add(n); draw(); },
     doPk: async () => {
       const apt = S.cache["/api/v1/updates"].apt;
@@ -648,9 +699,51 @@ export async function containerNew(ctx) {
     create: async () => {
       if (!isAdmin()) return viewOnly();
       try { const r = await post("/api/v1/containers/custom", { spec: spec() });
-        if (r?.job) { toast("Pulling the image and starting it…"); ctx.go("containers"); } }
+        if (r?.task) { toast("Downloading and starting it — follow along in the Inbox"); ctx.go("inbox"); } }
       catch (e) { toast(e.message); }
     },
   });
   draw();
+}
+
+// ── Labs: experimental features (off until you turn them on) ─────────────────────────────
+export async function labs(ctx) {
+  const draw = () => {
+    const l = S.cache["/api/v1/labs"];
+    ctx.show(`${note("Experimental features. They work, but haven't had as much use as the rest of Nova — so they're off until you turn them on.")}
+      ${l ? group(Object.entries(l.about).map(([k, a]) => switchRow(a.name, a.about, !!l.labs[k], isAdmin() ? "lab:" + k : "", { blue: !!l.labs[k] })).join("")) : note("Loading…")}
+      ${l?.labs.cloudflare_sync ? group(row("Cloudflare", { sub: "API token, and the addresses Nova has set up", blue: true, icon: "cloud", click: "go:cloudflare" })) : ""}`, { title: "Labs" });
+  };
+  ctx.handlers({ lab: async k => { try { const l = S.cache["/api/v1/labs"]; S.cache["/api/v1/labs"] = await post("/api/v1/labs", { [k]: !l.labs[k] }); } catch (e) { toast(e.message); } draw(); } });
+  draw(); await get("/api/v1/labs").catch(e => toast(e.message)); if (ctx.alive()) draw();
+}
+
+export async function cloudflare(ctx) {
+  let st = null, err = null;
+  const load = async () => { try { st = await get("/api/v1/cloudflare"); err = null; } catch (e) { err = e.message; } if (ctx.alive()) draw(); };
+  const draw = () => {
+    if (err) return ctx.show(note(err), { title: "Cloudflare" });
+    if (!st) return ctx.show(note("Checking your Cloudflare account…"), { title: "Cloudflare" });
+    const nova = st.nova_host, mine = (st.hostnames || []).filter(h => h !== nova);
+    ctx.show(`${st.error ? `<div class="rcheck open">${I("warn")}<span>${esc(st.error)}</span></div>` : st.token ? `<div class="rcheck protected">${I("shield")}<span>Connected — new app addresses are protected by “${esc(st.access_app || "?")}”, the same login as Nova.</span></div>` : ""}
+      ${sec("API token")}${group(row(st.token ? "Change the API token" : "Add an API token", { sub: "Kept on the server, readable only by root. Saving it asks for your fingerprint.", blue: true, icon: "key", click: "token" })
+        + (st.token ? row("Remove the token", { icon: "del", tint: "var(--red)", click: "untoken" }) : ""))}
+      <p class="note">Create one at dash.cloudflare.com → My Profile → API Tokens → Create Token → Custom, with: <b>Account · Cloudflare Tunnel · Edit</b>, <b>Account · Access: Apps and Policies · Edit</b>, <b>Zone · DNS · Edit</b> (for your domain).</p>
+      ${st.token && !st.error ? sec("On your tunnel") + group(((st.hostnames || []).map(h => row(h, { sub: h === nova ? "Nova itself" : (st.protected || []).includes(h) ? "Behind your Access login" : "Not behind Nova's Access app — check it in Cloudflare",
+          icon: h === nova ? "dns" : "cloud", tint: (st.protected || []).includes(h) || h === nova ? "var(--green)" : "var(--amber)",
+          end: h === nova ? "" : `<button class="rmbtn press" data-act="unpub:${esc(h)}" aria-label="Take it off" title="Take it off">${I("del")}</button>` })).join("")) || row("Nothing yet", { sub: "Apps → hold an app → From anywhere…" })) : ""}
+      ${note("To put an app online: Apps → hold (or right-click) an app → From anywhere… → Set it up for me.")}`, { title: "Cloudflare" });
+  };
+  ctx.handlers({
+    token: async () => { let v = "";
+      const p = dialog("Cloudflare API token", "Paste the token you created.", [{ label: "Cancel", value: null }, { label: "Save", color: "var(--blue)", value: "save" }], `<div class="pad"><input class="field" id="cft" type="password" autocomplete="off" placeholder="API token"></div>`);
+      $("#cft").oninput = e => v = e.target.value.trim(); $("#cft").focus();
+      if ((await p) !== "save" || !v) return;
+      try { await post("/api/v1/cloudflare/token", { token: v }); toast("Saved"); } catch (e) { toast(e.message); } load(); },
+    untoken: async () => { if (!(await confirm("Remove the API token?", "Addresses already set up keep working; Nova just can't add or remove them any more.", "Remove"))) return;
+      try { await post("/api/v1/cloudflare/token", { token: "" }); } catch (e) { toast(e.message); } load(); },
+    unpub: async h => { if (!(await confirm(`Take ${h} off the internet?`, "Nova removes its tunnel route and DNS record, then its Access entry. The app itself isn't touched.", "Take it off"))) return;
+      try { await post("/api/v1/cloudflare/remove", { host: h }); toast(`${h} removed`); } catch (e) { toast(e.message); } load(); },
+  });
+  draw(); await load();
 }

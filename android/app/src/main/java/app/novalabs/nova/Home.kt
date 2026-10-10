@@ -144,6 +144,8 @@ import org.json.JSONObject
                 onClick = { app.go(Route.Diagnostics) })
             RowDivider()
             Row1("Updates", "Packages, containers and Nova", true, Icons.Rounded.Update, androidx.compose.ui.graphics.Color(0xFF3ECF6E), onClick = { app.go(Route.Updates) })
+            if (app.isAdmin) { RowDivider()
+                Row1("Files", "Browse, upload, download and edit files on the server", true, Icons.Rounded.Folder, onClick = { app.go(Route.Files()) }) }
             RowDivider()
             Row1("Quick panel", "Your shortcuts — tap ✎ to customize", true, Icons.Rounded.Widgets, onClick = { app.go(Route.QuickPanel) })
             RowDivider()

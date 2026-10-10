@@ -53,8 +53,8 @@ class NovaApi(private val pairing: Pairing) {
     private class Prepared(val method: String, val path: String, val bytes: ByteArray,
                            val ts: String, val nonce: String, val message: ByteArray)
 
-    private fun prepare(method: String, path: String, body: JSONObject?): Prepared {
-        val bytes = (body?.toString() ?: "").toByteArray()
+    private fun prepare(method: String, path: String, body: JSONObject?): Prepared = prepareBytes(method, path, (body?.toString() ?: "").toByteArray())
+    private fun prepareBytes(method: String, path: String, bytes: ByteArray): Prepared {
         val ts = System.currentTimeMillis().toString()
         val nonce = ByteArray(18).also { rnd.nextBytes(it) }.let { Base64.getUrlEncoder().withoutPadding().encodeToString(it) }
         val digest = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
@@ -120,6 +120,26 @@ class NovaApi(private val pairing: Pairing) {
         signer.update(pr.message)
         val s = android.util.Base64.encodeToString(signer.sign(), android.util.Base64.NO_WRAP)
         return call(method, path, body, s, pr)
+    }
+
+    /** POST raw bytes (file uploads and saves); the signature covers their SHA-256. */
+    suspend fun postRaw(path: String, data: ByteArray): JSONObject = withContext(Dispatchers.IO) {
+        val pr = prepareBytes("POST", path, data)
+        val text = route("POST") { name, base -> send(name, base, pr, null) }
+        runCatching { JSONObject(text) }.getOrElse { JSONObject().put("raw", text) }
+    }
+
+    /** Stream a download into [out], reporting (bytes so far, total). */
+    suspend fun downloadTo(path: String, out: java.io.OutputStream, onProgress: (Long, Long) -> Unit = { _, _ -> }) = withContext(Dispatchers.IO) {
+        route("GET") { name, base ->
+            client(name).newCall(build(name, base, prepare("GET", path, null), null)).execute().use { r ->
+                if (!r.isSuccessful) throw ApiException(r.code, runCatching { JSONObject(r.body.string()).optString("error") }.getOrNull()?.ifEmpty { null } ?: "Download failed (${r.code})")
+                val total = r.body.contentLength(); val src = r.body.byteStream(); val buf = ByteArray(256 * 1024); var n = 0L; var last = 0L
+                while (true) { val k = src.read(buf); if (k < 0) break; out.write(buf, 0, k); n += k
+                    if (System.currentTimeMillis() - last > 150) { last = System.currentTimeMillis(); onProgress(n, total) } }
+                onProgress(n, total); ""
+            }
+        }
     }
 
     /** Raw bytes (the update APK). */

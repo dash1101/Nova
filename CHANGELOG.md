@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.5.9-alpha (app and server)
+- **Server terminal in the browser:** Terminal → *Server terminal* (also in Apps). A real terminal — colors, nano, htop, less — as your normal account on the server, never root; `sudo` asks your password as usual. Opening one is approved on your phone (or with `sudo nova approve`), announced in the Inbox, and closes after 10 minutes unused.
+- **Files** (app and web, also in Apps and Menu): browse the server as your normal account; open and edit text files; upload (drag and drop on the web, any size, in chunks), download, new files and folders, rename, move, copy; delete goes to the server's Trash so it can be undone. It can only do what your account can — root-only files stay out of reach.
+- **Install progress you can come back to:** store installs, program installs and your own containers run as background tasks with real progress (image layers, apt's own percentage). Leave the page and come back — it picks up where it is. The **Inbox shows what's running**, live, and the phone shows a progress notification.
+- **Any program from apt:** Store → Programs → *Find any program*: search your package manager and install or remove (fingerprint). Nova won't remove what the server needs to run.
+- **Updates:** check boxes for every package and container, all selected to begin with, with *Select all / Select none*. **Container updates now check that the container comes back up** — if the new version won't start, Nova puts the previous one back and tells you.
+- **Command apps:** Apps → Add → *Command or script*: a saved command you run with one tap (as your normal account), with its output shown live and *Run it again*. Saving one needs your fingerprint.
+- **Labs** (Settings → Labs): experimental features, off until you turn them on. First one: **Cloudflare auto-setup** — with a Cloudflare API token, *Set it up for me* in an app's *From anywhere* puts it on your domain: Nova protects the address with your Access login first, then adds the DNS record and the tunnel route, after showing you exactly what it'll change.
+- Security test: 240 checks, all passing.
+
 ## 0.5.8-alpha (app and server)
 - **Inbox on the phone:** grouped as Today, Yesterday and then by date; **hold** an event to start selecting, tap to add more, **Select all** / **Clear**, and **Archive** the selection in one go (back stops selecting). The new-alert banner goes away when you open the Inbox.
 - **Add your own container:** Containers → **+** → *Your own*: name, image, ports, folders (with a folder browser), settings and restart policy — Nova checks everything and shows the compose file it will run (*Preview*). For safety it can't be privileged, use the host network or devices, or reach system folders or the Docker socket; your files can be shared from /mnt, /srv, /media or /home. Adding one needs your fingerprint. Containers you added this way can be removed from their page (their folder is kept in /opt/.nova-uninstalled).

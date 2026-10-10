@@ -6,6 +6,7 @@ import * as V from "./views.js";
 import * as ST from "./storage.js";
 import * as SR from "./start.js";
 import * as SV from "./servers.js";
+import * as FM from "./files.js";
 
 onApproval((id, code) => waitApproval(id, get, code));
 
@@ -31,7 +32,7 @@ const ROUTES = {
   devices: V.devices, settings: V.settings, server: V.serverSettings, appearance: V.appearance, "edit-home": V.editHome,
   "edit-shortcuts": V.editShortcuts, "edit-tabs": V.editTabs, about: V.about, guide: V.guide, terminal: V.terminal,
   dashboard: V.dashboard, "edit-dash": V.editDash, archive: V.archive,
-  apps: ST.apps, updates: ST.updates, search: SR.search, start: SR.start, "start-edit": SR.startEdit, favorites: SR.favorites, servers: SV.servers, "container-new": ST.containerNew, setup: ST.setup, pool: ST.pool, task: ST.task, backups: ST.backups, backup: ST.backup, "backup-edit": ST.backupEdit, restore: ST.restore, diag: ST.diag,
+  apps: ST.apps, updates: ST.updates, search: SR.search, start: SR.start, "start-edit": SR.startEdit, favorites: SR.favorites, servers: SV.servers, "container-new": ST.containerNew, term: V.hostTerminal, files: FM.files, labs: ST.labs, cloudflare: ST.cloudflare, setup: ST.setup, pool: ST.pool, task: ST.task, backups: ST.backups, backup: ST.backup, "backup-edit": ST.backupEdit, restore: ST.restore, diag: ST.diag,
 };
 // Wide screens and phones in landscape: the bottom bar's pill stands on its end down the left edge.
 const SIDE = matchMedia("(min-width: 900px), (orientation: landscape) and (max-height: 540px)");

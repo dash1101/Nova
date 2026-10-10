@@ -40,6 +40,8 @@ val PLACES: List<Triple<String, String, Pair<ImageVector, Route>>> = listOf(
     Triple("Containers", "docker compose logs shell restart stop", Icons.Rounded.ViewInAr to Route.Containers),
     Triple("Apps", "web apps open launch", Icons.Rounded.Apps to Route.Apps),
     Triple("App store", "install store programs", Icons.Rounded.Storefront to Route.Store),
+    Triple("Files", "file manager files folders upload download edit text documents explorer", Icons.Rounded.Folder to Route.Files()),
+    Triple("Find a program", "apt package install program software", Icons.Rounded.Search to Route.ProgramSearch),
     Triple("Storage & hardware", "drives disks pools raid smart mount unmount temperature fans", Icons.Rounded.Storage to Route.Hardware),
     Triple("Set up drives", "format raid mirror combine pool mergerfs mdadm new drive", Icons.Rounded.AddCircle to Route.StorageWizard()),
     Triple("Backups", "backup restore snapshot nas smb nfs schedule", Icons.Rounded.Backup to Route.Backups),

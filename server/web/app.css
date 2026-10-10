@@ -452,3 +452,31 @@ html.material .alertcard { border-radius: 16px; background: var(--card); backdro
 .chk { display: inline-flex; gap: 6px; align-items: center; color: var(--sub); font-size: 14px; } textarea.field { font-family: ui-monospace, monospace; font-size: 15px; resize: vertical; }
 .cact { display: flex; gap: 10px; justify-content: flex-end; padding: 12px var(--gutter) 30px; } .cact .btn { height: 46px; padding: 0 22px; display: inline-flex; gap: 8px; align-items: center; }
 .appcell.addapp { border: 0; background: none; font: inherit; color: var(--text); cursor: pointer; } .appcell.addapp .appic { color: var(--blue); border: 1.5px dashed color-mix(in srgb, var(--sub) 60%, transparent); background: transparent; } .appcell.addapp .appic .i { width: 26px; height: 26px; }
+/* server terminal */
+.vtwrap { padding: 0 var(--gutter) 20px; display: flex; flex-direction: column; gap: 10px; }
+.vtbox { --vt-bg: #0c0c0f; --vt-fg: #e6e6ea; height: calc(100vh - 230px); min-height: 280px; overflow-y: auto; background: var(--vt-bg); color: var(--vt-fg); border-radius: 20px; padding: 8px; position: relative; outline: none; }
+.vtbox:focus-within { box-shadow: 0 0 0 2px color-mix(in srgb, var(--blue) 60%, transparent); }
+.vt-screen { font: 14px/1.25 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: pre; }
+.vt-screen > div { height: 1.25em; } .vt-probe { visibility: hidden; position: absolute; }
+.vt-cur { background: var(--vt-fg) !important; color: var(--vt-bg) !important; }
+.vt-input { position: absolute; left: 0; top: 0; width: 1px; height: 1px; opacity: 0; border: 0; padding: 0; resize: none; }
+.vtkeys { display: flex; gap: 6px; flex-wrap: wrap; } .vtnote { margin: 0; font-size: 13px; }
+.taskbar { margin: 0 var(--gutter) 14px; padding: 14px 18px; border-radius: 22px; display: grid; gap: 8px; } .taskbar .tb-top { display: flex; justify-content: space-between; gap: 10px; }
+.taskbar .tb-top span { color: var(--sub); font-variant-numeric: tabular-nums; }
+.sechead { display: flex; align-items: center; justify-content: space-between; padding-right: var(--gutter); } .sechead .pillbtn { height: 32px; padding: 0 14px; font-size: 14px; }
+/* Files */
+.crumbs { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; padding: 0 var(--gutter) 10px; }
+.crumb { display: inline-flex; align-items: center; gap: 6px; border: 0; background: var(--pill); color: var(--text); font: inherit; font-size: 14px; padding: 7px 12px; border-radius: 999px; cursor: pointer; max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.crumb.on { background: color-mix(in srgb, var(--blue) 18%, var(--pill)); color: var(--blue); font-weight: 600; } .crumb .i { width: 16px; height: 16px; }
+.fslist.over { box-shadow: 0 0 0 2px var(--blue) inset; } .fsrow .tick { margin: 0 2px 0 0; opacity: 0; transition: opacity .15s ease; } .fsrow:hover .tick, .fsrow.picked .tick, .fslist:has(.picked) .tick { opacity: 1; }
+.fsrow.picked { background: color-mix(in srgb, var(--blue) 12%, transparent); } .fsrow .t b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (hover: none) { .fsrow .tick { display: none; } .fslist:has(.picked) .tick { display: grid; } }
+.fsel { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 0 var(--gutter); padding: 0 12px 0 18px; border-radius: 22px; max-height: 0; opacity: 0; overflow: hidden; background: var(--card);
+  transition: max-height .25s ease, opacity .2s ease, padding .25s ease, margin .25s ease; } .fsel.show { max-height: 120px; opacity: 1; padding: 10px 12px 10px 18px; margin: 0 var(--gutter) 10px; } .fsel .sp { flex: 1; }
+.pillbtn.red { color: var(--red); } .fsopt { display: flex; gap: 12px; align-items: center; } .fsopt.red { color: var(--red); }
+.edwrap { padding: 0 var(--gutter) 20px; display: grid; gap: 10px; } .edpath { font-size: 13px; overflow-wrap: anywhere; }
+.editor { width: 100%; height: calc(100vh - 230px); min-height: 300px; resize: vertical; border: 0; outline: none; border-radius: 20px; padding: 16px; background: var(--card); color: var(--text);
+  font: 14px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; tab-size: 2; } .editor:focus { box-shadow: 0 0 0 2px color-mix(in srgb, var(--blue) 60%, transparent); }
+.appic .i { width: 30px; height: 30px; }
+.cmdout { font-family: ui-monospace, SFMono-Regular, Menlo, monospace !important; color: var(--text) !important; max-height: 60vh; overflow: auto; }
+.steps { margin: 0 0 10px; padding-left: 20px; display: grid; gap: 8px; line-height: 1.4; }

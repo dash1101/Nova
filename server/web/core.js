@@ -70,6 +70,18 @@ export async function signedFetch(method, path, body) {
     headers: { "Content-Type": "application/json", "X-Nova-Device": S.device, "X-Nova-Time": ts, "X-Nova-Nonce": nonce, "X-Nova-Signature": b64(sig) } });
 }
 
+/** Signed request with a raw body (file uploads/saves) — the signature covers the bytes' SHA-256. */
+export async function signedRaw(method, path, bytes) {
+  const buf = bytes instanceof Blob ? new Uint8Array(await bytes.arrayBuffer()) : bytes;
+  const ts = String(Date.now()), nonce = b64url(crypto.getRandomValues(new Uint8Array(18)));
+  const digest = hex(await crypto.subtle.digest("SHA-256", buf));
+  const sig = await crypto.subtle.sign({ name: "ECDSA", hash: "SHA-256" }, S.keys.privateKey, enc(`${method}\n${path}\n${ts}\n${nonce}\n${digest}`));
+  const r = await fetch(path, { method, body: buf, credentials: "same-origin", cache: "no-store",
+    headers: { "Content-Type": "application/octet-stream", "X-Nova-Device": S.device, "X-Nova-Time": ts, "X-Nova-Nonce": nonce, "X-Nova-Signature": b64(sig) } });
+  let j = {}; try { j = await r.json(); } catch {}
+  if (!r.ok) throw new ApiError(r.status, j.error || j.message || `HTTP ${r.status}`);
+  return j;
+}
 export async function api(method, path, body) {
   let r;
   try {
@@ -98,6 +110,17 @@ export const post = (p, b = {}) => api("POST", p, b);
 export const del = p => api("DELETE", p);
 
 /** Background jobs (installs/updates): poll until done. */
+/** Background tasks (installs, backups, updates, drive setup…): follow one until it ends. */
+export async function waitTask(id, onUpdate) {
+  let t = await get(`/api/v1/tasks/${id}`); onUpdate?.(t);
+  while (t.state === "running") { await sleep(1200); t = await get(`/api/v1/tasks/${id}`); onUpdate?.(t); }
+  return t;
+}
+/** The running task for something (e.g. kind "store-install", key = the app's id), if any. */
+export async function runningTask(kinds, key) {
+  const l = (await get("/api/v1/tasks").catch(() => ({}))).tasks || [];
+  return l.find(t => t.state === "running" && kinds.includes(t.kind) && (key == null || t.key === key)) || null;
+}
 export async function waitJob(job, onUpdate) {
   let j = job;
   while (j.state === "running") { await sleep(2000); j = await get(`/api/v1/jobs/${j.id}`); onUpdate?.(j); }

@@ -213,6 +213,101 @@ if verb == "shell" and len(args) == 1:
     os.execvp("docker", ["docker", "exec", "-i", "-e", "TERM=dumb", "-e", "PS1=\\u@\\h:\\w\\$ ", name, "sh", "-c",
                          "if command -v bash >/dev/null 2>&1; then exec bash -i 2>&1; else exec sh -i 2>&1; fi"])
 
+def shell_user():
+    """Whose account the server terminal, file manager and command apps use: config "shell_user",
+    else the only person account on the machine (uid 1000+ with a login shell). Never root."""
+    import pwd
+    want = SITE.get("shell_user", "")
+    if want:
+        try: u = pwd.getpwnam(want)
+        except KeyError: return None
+        return u if u.pw_uid >= 1000 else None
+    ok = set(l.strip() for l in open("/etc/shells") if l.startswith("/")) if os.path.exists("/etc/shells") else {"/bin/bash", "/bin/sh"}
+    people = [u for u in pwd.getpwall() if 1000 <= u.pw_uid < 60000 and u.pw_shell in ok]
+    return people[0] if len(people) == 1 else None
+
+# ── the file manager: as your normal account (files.py) ──
+def _files_user():
+    sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+    import files
+    if SITE.get("file_manager", True) is False: fail("the file manager is turned off (file_manager in /etc/nova-api/config.json)")
+    u = shell_user()
+    if not u: fail("set shell_user in /etc/nova-api/config.json to the account the file manager should use")
+    files.drop(u); return files, u
+
+if verb in ("files", "files-data") and len(args) == 1:
+    try: a = json.loads(args[0])
+    except ValueError: fail("bad request", 2)
+    files, u = _files_user()
+    try:
+        if verb == "files": fn = files.OPS.get(str(a.get("op"))) or fail("unknown operation", 2); out(fn(a, u.pw_dir))
+        else:
+            fn = files.DATA_OPS.get(str(a.get("op"))) or fail("unknown operation", 2)
+            out(fn(a, u.pw_dir, sys.stdin.buffer.read(6 * 1024 * 1024)))
+    except (ValueError, OSError) as e:
+        msg = str(e)
+        if isinstance(e, PermissionError): msg = "you don't have permission to do that there"
+        elif isinstance(e, FileNotFoundError): msg = "it isn't there any more"
+        elif isinstance(e, IsADirectoryError): msg = "that's a folder"
+        elif isinstance(e, OSError) and not isinstance(e, ValueError): msg = (e.strerror or msg)
+        fail(msg)
+
+if verb == "files-get" and len(args) == 1:
+    # Streaming: a JSON header line, then the file's bytes.
+    files, u = _files_user()
+    try:
+        p = files.norm(args[0], u.pw_dir)
+        f = open(p, "rb"); size = os.fstat(f.fileno()).st_size
+        if os.path.isdir(p): raise IsADirectoryError
+    except Exception as e:
+        os.write(1, (json.dumps({"error": "you don't have permission to read that" if isinstance(e, PermissionError) else "can't open that file"}) + "\n").encode()); sys.exit(1)
+    import mimetypes
+    os.write(1, (json.dumps({"size": size, "name": os.path.basename(p), "mime": mimetypes.guess_type(p)[0] or "application/octet-stream"}) + "\n").encode())
+    while True:
+        b = f.read(1 << 20)
+        if not b: break
+        os.write(1, b)
+    sys.exit(0)
+
+if verb == "host-shell" and len(args) == 1:
+    # Long-lived: a login shell on the server in a real terminal, as a normal user — never root
+    # (sudo asks for that user's password as usual). stdin/stdout are wired to the API.
+    # Window size arrives in-band as ESC ] 7799 ; COLS ; ROWS BEL and is applied, not passed on.
+    import pty, select, fcntl, termios, struct
+    if SITE.get("host_shell", True) is False: fail("the server terminal is turned off (host_shell in /etc/nova-api/config.json)")
+    u = shell_user()
+    if not u: fail("set shell_user in /etc/nova-api/config.json to the account the terminal should open as")
+    who = "".join(c for c in args[0] if c.isalnum() or c in " -_.'")[:60] or "a device"
+    notify("warning", f"Server terminal opened by {who}", f"A shell as {u.pw_name}. If this wasn't you, remove that device in Users & devices.")
+    changelog(f"Server terminal opened as {u.pw_name} from {who}")
+    pid, fd = pty.fork()
+    if pid == 0:
+        os.execve("/usr/sbin/runuser", ["runuser", "-l", u.pw_name],
+                  {"TERM": "xterm-256color", "LANG": "C.UTF-8", "PATH": "/usr/local/bin:/usr/bin:/bin"})
+    RESIZE = re.compile(rb"\x1b\]7799;(\d{1,4});(\d{1,4})\x07")
+    def winsize(cols, rows):
+        try: fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", max(2, min(rows, 500)), max(2, min(cols, 1000)), 0, 0))
+        except OSError: pass
+    winsize(100, 30)
+    try:
+        while True:
+            r, _, _ = select.select([0, fd], [], [], 60)
+            if fd in r:
+                try: data = os.read(fd, 65536)
+                except OSError: break
+                if not data: break
+                os.write(1, data)
+            if 0 in r:
+                data = os.read(0, 65536)
+                if not data: break
+                for m in RESIZE.finditer(data): winsize(int(m.group(1)), int(m.group(2)))
+                data = RESIZE.sub(b"", data)
+                if data: os.write(fd, data)
+    finally:
+        try: os.kill(pid, 1); os.waitpid(pid, 0)
+        except OSError: pass
+    sys.exit(0)
+
 if verb == "backup-now" and not args and not os.path.exists("/usr/local/bin/nova-backup"):
     sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
     import backups, tasks
@@ -350,142 +445,39 @@ if verb == "store-list" and not args:
                    | {"installed": inst, "state": state, "port_free": inst or port_free(t["port"])})
     out({"items": res})
 
-if verb == "store-install" and len(args) == 1:
-    cat = catalog(); t = cat.get(args[0]) or fail("not in the catalog", 2)
-    d = f"/opt/{t['id']}"
-    if os.path.exists(f"{d}/.nova-store"): fail("already installed")
-    if os.path.exists(f"{d}/docker-compose.yml"): fail(f"{d} already has a compose file that isn't from the store")
-    for p in [t["port"]] + t.get("extra_ports", []):
-        if not port_free(p): fail(f"port {p} is already in use")
-    os.makedirs(f"{d}/data", exist_ok=True)
-    alphabet = string.ascii_letters + string.digits
-    subs = {"DATA": f"{d}/data", "PORT": str(t["port"])}
-    for i in range(1, 4): subs[f"SECRET{i}"] = "".join(secrets.choice(alphabet) for _ in range(32))
-    compose = t["compose"]
-    for k, v in subs.items(): compose = compose.replace("{" + k + "}", v)
-    with open(f"{d}/docker-compose.yml", "w") as f: f.write(compose)
-    if "SECRET1" in t["compose"]:
-        with open(f"{d}/.nova-secrets", "w") as f:
-            f.write("".join(f"{k}={subs[k]}\n" for k in ("SECRET1", "SECRET2", "SECRET3") if "{" + k + "}" in t["compose"]))
-        os.chmod(f"{d}/.nova-secrets", 0o600)
-    rc, so, se = run(["docker", "compose", "up", "-d"], cwd=d, timeout=1800)
-    if rc != 0:
-        run(["docker", "compose", "down"], cwd=d, timeout=300)
-        os.remove(f"{d}/docker-compose.yml")
-        fail("install failed: " + se.strip()[-300:])
-    with open(f"{d}/.nova-store", "w") as f: json.dump({"id": t["id"], "installed": time.strftime("%F %T")}, f)
-    changelog(f"Installed {t['name']} from the app store → /opt/{t['id']} (port {t['port']})")
-    host = SITE.get("lan_host") or "localhost"
-    notify("info", f"Installed {t['name']}", f"http://{host}:{t['port']}{t.get('path', '')}")
-    out({"ok": True, "url": f"http://{host}:{t['port']}{t.get('path', '')}"})
-
-# ── your own containers: a form, not free-form compose, so risky options can't be expressed ──
-CUSTOM_NAME = r"[a-z0-9][a-z0-9_-]{0,39}"
-IMAGE_RE = r"[a-z0-9]+(?:[._-][a-z0-9]+)*(?::[0-9]{1,5})?(?:/[a-z0-9]+(?:[._-][a-z0-9]+)*)*(?::[A-Za-z0-9_][A-Za-z0-9_.-]{0,127})?(?:@sha256:[0-9a-f]{64})?"
-VOLUME_ROOTS = ("/mnt/", "/srv/", "/media/", "/home/")          # where your own files may be shared from (plus the app's own data folder)
-NOVA_PORTS = {8095, 8495, 8496}
-
-def custom_spec(raw):
-    """Check every field of a custom container and return the compose file for it."""
-    try: sp = json.loads(raw)
-    except ValueError: fail("bad request", 2)
-    name = str(sp.get("name", "")).strip().lower()
-    if not re.fullmatch(CUSTOM_NAME, name): fail("name: lowercase letters, digits, - and _ (up to 40)")
-    image = str(sp.get("image", "")).strip()
-    if not re.fullmatch(IMAGE_RE, image) or len(image) > 255: fail("image: like nginx:latest or ghcr.io/owner/app:1.2")
-    d = f"/opt/{name}"
-    ports, vols, env = [], [], {}
-    for p in (sp.get("ports") or [])[:12]:
-        try: h, c = int(p.get("host")), int(p.get("container"))
-        except (TypeError, ValueError, AttributeError): fail("ports: numbers, like 8080 → 80")
-        proto = p.get("proto", "tcp") if p.get("proto", "tcp") in ("tcp", "udp") else fail("ports: tcp or udp")
-        if not (1 <= h <= 65535 and 1 <= c <= 65535): fail("ports: 1–65535")
-        if h in NOVA_PORTS: fail(f"port {h} is Nova's own")
-        if proto == "tcp" and not port_free(h): fail(f"port {h} is already in use")
-        ports.append(f"{h}:{c}" + ("/udp" if proto == "udp" else ""))
-    for v in (sp.get("volumes") or [])[:12]:
-        host, cont = str((v or {}).get("host", "")).strip(), str((v or {}).get("container", "")).strip()
-        if not host or not cont.startswith("/") or ".." in host.split("/") or ".." in cont.split("/") or any(ch in host + cont for ch in ":\n\r\"'"):
-            fail("folders: a folder on the server and a path inside the container, like /mnt/media → /media")
-        if not host.startswith("/"): host = f"{d}/data/{host.lstrip('./')}"                 # relative: inside its own data folder
-        real = os.path.realpath(host) if os.path.exists(host) else os.path.normpath(host)
-        if not (real.startswith(f"{d}/data") or real.startswith(VOLUME_ROOTS)) or real.rstrip("/") in [r.rstrip("/") for r in VOLUME_ROOTS]:
-            fail(f"{host}: share a folder inside {', '.join(VOLUME_ROOTS)} or the app's own data folder")
-        vols.append((real, cont, bool((v or {}).get("ro"))))
-    for k, val in list((sp.get("env") or {}).items())[:40]:
-        if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,63}", str(k)) or len(str(val)) > 2000 or "\n" in str(val): fail(f"setting {str(k)[:20]}: letters, digits and _ ; one line")
-        env[str(k)] = str(val)
-    restart = sp.get("restart", "unless-stopped")
-    if restart not in ("no", "always", "unless-stopped", "on-failure"): fail("restart: no, always, unless-stopped or on-failure")
-    q = json.dumps                                       # JSON strings are valid YAML strings: no injection
-    lines = ["services:", f"  {name}:", f"    image: {q(image)}", f"    container_name: {q(name)}", f"    restart: {q(restart)}",
-             "    security_opt:", "      - \"no-new-privileges:true\"", "    labels:", f"      nova.custom: \"true\""]
-    if ports: lines += ["    ports:"] + [f"      - {q(p)}" for p in ports]
-    if vols: lines += ["    volumes:"] + [f"      - {q(h + ':' + c + (':ro' if ro else ''))}" for h, c, ro in vols]
-    if env: lines += ["    environment:"] + [f"      {k}: {q(v)}" for k, v in env.items()]
-    return name, d, "\n".join(lines) + "\n", vols
-
 if verb == "custom-check" and len(args) == 1:
-    name, d, compose, _ = custom_spec(args[0])
+    sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+    import installs
+    try: name, d, compose, _ = installs.custom_spec(json.loads(args[0]))
+    except ValueError as e: fail(str(e))
     if os.path.exists(d): fail(f"{d} already exists — pick another name")
     out({"ok": True, "compose": compose})
 
-if verb == "custom-install" and len(args) == 1:
-    name, d, compose, vols = custom_spec(args[0])
-    if os.path.exists(d): fail(f"{d} already exists — pick another name")
-    os.makedirs(f"{d}/data", exist_ok=True)
-    for h, _, _ in vols:
-        if h.startswith(f"{d}/data"): os.makedirs(h, exist_ok=True)
-    with open(f"{d}/docker-compose.yml", "w") as f: f.write(compose)
-    rc, so, se = run(["docker", "compose", "up", "-d"], cwd=d, timeout=1800)
-    if rc != 0:
-        run(["docker", "compose", "down"], cwd=d, timeout=300); shutil.rmtree(d, ignore_errors=True)
-        fail("couldn't start it: " + se.strip()[-300:])
-    with open(f"{d}/.nova-custom", "w") as f: json.dump({"name": name, "installed": time.strftime("%F %T")}, f)
-    changelog(f"Added custom container {name} ({json.loads(args[0]).get('image')}) → {d} (from the Nova app)")
-    notify("info", f"Added container {name}", "Your own container, set up from Nova")
-    out({"ok": True, "name": name})
+if verb.startswith("cf-") and len(args) <= 1:
+    # Labs · Cloudflare auto-setup (cfsync.py)
+    sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+    import cfsync
+    try:
+        if verb == "cf-status": out(cfsync.status())
+        if verb == "cf-token" and args: cfsync.save_token(args[0]); out({"ok": True, **cfsync.status()})
+        if verb in ("cf-plan", "cf-apply") and args:
+            a = json.loads(args[0]); fn = cfsync.plan if verb == "cf-plan" else cfsync.apply
+            r = fn(a.get("host", ""), a.get("service", ""), bool(a.get("no_tls_verify")))
+            if verb == "cf-apply": changelog(f"Cloudflare: published {r['host']} → {a.get('service')} behind Access (from the Nova app)")
+            out(r)
+        if verb == "cf-remove" and args: r = cfsync.remove(args[0]); changelog(f"Cloudflare: removed {args[0]} (from the Nova app)"); out(r)
+        fail("bad request", 2)
+    except ValueError as e: fail(str(e))
 
-if verb == "custom-uninstall" and len(args) == 1:
-    name = args[0]
-    if not re.fullmatch(CUSTOM_NAME, name): fail("bad name", 2)
-    d = f"/opt/{name}"
-    if not os.path.exists(f"{d}/.nova-custom"): fail("that container wasn't added in Nova")
-    rc, so, se = run(["docker", "compose", "down"], cwd=d, timeout=600)
-    if rc != 0: fail("couldn't stop it: " + se.strip()[-200:])
-    keep = f"/opt/.nova-uninstalled/{name}-{time.strftime('%Y%m%d-%H%M%S')}"
-    os.makedirs(os.path.dirname(keep), exist_ok=True); shutil.move(d, keep)
-    changelog(f"Removed custom container {name} (data kept in {keep})")
-    out({"ok": True, "kept": keep})
-
-if verb == "store-uninstall" and len(args) == 1:
-    t = catalog().get(args[0]) or fail("not in the catalog", 2)
-    d = f"/opt/{t['id']}"
-    if not os.path.exists(f"{d}/.nova-store"): fail("not installed from the store")
-    rc, so, se = run(["docker", "compose", "down"], cwd=d, timeout=600)
-    if rc != 0: fail("couldn't stop it: " + se.strip()[-200:])
-    # Keep the data (renamed) so an uninstall is never destructive; compose file removed.
-    keep = f"/opt/.nova-uninstalled/{t['id']}-{time.strftime('%Y%m%d-%H%M%S')}"
-    os.makedirs(os.path.dirname(keep), exist_ok=True); shutil.move(d, keep)
-    changelog(f"Uninstalled {t['name']} (data kept in {keep})")
-    out({"ok": True, "kept": keep})
+if verb == "program-search" and len(args) == 1:
+    sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+    import installs
+    out({"items": installs.search_programs(args[0])})
 
 if verb == "programs" and not args:
     rc, so, _ = run(["dpkg-query", "-W", "-f", "${Package} ${db:Status-Abbrev}\n"])
     inst = {l.split()[0] for l in so.splitlines() if len(l.split()) > 1 and l.split()[1].startswith("ii")}
     out({"items": [p | {"installed": p["pkg"] in inst} for p in programs().values()]})
-
-if verb in ("program-install", "program-remove") and len(args) == 1:
-    p = programs().get(args[0]) or fail("not in the catalog", 2)
-    env = {**os.environ, "DEBIAN_FRONTEND": "noninteractive"}
-    if verb == "program-install":
-        run(["apt-get", "update", "-qq"], timeout=300, env=env)
-        rc, so, se = run(["apt-get", "install", "-y", "-qq", p["pkg"]], timeout=1800, env=env)
-    else:
-        if p.get("protected"): fail("this one is used by the server and can't be removed from the app")
-        rc, so, se = run(["apt-get", "remove", "-y", "-qq", p["pkg"]], timeout=900, env=env)
-    if rc == 0: changelog(f"{'Installed' if verb == 'program-install' else 'Removed'} program {p['pkg']} (from the Nova app)")
-    out({"ok": rc == 0, "error": se.strip()[-300:] if rc else ""}, 0 if rc == 0 else 1)
 
 if verb == "drives" and not args:
     out({"drives": disks(), "unmounted": load_json(UNMOUNTED, []),
@@ -724,7 +716,7 @@ if verb == "task-start" and len(args) == 2:
 
 if verb == "task-list" and not args:
     import tasks
-    def go(): tasks.reap(); return {"tasks": [{k: v for k, v in t.items() if k != "samples"} for t in tasks.all_tasks()[:30]]}
+    def go(): tasks.reap(); return {"tasks": [{**{k: v for k, v in t.items() if k not in ("samples", "log")}, "log": t.get("log", [])[-3:]} for t in tasks.all_tasks()[:30]]}
     _guard(go)
 
 if verb == "task-status" and len(args) == 1 and re.fullmatch(r"[0-9a-f]{12}", args[0]):

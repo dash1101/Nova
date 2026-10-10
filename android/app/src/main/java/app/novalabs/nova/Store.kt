@@ -63,6 +63,7 @@ private fun storeItem(id: String) = Cache["/api/v1/store"]?.optJSONArray("items"
             if (apps == null) Text("Loading…", color = N.sub, modifier = Modifier.padding(30.dp))
         } else {
             val items = progs?.let { a -> (0 until a.length()).map { a.getJSONObject(it) } } ?: emptyList()
+            if (app.isAdmin) Group { Row1("Find any program", "Search everything in your system's package manager (apt)", true, Icons.Rounded.Search, onClick = { app.go(Route.ProgramSearch) }) }
             items.groupBy { it.optString("category") }.forEach { (cat, list) ->
                 SectionLabel(cat)
                 Group {
@@ -76,10 +77,10 @@ private fun storeItem(id: String) = Cache["/api/v1/store"]?.optJSONArray("items"
                                 busy = pkg
                                 app.act {
                                     try {
-                                        val j = app.waitJob(app.stepUp("${if (inst) "Remove" else "Install"} ${p.optString("name")}", "POST",
-                                            "/api/v1/programs/$pkg/${if (inst) "remove" else "install"}").getJSONObject("job"))
+                                        val j = app.waitTask(app.stepUp("${if (inst) "Remove" else "Install"} ${p.optString("name")}", "POST",
+                                            "/api/v1/programs/$pkg/${if (inst) "remove" else "install"}").optString("task"))
                                         app.toast(if (j.optString("state") == "done") "${p.optString("name")} ${if (inst) "removed" else "installed"}"
-                                                  else "Failed: ${j.optJSONObject("result")?.optString("error")}")
+                                                  else "Failed: ${j.optString("error")}")
                                         progsLive.value = app.api.get("/api/v1/programs")
                                     } finally { busy = null }
                                 }
@@ -114,6 +115,18 @@ private fun storeItem(id: String) = Cache["/api/v1/store"]?.optJSONArray("items"
     var job by remember { mutableStateOf<String?>(null) }
     var confirmRemove by remember { mutableStateOf(false) }
     suspend fun reload() { app.api.get("/api/v1/store"); item = storeItem(id) }
+    var pct by remember { mutableStateOf<Float?>(null) }
+    /** Follow an install/uninstall to the end (it keeps going on the server if you leave). */
+    suspend fun follow(tid: String, okMsg: String) {
+        if (tid.isEmpty()) return
+        val t = app.waitTask(tid) { t -> job = t.optString("step").ifEmpty { "Working…" }; pct = (t.optDouble("pct", 0.0) / 100).toFloat() }
+        pct = null
+        app.toast(if (t.optString("state") == "done") okMsg else "Failed: ${t.optString("error")}"); reload()
+    }
+    LaunchedEffect(id) {                       // came back while it's still installing: pick it up again
+        runCatching { app.runningTask(listOf("store-install", "store-uninstall"), id) }.getOrNull()?.let { t ->
+            job = t.optString("step"); runCatching { follow(t.optString("id"), if (t.optString("kind") == "store-install") "Ready" else "Uninstalled") }; job = null }
+    }
     val it = item ?: return
     val inst = it.optBoolean("installed")
     val host = app.pairing.lanUrl.substringAfter("//").substringBefore("/").substringBefore(":").ifEmpty { "localhost" }
@@ -126,6 +139,14 @@ private fun storeItem(id: String) = Cache["/api/v1/store"]?.optJSONArray("items"
             Text(it.optString("category"), color = color, fontWeight = FontWeight.SemiBold)
             Text(job ?: if (inst) "Installed · ${it.optString("state")}" else "Not installed", color = N.sub)
         }
+        pct?.let { p ->
+            Column(Modifier.padding(horizontal = Space.gutter, vertical = 6.dp).fillMaxWidth().glassCard(androidx.compose.foundation.shape.RoundedCornerShape(22.dp)).padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row { Text(job ?: "Working…", color = N.text, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f), maxLines = 1); Text("${(p * 100).toInt()}%", color = N.sub) }
+                androidx.compose.material3.LinearProgressIndicator(progress = { p }, modifier = Modifier.fillMaxWidth().height(6.dp).clip(androidx.compose.foundation.shape.RoundedCornerShape(3.dp)), color = N.blue, trackColor = N.pill)
+                Text("You can leave this page — it keeps going, and the Inbox shows its progress.", color = N.sub, fontSize = 12.sp)
+            }
+        }
         if (!app.isAdmin) Text("View-only access: an admin can install or remove apps.", color = N.sub, fontSize = 14.sp,
             modifier = Modifier.padding(horizontal = 30.dp, vertical = 4.dp))
         Row(Modifier.fillMaxWidth().padding(horizontal = 22.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -137,12 +158,9 @@ private fun storeItem(id: String) = Cache["/api/v1/store"]?.optJSONArray("items"
             } else {
                 PrimaryButton(if (job != null) "Installing…" else "Install", Modifier.weight(1f), job == null && it.optBoolean("port_free", true)) {
                     app.act {
-                        job = "Downloading and starting…"
-                        try {
-                            val j = app.waitJob(app.stepUp("Install ${it.optString("name")}", "POST", "/api/v1/store/$id/install").getJSONObject("job"))
-                            app.toast(if (j.optString("state") == "done") "${it.optString("name")} is ready" else "Failed: ${j.optJSONObject("result")?.optString("error")}")
-                            reload()
-                        } finally { job = null }
+                        job = "Starting…"
+                        try { follow(app.stepUp("Install ${it.optString("name")}", "POST", "/api/v1/store/$id/install").optString("task"), "${it.optString("name")} is ready") }
+                        finally { job = null }
                     }
                 }
             }
@@ -166,7 +184,57 @@ private fun storeItem(id: String) = Cache["/api/v1/store"]?.optJSONArray("items"
     if (confirmRemove) OneDialog({ confirmRemove = false }, "Uninstall ${it.optString("name")}?",
         "It stops and is removed. Its data is kept on the server (in /opt/.nova-uninstalled) in case you want it back.",
         listOf(DialogButton("Cancel") { confirmRemove = false }, DialogButton("Uninstall", N.red) { confirmRemove = false; app.act { job = "Uninstalling…"
-            try { val j = app.waitJob(app.stepUp("Uninstall ${it.optString("name")}", "POST", "/api/v1/store/$id/uninstall").getJSONObject("job"))
-                  app.toast(if (j.optString("state") == "done") "Uninstalled" else "Failed: ${j.optJSONObject("result")?.optString("error")}"); reload()
-            } finally { job = null } } }))
+            try { follow(app.stepUp("Uninstall ${it.optString("name")}", "POST", "/api/v1/store/$id/uninstall").optString("task"), "Uninstalled") }
+            finally { job = null } } }))
+}
+
+
+/** Any apt package: search, then install or remove (fingerprint) with apt's own progress. */
+@Composable fun ProgramSearchScreen(app: AppState) {
+    var q by remember { mutableStateOf("") }
+    var items by remember { mutableStateOf<List<org.json.JSONObject>?>(null) }
+    val busy = remember { mutableStateMapOf<String, Float>() }
+    var ask by remember { mutableStateOf<org.json.JSONObject?>(null) }
+    LaunchedEffect(q) {
+        items = null; if (q.trim().length < 2) return@LaunchedEffect
+        kotlinx.coroutines.delay(350)
+        items = runCatching { app.api.get("/api/v1/programs/search?q=" + android.net.Uri.encode(q.trim())).optJSONArray("items").objs() }.getOrElse { app.toast(it.message ?: "Search failed"); emptyList() }
+    }
+    Page("Find a program", app::back) {
+        Box(Modifier.padding(horizontal = Space.gutter, vertical = 6.dp)) { OneTextField(q, { q = it.take(60) }, "Search, e.g. htop or “disk usage”", Modifier.fillMaxWidth()) }
+        Text("These come from your system's package manager (apt). Installing or removing asks for your fingerprint; Nova won't remove what the server needs to run.",
+            color = N.sub, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 30.dp, vertical = 6.dp))
+        val l = items
+        when {
+            q.trim().length < 2 -> {}
+            l == null -> Text("Searching…", color = N.sub, modifier = Modifier.padding(30.dp))
+            l.isEmpty() -> Text("Nothing called “${q.trim()}”.", color = N.sub, modifier = Modifier.padding(30.dp))
+            else -> Group {
+                l.forEachIndexed { i, p ->
+                    if (i > 0) RowDivider()
+                    val pkg = p.optString("pkg"); val inst = p.optBoolean("installed")
+                    Row1(pkg, p.optString("description")) {
+                        val b = busy[pkg]
+                        if (b != null) Text("${b.toInt()}%", color = N.sub, fontSize = 14.sp)
+                        else if (inst && p.optBoolean("essential")) Text("Needed", color = N.sub, fontSize = 13.sp)
+                        else PillButton(if (inst) "Remove" else "Install", color = if (inst) N.red else N.blue) { ask = p }
+                    }
+                }
+            }
+        }
+        Spacer(Modifier.height(60.dp))
+    }
+    ask?.let { p ->
+        val pkg = p.optString("pkg"); val inst = p.optBoolean("installed")
+        OneDialog({ ask = null }, "${if (inst) "Remove" else "Install"} $pkg?", p.optString("description"), listOf(DialogButton("Cancel") { ask = null },
+            DialogButton(if (inst) "Remove" else "Install", if (inst) N.red else N.blue) { ask = null
+                app.act {
+                    busy[pkg] = 0f
+                    try {
+                        val t = app.waitTask(app.stepUp("${if (inst) "Remove" else "Install"} $pkg", "POST", "/api/v1/programs/$pkg/${if (inst) "remove" else "install"}").optString("task")) { busy[pkg] = it.optDouble("pct", 0.0).toFloat() }
+                        if (t.optString("state") == "done") { p.put("installed", !inst); items = items?.toList(); app.toast("$pkg ${if (inst) "removed" else "installed"}") }
+                        else app.toast(t.optString("error").ifEmpty { "It didn't work" })
+                    } finally { busy.remove(pkg) }
+                } }))
+    }
 }

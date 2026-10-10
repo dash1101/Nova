@@ -38,7 +38,7 @@ try:                       # optional module: fan/case lighting (modules/fan-gig
 except ImportError:
     nova_rgb = None
 
-API_VERSION = "0.5.8-alpha"
+API_VERSION = "0.5.9-alpha"
 CONFIG = "/etc/nova-api/config.json"
 DATA = "/var/lib/nova-api"
 DEVICES = f"{DATA}/devices.json"
@@ -47,6 +47,9 @@ PAIRING = f"{DATA}/pairing.json"
 AUDIT = "/var/log/nova-api/audit.log"
 STATUS = "/var/lib/nova-alerts/www/status.json"
 MAX_BODY = 64 * 1024
+UPLOAD_CHUNK = 4 * 1024 * 1024 + 1024
+LABS = {"cloudflare_sync": {"name": "Cloudflare auto-setup", "about": "Put an app on your own domain in one step: Nova adds the Cloudflare tunnel route, the DNS record and the Access login for you. Needs a Cloudflare API token."}}
+RAW_BODY_PATHS = ("/api/v1/files/upload", "/api/v1/files/save")
 NOTIFY_KEYS = {"push_min_level": ("info", "warning", "critical"), "push_logins": bool, "push_usb": bool,
                "discord_paused": bool}
 EVENTS = "/var/lib/nova-alerts/www/events.json"
@@ -92,9 +95,22 @@ def app_list():
         out.append({**a, "name": o.get("name") or a["name"], "slug": o.get("icon") or a["slug"], "hidden": bool(o.get("hidden")),
                     "url": o.get("url", ""), "remote_url": o.get("remote_url", "")})
     for c in cfg.get("custom", []):
-        out.append({"id": c["id"], "name": c["name"], "slug": c.get("icon") or "", "url": c["url"], "remote_url": c.get("remote_url", ""),
+        out.append({"id": c["id"], "name": c["name"], "slug": c.get("icon") or "", "url": c.get("url", ""), "remote_url": c.get("remote_url", ""),
+                    **({"kind": "command", "command": c["command"], "timeout": c.get("timeout", 600), "confirm": bool(c.get("confirm"))} if c.get("command") else {}),
                     "hidden": bool(c.get("hidden")), "source": "custom", "port": None, "scheme": "", "path": "", "host_ip": ""})
     return out
+
+def live_tasks():
+    """Running background tasks (and ones that just ended), read straight from /run/nova-tasks."""
+    out = []
+    try: names = os.listdir("/run/nova-tasks")
+    except OSError: return out
+    for n in names:
+        if not n.endswith(".json"): continue
+        t = load_json(f"/run/nova-tasks/{n}", None)
+        if t and (t.get("state") == "running" or time.time() - (t.get("finished") or 0) < 60):
+            out.append({k: t.get(k) for k in ("id", "kind", "title", "state", "pct", "step", "note", "error", "key", "started", "finished")})
+    return sorted(out, key=lambda t: -(t.get("started") or 0))
 
 def app_remote(aid):
     """Help putting an app on the internet safely through your Cloudflare tunnel: what to type in the
@@ -173,9 +189,11 @@ def helper_connect(args, timeout):
     c.connect(HELPER_SOCK); c.sendall((json.dumps(list(args)) + "\n").encode())
     return c
 
-def helper(*args, timeout=120):
+def helper(*args, timeout=120, data=b""):
     if os.path.exists(HELPER_SOCK):
-        c = helper_connect(args, timeout); c.shutdown(1)
+        c = helper_connect(args, timeout)
+        if data: c.sendall(data)
+        c.shutdown(1)
         buf = b""
         while True:
             b = c.recv(65536)
@@ -404,6 +422,12 @@ def shell_approval(code):
 
 def describe_action(a):
     p = [x for x in a["path"].split("/") if x][2:]
+    if p == ["terminal"]: return "Open a terminal on the server (as your normal user)"
+    if p == ["cloudflare", "publish"]: return f"Put {a.get('data', {}).get('host', '?')} on the internet through your Cloudflare tunnel (behind your Access login)"
+    if p == ["cloudflare", "remove"]: return f"Take {a.get('data', {}).get('host', '?')} off your Cloudflare tunnel"
+    if p == ["cloudflare", "token"]: return "Save a Cloudflare API token on the server"
+    if p == ["apps", "command"]: return f"Save the command app “{a.get('data', {}).get('name', '?')}”: {str(a.get('data', {}).get('command', ''))[:80]}"
+    if p[:1] == ["apps"] and p[-1:] == ["run"]: return "Run a command app"
     if p == ["containers", "custom"]: return f"Add your own container “{a.get('data', {}).get('spec', {}).get('name', '?')}” ({a.get('data', {}).get('spec', {}).get('image', '?')})"
     if p[:1] == ["containers"] and p[-1:] == ["remove-custom"]: return f"Remove the container {p[1]} (its data is kept)"
     if p[:1] == ["containers"] and len(p) == 3: return f"{p[2].title()} the container {p[1]}"
@@ -499,6 +523,9 @@ def needs_stepup(method, parts):
     if parts[:2] == ["storage", "task"] and len(parts) == 3 and parts[2] in STORAGE_DESTRUCTIVE: return True
     if parts in (["updates", "packages"], ["updates", "containers"]): return True
     if parts == ["containers", "custom"]: return True                      # new container: fingerprint
+    if parts == ["terminal"]: return True                                   # server terminal: fingerprint
+    if parts == ["apps", "command"]: return True                           # what a command app runs: fingerprint
+    if parts in (["cloudflare", "token"], ["cloudflare", "publish"], ["cloudflare", "remove"]): return True     # changes your Cloudflare account
     if parts[:1] == ["containers"] and parts[-1:] == ["remove-custom"]: return True
     if parts == ["notify", "discord"]: return True                         # where alerts get sent: fingerprint
     if parts[:1] == ["backups"] and len(parts) == 3 and parts[2] == "restore": return True
@@ -630,7 +657,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def read_body(self):
         n = int(self.headers.get("Content-Length") or 0)
-        if n > MAX_BODY: return None
+        raw_ok = self.path.split("?", 1)[0] in RAW_BODY_PATHS          # file uploads: raw bytes, bigger chunks
+        if n > (UPLOAD_CHUNK if raw_ok else MAX_BODY): return None
         return self.rfile.read(n) if n else b""
 
     # ── routing ──
@@ -659,8 +687,10 @@ class Handler(BaseHTTPRequestHandler):
 
         dev = self.authenticate(body)
         if not dev: return
-        try: data = json.loads(body) if body else {}
-        except ValueError: return self.send(400, {"error": "invalid JSON"})
+        if path in RAW_BODY_PATHS: data = {"_raw": True}
+        else:
+            try: data = json.loads(body) if body else {}
+            except ValueError: return self.send(400, {"error": "invalid JSON"})
         if not isinstance(data, dict): return self.send(400, {"error": "expected an object"})
 
         parts = [p for p in path.split("/") if p][2:]
@@ -718,6 +748,49 @@ class Handler(BaseHTTPRequestHandler):
                 for _ in range(mb): self.wfile.write(chunk)
             except (BrokenPipeError, ConnectionResetError): pass
             return
+        if parts[:1] == ["files"]:
+            # the file manager — as your normal account on the server (files.py), admins only
+            if role_of(dev) != "admin" or dev.get("type") in ("watch", "head"): return self.send(403, {"error": "admins only"})
+            fq = {k: v[0] for k, v in urllib.parse.parse_qs(self.path.split("?", 1)[1] if "?" in self.path else "").items()}
+            def reply(rc, res): return self.send(200 if rc == 0 else 400, res)
+            if method == "GET" and parts == ["files"]:
+                return reply(*helper("files", json.dumps({"op": "list", "path": fq.get("path", "")}), timeout=60))
+            if method == "POST" and parts == ["files"]:
+                try: a = json.loads(body or b"{}")
+                except ValueError: return self.send(400, {"error": "invalid JSON"})
+                if not isinstance(a, dict) or a.get("op") not in ("mkdir", "new", "rename", "copy", "trash", "read"): return self.send(400, {"error": "unknown operation"})
+                rc, res = helper("files", json.dumps(a)[:7000], timeout=600)
+                if rc == 0 and a["op"] != "read": audit(device=dev["name"], path=path, result=200, files=a["op"], target=str(a.get("path") or a.get("paths"))[:200])
+                return reply(rc, res)
+            if method == "POST" and parts in (["files", "upload"], ["files", "save"]):
+                spec = {"op": "put" if parts[1] == "upload" else "write", "path": fq.get("path", ""), "name": fq.get("name", ""),
+                        "offset": int(fq.get("offset", "0") or 0), "last": fq.get("last") == "1", "replace": fq.get("replace") == "1", "mtime": int(fq.get("mtime", "0") or 0)}
+                rc, res = helper("files-data", json.dumps(spec), timeout=300, data=body or b"")
+                if rc == 0 and (spec["op"] == "write" or res.get("done")): audit(device=dev["name"], path=path, result=200, files=spec["op"], target=(spec["path"] + "/" + spec["name"])[:200])
+                return reply(rc, res)
+            if method == "GET" and parts == ["files", "download"]:
+                c = helper_connect(["files-get", fq.get("path", "")], 120); c.shutdown(1)
+                head = b""
+                while not head.endswith(b"\n") and len(head) < 4096:
+                    b = c.recv(1)
+                    if not b: break
+                    head += b
+                try: h = json.loads(head)
+                except ValueError: c.close(); return self.send(502, {"error": "the helper didn't answer"})
+                if "error" in h: c.close(); return self.send(400, h)
+                fn = urllib.parse.quote(h["name"])
+                self.send_response(200); self.send_header("Content-Type", h["mime"] if fq.get("inline") == "1" and h["mime"].startswith(("image/", "text/plain", "video/", "audio/", "application/pdf")) else "application/octet-stream")
+                self.send_header("Content-Length", str(h["size"])); self.send_header("Cache-Control", "no-store")
+                self.send_header("Content-Disposition", f"{'inline' if fq.get('inline') == '1' else 'attachment'}; filename*=UTF-8''{fn}"); self.send_header("X-Content-Type-Options", "nosniff")
+                self.end_headers()
+                try:
+                    while True:
+                        b = c.recv(1 << 16)
+                        if not b: break
+                        self.wfile.write(b)
+                except (BrokenPipeError, ConnectionResetError): pass
+                c.close(); return
+            return self.send(404, {"error": "no such endpoint"})
         if method == "GET" and len(parts) == 3 and parts[0] == "apps" and parts[2] == "icon":
             png = app_icon(parts[1])
             if not png: return self.send(404, {"error": "no icon"})
@@ -1039,14 +1112,16 @@ class Handler(BaseHTTPRequestHandler):
             # Long poll for the phone's instant alerts: return as soon as something newer than
             # `since` is written (nova-alerts runs every minute), or empty after `timeout` s.
             since = float(q.get("since", "0") or 0); end = time.time() + min(55, max(5, int(q.get("timeout", "50") or 50)))
-            seen = set(str(q.get("seen", "")).split(","))
+            seen = set(str(q.get("seen", "")).split(",")); wait_started = time.time()
             while True:
                 ev = [e for e in load_json(EVENTS, {}).get("events", []) if e.get("t", 0) > since]
                 ap = [{"id": a["id"], "what": describe_action(a), "device_name": a["device_name"], "user": a.get("user", "")}
                       for a in approvals.values() if a["state"] == "pending" and role_of(dev) == "admin"
                       and dev.get("type") != "browser" and time.time() - a["created"] < 600]
+                tk = live_tasks()
+                if any(t["state"] == "running" for t in tk): end = min(end, wait_started + 4)   # progress: answer every few seconds
                 if ev or ("seen" in q and [a for a in ap if a["id"] not in seen]) or time.time() >= end:
-                    return 200, {"events": ev[:50], "approvals": ap}
+                    return 200, {"events": ev[:50], "approvals": ap, "tasks": tk}
                 time.sleep(2)
         if method == "GET" and parts == ["archive"]:
             # Permanent history (archived from the Inbox, or aged out of it). Readable by every device.
@@ -1164,8 +1239,58 @@ class Handler(BaseHTTPRequestHandler):
         if method == "DELETE" and len(parts) == 2 and parts[0] == "nodes" and re.fullmatch(r"[0-9a-f]{12}", parts[1]):
             if role_of(dev) != "admin": return 403, {"error": "admins only"}
             return (200, {"ok": True}) if nodes.remove(parts[1]) else (404, {"error": "no such server"})
+        # ── Labs: experimental features, off until you turn them on ──
+        if method == "GET" and parts == ["labs"]:
+            return 200, {"labs": {k: bool(load_json(SETTINGS, {}).get("labs", {}).get(k)) for k in LABS}, "about": LABS}
+        if method == "POST" and parts == ["labs"]:
+            if role_of(dev) != "admin": return 403, {"error": "admins only"}
+            with lock:
+                st = load_json(SETTINGS, {}); lb = st.get("labs", {})
+                for k, v in data.items():
+                    if k in LABS: lb[k] = bool(v)
+                st["labs"] = lb; save_json(SETTINGS, st)
+            return 200, {"labs": {k: bool(lb.get(k)) for k in LABS}, "about": LABS}
+        if parts[:1] == ["cloudflare"]:
+            if role_of(dev) != "admin": return 403, {"error": "admins only"}
+            if not load_json(SETTINGS, {}).get("labs", {}).get("cloudflare_sync"): return 403, {"error": "turn on Cloudflare auto-setup in Settings → Labs first"}
+            if method == "GET" and parts == ["cloudflare"]: rc, res = helper("cf-status", timeout=60); return (200 if rc == 0 else 400), res
+            if method == "POST" and parts == ["cloudflare", "token"]: rc, res = helper("cf-token", str(data.get("token", ""))[:200], timeout=60); return (200 if rc == 0 else 400), res
+            if method == "POST" and parts[1:] in (["plan"], ["publish"]):
+                spec = json.dumps({"host": str(data.get("host", ""))[:253], "service": str(data.get("service", ""))[:200], "no_tls_verify": bool(data.get("no_tls_verify"))})
+                rc, res = helper("cf-plan" if parts[1] == "plan" else "cf-apply", spec, timeout=120)
+                if rc == 0 and parts[1] == "publish" and data.get("app"):
+                    cfg = load_json(APPS, {"overrides": {}, "custom": []}); aid = str(data["app"])
+                    if aid.startswith("custom-"): cfg["custom"] = [dict(c, remote_url=res["url"]) if c["id"] == aid else c for c in cfg.get("custom", [])]
+                    else: cfg.setdefault("overrides", {}).setdefault(aid, {})["remote_url"] = res["url"]
+                    save_json(APPS, cfg)
+                return (200 if rc == 0 else 400), res
+            if method == "POST" and parts == ["cloudflare", "remove"]: rc, res = helper("cf-remove", str(data.get("host", ""))[:253], timeout=120); return (200 if rc == 0 else 400), res
+            return 404, {"error": "no such endpoint"}
         if method == "GET" and parts == ["apps"]:
             return 200, {"apps": app_list()}
+        if method == "POST" and parts == ["apps", "command"]:
+            # a command or script you run with one tap (as your normal account) — creating or changing one needs your fingerprint
+            if role_of(dev) != "admin": return 403, {"error": "admins only"}
+            cmd = str(data.get("command", "")).replace("\r", "")
+            name = "".join(c for c in str(data.get("name", "")) if c.isprintable()).strip()[:40]
+            if not name or not cmd.strip() or len(cmd) > 8000 or "\0" in cmd: raise ValueError("give it a name and a command")
+            icon = str(data.get("icon", "")).strip().lower()[:60]
+            if icon and not re.fullmatch(r"[a-z0-9-]{1,60}", icon): raise ValueError("icon: a dashboard-icons name like 'bash'")
+            try: tmo = max(10, min(3600, int(data.get("timeout") or 600)))
+            except (TypeError, ValueError): tmo = 600
+            cfg = load_json(APPS, {"overrides": {}, "custom": []}); aid = str(data.get("id") or "")
+            if aid:
+                if not any(c["id"] == aid and c.get("command") for c in cfg.get("custom", [])): return 404, {"error": "no such command app"}
+                cfg["custom"] = [dict(c, name=name, command=cmd, icon=icon, timeout=tmo, confirm=bool(data.get("confirm"))) if c["id"] == aid else c for c in cfg["custom"]]
+            else:
+                aid = "custom-" + secrets.token_hex(4)
+                cfg["custom"] = (cfg.get("custom", []) + [{"id": aid, "name": name, "command": cmd, "icon": icon or "bash", "timeout": tmo, "confirm": bool(data.get("confirm")), "url": ""}])[:60]
+            save_json(APPS, cfg); audit(device=dev["name"], path=path, result=200, command_app=name)
+            return 200, {"ok": True, "id": aid, "apps": app_list()}
+        if method == "POST" and len(parts) == 3 and parts[0] == "apps" and parts[2] == "run":
+            if role_of(dev) != "admin": return 403, {"error": "admins only"}
+            if not re.fullmatch(r"custom-[0-9a-f]{8}", parts[1]): return 404, {"error": "no such command app"}
+            rc, res = helper("task-start", "run-command", json.dumps({"id": parts[1]})); return (202 if rc == 0 else 400), ({"task": res.get("id"), **res} if rc == 0 else res)
         if method == "GET" and len(parts) == 3 and parts[0] == "apps" and parts[2] == "remote" and re.fullmatch(r"[A-Za-z0-9_.-]{1,64}", parts[1]):
             if role_of(dev) != "admin" or dev.get("type") == "watch": return 403, {"error": "admins only"}
             return app_remote(parts[1])
@@ -1268,7 +1393,7 @@ class Handler(BaseHTTPRequestHandler):
             if len(raw) > 7000: raise ValueError("that's too much for one container")
             rc, res = helper("custom-check", raw, timeout=40)
             if rc != 0: return 400, res
-            return 202, {"job": start_job(f"Add {str((data.get('spec') or {}).get('name', ''))[:40]}", ["custom-install", raw], timeout=1800)}
+            rc, res = helper("task-start", "custom-install", raw); return (202 if rc == 0 else 400), ({"task": res.get("id"), **res} if rc == 0 else res)
         if len(parts) >= 2 and parts[0] == "containers":
             name = parts[1]
             if method == "GET" and len(parts) == 2:
@@ -1279,14 +1404,20 @@ class Handler(BaseHTTPRequestHandler):
             if method == "POST" and len(parts) == 3 and parts[2] in ("start", "stop", "restart"):
                 rc, res = helper("container", parts[2], name, timeout=180); return (200 if rc == 0 else 400), res
             if method == "POST" and parts[2:] == ["remove-custom"]:
-                return 202, {"job": start_job(f"Remove {name}", ["custom-uninstall", name], timeout=900)}
+                rc, res = helper("task-start", "custom-uninstall", json.dumps({"name": name})); return (202 if rc == 0 else 400), ({"task": res.get("id"), **res} if rc == 0 else res)
             if method == "POST" and parts[2:] == ["update"]:
-                return 202, {"job": start_job(f"Update {name}", ["container-update", name])}
+                rc, res = helper("task-start", "containers-update", json.dumps({"containers": [name]})); return (202 if rc == 0 else 400), ({"task": res.get("id"), **res} if rc == 0 else res)
             if method == "POST" and parts[2:] == ["policy"]:
                 rc, res = helper("container-policy", name, str(data.get("policy", ""))); return (200 if rc == 0 else 400), res
             if method == "POST" and parts[2:] == ["shell"]:
                 sh = open_shell(dev["id"], name)
                 return 200, {"session": sh["id"], "container": name}
+        if method == "POST" and parts == ["terminal"]:
+            # a login shell on the server as your normal user (approved with your fingerprint; sudo asks its password)
+            if role_of(dev) != "admin": return 403, {"error": "admins only"}
+            sh = open_shell(dev["id"], dev["name"], verb=("host-shell",))
+            sh["host"] = True
+            return 200, {"session": sh["id"]}
         if len(parts) == 2 and parts[0] == "shell":
             sh = shells.get(parts[1])
             if not sh or sh["device"] != dev["id"]: return 404, {"error": "no such shell"}
@@ -1299,8 +1430,14 @@ class Handler(BaseHTTPRequestHandler):
                 return 200, {"ok": True}
             if method == "GET":
                 off = max(int(q.get("offset", "0") or 0), sh["base"])
+                if q.get("wait") == "1":                         # long poll: answer as soon as there's output (≤ 8 s)
+                    end = time.time() + 8
+                    while sh["alive"] and sh["base"] + len(sh["buf"]) <= off and time.time() < end: time.sleep(0.03)
                 chunk = bytes(sh["buf"][off - sh["base"]:])
-                return 200, {"data": chunk.decode(errors="replace"), "offset": sh["base"] + len(sh["buf"]), "alive": sh["alive"]}
+                for cut in range(min(3, len(chunk)) + 1):             # never split a UTF-8 character between replies
+                    try: chunk[:len(chunk) - cut].decode(); chunk = chunk[:len(chunk) - cut]; break
+                    except UnicodeDecodeError: continue
+                return 200, {"data": chunk.decode(errors="replace"), "offset": off + len(chunk), "alive": sh["alive"]}
             if method == "DELETE":
                 try: sh["kill"]()
                 except Exception: pass
@@ -1342,11 +1479,14 @@ class Handler(BaseHTTPRequestHandler):
         if method == "GET" and parts == ["store"]:
             rc, res = helper("store-list", timeout=60); return 200, res
         if method == "POST" and len(parts) == 3 and parts[0] == "store" and parts[2] in ("install", "uninstall"):
-            return 202, {"job": start_job(f"{parts[2].title()} {parts[1]}", [f"store-{parts[2]}", parts[1]])}
+            rc, res = helper("task-start", f"store-{parts[2]}", json.dumps({"id": parts[1]})); return (202 if rc == 0 else 400), ({"task": res.get("id"), **res} if rc == 0 else res)
         if method == "GET" and parts == ["programs"]:
             rc, res = helper("programs"); return 200, res
+        if method == "GET" and parts == ["programs", "search"]:
+            if role_of(dev) != "admin": return 403, {"error": "admins only"}
+            rc, res = helper("program-search", urllib.parse.unquote_plus(q.get("q", ""))[:60], timeout=60); return (200 if rc == 0 else 400), res
         if method == "POST" and len(parts) == 3 and parts[0] == "programs" and parts[2] in ("install", "remove"):
-            return 202, {"job": start_job(f"{parts[2].title()} {parts[1]}", [f"program-{parts[2]}", parts[1]])}
+            rc, res = helper("task-start", f"program-{parts[2]}", json.dumps({"pkg": parts[1]})); return (202 if rc == 0 else 400), ({"task": res.get("id"), **res} if rc == 0 else res)
 
         # ── hardware ──
         if method == "GET" and parts == ["hardware"]:

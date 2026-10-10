@@ -119,8 +119,8 @@ fun localTime(utc: String): String = runCatching {
             PillItem(Icons.Rounded.RestartAlt, "Restart") { action("restart") },
             PillItem(Icons.Rounded.SystemUpdate, "Update") {
                 app.act { job = "Updating…"
-                    val j = app.waitJob(app.api.post("/api/v1/containers/$name/update").getJSONObject("job")) { job = "Updating…" }
-                    job = null; app.toast(if (j.optString("state") == "done") "$name is up to date" else "Update failed: ${j.optJSONObject("result")?.optString("error")}")
+                    val j = app.waitTask(app.api.post("/api/v1/containers/$name/update").optString("task")) { t -> job = "Updating… ${t.optDouble("pct", 0.0).toInt()}%" }
+                    job = null; app.toast(if (j.optString("state") == "done") "$name is up to date" else "Update failed: ${j.optString("error")}")
                     load() } },
             PillItem(Icons.Rounded.Terminal, "Shell") { if (running) app.go(Route.Shell(name)) else app.toast("Start it first") },
         ))

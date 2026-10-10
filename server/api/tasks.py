@@ -22,14 +22,15 @@ STORAGE_KINDS = {"format", "combine", "raid", "pool-remove", "pool-add", "fstab-
 DIAG_KINDS = {"net-internet", "disk-speed", "cpu-stress", "mem-test"}
 BACKUP_KINDS = {"backup-run", "restore", "tools"}
 UPDATE_KINDS = {"updates-check", "apt-upgrade", "containers-update"}
-KINDS = STORAGE_KINDS | DIAG_KINDS | BACKUP_KINDS | UPDATE_KINDS
+INSTALL_KINDS = {"run-command", "store-install", "store-uninstall", "custom-install", "custom-uninstall", "program-install", "program-remove"}
+KINDS = STORAGE_KINDS | DIAG_KINDS | BACKUP_KINDS | UPDATE_KINDS | INSTALL_KINDS
 TITLES = {"format": "Set up a drive", "combine": "Combine drives", "raid": "Create a RAID array", "pool-remove": "Remove a pool",
           "pool-add": "Add a drive", "fstab-nofail": "Boot without missing drives", "fstab-add": "Keep a drive mounted",
           "net-internet": "Internet speed test", "disk-speed": "Drive speed test", "cpu-stress": "CPU stress test", "mem-test": "Memory test",
           "backup-run": "Backup", "restore": "Restore from backup", "tools": "Install tools",
           "updates-check": "Check for updates", "apt-upgrade": "Update packages", "containers-update": "Update containers"}
 GROUP = {**{k: "storage" for k in STORAGE_KINDS}, **{k: "diag" for k in DIAG_KINDS}, "restore": "storage", "tools": "storage",
-         **{k: "updates" for k in UPDATE_KINDS}}
+         **{k: "updates" for k in UPDATE_KINDS}, "program-install": "updates", "program-remove": "updates"}     # one apt at a time
 
 
 def path(tid, ext="json"): return f"{DIR}/{tid}.{ext}"
@@ -71,6 +72,13 @@ def check_spec(kind, spec):
         import storage
         bad = [t for t in spec.get("tools", []) if t not in storage.TOOLS]
         if bad or not spec.get("tools"): raise ValueError("unknown tool")
+    if kind in INSTALL_KINDS:
+        import installs
+        if kind.startswith("store-") and not re.fullmatch(r"[a-z0-9-]{1,40}", str(spec.get("id", ""))): raise ValueError("bad app id")
+        if kind == "run-command" and not re.fullmatch(r"custom-[0-9a-f]{8}", str(spec.get("id", ""))): raise ValueError("bad app id")
+        if kind.startswith("program-") and not re.fullmatch(installs.PKG_RE, str(spec.get("pkg", ""))): raise ValueError("bad package name")
+        if kind == "custom-install": installs.custom_spec(spec)
+        if kind == "custom-uninstall" and not re.fullmatch(installs.CUSTOM_NAME, str(spec.get("name", ""))): raise ValueError("bad name")
     if kind in ("backup-run", "restore"):
         if not re.fullmatch(r"[a-z0-9]{1,12}", str(spec.get("job", ""))): raise ValueError("bad backup id")
     return spec
@@ -82,14 +90,23 @@ def start(kind, spec):
         busy = next((t for t in all_tasks() if t["state"] == "running" and GROUP.get(t["kind"]) == group), None)
         if busy: raise ValueError(f"wait for “{busy['title']}” to finish first")
     tid = secrets.token_hex(6)
-    title = TITLES[kind]
+    title = TITLES.get(kind, kind)
+    if kind in INSTALL_KINDS:
+        import installs
+        busy = next((t for t in all_tasks() if t["state"] == "running" and t["kind"] == kind and t.get("key") == (spec.get("id") or spec.get("pkg") or spec.get("name"))), None)
+        if busy: raise ValueError("that's already in progress")
+        what = spec.get("pkg") or spec.get("name") or (installs.catalog().get(spec.get("id"), {}).get("name")) or spec.get("id")
+        if kind == "run-command":
+            cfg = json.load(open(installs.APPS)) if os.path.exists(installs.APPS) else {}
+            what = next((c.get("name") for c in cfg.get("custom", []) if c.get("id") == spec.get("id")), None) or (_ for _ in ()).throw(ValueError("no such command app"))
+        title = f"{installs.TITLES[kind]} {what}"
     if kind == "backup-run":
         import backups
         j = next((x for x in backups.load_jobs() if x["id"] == spec["job"]), None)
         if not j: raise ValueError("no such backup")
         title = f"Backup: {j['name']}"
     t = {"id": tid, "kind": kind, "title": title, "state": "running", "pct": 0, "step": "Starting…", "log": [], "started": time.time(),
-         "key": spec.get("job") or spec.get("pool") or spec.get("path") or ""}
+         "key": spec.get("job") or spec.get("pool") or spec.get("path") or spec.get("id") or spec.get("pkg") or spec.get("name") or ""}
     save(t)
     fd = os.open(path(tid, "spec"), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(fd, "w") as f: json.dump({"kind": kind, "spec": spec}, f)
@@ -134,6 +151,9 @@ def execute(tid):
             import updates
             res = {"updates-check": updates.check, "apt-upgrade": updates.apt_upgrade, "containers-update": updates.containers}[kind](spec, log, progress)
             if kind != "updates-check": changelog(f"{t['title']}: {json.dumps(spec)[:200]} (from the Nova app)")
+        elif kind in INSTALL_KINDS:
+            import installs
+            res = installs.OPS[kind](spec, log, progress)
         elif kind == "tools":
             import storage
             storage.ensure_tools(spec["tools"], log); res = {"installed": spec["tools"]}

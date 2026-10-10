@@ -499,8 +499,12 @@ private fun survives(level: String, n: Int) = when (level) { "raid1" -> n - 1; "
         }
         val log = x?.optJSONArray("log").strs()
         if (log.isNotEmpty()) {
-            SectionLabel("What happened")
-            Group { Column(Modifier.padding(18.dp)) { log.takeLast(40).forEach { Text(it, color = N.sub, fontSize = 13.sp, fontFamily = Mono) } } }
+            val cmd = x?.optString("kind") == "run-command"
+            SectionLabel(if (cmd) "Output" else "What happened")
+            Group { Column(Modifier.padding(18.dp)) { (if (cmd) log.takeLast(200).map { it.replace(Regex("^\\d\\d:\\d\\d:\\d\\d "), "") } else log.takeLast(40)).forEach {
+                Text(it, color = if (cmd) N.text else N.sub, fontSize = 13.sp, fontFamily = Mono) } } }
+            if (cmd && x?.optString("state") != "running") Group { Row1("Run it again", null, true, Icons.Rounded.PlayArrow, onClick = {
+                app.act { val t2 = app.api.post("/api/v1/apps/${x?.optString("key")}/run"); app.back(); app.go(Route.Task(t2.optString("task"))) } }) }
         }
         if (state == "running" && kind !in listOf("format", "combine", "raid", "pool-remove", "pool-add") && app.isAdmin) {
             Box(Modifier.fillMaxWidth().padding(22.dp)) {

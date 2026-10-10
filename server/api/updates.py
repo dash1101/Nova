@@ -108,20 +108,49 @@ def containers(spec, log=print, progress=lambda p, n="": None):
     want = spec.get("containers")
     cs = {c["name"]: c for c in compose_containers()}
     names = list(cs) if want == "all" else [n for n in (want or []) if n in cs]
+    rolled = []
     if want != "all" and (not names or len(names) != len(want or [])): raise ValueError("no such container")
     done = []
     for i, n in enumerate(names):
         c = cs[n]
         if not (c["service"] and c["dir"].startswith("/") and os.path.isdir(c["dir"])): log(f"{n}: not from a Compose file — skipped"); continue
-        progress(100 * i / len(names), n); log(f"Pulling the newest {c['image']}…")
+        progress(100 * i / len(names), n)
+        keep = f"nova-rollback/{re.sub(r'[^a-z0-9_.-]', '-', n.lower())}:previous"
+        run(["docker", "tag", c["image_id"], keep], timeout=30)          # so the old image can't be cleaned up before we know the new one works
+        log(f"Pulling the newest {c['image']}…")
         rc, so, se = run(["docker", "compose", "pull", c["service"]], timeout=1800, cwd=c["dir"])
-        if rc != 0: log(f"{n}: pull failed: {se.strip()[-160:]}"); continue
+        if rc != 0: log(f"{n}: pull failed: {se.strip()[-160:]}"); run(["docker", "rmi", keep], timeout=30); continue
         log(f"Restarting {n} on the new image…")
         rc, so, se = run(["docker", "compose", "up", "-d", c["service"]], timeout=600, cwd=c["dir"])
-        if rc != 0: log(f"{n}: couldn't restart: {se.strip()[-160:]}"); continue
+        ok = rc == 0 and settled(n, log)
+        if not ok:
+            # the new version doesn't start: put the old one back
+            log(f"{n} doesn't run on the new image — going back to the previous one")
+            run(["docker", "tag", keep, c["image"]], timeout=30)
+            run(["docker", "compose", "up", "-d", "--pull", "never", c["service"]], timeout=600, cwd=c["dir"])
+            rolled.append(n); notify_warn(f"{n}: update rolled back", "The new version wouldn't start, so Nova put the previous one back. Check its release notes for changes it needs.")
+            continue
+        run(["docker", "rmi", keep], timeout=30)
         done.append(n)
     try: check(log=lambda m: None)
     except Exception: pass
-    progress(100); log(f"Updated {len(done)} of {len(names)}.")
-    if names and not done: raise RuntimeError("nothing could be updated — see the log")
-    return {"updated": done}
+    progress(100); log(f"Updated {len(done)} of {len(names)}." + (f" Rolled back: {', '.join(rolled)}." if rolled else ""))
+    if names and not done: raise RuntimeError("nothing could be updated" + (f" — {', '.join(rolled)} wouldn't start on the new version, so the previous one was put back" if rolled else " — see the log"))
+    return {"updated": done, "rolled_back": rolled}
+
+def settled(name, log, wait=40):
+    """True once the container is running (and healthy, if it has a health check) and stays up; False if it keeps crashing."""
+    end = time.time() + wait; up_since = None
+    while time.time() < end:
+        rc, so, _ = run(["docker", "inspect", name, "--format", "{{.State.Status}} {{.RestartCount}} {{if .State.Health}}{{.State.Health.Status}}{{end}}"], timeout=20)
+        st = (so.split() + ["", "", ""])[:3]
+        if st[0] in ("restarting", "exited", "dead") or (st[1].isdigit() and int(st[1]) > 0): return False
+        if st[0] == "running" and st[2] in ("", "healthy"):
+            up_since = up_since or time.time()
+            if time.time() - up_since > 12: return True
+        time.sleep(2)
+    return st[0] == "running"
+
+def notify_warn(title, detail):
+    t = next((p for p in ("/usr/sbin/nova-alert", "/usr/local/bin/nova-alert") if os.path.exists(p)), None)
+    if t: subprocess.run([t, "warning", title, detail], capture_output=True, timeout=30)

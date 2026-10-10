@@ -1,6 +1,6 @@
 // Nova web — every screen of the app. Each view renders with ctx.show(html, options, handlers);
 // buttons carry data-act="name" or data-act="name:arg" and land in `handlers` (or the router's).
-import { S, $, $$, esc, get, post, del, api, sleep, prefs, levelColor, pct, rate, bytes, isAdmin, has, cleanTitle, cap,
+import { S, $, $$, esc, get, post, del, api, sleep, prefs, waitTask, runningTask, levelColor, pct, rate, bytes, isAdmin, has, cleanTitle, cap,
          serverName, uptime, hm, refresh, changeFan, waitJob, kv, archiveMerge, archiveAll, archiveClear } from "./core.js";
 import { I, row, group, sec, note, sw, radio, switchRow, links, expand, slider, segmented, bar, usageColor,
          toast, dialog, confirm, choose, ask, wireCommon, reorderable, onHold, spark, swipeable, colorPicker } from "./ui.js";
@@ -10,14 +10,14 @@ import { favoritesHtml } from "./start.js";
 
 // ── catalogs (same ids as the app, so the two read alike) ───────────────────────
 export const SHORTCUTS = [
-  ["inbox", "bell", "Inbox", "inbox"], ["apps", "apps", "Apps", "apps"], ["servers", "dns", "Servers", "servers"], ["start", "home", "Start page", "start", null, "Start"], ["search", "search", "Search", "search"], ["quick", "widgets", "Quick panel", "quick", null, "Quick"], ["containers", "box", "Containers", "containers"],
+  ["inbox", "bell", "Inbox", "inbox"], ["apps", "apps", "Apps", "apps"], ["servers", "dns", "Servers", "servers"], ["files", "folder", "Files", "files"], ["start", "home", "Start page", "start", null, "Start"], ["search", "search", "Search", "search"], ["quick", "widgets", "Quick panel", "quick", null, "Quick"], ["containers", "box", "Containers", "containers"],
   ["storage", "disk", "Storage", "hardware"], ["status", "status", "Status", "status"], ["lighting", "bulb", "Lighting", "lighting", "lighting"],
   ["terminal", "term", "Terminal", "terminal", "ssh"], ["store", "store", "Store", "store", "store"], ["dashboard", "dash", "Dashboard", "dashboard"],
   ["schedules", "clock", "Schedules", "schedules", "lighting"], ["devices", "group", "Devices", "devices"], ["settings", "gear", "Settings", "settings"],
 ].map(([id, icon, label, route, feature, short]) => ({ id, icon, label, route, feature, short: short || label }));
 const sc = id => SHORTCUTS.find(s => s.id === id);
 export const NAV_TABS = [{ id: "home", icon: "dns", label: "Home", route: "home" }, { id: "store", icon: "store", label: "Store", route: "store", feature: "store" },
-  { id: "menu", icon: "list", label: "Menu", route: "menu" }, ...["start", "apps", "servers", "search", "status", "containers", "storage", "inbox", "quick", "lighting"].map(sc)];
+  { id: "menu", icon: "list", label: "Menu", route: "menu" }, ...["start", "apps", "files", "servers", "search", "status", "containers", "storage", "inbox", "quick", "lighting"].map(sc)];
 export const navTabs = () => {
   const t = prefs.navTabs.map(id => NAV_TABS.find(x => x.id === id)).filter(x => x && (!x.feature || has(x.feature)));
   return t.some(x => x.id === "home") ? t : [NAV_TABS[0], ...t];
@@ -167,6 +167,7 @@ export async function menu(ctx) {
         + row("Backups", { sub: "What's backed up, restore files", blue: true, icon: "backup", click: "go:backups" })
         + row("Diagnostics", { sub: "Speed, stress and network tests", blue: true, icon: "speed", tint: "#64d2ff", click: "go:diag" })
         + row("Updates", { sub: "Packages, containers and Nova", blue: true, icon: "update", tint: "#3ecf6e", click: "go:updates" })
+        + (isAdmin() ? row("Files", { sub: "Browse, upload, download and edit files on the server", blue: true, icon: "folder", tint: "#3e91ff", click: "go:files" }) : "")
         + row("Servers", { sub: (S.cache["/api/v1/nodes"]?.nodes || []).length ? `${S.cache["/api/v1/nodes"].nodes.length + 1} servers, at a glance` : "Your other Nova servers in one place — add one with +", blue: true, icon: "dns", tint: "#64d2ff", click: "go:servers" })
         + row("Quick panel", { sub: "Your shortcuts — tap ✎ to customize", blue: true, icon: "widgets", click: "go:quick" })
         + row("Server status", { sub: "Live graphs, storage, backups", blue: true, icon: "status", tint: "#3ecf6e", click: "go:status" })
@@ -315,7 +316,8 @@ async function container(ctx, name) {
     },
     update: async () => {
       job = "Updating…"; draw();
-      try { const j = await waitJob((await post(`${path}/update`)).job); toast(j.state === "done" ? `${name} is up to date` : `Update failed: ${j.result?.error || ""}`); }
+      try { const r = await post(`${path}/update`); const j = r?.task ? await waitTask(r.task, t => { job = `Updating… ${Math.round(t.pct || 0)}%`; if (ctx.alive()) draw(); }) : { state: "failed" };
+        toast(j.state === "done" ? `${name} is up to date` : `Update failed: ${j.error || ""}`); }
       catch (e) { toast(e.message); } finally { job = null; await load(); }
     },
     shell: () => S.cache[path]?.state === "running" ? ctx.go(`containers/${encodeURIComponent(name)}/shell`) : toast("Start it first"),
@@ -323,7 +325,7 @@ async function container(ctx, name) {
     rmcustom: async () => {
       if (!(await confirm(`Remove ${name}?`, "It stops, and its folder is kept in /opt/.nova-uninstalled. Your phone will ask for your fingerprint.", "Remove"))) return;
       job = "Removing…"; draw();
-      try { const j = await waitJob((await post(`${path}/remove-custom`)).job); if (j.state === "done") { toast(`Removed ${name}`); await get("/api/v1/containers").catch(() => {}); return ctx.go("containers"); } toast(`Couldn't remove it: ${j.result?.error || ""}`); }
+      try { const r = await post(`${path}/remove-custom`); const j = r?.task ? await waitTask(r.task) : { state: "failed" }; if (j.state === "done") { toast(`Removed ${name}`); await get("/api/v1/containers").catch(() => {}); return ctx.go("containers"); } toast(`Couldn't remove it: ${j.error || ""}`); }
       catch (e) { toast(e.message); } finally { job = null; if (ctx.alive()) await load(); }
     },
     policy: async () => {
@@ -366,8 +368,9 @@ async function shell(ctx, name) {
 const CAT_COLORS = { Media: "#ff6b6b", Photos: "#ff9500", Files: "#3e91ff", Network: "#00c7be", Monitoring: "#3ecf6e", Home: "#ffb020", Productivity: "#5e5ce6", Security: "#bf5af2", Development: "#8e8e93" };
 export async function store(ctx) {
   const [id] = ctx.args;
+  if (id === "programs") return programSearch(ctx);
   if (id) return storeItem(ctx, id);
-  let tab = 0, busy = null;
+  let tab = 0, busy = null, busyPct = 0;
   const draw = () => {
     const apps = S.cache["/api/v1/store"]?.items, progs = S.cache["/api/v1/programs"]?.items;
     const appRow = a => `<div class="row"><span class="appicon" style="background:${CAT_COLORS[a.category] || "var(--blue)"};font-weight:700;font-size:22px">${esc((a.name || "?")[0])}</span><div class="t"><b style="font-weight:600">${esc(a.name)}</b><small>${esc(a.description)}</small></div><button class="pillbtn press" data-act="open:${esc(a.id)}">${a.installed ? "Open" : "Get"}</button></div>`;
@@ -379,8 +382,9 @@ export async function store(ctx) {
     } else {
       const cats = {}; (progs || []).forEach(p => (cats[p.category] ||= []).push(p));
       body = Object.entries(cats).map(([c, xs]) => sec(c) + group(xs.map(p => row(p.name, { sub: p.description,
-        end: busy === p.pkg ? `<span class="spinner"></span>` : (p.installed && p.protected) || !isAdmin() ? `<span class="end">${p.installed ? "Installed" : ""}</span>`
+        end: busy === p.pkg ? `<span class="muted" style="font-variant-numeric:tabular-nums">${Math.round(busyPct || 0)}%</span><span class="spinner"></span>` : (p.installed && p.protected) || !isAdmin() ? `<span class="end">${p.installed ? "Installed" : ""}</span>`
           : `<button class="pillbtn press${p.installed ? " red" : ""}" data-act="prog:${esc(p.pkg)}">${p.installed ? "Remove" : "Get"}</button>` })).join(""))).join("") + (progs ? "" : note("Loading…"));
+      if (isAdmin()) body = group(row("Find any program", { sub: "Search everything in your system's package manager (apt)", blue: true, icon: "search", click: "go:store/programs" })) + body;
     }
     ctx.show(`<p class="note" style="font-size:15px;margin:0 26px 10px">Hand-picked for your server. Installs run on Nova and show up in Containers.</p>${segmented(["Apps", "Programs"], tab, "tab")}${body}`,
       { title: "App store", root: true, tabroot: true });
@@ -392,42 +396,92 @@ export async function store(ctx) {
       const p = S.cache["/api/v1/programs"]?.items?.find(x => x.pkg === pkg); if (!p) return;
       if (!(await confirm(`${p.installed ? "Remove" : "Install"} ${p.name}?`, "Your phone will ask you to confirm with your fingerprint.", p.installed ? "Remove" : "Install", p.installed ? "var(--red)" : "var(--blue)"))) return;
       busy = pkg; draw();
-      try { const j = await waitJob((await post(`/api/v1/programs/${pkg}/${p.installed ? "remove" : "install"}`)).job);
-        toast(j.state === "done" ? `${p.name} ${p.installed ? "removed" : "installed"}` : `Failed: ${j.result?.error || ""}`); await get("/api/v1/programs"); }
-      catch (e) { toast(e.message); } finally { busy = null; if (ctx.alive()) draw(); }
+      try { const r = await post(`/api/v1/programs/${pkg}/${p.installed ? "remove" : "install"}`);
+        if (r?.task) { const j = await waitTask(r.task, t => { busyPct = t.pct; if (ctx.alive()) draw(); });
+          toast(j.state === "done" ? `${p.name} ${p.installed ? "removed" : "installed"}` : `Failed: ${j.error || ""}`); }
+        await get("/api/v1/programs"); }
+      catch (e) { toast(e.message); } finally { busy = null; busyPct = 0; if (ctx.alive()) draw(); }
     },
   });
   draw(); try { await get("/api/v1/store"); if (ctx.alive()) draw(); } catch (e) { toast(e.message); }
 }
+/** Any package from apt: search, install or remove (fingerprint), with apt's own progress. */
+async function programSearch(ctx) {
+  let q = "", items = null, busy = {}, timer;
+  const results = () => items === null ? note(q.length < 2 ? "Type at least two letters — a name like htop, or what it does, like “disk usage”." : "Searching…")
+    : !items.length ? note(`Nothing called “${q}”.`)
+    : group(items.map(p => row(p.pkg, { sub: p.description, end: busy[p.pkg] != null ? `<span class="muted" style="font-variant-numeric:tabular-nums">${Math.round(busy[p.pkg])}%</span><span class="spinner"></span>`
+        : p.essential && p.installed ? `<span class="end">Needed by the server</span>`
+        : `<button class="pillbtn press${p.installed ? " red" : ""}" data-act="pk:${esc(p.pkg)}">${p.installed ? "Remove" : "Install"}</button>` })).join(""));
+  const paint = () => { const el = $("#pres"); if (el) el.innerHTML = results(); };
+  ctx.show(`<div class="searchbox glass">${I("search")}<input id="pq" class="sq" placeholder="Search programs, e.g. htop or “disk usage”" autocomplete="off" autocapitalize="off" spellcheck="false"></div>
+    ${note("These come from your system's package manager (apt). Installing or removing asks for your fingerprint; Nova won't remove what the server needs to run.")}<div id="pres">${results()}</div>`, { title: "Find a program" });
+  const inp = $("#pq"); inp.focus();
+  inp.oninput = () => { q = inp.value.trim(); items = null; paint(); clearTimeout(timer); if (q.length < 2) return;
+    timer = setTimeout(async () => { const t = q; try { const r = await get(`/api/v1/programs/search?q=${encodeURIComponent(t)}`); if (t === q) { items = r.items || []; paint(); } } catch (e) { toast(e.message); } }, 350); };
+  ctx.handlers({ pk: async pkg => {
+    const p = items.find(x => x.pkg === pkg); if (!p) return;
+    if (!(await confirm(`${p.installed ? "Remove" : "Install"} ${pkg}?`, p.description + (p.installed ? "" : " — your phone confirms it."), p.installed ? "Remove" : "Install", p.installed ? "var(--red)" : "var(--blue)"))) return;
+    busy[pkg] = 0; paint();
+    try { const r = await post(`/api/v1/programs/${encodeURIComponent(pkg)}/${p.installed ? "remove" : "install"}`);
+      if (r?.task) { const t = await waitTask(r.task, x => { busy[pkg] = x.pct || 0; paint(); });
+        if (t.state === "done") { p.installed = !p.installed; toast(`${pkg} ${p.installed ? "installed" : "removed"}`); } else toast(t.error || "It didn't work"); } }
+    catch (e) { toast(e.message); } finally { delete busy[pkg]; paint(); }
+  } });
+  const t = await runningTask(["program-install", "program-remove"]);
+  if (t && ctx.alive()) toast(`${t.title} is still running — see the Inbox`);
+}
 async function storeItem(ctx, id) {
-  let busy = null;
+  let task = null;                 // the running install / uninstall (picked up again if you come back)
   const draw = () => {
     const a = (S.cache["/api/v1/store"]?.items || []).find(x => x.id === id);
     if (!a) return ctx.show(note("Loading…"), { title: "App" });
-    const url = `http://${location.hostname}:${a.port}${a.path || "/"}`;
+    const url = `http://${location.hostname}:${a.port}${a.path || "/"}`, busy = task?.state === "running";
     ctx.show(`<div class="center" style="padding:18px 0"><span class="appicon" style="width:96px;height:96px;border-radius:30px;margin:0 auto 12px;background:${CAT_COLORS[a.category] || "var(--blue)"}"><b style="font-size:44px;color:#fff">${esc((a.name || "?")[0])}</b></span>
-        <div class="muted" style="font-weight:600">${esc(a.category)}</div><div class="muted">${busy ? esc(busy) : a.installed ? "Installed · " + esc(a.state || "") : "Not installed"}</div></div>
+        <div class="muted" style="font-weight:600">${esc(a.category)}</div><div class="muted">${busy ? esc(task.title) : a.installed ? "Installed · " + esc(a.state || "") : "Not installed"}</div></div>
+      ${busy ? `<div class="taskbar glass"><div class="tb-top"><b>${esc(task.step || "Working…")}</b><span>${Math.round(task.pct || 0)}%</span></div>${bar((task.pct || 0) / 100)}${task.note ? `<small class="muted">${esc(task.note)}</small>` : ""}<small class="muted">You can leave this page — it keeps going, and the Inbox shows its progress.</small></div>` : ""}
       <div style="display:flex;gap:12px;padding:0 22px">${a.installed
         ? `<a class="btn" style="flex:1" target="_blank" rel="noopener" href="${esc(url)}">Open</a>${isAdmin() ? `<button class="btn" style="flex:1;background:color-mix(in srgb,var(--text) 8%,transparent);color:var(--red)" data-act="un" ${busy ? "disabled" : ""}>Uninstall</button>` : ""}`
-        : isAdmin() ? `<button class="btn" style="flex:1" data-act="in" ${a.port_free === false || busy ? "disabled" : ""}>Install</button>` : `<p class="note">An admin can install this.</p>`}</div>
+        : isAdmin() ? `<button class="btn" style="flex:1" data-act="in" ${a.port_free === false || busy ? "disabled" : ""}>${busy ? "Installing…" : "Install"}</button>` : `<p class="note">An admin can install this.</p>`}</div>
       ${a.port_free === false && !a.installed ? note(`Port ${a.port} is already used by something else on the server.`) : ""}
       ${sec("About")}${group(`<div class="row"><div class="t"><b>${esc(a.description)}</b>${a.notes ? `<small>${esc(a.notes)}</small>` : ""}</div></div>`)}
       ${sec("Details")}${group(row("Image", { sub: a.image }) + row("Port", { sub: String(a.port) }) + (a.installed ? row("Address", { sub: url }) : ""))}`, { title: a.name });
   };
-  const job = async verb => {
+  const follow = async t => {
+    task = t; draw();
+    const end = await waitTask(t.id, x => { task = x; if (ctx.alive()) draw(); }).catch(e => ({ state: "failed", error: e.message }));
+    if (ctx.alive()) toast(end.state === "done" ? `${end.title}: done` : `${end.title || "It"} failed: ${end.error || ""}`);
+    task = null; await get("/api/v1/store").catch(() => {}); if (ctx.alive()) draw();
+  };
+  const run = async verb => {
     const a = (S.cache["/api/v1/store"]?.items || []).find(x => x.id === id);
     if (verb === "uninstall" && !(await confirm(`Uninstall ${a.name}?`, "Its data is kept on the server in /opt/.nova-uninstalled. Your phone confirms it.", "Uninstall"))) return;
-    busy = verb === "install" ? "Installing…" : "Uninstalling…"; draw();
-    try { const j = await waitJob((await post(`/api/v1/store/${id}/${verb}`)).job); toast(j.state === "done" ? "Done" : "Failed: " + (j.result?.error || "")); await get("/api/v1/store"); }
-    catch (e) { toast(e.message); } finally { busy = null; if (ctx.alive()) draw(); }
+    try { const r = await post(`/api/v1/store/${id}/${verb}`); if (r?.task) follow({ id: r.task, state: "running", title: verb === "install" ? `Installing ${a.name}` : `Uninstalling ${a.name}`, pct: 0 }); }
+    catch (e) { toast(e.message); }
   };
-  ctx.handlers({ in: () => job("install"), un: () => job("uninstall") });
-  draw(); if (!S.cache["/api/v1/store"]) { await get("/api/v1/store").catch(e => toast(e.message)); if (ctx.alive()) draw(); }
+  ctx.handlers({ in: () => run("install"), un: () => run("uninstall") });
+  draw();
+  const [, t] = await Promise.all([S.cache["/api/v1/store"] ? null : get("/api/v1/store").catch(e => toast(e.message)), runningTask(["store-install", "store-uninstall"], id)]);
+  if (!ctx.alive()) return;
+  if (t) follow(t); else draw();
 }
 
 // ═════════════════════════════════════ INBOX ════════════════════════════════════
+/** What's running right now (installs, backups, updates, drive setup…), with live progress. */
+const TASK_ROUTE = t => t.kind.startsWith("store-") ? `store/${t.key}` : t.kind.startsWith("program-") ? "store/programs" : ["updates-check", "apt-upgrade", "containers-update"].includes(t.kind) ? "updates"
+  : t.kind === "backup-run" || t.kind === "restore" ? "backups" : t.kind.startsWith("custom-") ? "containers" : `task/${t.id}`;
+function liveHtml() {
+  const now = Date.now() / 1000, l = (S.cache["/api/v1/tasks"]?.tasks || []).filter(t => t.state === "running" || (t.finished && now - t.finished < 90));
+  if (!l.length) return "";
+  return sec("In progress") + group(l.map(t => `<div class="row click livetask" data-act="go:${esc(TASK_ROUTE(t))}"><div class="t" style="gap:6px"><div class="tb-top"><b>${esc(t.title)}</b>
+      <span class="muted" style="font-variant-numeric:tabular-nums">${t.state === "running" ? Math.round(t.pct || 0) + "%" : t.state === "done" ? "Done" : t.state === "stopped" ? "Stopped" : "Failed"}</span></div>
+      ${t.state === "running" ? bar((t.pct || 0) / 100) : ""}<small>${esc(t.state === "running" ? (t.note || t.step || "") : t.state === "done" ? (t.step || "Finished") : (t.error || t.step || ""))}</small></div></div>`).join(""));
+}
 export async function inbox(ctx) {
   let filter = 0, picked = new Set(), last = null;
+  // live progress: every 2 s while something runs, else every 15 s
+  const pollLive = async () => { try { await get("/api/v1/tasks"); const el = $("#live"); if (el) el.innerHTML = liveHtml(); } catch {} };
+  (async () => { while (ctx.alive()) { await pollLive(); const busy = (S.cache["/api/v1/tasks"]?.tasks || []).some(t => t.state === "running"); await sleep(busy ? 2000 : 15000); } })();
   const mouse = matchMedia("(any-pointer: fine)").matches || navigator.maxTouchPoints === 0;     // a mouse or trackpad (touch screens keep swiping)
   const shown = () => (S.cache["/api/v1/events?since=0"]?.events || []).filter(e => filter === 1 ? ["warning", "critical"].includes(e.level) : filter === 2 ? e.level === "critical" : filter === 3 ? e.category === "login" : true);
   const draw = () => {
@@ -438,7 +492,7 @@ export async function inbox(ctx) {
         <button class="pillbtn press" data-act="selnone">Clear</button><button class="btn" style="height:40px;padding:0 18px;font-size:15px" data-act="archsel">${I("down")} Archive <span id="selnum">${picked.size || 1}</span></button></div>` : "";
     const nudge = "Notification" in window && Notification.permission === "default" && !prefs.browserNotify && !prefs.browserNotifyNudged
       ? `<div class="nudge glass fadeok">${I("bell")}<span>Get new alerts as browser notifications on this computer?</span><button class="pillbtn press" data-act="bnotify">Turn on</button><button class="pillbtn press" data-act="bnudgeno">Not now</button></div>` : "";
-    ctx.show(`${nudge}${attentionHtml()}${segmented(["All", "Issues", "Critical", "Logins"], filter, "f")}
+    ctx.show(`${nudge}<div id="live">${liveHtml()}</div>${attentionHtml()}${segmented(["All", "Issues", "Critical", "Logins"], filter, "f")}
       ${ev.length ? `<p class="note" style="margin-top:6px">${mouse ? "Tick events to archive several at once, or use the archive button on a row. Keys: <b>x</b> select · <b>Ctrl+A</b> all · <b>e</b> archive · <b>Shift</b>-click a range." : "Swipe left to archive"} — archived events are kept on the server (Inbox → Archive), for every device.</p>` : ""}
       ${bar}
       ${Object.entries(days).map(([d, l]) => sec(d) + group(l.map(e => { const k = String(e.t), on = picked.has(k);
@@ -1006,6 +1060,7 @@ export async function settings(ctx) {
       ${group(row("Notifications", { icon: "bell", click: "go:notify" }) + row("Appearance", { sub: "Theme, Home layout, shortcuts, bottom bar", blue: true, icon: "palette", click: "go:appearance" })
         + row("Setup guide", { sub: "Install Nova on a server, remote access, browsers", blue: true, icon: "book", click: "go:guide" }))}
       ${group(row("Remove this browser", { sub: "Erases its key", icon: "del", tint: "var(--red)", click: "forget" }))}
+      ${sec("Labs")}${group(row("Labs", { sub: "Experimental features you can try", blue: true, icon: "science", tint: "#bf5af2", click: "go:labs" }))}
       ${links([["About Nova", "go:about"]])}`, { title: "Settings" });
     wireCommon(ctx.root);
   };
@@ -1131,7 +1186,34 @@ export async function terminal(ctx) {
   ctx.show(`<div class="center" style="padding:18px 0"><div style="width:96px;height:96px;border-radius:30px;background:#0b0b0d;margin:0 auto 12px;display:grid;place-items:center;color:#3ecf6e;font:700 34px ui-monospace,monospace">&gt;_</div>
       <div style="font-size:18px;font-weight:600">${esc(S.overview?.server?.name || "Server")}</div><div class="muted">Command lines</div></div>
     ${group(row("Container terminals", { sub: "A shell inside any running container — open Containers, pick one, tap Shell (approved on your phone)", blue: true, icon: "box", click: "go:containers" }))}
-    ${group(row("SSH into the server", { sub: "In the Nova phone app (Menu → Terminal). Its SSH key lives in the phone's secure chip, so browsers don't get one.", icon: "term", tint: "var(--sub)" }))}`, { title: "Terminal" });
+    ${isAdmin() ? group(row("Server terminal", { sub: "A shell on the server as your normal user, right here — approved on your phone; sudo asks your password", blue: true, icon: "term", click: "go:term" })) : ""}
+    ${group(row("SSH from the phone app", { sub: "Menu → Terminal in the Nova app (its key lives in the phone's secure chip)", icon: "phone", tint: "var(--sub)" }))}`, { title: "Terminal" });
+}
+/** The server's own shell in the browser: a real terminal (term.js), as your normal user. */
+export async function hostTerminal(ctx) {
+  const { Term } = await import("./term.js");
+  ctx.show(`<div class="vtwrap"><div class="vtbox" id="vt"></div>
+      <div class="vtkeys">${[["Esc", "\x1b"], ["Tab", "\t"], ["Ctrl-C", "\x03"], ["Ctrl-D", "\x04"], ["Ctrl-Z", "\x1a"], ["↑", "\x1b[A"], ["↓", "\x1b[B"], ["←", "\x1b[D"], ["→", "\x1b[C"]].map(([l, v]) => `<button class="chip press" data-act="key:${encodeURIComponent(v)}">${esc(l)}</button>`).join("")}</div>
+      <p class="muted vtnote" id="vtstate">Asking your phone to approve…</p></div>`, { title: "Server terminal", narrow: false });
+  let sid = null, off = 0, size = null;
+  const send = t => sid && post(`/api/v1/shell/${sid}`, { input: t }).catch(e => toast(e.message));
+  const term = new Term($("#vt"), { onInput: send, onResize: (c, r) => { size = [c, r]; if (sid) send(`\x1b]7799;${c};${r}\x07`); } });
+  ctx.handlers({ key: v => { send(decodeURIComponent(v)); term.focus(); } });
+  try { sid = (await post("/api/v1/terminal")).session; } catch (e) { $("#vtstate").textContent = e.message; return; }
+  if (!sid) { $("#vtstate").textContent = "Not approved."; return; }
+  $("#vtstate").textContent = "Connected · closes after 10 minutes without use · Ctrl+Shift+C / V to copy and paste";
+  if (size) send(`\x1b]7799;${size[0]};${size[1]}\x07`);
+  term.focus();
+  ctx.onLeave(() => del(`/api/v1/shell/${sid}`).catch(() => {}));
+  const dec = new TextDecoder();
+  while (ctx.alive()) {
+    try {
+      const r = await get(`/api/v1/shell/${sid}?offset=${off}&wait=1`);
+      if (r.data) term.write(r.data);
+      off = r.offset;
+      if (!r.alive) { term.write("\r\n\x1b[2m[session ended]\x1b[0m\r\n"); $("#vtstate").textContent = "Session ended — go back and open it again for a new one."; break; }
+    } catch { await sleep(1000); }
+  }
 }
 
 // ═════════════════════════════════ DASHBOARD MODE ═══════════════════════════════

@@ -59,7 +59,7 @@ sealed class Route {
     data class BackupWizard(val id: String?, val sources: List<String> = emptyList(), val dest: String? = null) : Route()
     data class BackupBrowse(val id: String, val snap: String = "", val path: String = "") : Route()
     data object Diagnostics : Route()
-    data object Apps : Route(); data class AppFrame(val id: String) : Route(); data object Updates : Route(); data object Search : Route(); data object Start : Route(); data object StartEdit : Route(); data object EditFavorites : Route(); data object NewContainer : Route()
+    data object Apps : Route(); data class AppFrame(val id: String) : Route(); data object Updates : Route(); data object Search : Route(); data object Start : Route(); data object StartEdit : Route(); data object EditFavorites : Route(); data object NewContainer : Route(); data object ProgramSearch : Route(); data class Files(val path: String = "") : Route(); data class FileEdit(val path: String) : Route(); data object Labs : Route()
 }
 
 /** Shared app state: the API, live data, navigation, messages. */
@@ -182,6 +182,15 @@ class AppState(val activity: Activity, val pairing: Pairing, val scope: Coroutin
     suspend fun stepUp(title: String, method: String, path: String, body: JSONObject? = null) =
         api.stepUp(activity, title, method, path, body)
 
+    /** Background tasks (installs, updates, backups…): follow one until it ends. */
+    suspend fun waitTask(id: String, onUpdate: (JSONObject) -> Unit = {}): JSONObject {
+        var t = api.get("/api/v1/tasks/$id"); onUpdate(t)
+        while (t.optString("state") == "running") { delay(1200); t = api.get("/api/v1/tasks/$id"); onUpdate(t) }
+        return t
+    }
+    /** The running task of one of [kinds] for [key] (e.g. an app's id), if any. */
+    suspend fun runningTask(kinds: List<String>, key: String? = null): JSONObject? =
+        api.get("/api/v1/tasks").optJSONArray("tasks").objs().firstOrNull { it.optString("state") == "running" && it.optString("kind") in kinds && (key == null || it.optString("key") == key) }
     /** Background jobs (installs/updates): poll until done. */
     suspend fun waitJob(job: JSONObject, onUpdate: (JSONObject) -> Unit = {}): JSONObject {
         var j = job
@@ -475,6 +484,10 @@ private fun Modifier.paneTouch(app: AppState, left: Boolean) = pointerInput(left
         Route.StartEdit -> StartEditScreen(app)
         Route.EditFavorites -> EditFavoritesScreen(app)
         Route.NewContainer -> NewContainerScreen(app)
+        Route.ProgramSearch -> ProgramSearchScreen(app)
+        is Route.Files -> FilesScreen(app, r.path)
+        is Route.FileEdit -> FileEditScreen(app, r.path)
+        Route.Labs -> LabsScreen(app)
         is Route.AppFrame -> AppFrameScreen(app, r.id)
         Route.Status -> StatusScreen(app)
         Route.Ssh -> SshScreen(app)
