@@ -491,3 +491,12 @@ html.material .alertcard { border-radius: 16px; background: var(--card); backdro
 @keyframes list-back { from { transform: translateX(-36px); opacity: 0; } to { transform: none; opacity: 1; } }
 .fslist.hop-in { animation: list-in .28s var(--ease); } .fslist.hop-back { animation: list-back .28s var(--ease); }
 .reduce .fslist.hop-in, .reduce .fslist.hop-back { animation: in-fade .15s ease !important; }
+
+/* Inbox live tasks: slide in once; Home: "working on it" note */
+.livetask.livein { animation: livein .36s var(--ease) both; }
+.livetask.liveend small { color: var(--green); }
+@keyframes livein { from { opacity: 0; transform: translateY(-8px); } }
+.reduce .livetask.livein { animation: in-fade .15s ease both !important; }
+.taskchip { display: inline-flex; align-items: center; gap: 6px; color: var(--blue); cursor: pointer; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.taskchip svg { width: 18px; height: 18px; flex: none; animation: spin 1.6s linear infinite; }
+.reduce .taskchip svg { animation: none; }

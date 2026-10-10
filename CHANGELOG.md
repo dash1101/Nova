@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.11-alpha (app and server)
+- **Inbox → In progress:** a task slides in the first time you see it and then stays put (no more jumping in every time you open the Inbox). Several can run at once, with a count. When one finishes it shows *Done* for a moment and becomes an ordinary Inbox event within seconds — swipe or archive it like any other. Finished ones can also be swiped away (or dismissed with ×) right away.
+- A task that ends with an error, or is cut short by a restart, is now an Inbox event too.
+- **Home** shows a small spinning note while something runs in the background (“Install Jellyfin · 42%”, or “2 in progress”); tap it for the Inbox.
+- **Files (app):** going back from one folder to another just slides the list — no page drag.
+- Security test: 265 checks, all passing.
+
 ## 0.5.10-alpha (app and server)
 - **Inbox:** swipe an event **either way** to archive it, and the ones below slide up into its place. **Hold a day's heading** (or *Select day*) to select that whole day. **Archive → Back to Inbox** puts an event back (swipe it or tap it).
 - **Containers that won't stay up:** *Stop* is always there, even while a container is restarting over and over — and it stays stopped (its automatic restarts are off until you start it again). A **Troubleshoot** card shows the last error from its logs and the fixes that make sense: stop it, **go back to the previous version**, update it again, recreate it, or read its logs. Nova now finds the version a container ran before its last update even when the update left it nameless.

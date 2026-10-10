@@ -108,6 +108,12 @@ async function fetchNow() {
 }
 
 // ═════════════════════════════════════ HOME ═════════════════════════════════════
+/** Home: a small "working on it" note while background tasks run (tap → Inbox, where their progress is). */
+function tasksChip() {
+  const tk = S.overview?.tasks || [];
+  if (!tk.length) return "";
+  return `<span class="sep"></span><span class="taskchip" data-act="go:inbox" title="${esc(tk.map(t => t.title).join(", "))}">${I("sync")}${tk.length === 1 ? `${esc(tk[0].title)} · ${Math.round(tk[0].pct || 0)}%` : `${tk.length} in progress`}</span>`;
+}
 export async function home(ctx) {
   const statCard = (icon, label, value, sub, frac, color) => `<div class="stat glass press" data-act="go:status"><div class="lbl" style="color:${color}">${I(icon)}<span class="muted">${esc(label)}</span></div>
     <div class="val">${esc(value)}</div><div class="sub">${esc(sub)}</div><div style="margin-top:10px">${frac != null ? bar(frac, color) : ""}</div></div>`;
@@ -131,7 +137,7 @@ export async function home(ctx) {
     const icon = S.error || S.reconnecting ? "sync" : lvl === "ok" ? "okc" : "err";
     const top = `<div class="home-title"><h1><span>${esc(serverName())}</span></h1><span class="sp"></span>
         <button class="circle" data-act="search" aria-label="Search (press /)">${I("search")}</button><button class="circle" data-act="refresh" aria-label="Refresh">${I("refresh")}</button><button class="circle" data-act="more" aria-label="More">${I("more")}</button></div>
-      <div class="statusline" data-act="go:status"><span style="color:${S.error || S.reconnecting ? "var(--sub)" : levelColor(lvl)};display:flex">${I(icon)}</span>${esc(head)}${cs ? `<span class="sep"></span>${cs.running}/${cs.total} running` : ""}</div>
+      <div class="statusline" data-act="go:status"><span style="color:${S.error || S.reconnecting ? "var(--sub)" : levelColor(lvl)};display:flex">${I(icon)}</span>${esc(head)}${cs ? `<span class="sep"></span>${cs.running}/${cs.total} running` : ""}${tasksChip()}</div>
       <div style="height:14px"></div>${topBanner()}`;
     const order = prefs.homeOrder.filter(id => prefs[HOME_SECTIONS.find(s => s[0] === id)?.[3]]);
     const block = id => id === "hero" ? `<canvas class="hero" id="hero" data-act="${has("lighting") ? "go:lighting" : ""}"></canvas>` : id === "shortcuts" ? pills() : stats();
@@ -490,20 +496,30 @@ async function storeItem(ctx, id) {
 /** What's running right now (installs, backups, updates, drive setup…), with live progress. */
 const TASK_ROUTE = t => t.kind.startsWith("store-") ? `store/${t.key}` : t.kind.startsWith("program-") ? "store/programs" : ["updates-check", "apt-upgrade", "containers-update"].includes(t.kind) ? "updates"
   : t.kind === "backup-run" || t.kind === "restore" ? "backups" : t.kind.startsWith("custom-") ? "containers" : `task/${t.id}`;
+// A task slides in the first time you see it (never again), and once it ends it shows "Done" for a
+// moment and moves on — the server writes it into the Inbox as an ordinary event.
+const liveSeen = new Set(), liveHidden = new Set();
+let liveFresh = new Set();
 function liveHtml() {
-  const now = Date.now() / 1000, l = (S.cache["/api/v1/tasks"]?.tasks || []).filter(t => t.state === "running" || (t.finished && now - t.finished < 90));
+  const now = Date.now() / 1000, l = (S.cache["/api/v1/tasks"]?.tasks || []).filter(t => t.state === "running" || (t.finished && now - t.finished < 6 && liveSeen.has(t.id) && !liveHidden.has(t.id)));
+  liveFresh = new Set(l.filter(t => !liveSeen.has(t.id)).map(t => t.id)); l.forEach(t => liveSeen.add(t.id));
   if (!l.length) return "";
-  return sec("In progress") + group(l.map(t => `<div class="row click livetask" data-act="go:${esc(TASK_ROUTE(t))}"><div class="t" style="gap:6px"><div class="tb-top"><b>${esc(t.title)}</b>
+  const rowOf = t => `<div class="row click livetask${liveFresh.has(t.id) ? " livein" : ""}${t.state !== "running" ? " liveend" : ""}" data-id="${esc(t.id)}" data-act="go:${esc(TASK_ROUTE(t))}"><div class="t" style="gap:6px"><div class="tb-top"><b>${esc(t.title)}</b>
       <span class="muted" style="font-variant-numeric:tabular-nums">${t.state === "running" ? Math.round(t.pct || 0) + "%" : t.state === "done" ? "Done" : t.state === "stopped" ? "Stopped" : "Failed"}</span></div>
-      ${t.state === "running" ? bar((t.pct || 0) / 100) : ""}<small>${esc(t.state === "running" ? (t.note || t.step || "") : t.state === "done" ? (t.step || "Finished") : (t.error || t.step || ""))}</small></div></div>`).join(""));
+      ${t.state === "running" ? bar((t.pct || 0) / 100) : ""}<small>${esc(t.state === "running" ? (t.note || t.step || "") : t.state === "done" ? "Moved to your Inbox" : (t.error || t.step || ""))}</small></div>${t.state !== "running" ? `<button class="rmbtn press" data-act="livehide:${esc(t.id)}" aria-label="Dismiss" title="Dismiss">${I("close")}</button>` : ""}</div>`;
+  // finished ones swipe away (either way), like any Inbox event
+  return sec(l.length > 1 ? `In progress · ${l.length}` : "In progress") + group(l.map(t => t.state === "running" ? rowOf(t)
+    : `<div class="swipe" data-key="live:${esc(t.id)}" data-right="Dismiss" data-left="Dismiss"><div class="swbg"></div><div class="swfg">${rowOf(t)}</div></div>`).join(""));
 }
 const dayOf = e => { const d = new Date(e.t * 1000), now = new Date(), y = new Date(now - 86400000);
   return d.toDateString() === now.toDateString() ? "Today" : d.toDateString() === y.toDateString() ? "Yesterday" : d.toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" }); };
 export async function inbox(ctx) {
   let filter = 0, picked = new Set(), last = null;
   // live progress: every 2 s while something runs, else every 15 s
-  const pollLive = async () => { try { await get("/api/v1/tasks"); const el = $("#live"); if (el) el.innerHTML = liveHtml(); } catch {} };
-  (async () => { while (ctx.alive()) { await pollLive(); const busy = (S.cache["/api/v1/tasks"]?.tasks || []).some(t => t.state === "running"); await sleep(busy ? 2000 : 15000); } })();
+  const liveSwipe = el => swipeable(el, { onRight: hideLive, onLeft: hideLive });
+  const hideLive = key => { liveHidden.add(String(key).replace(/^live:/, "")); const el = $("#live"); if (el) { el.innerHTML = el.dataset.h = liveHtml(); liveSwipe(el); } };
+  const pollLive = async () => { try { await get("/api/v1/tasks"); const el = $("#live"); if (el) { const h = liveHtml(); if (el.dataset.h !== h) { el.innerHTML = h; el.dataset.h = h; liveSwipe(el); } } } catch {} };
+  (async () => { while (ctx.alive()) { await pollLive(); const busy = (S.cache["/api/v1/tasks"]?.tasks || []).some(t => t.state === "running" || (t.finished && Date.now() / 1000 - t.finished < 8)); await sleep(busy ? 2000 : 15000); } })();
   const mouse = matchMedia("(any-pointer: fine)").matches || navigator.maxTouchPoints === 0;     // a mouse or trackpad (touch screens keep swiping)
   const shown = () => (S.cache["/api/v1/events?since=0"]?.events || []).filter(e => filter === 1 ? ["warning", "critical"].includes(e.level) : filter === 2 ? e.level === "critical" : filter === 3 ? e.category === "login" : true);
   const draw = () => {
@@ -525,7 +541,7 @@ export async function inbox(ctx) {
         || note(all ? "Nothing here — all quiet." : "Loading…")}`,
       { title: "Inbox", actions: [{ icon: "book", label: "Archive", act: "go:archive" }, { icon: "del", label: "Archive everything", act: "clear" }, { icon: "gear", label: "Notification settings", act: "go:notify" }] });
     wireCommon(ctx.root, { onSeg: (_, i) => { filter = i; picked.clear(); draw(); } });
-    swipeable(ctx.root, { onRight: key => /^[\d.]+$/.test(key) ? remove([+key]) : dismissAlert(key, draw), onLeft: t => remove([+t]) });
+    swipeable(ctx.root, { onRight: key => key.startsWith("live:") ? hideLive(key) : /^[\d.]+$/.test(key) ? remove([+key]) : dismissAlert(key, draw), onLeft: t => t.startsWith("live:") ? hideLive(t) : remove([+t]) });
     $$(".swipe.mouse", ctx.root).forEach(el => el.onfocus = () => { last = el.dataset.key; });
   };
   // Selection changes update the page in place (so ticks, rows and the bar can animate) instead of redrawing it.
@@ -557,6 +573,7 @@ export async function inbox(ctx) {
   };
   const keyOf = a => { a.pop(); return a.join(":"); };
   ctx.handlers({
+    livehide: id => hideLive(id),
     alert: (...a) => alertMenu(keyOf(a), draw), ignore: (...a) => dismissAlert(keyOf(a), draw), del: t => remove([+t]),
     pick: (k, el) => toggle(k, lastClickShift), selall: () => { shown().forEach(e => picked.add(String(e.t))); updateSel(); }, selnone: () => { picked.clear(); updateSel(); },
     pickday: d => { d = decodeURIComponent(d); const l = shown().filter(e => dayOf(e) === d).map(e => String(e.t)), all = l.every(k => picked.has(k));

@@ -1,5 +1,7 @@
 package app.novalabs.nova
 
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.background
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.clickable
@@ -66,6 +68,20 @@ import org.json.JSONObject
             if (cs != null) {
                 Box(Modifier.padding(horizontal = 10.dp).size(4.dp).clip(androidx.compose.foundation.shape.CircleShape).background(N.sub.copy(alpha = 0.6f)))
                 Text("${cs.optInt("running")}/${cs.optInt("total")} running", color = N.sub, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+            }
+        }
+        // Something running in the background (installs, updates, backups…): a small note, tap → Inbox
+        val tk = app.overview?.optJSONArray("tasks").objs()
+        androidx.compose.animation.AnimatedVisibility(tk.isNotEmpty(), enter = androidx.compose.animation.fadeIn() + androidx.compose.animation.expandVertically(),
+            exit = androidx.compose.animation.fadeOut() + androidx.compose.animation.shrinkVertically()) {
+            Row(Modifier.padding(start = Space.gutter).clip(androidx.compose.foundation.shape.RoundedCornerShape(16.dp))
+                .clickable { app.go(Route.Inbox) }.padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                val spin = androidx.compose.animation.core.rememberInfiniteTransition(label = "spin")
+                val deg by spin.animateFloat(0f, 360f, androidx.compose.animation.core.infiniteRepeatable(androidx.compose.animation.core.tween(1600, easing = androidx.compose.animation.core.LinearEasing)), label = "deg")
+                Icon(Icons.Rounded.Sync, null, tint = N.blue, modifier = Modifier.size(18.dp).graphicsLayer { rotationZ = -deg })
+                Spacer(Modifier.width(8.dp))
+                Text(if (tk.size == 1) "${tk[0].optString("title")} · ${tk[0].optDouble("pct", 0.0).toInt()}%" else "${tk.size} in progress",
+                    color = N.blue, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
             }
         }
         Spacer(Modifier.height(14.dp))

@@ -34,6 +34,11 @@ GROUP = {**{k: "storage" for k in STORAGE_KINDS}, **{k: "diag" for k in DIAG_KIN
          **{k: "updates" for k in UPDATE_KINDS | LABS_KINDS}, "program-install": "updates", "program-remove": "updates"}     # one apt at a time
 
 
+# a finished task becomes an ordinary Inbox event (these kinds already send their own)
+ANNOUNCES_DONE = {"store-install", "custom-install", "backup-run", "restore", "updates-check"}
+ANNOUNCES_FAIL = {"backup-run"}
+
+
 def path(tid, ext="json"): return f"{DIR}/{tid}.{ext}"
 def load(tid):
     try: return json.load(open(path(tid)))
@@ -161,12 +166,14 @@ def execute(tid):
         elif kind == "tools":
             import storage
             storage.ensure_tools(spec["tools"], log); res = {"installed": spec["tools"]}
+        summary = (t["log"][-1][9:] if t["log"] else "")[:300]
         t.update(state="done", pct=100, result=res, step="Done")
+        if kind not in ANNOUNCES_DONE: notify("info", f"Done: {t['title']}", summary, "task")
     except ValueError as e:                          # refused by a safety check: the app shows why; no alert
         t.update(state="failed", error=str(e)[:500], step="Not started", refused=True)
     except Exception as e:
         t.update(state="failed", error=str(e)[:500], step="Failed")
-        if kind in STORAGE_KINDS: notify("warning", f"{t['title']} failed", str(e)[:300])
+        if kind not in ANNOUNCES_FAIL: notify("warning", f"{t['title']} failed", str(e)[:300], "task")
     t["finished"] = time.time(); save(t)
     try: os.remove(path(tid, "spec"))
     except OSError: pass
@@ -183,9 +190,12 @@ def stop(tid):
     t.update(state="stopped", step="Stopped", finished=time.time()); save(t)
     return t
 
-def notify(level, title, detail=""):
+def notify(level, title, detail="", category="script"):
     p = next((x for x in ("/usr/sbin/nova-alert", "/usr/local/bin/nova-alert") if os.path.exists(x)), None)
-    if p: subprocess.run([p, level, title, detail], capture_output=True, timeout=30)
+    try:
+        if p: subprocess.run([p, level, title, detail], capture_output=True, timeout=30, env={**os.environ, "NOVA_ALERT_CATEGORY": category})
+        subprocess.run(["systemctl", "start", "--no-block", "nova-alerts.service"], capture_output=True, timeout=10)   # into the Inbox now, not at the next minute
+    except Exception: pass
 
 def changelog(msg):
     p = next((x for x in ("/usr/local/bin/nova-log", "/usr/bin/nova-log") if os.path.exists(x)), None)
@@ -202,6 +212,7 @@ def reap():
             rc = subprocess.run(["systemctl", "is-active", f"nova-task-{t['id']}.service"], capture_output=True, text=True).stdout.strip()
             if rc not in ("active", "activating", "deactivating"):
                 t.update(state="failed", error="stopped unexpectedly (restart?)", finished=time.time()); save(t)
+                notify("warning", f"{t['title']} stopped unexpectedly", "The server or Nova restarted while it was running — start it again.", "task")
 
 
 if __name__ == "__main__":

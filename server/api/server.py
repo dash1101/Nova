@@ -38,7 +38,7 @@ try:                       # optional module: fan/case lighting (modules/fan-gig
 except ImportError:
     nova_rgb = None
 
-API_VERSION = "0.5.10-alpha"
+API_VERSION = "0.5.11-alpha"
 CONFIG = "/etc/nova-api/config.json"
 DATA = "/var/lib/nova-api"
 DEVICES = f"{DATA}/devices.json"
@@ -1133,6 +1133,7 @@ class Handler(BaseHTTPRequestHandler):
                                     "uptime_s": int(float(open("/proc/uptime").read().split()[0]))},
                          "status": {k: st.get(k) for k in ("level", "headline", "status", "active_count", "active", "metrics", "updated_local")},
                          "fan": fan, "containers": {"running": sum(1 for c in cl if c["state"] == "running"), "total": len(cl)},
+                         "tasks": [{"title": t.get("title", ""), "pct": t.get("pct", 0)} for t in live_tasks() if t.get("state") == "running"],
                          # What this server has, so the app only shows what works here.
                          "features": {"lighting": nova_rgb is not None, "monitor": os.path.exists(STATUS),
                                       "backup": True, "legacy_backup": os.path.exists("/usr/local/bin/nova-backup"), "storage": True, "diagnostics": True, "store": os.path.isdir(f"{os.path.dirname(os.path.abspath(__file__))}/store"),

@@ -1,5 +1,6 @@
 package app.novalabs.nova
 
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.border
@@ -399,40 +400,60 @@ import java.util.*
 }
 
 
-/** What's running on the server right now (installs, backups, updates, drive setup…), live. */
+/** What's running on the server right now (installs, backups, updates, drive setup…), live.
+ *  A task slides in the first time you see it, never again; when it ends it shows Done for a moment
+ *  and leaves — the server puts it in the Inbox as an ordinary event. */
 @Composable fun LiveTasks(app: AppState) {
-    var tasks by remember { mutableStateOf(listOf<JSONObject>()) }
+    fun keep(l: List<JSONObject>): List<JSONObject> { val now = System.currentTimeMillis() / 1000.0
+        return l.filter { it.optString("state") == "running" || (now - it.optDouble("finished", 0.0) < 6 && it.optString("id") in app.liveSeen && it.optString("id") !in app.liveHidden) } }
     LaunchedEffect(Unit) {
         while (true) {
             val l = runCatching { app.api.get("/api/v1/tasks").optJSONArray("tasks").objs() }.getOrNull()
-            if (l != null) { val now = System.currentTimeMillis() / 1000.0
-                tasks = l.filter { it.optString("state") == "running" || now - it.optDouble("finished", 0.0) < 90 } }
-            delay(if (tasks.any { it.optString("state") == "running" }) 2_000 else 15_000)
+            if (l != null) app.liveTasks = keep(l)
+            val now = System.currentTimeMillis() / 1000.0
+            delay(if (l.orEmpty().any { it.optString("state") == "running" || now - it.optDouble("finished", 0.0) < 8 }) 2_000 else 15_000)
         }
     }
-    androidx.compose.animation.AnimatedVisibility(tasks.isNotEmpty()) {
-        Column {
-            SectionLabel("In progress")
+    val tasks = app.liveTasks
+    Column(Modifier.animateContentSize()) {
+        if (tasks.isNotEmpty()) {
+            SectionLabel(if (tasks.size > 1) "In progress · ${tasks.size}" else "In progress")
             Group {
                 tasks.forEachIndexed { i, t ->
-                    if (i > 0) RowDivider()
-                    val st = t.optString("state"); val pct = t.optDouble("pct", 0.0)
-                    Column(Modifier.fillMaxWidth().clickable { taskRoute(t)?.let { app.go(it) } }.padding(horizontal = 20.dp, vertical = 14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(t.optString("title"), color = N.text, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f), maxLines = 1)
-                            Text(when (st) { "running" -> "${pct.toInt()}%"; "done" -> "Done"; "stopped" -> "Stopped"; else -> "Failed" },
-                                color = when (st) { "done" -> N.green; "failed" -> N.red; else -> N.sub }, fontSize = 13.sp)
+                    androidx.compose.runtime.key(t.optString("id")) {
+                        val id = t.optString("id")
+                        val vis = remember { androidx.compose.animation.core.MutableTransitionState(id in app.liveSeen).apply { targetState = true } }
+                        SideEffect { app.liveSeen += id }
+                        androidx.compose.animation.AnimatedVisibility(vis, enter = androidx.compose.animation.fadeIn() + androidx.compose.animation.expandVertically()) {
+                            Column {
+                                if (i > 0) RowDivider()
+                                // a finished one swipes away (either way), like any Inbox event
+                                if (t.optString("state") == "running") LiveTaskRow(app, t)
+                                else { val hide = SwipeAction("Dismiss", Icons.Rounded.Close, N.blue) { app.liveHidden += id; app.liveTasks = app.liveTasks.filter { it.optString("id") != id } }
+                                    SwipeRow(start = hide, end = hide) { LiveTaskRow(app, t) } }
+                            }
                         }
-                        if (st == "running") {
-                            val anim by androidx.compose.animation.core.animateFloatAsState((pct / 100).toFloat(), label = "pct")
-                            LinearProgressIndicator(progress = { anim }, modifier = Modifier.fillMaxWidth().height(6.dp).clip(androidx.compose.foundation.shape.RoundedCornerShape(3.dp)), color = N.blue, trackColor = N.pill)
-                        }
-                        val sub = if (st == "running") t.optString("note").ifEmpty { t.optString("step") } else if (st == "done") t.optString("step") else t.optString("error").ifEmpty { t.optString("step") }
-                        if (sub.isNotEmpty()) Text(sub, color = N.sub, fontSize = 13.sp, maxLines = 2)
                     }
                 }
             }
         }
+    }
+}
+
+@Composable private fun LiveTaskRow(app: AppState, t: JSONObject) {
+    val st = t.optString("state"); val pct = t.optDouble("pct", 0.0)
+    Column(Modifier.fillMaxWidth().clickable { taskRoute(t)?.let { app.go(it) } }.padding(horizontal = 20.dp, vertical = 14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(t.optString("title"), color = N.text, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f), maxLines = 1)
+            Text(when (st) { "running" -> "${pct.toInt()}%"; "done" -> "Done"; "stopped" -> "Stopped"; else -> "Failed" },
+                color = when (st) { "done" -> N.green; "failed" -> N.red; else -> N.sub }, fontSize = 13.sp)
+        }
+        if (st == "running") {
+            val anim by androidx.compose.animation.core.animateFloatAsState((pct / 100).toFloat(), label = "pct")
+            LinearProgressIndicator(progress = { anim }, modifier = Modifier.fillMaxWidth().height(6.dp).clip(androidx.compose.foundation.shape.RoundedCornerShape(3.dp)), color = N.blue, trackColor = N.pill)
+        }
+        val sub = if (st == "running") t.optString("note").ifEmpty { t.optString("step") } else if (st == "done") "Moved to your Inbox" else t.optString("error").ifEmpty { t.optString("step") }
+        if (sub.isNotEmpty()) Text(sub, color = if (st == "done") N.green else N.sub, fontSize = 13.sp, maxLines = 2)
     }
 }
 

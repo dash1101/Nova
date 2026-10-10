@@ -69,6 +69,9 @@ class AppState(val activity: Activity, val pairing: Pairing, val scope: Coroutin
     val snack = SnackbarHostState()
     val stack = mutableStateListOf<Route>(Route.Home)
     var overview by mutableStateOf(Cache["/api/v1/overview"])      // last known, so nothing flashes empty
+    var liveTasks by mutableStateOf(listOf<JSONObject>())           // Inbox → In progress, kept between visits
+    val liveSeen = mutableSetOf<String>()
+    val liveHidden = mutableSetOf<String>()                          // finished ones you swiped away                            // tasks already shown once (they slide in only then)
     var fan by mutableStateOf(Cache["/api/v1/fan"] ?: Cache["/api/v1/overview"]?.optJSONObject("fan"))
     var error by mutableStateOf<String?>(null)        // shown only after repeated failures
     var reconnecting by mutableStateOf(false)
@@ -299,8 +302,10 @@ class MainActivity : ComponentActivity() {
     val backScope = rememberCoroutineScope()
     var backEdge by remember { mutableIntStateOf(androidx.activity.BackEventCompat.EDGE_LEFT) }
     // Reduce motion: back still works, just without the page following your thumb.
-    androidx.activity.compose.BackHandler(enabled = app.backTarget != null && reduceMotion()) { app.back() }
-    androidx.activity.compose.PredictiveBackHandler(enabled = app.backTarget != null && !reduceMotion()) { events ->
+    // Folder to folder in Files: no page drag either — back just slides the list (FilesHop).
+    val plainBack = reduceMotion() || (app.top is Route.Files && app.backTarget is Route.Files)
+    androidx.activity.compose.BackHandler(enabled = app.backTarget != null && plainBack) { app.back() }
+    androidx.activity.compose.PredictiveBackHandler(enabled = app.backTarget != null && !plainBack) { events ->
         try {
             events.collect { e -> backEdge = e.swipeEdge; backP.snapTo(e.progress) }
             val finish = androidx.compose.animation.core.tween<Float>(if (reduceMotion()) 0 else 200, easing = androidx.compose.animation.core.FastOutSlowInEasing)
