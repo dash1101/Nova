@@ -19,8 +19,8 @@ android {
         applicationId = "app.novalabs.nova"
         minSdk = 31
         targetSdk = 36
-        versionCode = 32
-        versionName = "0.5.14-alpha"
+        versionCode = 33
+        versionName = "0.5.15-alpha"
     }
 
     signingConfigs {

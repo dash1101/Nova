@@ -62,8 +62,11 @@ class WearActivity : ComponentActivity() {
     var waiting by remember { mutableStateOf<JSONObject?>(null) }       // {url, pin, id, code, name}
     var err by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(scanRound) { found = null; found = WearDiscovery.scan(ctx) }
+    val secure = remember { ctx.getSystemService(android.app.KeyguardManager::class.java)?.isDeviceSecure == true }
     fun ask(url: String, pin: String, name: String) = scope.launch {
         err = null
+        // Approving on the watch stands in for your fingerprint, so the watch must lock when it's off your wrist.
+        if (!ctx.getSystemService(android.app.KeyguardManager::class.java).isDeviceSecure) { err = "Set a screen lock on the watch first (Settings → Security)"; return@launch }
         try {
             val r = WearApi.request(url, pin, android.os.Build.MODEL.ifBlank { "Watch" })
             waiting = JSONObject().put("url", url).put("pin", pin).put("id", r.optString("id")).put("code", r.optString("code")).put("name", name)
@@ -78,7 +81,7 @@ class WearActivity : ComponentActivity() {
         val text = res.data?.let { RemoteInput.getResultsFromIntent(it)?.getCharSequence("addr")?.toString() }?.trim().orEmpty()
         if (text.isNotEmpty()) typedAddress(text)
     }
-    LaunchedEffect(given) { given?.trim()?.takeIf { it.isNotEmpty() }?.let { typedAddress(it) } }
+    var offered by remember { mutableStateOf(given?.trim()?.takeIf { it.isNotEmpty() }) }    // an address handed over at launch: asked first, never used silently
     LaunchedEffect(waiting) {
         val w = waiting ?: return@LaunchedEffect
         while (true) {
@@ -109,6 +112,10 @@ class WearActivity : ComponentActivity() {
                 item { ListHeader { Text("Nova") } }
                 item { Text("Pick your server to pair this watch.", fontSize = 13.sp, textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)) }
+                offered?.let { o -> item { Button(onClick = { offered = null; typedAddress(o) }, modifier = Modifier.fillMaxWidth(),
+                    secondaryLabel = { Text("Address you were given", maxLines = 1) }) { Text("Pair with $o", maxLines = 1, overflow = TextOverflow.Ellipsis) } } }
+                if (!secure) item { Text("This watch has no screen lock. Set one first — approving on the watch stands in for your fingerprint.", color = AMBER, fontSize = 12.sp,
+                    textAlign = TextAlign.Center, modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)) }
                 val f = found
                 if (f == null) item { CircularProgressIndicator(modifier = Modifier.size(32.dp).padding(8.dp)) }
                 else f.forEach { s -> item {
@@ -152,13 +159,16 @@ private suspend fun probePin(url: String): String = kotlinx.coroutines.withConte
     var err by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf<String?>(null) }
     var confirmUnpair by remember { mutableStateOf(false) }
+    var lost by remember { mutableStateOf(false) }
+    val ctx = LocalContext.current
+    val secure = ctx.getSystemService(android.app.KeyguardManager::class.java)?.isDeviceSecure == true
     suspend fun refresh() {
         try {
             val o = api.get("/api/v1/overview"); ov = o; store.lastOverview = o.toString()
             approvals = api.get("/api/v1/approvals").optJSONArray("approvals").objs().filter { it.optString("state") == "pending" }
             events = api.get("/api/v1/events").optJSONArray("events").objs().take(12)
             err = null
-        } catch (e: WearApiException) { err = e.message; if (e.code == 401) onUnpair() }
+        } catch (e: WearApiException) { err = e.message; lost = e.code == 401 }      // 401 can be a skewed clock too: never wipe on our own
     }
     val owner = LocalLifecycleOwner.current
     LaunchedEffect(Unit) { owner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) { while (true) { refresh(); delay(if (approvals.isNotEmpty()) 5_000 else 20_000) } } }
@@ -189,7 +199,15 @@ private suspend fun probePin(url: String): String = kotlinx.coroutines.withConte
                         fontSize = 12.sp, color = MaterialTheme.colorScheme.primary, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
                 }
             }
-            if (approvals.isNotEmpty()) {
+            if (lost) item {
+                Card(onClick = { onUnpair() }, modifier = Modifier.fillMaxWidth()) {
+                    Text("The server doesn't recognize this watch", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                    Text("It may have been removed on the phone — or the watch's clock is off. Tap to pair again.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            if (approvals.isNotEmpty() && !secure) item { Text("${approvals.size} waiting — set a screen lock on the watch to approve here, or use your phone.", color = AMBER, fontSize = 12.sp,
+                textAlign = TextAlign.Center, modifier = Modifier.padding(8.dp)) }
+            if (approvals.isNotEmpty() && secure) {
                 item { ListHeader { Text("Waiting for you") } }
                 approvals.forEach { a -> item {
                     Card(onClick = {}, modifier = Modifier.fillMaxWidth()) {

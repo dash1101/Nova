@@ -1,4 +1,4 @@
-# Nova  ·  0.5.14-alpha
+# Nova  ·  0.5.15-alpha
 
 **A secure remote control for your home server, from your Android phone.**
 Status and live graphs, containers (logs, shell, start/stop), a one-tap app store, drives,

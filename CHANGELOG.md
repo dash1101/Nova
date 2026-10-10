@@ -1,7 +1,12 @@
 # Changelog
 
+## 0.5.15-alpha (watch and server)
+- **Watch: a screen lock is now required** to pair and to approve. Without one a watch counts as always unlocked, so anyone holding it could have approved things that need your fingerprint on the phone. Status, events and the tile still work without a lock.
+- **Watch:** if the server stops recognizing it (removed on the phone, or the watch's clock is off), the watch says so and keeps its pairing until you choose *Pair again* — it no longer forgets it by itself. An address handed to the app at launch is offered as a button instead of being used right away.
+- **Weekly container updates** now count the size of the image about to be downloaded: an update only starts if the drive keeps at least ~8 GB (or 8%) free after it, otherwise it stops and tells you.
+
 ## 0.5.14-alpha (app, watch and server)
-- **Nova for Wear OS** (new, `nova-wear-0.5.14-alpha.apk`): your server's health at a glance (status, CPU temperature, memory, containers, anything running), recent events, and anything waiting for your approval — approve or deny on your wrist. Plus a **status tile**. The watch finds the server on your Wi-Fi (or type an address, e.g. Tailscale), shows a code, and you approve it on your phone (Users & devices → *Approve a browser or watch*), comparing the certificate it shows. Its key stays in the watch and works only while the watch is unlocked; the server lets it read status and approve, nothing else. See docs/WEAR.md.
+- **Nova for Wear OS** (new, `nova-wear-0.5.14-alpha.apk`): your server's health at a glance (status, CPU temperature, memory, containers, anything running), recent events, and anything waiting for your approval — approve or deny on your wrist. Plus a **status tile**. The watch finds the server on your Wi-Fi (or type an address, e.g. Tailscale), shows a code, and you approve it on your phone (Users & devices → *Approve a browser or watch*), comparing the certificate it shows. Its key stays in the watch and works only while the watch is unlocked; the server lets it read status and approve, nothing else. (0.5.15 adds a required screen lock — use that.) See docs/WEAR.md.
 - Security test: 294 checks, all passing (new: the watch's narrow access).
 
 ## 0.5.13-alpha (app and server)

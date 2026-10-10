@@ -16,6 +16,10 @@ Until it's on Google Play, install it with ADB over Wi-Fi:
 
 ## Pair it
 
+The watch needs a **screen lock** (PIN or pattern): approving on the watch stands in for your
+fingerprint, so it has to lock when it comes off your wrist. Without one, Nova won't pair, and won't
+offer Approve if the lock is removed later (status and the tile keep working).
+
 1. Open Nova on the watch. It looks for your server on the Wi-Fi; pick it (or *Type an address* —
    for example your server's Tailscale address).
 2. The watch shows a 6-letter code and the server's certificate fingerprint.
@@ -32,12 +36,13 @@ Until it's on Google Play, install it with ADB over Wi-Fi:
   add devices. The server enforces this, not just the app.
 
 Its key is made in the watch's own keystore and only works while the watch is unlocked (on your
-wrist), which is why approving there counts as your fingerprint. A watch belongs to the admin phone
+wrist, with a screen lock set), which is why approving there counts as your fingerprint. If the server
+ever stops recognizing the watch, the watch tells you and keeps its key until you choose *Pair again*. A watch belongs to the admin phone
 that approved it: if that phone is removed or made view-only, the watch stops working. *Unpair* on
 the watch (or removing it in Users & devices) takes it off the server.
 
 ## Away from home
 
-The watch talks to your server's home address. Away from home it works over Tailscale (type the
-Tailscale address when pairing) — through its own Wi-Fi/LTE, or through your phone's connection.
+The watch talks to your server's home address. To use it away from home, pair with your server's
+Tailscale address instead (*Type an address*); it works whenever the watch can reach your tailnet.
 Cloudflare Access addresses need a browser login, so they're not available on the watch.

@@ -66,7 +66,7 @@ fingerprint. The server refuses to demote the last admin.
   fingerprint, that signs only approve/deny — used by the notification buttons and a paired watch's
   notification mirror.
 - **The Nova watch app** pairs like a browser — its own P-256 key in the watch's keystore (usable only
-  while the watch is unlocked), a 6-letter code approved on an admin phone with a fingerprint (never
+  while the watch is unlocked; the app requires a screen lock to pair or approve), a 6-letter code approved on an admin phone with a fingerprint (never
   from the server shell), and the server's certificate pinned. It may read the overview, live numbers,
   events and approvals, and approve or deny; every other request is refused by the server. It belongs
   to the phone that approved it and stops working if that phone stops being an admin. See [WEAR.md](WEAR.md).

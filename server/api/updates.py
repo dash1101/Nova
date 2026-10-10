@@ -120,7 +120,8 @@ def containers(spec, log=print, progress=lambda p, n="": None):
         c = cs[n]
         if not (c["service"] and c["dir"].startswith("/") and os.path.isdir(c["dir"])): log(f"{n}: not from a Compose file — skipped"); continue
         progress(100 * i / len(names), n)
-        short = low_space()
+        rc_, sz, _ = run(["docker", "image", "inspect", "--format", "{{.Size}}", c["image_id"]], timeout=30)
+        short = low_space(int(sz.strip()) if rc_ == 0 and sz.strip().isdigit() else 0)      # the new image will be about as big as this one
         if short:                                                       # a pull keeps the old image too: don't fill the drive
             log(f"Stopping here: {short}"); skipped_space.extend(names[i:])
             notify_warn("Container updates paused: low disk space", f"{short}. Not updated: {', '.join(names[i:])}. Free some space (Labs → Clean up old images can help), then update again.")
@@ -157,15 +158,18 @@ def containers(spec, log=print, progress=lambda p, n="": None):
     if names and not done: raise RuntimeError("nothing could be updated" + (f" — {', '.join(rolled)} wouldn't start on the new version, so the previous one was put back" if rolled else " — see the log"))
     return {"updated": done, "rolled_back": rolled}
 
-def low_space():
-    """Why there isn't room to pull another image (keeping the old one), or None."""
+def low_space(incoming=0):
+    """Why there isn't room to pull another image of about `incoming` bytes (keeping the old one), or None."""
     import shutil
     rc, so, _ = run(["docker", "info", "--format", "{{.DockerRootDir}}"], timeout=30)
     root = so.strip() if rc == 0 and so.strip().startswith("/") else "/var/lib/docker"
     try: du = shutil.disk_usage(root)
     except OSError: return None
     floor = max(8 * 1024**3, du.total // 12)                            # 8 GB, or about 8% of the drive
-    return f"only {du.free / 1e9:.1f} GB free on the drive Docker uses (needs {floor / 1e9:.0f} GB)" if du.free < floor else None
+    if du.free - incoming < floor:
+        need = (floor + incoming) / 1e9
+        return f"only {du.free / 1e9:.1f} GB free on the drive Docker uses (this one needs about {need:.0f} GB, to keep {floor / 1e9:.0f} GB spare)"
+    return None
 
 def settled(name, log, wait=40):
     """True once the container is running (and healthy, if it has a health check) and stays up; False if it keeps crashing."""
