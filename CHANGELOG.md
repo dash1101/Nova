@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.5.10-alpha (app and server)
+- **Inbox:** swipe an event **either way** to archive it, and the ones below slide up into its place. **Hold a day's heading** (or *Select day*) to select that whole day. **Archive → Back to Inbox** puts an event back (swipe it or tap it).
+- **Containers that won't stay up:** *Stop* is always there, even while a container is restarting over and over — and it stays stopped (its automatic restarts are off until you start it again). A **Troubleshoot** card shows the last error from its logs and the fixes that make sense: stop it, **go back to the previous version**, update it again, recreate it, or read its logs. Nova now finds the version a container ran before its last update even when the update left it nameless.
+- Container updates keep the version they replaced (for *Go back*), and an update that finds nothing new no longer replaces it.
+- **Labs** has four more: **Crash-loop guard** (a container that restarts 5 times in 10 minutes is stopped and you're told), **Weekly container updates** (pick the day and time; anything that won't start on its new version is put back), **Clean up old images** (see what nothing uses anymore and remove it — the versions kept for rolling back stay; cleaning up asks for your fingerprint), and **Wake-on-LAN** (turn on other computers on your network).
+- **Files:** going into or out of a folder slides only the list; the title, path and buttons stay put.
+- The boot drive's free space is right again (it showed the small EFI partition's numbers).
+- Material You toasts; a soft fade at the bottom of the screen like the one at the top; *Add another server* has a back arrow at the top.
+- Security test: 265 checks, all passing.
+
 ## 0.5.9-alpha.2 (server)
 - **Security fix — file changes from a browser now need your phone.** In 0.5.9 a paired browser could change files as your normal account without approval. Because that account can be as powerful as root (it may use sudo or Docker, and files like `~/.ssh/authorized_keys` or `~/.bashrc` control how it logs in), a browser's first change — upload, save, new, rename, move, copy or delete — is now held for approval on your phone, and then allowed for 15 minutes. Reading and downloading are unchanged; phones are unchanged.
 - The approval for the server terminal now says plainly that it's full control when the account can use sudo or Docker.

@@ -1,5 +1,9 @@
 package app.novalabs.nova
 
+import androidx.compose.material3.Icon
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.CircleShape
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
@@ -110,8 +114,11 @@ import java.util.concurrent.atomic.AtomicBoolean
             .onFailure { scanning = false; error = "That isn't a Nova pairing code." }
     }
 
+    if (onCancel != null) androidx.activity.compose.BackHandler(onBack = onCancel)
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).statusBarsPadding()) {
-        Text("Nova", fontSize = 40.sp, fontWeight = FontWeight.Bold, color = N.text, modifier = Modifier.padding(start = 28.dp, top = 60.dp))
+        if (onCancel != null) Box(Modifier.padding(start = 12.dp, top = 12.dp).size(48.dp).clip(CircleShape).clickable(onClick = onCancel), contentAlignment = Alignment.Center) {
+            Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Back to my servers", tint = N.text) }
+        Text("Nova", fontSize = 40.sp, fontWeight = FontWeight.Bold, color = N.text, modifier = Modifier.padding(start = 28.dp, top = if (onCancel != null) 8.dp else 60.dp))
         Text(if (onCancel != null) "Add another server" else "Pair this ${DeviceForm.noun} with your server", color = N.sub, fontSize = 17.sp,
             modifier = Modifier.padding(start = 28.dp, top = 6.dp, bottom = 24.dp))
         if (scanning) {

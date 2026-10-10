@@ -143,7 +143,9 @@ def disks():
         protected = any(m in PROTECTED_MOUNTS or (PROTECTED_PREFIXES and m.startswith(PROTECTED_PREFIXES)) or m == "[SWAP]" for m in mps)
         res.append({"name": d["name"], "serial": d.get("serial") or d["name"], "model": (d.get("model") or "").strip(),
                     "size": d["size"], "bus": d.get("tran") or "", "ssd": not d.get("rota"),
-                    "role": role, "mounts": [m for m in mps if m != "[SWAP]"], "usage": usage,
+                    "role": role, "mounts": [m for m in mps if m != "[SWAP]"],
+                    # the drive's main filesystem first ("/", else the biggest) — not a small /boot/efi partition
+                    "usage": sorted(usage, key=lambda u: (u["mount"] != "/", -u["total"])),
                     "protected": protected, "temp": sm.get("temp"), "smart_passed": sm.get("passed"),
                     "realloc": sm.get("realloc"), "pending": sm.get("pending"), "uncorrect": sm.get("uncorrect"),
                     "crc": sm.get("crc")})
@@ -173,10 +175,65 @@ if verb == "container" and len(args) == 2:
     if action not in ("start", "stop", "restart"): fail("bad action", 2)
     find(name)
     rc, so, se = run(["docker", action, name], timeout=180)
+    if rc == 0 and action in ("start", "restart"):            # force-stopped earlier: give it its automatic restarts back
+        held = load_json("/var/lib/nova-api/force-stopped.json", {})
+        if name in held:
+            if held[name] in ("always", "unless-stopped", "on-failure"): run(["docker", "update", "--restart", held[name], name], timeout=30)
+            held.pop(name)
+            with open("/var/lib/nova-api/force-stopped.json", "w") as f: json.dump(held, f)
     if rc == 0:
         notify("info", f"App: {action} {name}", "Done from the Nova app.")
         changelog(f"{action} container {name} (from the Nova app)")
     out({"ok": rc == 0, "error": se.strip()[:200] if rc else ""}, 0 if rc == 0 else 1)
+
+def rollback_tag(name): return f"nova-rollback/{re.sub(r'[^a-z0-9_.-]', '-', name.lower())}:previous"
+
+if verb == "container-fix" and len(args) == 2:
+    # Troubleshooting a container that won't stay up: force stop, recreate, or go back to the previous image.
+    action, name = args
+    c = find(name); lab = c["Config"]["Labels"] or {}; wd = lab.get("com.docker.compose.project.working_dir", ""); svc = lab.get("com.docker.compose.service", "")
+    compose = wd.startswith("/") and os.path.isdir(wd) and re.fullmatch(NAME_RE, svc or "")
+    if action == "kill":
+        # stop it for good: no more automatic restarts until you start it again
+        pol = (c["HostConfig"].get("RestartPolicy") or {}).get("Name") or "no"
+        held = load_json("/var/lib/nova-api/force-stopped.json", {}); held[name] = pol
+        with open("/var/lib/nova-api/force-stopped.json", "w") as f: json.dump(held, f)
+        run(["docker", "update", "--restart", "no", name], timeout=30)
+        rc, so, se = run(["docker", "kill", name], timeout=60)
+        if rc != 0 and "is not running" not in se: rc, so, se = run(["docker", "stop", "-t", "2", name], timeout=60)
+        changelog(f"Force-stopped {name} and turned off its automatic restarts (from the Nova app)")
+        out({"ok": True, "note": "Stopped. Automatic restarts are off until you start it again."})
+    if not compose: fail("this container wasn't started from a Compose file, so Nova can't rebuild it")
+    if action == "recreate":
+        rc, so, se = run(["docker", "compose", "up", "-d", "--force-recreate", "--pull", "never", svc], timeout=600, cwd=wd)
+        if rc != 0: fail("couldn't recreate it: " + se.strip()[-300:])
+        changelog(f"Recreated {name} (from the Nova app)"); out({"ok": True})
+    if action == "rollback":
+        import labs
+        keep = rollback_tag(name); prev = labs.previous_image(c)
+        if not prev: fail("there's no earlier version of it on this server")
+        run(["docker", "tag", prev, keep], timeout=30)
+        run(["docker", "tag", c["Image"], keep + "-undo"], timeout=30)        # so this can be undone too
+        rc, _, se = run(["docker", "tag", keep, c["Config"]["Image"]], timeout=30)
+        if rc != 0: fail("couldn't switch the image: " + se.strip()[-200:])
+        rc, so, se = run(["docker", "compose", "up", "-d", "--pull", "never", svc], timeout=600, cwd=wd)
+        if rc != 0: fail("couldn't restart it on the previous version: " + se.strip()[-300:])
+        changelog(f"Rolled {name} back to its previous image (from the Nova app)"); notify("info", f"{name} rolled back", "Back on the version from before its last update.")
+        out({"ok": True})
+    fail("bad action", 2)
+
+if verb == "container-diagnose" and len(args) == 1:
+    c = find(args[0]); st = c["State"]; name = c["Name"].lstrip("/")
+    rc, so, se = run(["docker", "logs", "--tail", "60", name], timeout=30)
+    lines = [l for l in re.sub(r"\x1b\[[0-9;]*[A-Za-z]", "", so + se).splitlines() if l.strip()]
+    errs = [l for l in lines if re.search(r"error|fatal|panic|exception|denied|refused|not found|failed|cannot|can't|unable|invalid|missing", l, re.I)]
+    import labs; prev = labs.previous_image(c)
+    lab = c["Config"]["Labels"] or {}
+    out({"name": name, "status": st.get("Status"), "restarting": st.get("Restarting", False), "restart_count": c.get("RestartCount", 0),
+         "exit_code": st.get("ExitCode"), "error": st.get("Error", ""), "oom": st.get("OOMKilled", False), "started": st.get("StartedAt", "")[:19], "finished": st.get("FinishedAt", "")[:19],
+         "last_error": (errs or lines)[-1][:400] if (errs or lines) else "", "log_tail": lines[-15:],
+         "can_rollback": bool(prev), "compose": bool(lab.get("com.docker.compose.project.working_dir")),
+         "store": os.path.exists(f"/opt/{lab.get('com.docker.compose.project', '')}/.nova-store")})
 
 if verb == "container-info" and len(args) == 1:
     out(info(find(args[0])))
@@ -558,6 +615,12 @@ if verb == "events-delete" and len(args) == 1 and re.fullmatch(r"all|[\d.]+(,[\d
     if rc != 0: fail((se or so).strip()[-200:] or "couldn't delete")
     out(json.loads(so.strip().splitlines()[-1]))
 
+if verb == "events-restore" and len(args) == 1 and re.fullmatch(r"[\d.]+(,[\d.]+){0,199}", args[0]):
+    if not MONITOR: fail("monitoring isn't installed")
+    rc, so, se = run(["python3", MONITOR, "restore-event", args[0]], timeout=150)
+    if rc != 0: fail((se or so).strip()[-200:] or "couldn't restore")
+    out(json.loads(so.strip().splitlines()[-1]))
+
 # ── mount a drive that's in /etc/fstab (e.g. plugged in after boot) ─────────────────
 def fstab_points():
     pts = []
@@ -705,6 +768,9 @@ if verb == "apps-detect" and not args:
 
 if verb == "storage-map" and not args:
     import storage; _guard(storage.storage_map)
+
+if verb == "labs-images" and not args:
+    import labs; _guard(labs.images)
 
 if verb == "task-start" and len(args) == 2:
     import tasks

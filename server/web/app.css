@@ -368,7 +368,7 @@ html.material #sheet p { color: var(--sub); font-size: 14px; margin: 8px 24px; }
 html.material #sheet .acts { justify-content: flex-end; padding: 8px 12px 6px; gap: 4px; }
 html.material #sheet .acts button { flex: none; padding: 10px 14px; font-size: 14px; font-weight: 600; color: var(--blue); }
 html.material #sheet .acts i { display: none; }
-html.material #toast { border-radius: 12px; background: var(--inv); color: var(--onInv); backdrop-filter: none; box-shadow: 0 3px 10px rgba(0,0,0,.25); text-align: left; }
+html.material #toast { border-radius: 16px; background: color-mix(in srgb, var(--blue) 24%, var(--card)); color: var(--text); font-weight: 500; backdrop-filter: none; box-shadow: 0 4px 14px rgba(0,0,0,.28); text-align: left; }
 html.material .nav { border-radius: 32px; padding: 8px; }
 html.material .nav .bead { display: none; }
 html.material .nav button { width: 80px; height: 64px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: var(--sub); }
@@ -480,3 +480,14 @@ html.material .alertcard { border-radius: 16px; background: var(--card); backdro
 .appic .i { width: 30px; height: 30px; }
 .cmdout { font-family: ui-monospace, SFMono-Regular, Menlo, monospace !important; color: var(--text) !important; max-height: 60vh; overflow: auto; }
 .steps { margin: 0 0 10px; padding-left: 20px; display: grid; gap: 8px; line-height: 1.4; }
+.dayhead .dayall { height: 30px; font-size: 13px; opacity: 0; transition: opacity .15s ease; } .dayhead:hover .dayall, .dayhead:focus-within .dayall { opacity: 1; }
+@media (hover: none) { .dayhead .dayall { opacity: 1; } }
+/* the same soft fade at the bottom, so lists slide out of sight under the dock */
+.scrim-bottom { position: fixed; bottom: 0; left: 0; right: 0; height: calc(64px + env(safe-area-inset-bottom)); z-index: 7; pointer-events: none;
+  background: linear-gradient(to top, var(--bg), color-mix(in srgb, var(--bg) 85%, transparent) 40%, transparent); }
+.trouble .lasterr { display: block; margin-top: 6px; font: 12.5px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--text); white-space: pre-wrap; overflow-wrap: anywhere;
+  background: color-mix(in srgb, var(--amber) 10%, transparent); padding: 8px 10px; border-radius: 10px; }
+@keyframes list-in { from { transform: translateX(48px); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes list-back { from { transform: translateX(-36px); opacity: 0; } to { transform: none; opacity: 1; } }
+.fslist.hop-in { animation: list-in .28s var(--ease); } .fslist.hop-back { animation: list-back .28s var(--ease); }
+.reduce .fslist.hop-in, .reduce .fslist.hop-back { animation: in-fade .15s ease !important; }

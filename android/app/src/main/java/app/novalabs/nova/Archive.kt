@@ -2,6 +2,7 @@ package app.novalabs.nova
 
 import android.content.Context
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
@@ -35,7 +36,8 @@ object InboxArchive {
     private fun save(ctx: Context, profile: String, o: JSONObject) {
         val f = file(ctx, profile); val tmp = File(f.path + ".tmp"); tmp.writeText(o.toString()); tmp.renameTo(f)
     }
-    private fun key(t: Double) = "%.4f".format(Locale.US, t)
+    private fun key(t: Double) = "%.6f".format(Locale.US, t)
+    private fun key4(t: Double) = "%.4f".format(Locale.US, t)       // how older versions keyed them
 
     /** Add events the phone has just seen (newest first, no duplicates). */
     fun merge(ctx: Context, profile: String, ev: JSONArray?) {
@@ -63,7 +65,13 @@ object InboxArchive {
         val o = load(ctx, profile); val e = o.getJSONArray("events"); val a = o.optJSONArray("archived") ?: JSONArray()
         (0 until e.length()).map { e.getJSONObject(it) } to (0 until a.length()).map { a.getString(it) }.toSet()
     }
-    fun isArchived(set: Set<String>, e: JSONObject) = key(e.optDouble("t")) in set
+    fun isArchived(set: Set<String>, e: JSONObject) = key(e.optDouble("t")) in set || key4(e.optDouble("t")) in set
+    /** Put back in the Inbox: no longer marked archived here. */
+    fun unarchive(ctx: Context, profile: String, ts: List<Double>) = synchronized(lock) {
+        val o = load(ctx, profile); val arch = o.optJSONArray("archived") ?: JSONArray()
+        val drop = ts.flatMap { listOf(key(it), key4(it)) }.toSet()
+        o.put("archived", JSONArray((0 until arch.length()).map { arch.getString(it) }.filter { it !in drop })); save(ctx, profile, o)
+    }
     fun clear(ctx: Context, profile: String) = synchronized(lock) { file(ctx, profile).delete() }
 }
 
@@ -84,11 +92,19 @@ object InboxArchive {
         loading = false
     }
     LaunchedEffect(Unit) { page(null) }
+    var ask by remember { mutableStateOf<JSONObject?>(null) }
+    /** Back to the Inbox (for every device): out of the server's archive, unmarked here. */
+    fun restore(e: JSONObject) = app.act("Back in the Inbox") {
+        val t = e.optDouble("t")
+        app.api.post("/api/v1/events/restore", JSONObject().put("t", JSONArray(listOf(t))))
+        InboxArchive.unarchive(app.activity, app.pairing.profile, listOf(t))
+        server = server.filter { Math.abs(it.optDouble("t") - t) >= 0.000005 }; data = InboxArchive.all(app.activity, app.pairing.profile)
+    }
     val events = remember(server, data) {
         val seen = HashSet<Long>()
         (server + data.first).sortedByDescending { it.optDouble("t") }.filter { seen.add(Math.round(it.optDouble("t") * 10000)) }
     }
-    val archivedSet = remember(server, data) { data.second + server.filter { it.optBoolean("archived") }.map { "%.4f".format(java.util.Locale.US, it.optDouble("t")) } }
+    val archivedSet = remember(server, data) { data.second + server.filter { it.optBoolean("archived") }.map { "%.6f".format(java.util.Locale.US, it.optDouble("t")) } }
     val archived = archivedSet
     val shown = events.filter { e -> when (filter) {
         1 -> InboxArchive.isArchived(archived, e); 2 -> e.optString("level") in listOf("warning", "critical"); 3 -> e.optString("category") == "login"; else -> true } }
@@ -118,8 +134,10 @@ object InboxArchive {
             Group {
                 list.forEachIndexed { i, e ->
                     if (i > 0) RowDivider()
-                    val arch = InboxArchive.isArchived(archived, e)
-                    Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 14.dp)) {
+                    val arch = InboxArchive.isArchived(archived, e) || server.any { Math.abs(it.optDouble("t") - e.optDouble("t")) < 0.000005 }
+                    val back = if (arch && app.isAdmin) SwipeAction("Back to Inbox", Icons.Rounded.MoveToInbox, N.blue) { restore(e) } else null
+                    SwipeRow(start = back, end = back) {
+                    Row(Modifier.fillMaxWidth().clickable(enabled = arch && app.isAdmin) { ask = e }.padding(horizontal = 20.dp, vertical = 14.dp)) {
                         Box(Modifier.padding(top = 6.dp).size(10.dp).clip(CircleShape).background(levelColor(e.optString("level"), N).copy(alpha = if (arch) 0.5f else 1f)))
                         Spacer(Modifier.width(14.dp))
                         Column(Modifier.weight(1f)) {
@@ -129,6 +147,7 @@ object InboxArchive {
                         }
                         Text(hm.format(Date((e.optDouble("t") * 1000).toLong())), color = N.sub, fontSize = 13.sp)
                     }
+                    }
                 }
             }
         }
@@ -137,6 +156,8 @@ object InboxArchive {
         if (more || loading) Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = androidx.compose.ui.Alignment.Center) {
             if (loading) OneSpinner() else PillButton("Load older") { scope.launch { page(server.lastOrNull()?.optDouble("t")) } } }
     }
+    ask?.let { e -> OneDialog({ ask = null }, "Put it back in the Inbox?", e.optString("title").replace(Regex("^[^\\p{L}\\p{N}]+\\s*"), ""),
+        listOf(DialogButton("Cancel") { ask = null }, DialogButton("Back to Inbox", N.blue) { ask = null; restore(e) })) }
     if (clear) OneDialog({ clear = false }, "Erase this ${DeviceForm.noun}'s copy?",
         "This ${DeviceForm.noun}'s own copy of the history is deleted. The server keeps its archive for every device.",
         listOf(DialogButton("Cancel") { clear = false }, DialogButton("Erase", N.red) { clear = false

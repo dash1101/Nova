@@ -10,7 +10,7 @@ install -d "$P$L/web" "$P$L/store" "$P$L/monitor" "$P/usr/bin" "$P/usr/sbin" "$P
 install -m 755 "$S/api/server.py" "$P$L/server.py"
 install -m 755 "$S/api/helper.py" "$P$L/helper"
 install -m 644 "$S/api/nova_tz.py" "$S/api/storage.py" "$S/api/diag.py" "$S/api/apps.py" "$S/api/apkver.py" "$S/api/updates.py" "$S/api/nodes.py" "$S/api/installs.py" "$S/api/files.py" "$S/api/cfsync.py" "$P$L/"
-install -m 755 "$S/api/backups.py" "$S/api/tasks.py" "$P$L/"
+install -m 755 "$S/api/backups.py" "$S/api/tasks.py" "$S/api/labs.py" "$P$L/"
 install -m 755 "$S/api/helper-sock.py" "$P$L/helper-sock"
 install -m 755 "$S/monitor/nova_alerts.py" "$P$L/monitor/nova_alerts.py"
 ln -s "$L/monitor/nova_alerts.py" "$P/usr/sbin/nova-alert"

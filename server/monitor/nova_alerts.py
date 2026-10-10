@@ -729,7 +729,7 @@ def main():
     if os.geteuid() != 0:
         print("run as root", file=sys.stderr); sys.exit(1)
     os.makedirs(os.path.dirname(STATE_FILE), exist_ok=True)
-    command = len(sys.argv) > 1 and sys.argv[1] in ("forget-drive", "dismiss", "delete-event", "test")
+    command = len(sys.argv) > 1 and sys.argv[1] in ("forget-drive", "dismiss", "delete-event", "restore-event", "test")
     with open(LOCK_FILE, "w") as lf:
         if command:                      # a command must not silently do nothing: wait for a running pass
             end = time.time() + 120
@@ -747,12 +747,37 @@ def main():
             if sys.argv[2] == "all": gone, m.st["recent"] = m.st["recent"], []
             else:
                 ts = [float(x) for x in sys.argv[2].split(",")[:200]]
-                hit = lambda r: any(abs(r["t"] - t) < 0.0005 for t in ts)
+                hit = lambda r: any(abs(r["t"] - t) < 0.000005 for t in ts)
                 gone = [r for r in m.st["recent"] if hit(r)]; m.st["recent"] = [r for r in m.st["recent"] if not hit(r)]
             archive_append(gone, archived=True)              # archived, not destroyed: Inbox → Archive
             m.first_run = False; m.metrics = m.st.get("last_metrics", {}); m.write_status()
             write_json_atomic(STATE_FILE, m.st, 0o600)
             print(json.dumps({"ok": True, "deleted": before - len(m.st["recent"])}))
+            return
+        if len(sys.argv) > 2 and sys.argv[1] == "restore-event":
+            # Back from the Archive into the Inbox (the newest 200 stay in the Inbox, as always).
+            ts = [float(x) for x in sys.argv[2].split(",")[:200]]
+            hit = lambda r: any(abs(r.get("t", 0) - t) < 0.000005 for t in ts)
+            keep, back = [], []
+            try:
+                for line in open(ARCHIVE):
+                    try: r = json.loads(line)
+                    except ValueError: keep.append(line); continue
+                    (back if hit(r) and not any(abs(b["t"] - r["t"]) < 0.000005 for b in back) else keep).append(r if hit(r) else line)
+            except FileNotFoundError: pass
+            m = Monitor()
+            have = {round(r["t"], 6) for r in m.st["recent"]}
+            for r in back:
+                r.pop("archived", None)
+                if round(r["t"], 6) not in have: m.st["recent"].append({k: r.get(k, "") for k in ("t", "time", "level", "title", "detail", "category")})
+            m.st["recent"].sort(key=lambda r: -r["t"])
+            archive_append(m.st["recent"][200:]); del m.st["recent"][200:]
+            tmp = ARCHIVE + ".tmp"
+            with open(tmp, "w") as f: f.writelines(x if isinstance(x, str) else json.dumps(x) + "\n" for x in keep)
+            os.chmod(tmp, 0o644); os.replace(tmp, ARCHIVE)
+            m.first_run = False; m.metrics = m.st.get("last_metrics", {}); m.write_status()
+            write_json_atomic(STATE_FILE, m.st, 0o600)
+            print(json.dumps({"ok": True, "restored": len(back)}))
             return
         if len(sys.argv) > 2 and sys.argv[1] == "dismiss":
             key = sys.argv[2]

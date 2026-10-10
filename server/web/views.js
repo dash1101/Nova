@@ -1,7 +1,7 @@
 // Nova web — every screen of the app. Each view renders with ctx.show(html, options, handlers);
 // buttons carry data-act="name" or data-act="name:arg" and land in `handlers` (or the router's).
 import { S, $, $$, esc, get, post, del, api, sleep, prefs, waitTask, runningTask, levelColor, pct, rate, bytes, isAdmin, has, cleanTitle, cap,
-         serverName, uptime, hm, refresh, changeFan, waitJob, kv, archiveMerge, archiveAll, archiveClear } from "./core.js";
+         serverName, uptime, hm, refresh, changeFan, waitJob, kv, archiveMerge, archiveAll, archiveClear, archiveUnmark } from "./core.js";
 import { I, row, group, sec, note, sw, radio, switchRow, links, expand, slider, segmented, bar, usageColor,
          toast, dialog, confirm, choose, ask, wireCommon, reorderable, onHold, spark, swipeable, colorPicker } from "./ui.js";
 import { animate } from "./hero.js";
@@ -291,11 +291,21 @@ async function container(ctx, name) {
   const path = `/api/v1/containers/${encodeURIComponent(name)}`;
   let job = null;
   const draw = () => {
-    const c = S.cache[path], running = c?.state === "running";
+    const c = S.cache[path], running = c?.state === "running" || c?.state === "restarting", dg = diag;
+    const trouble = c && (c.state === "restarting" || (dg && (dg.restart_count > 2 || (c.state === "exited" && dg.exit_code)))), troubleHtml = trouble && dg ? `${sec("Troubleshoot")}<div class="group glass trouble">
+        <div class="row"><span class="ri" style="color:var(--amber);background:color-mix(in srgb,var(--amber) 16%,transparent)">${I("warn")}</span><div class="t"><b>${c.state === "restarting" ? `It keeps crashing — restarted ${dg.restart_count} time${dg.restart_count === 1 ? "" : "s"}` : `It stopped with an error (code ${dg.exit_code})`}</b>
+          <small>${dg.oom ? "It ran out of memory. " : ""}${dg.last_error ? "Last error: " : ""}</small>${dg.last_error ? `<code class="lasterr">${esc(dg.last_error)}</code>` : ""}</div></div>
+        ${isAdmin() ? row("Stop it", { sub: "Stops the restart loop — it won't start again until you start it", icon: "stop", tint: "var(--red)", click: "fix:kill" })
+          + (dg.can_rollback ? row("Go back to the previous version", { sub: "The image it had before its last update in Nova", icon: "restart", blue: true, click: "fix:rollback" }) : "")
+          + (dg.compose ? row("Update it again", { sub: "Download the newest image and start fresh — a fixed version may be out", icon: "update", click: "update" }) : "")
+          + (dg.compose ? row("Recreate it", { sub: "Rebuild the container from its compose file (keeps its data)", icon: "sync", click: "fix:recreate" }) : "") : ""}
+        ${row("Read its logs", { sub: "The last lines usually say what's wrong — a missing setting, a changed option", icon: "article", click: "logs" })}</div>
+      ${note(dg.can_rollback ? "Apps sometimes change what they need between versions; their release notes say what to add." : "Apps sometimes change what they need between versions; their release notes say what to add. Nova keeps the previous version from updates it does itself, so it can go back next time.")}` : "";
     const pill = (icon, label, act) => `<button class="press" data-act="${act}">${I(icon)}<span class="l">${label}</span></button>`;
     ctx.show(`<div class="center" style="padding:18px 0 10px"><div class="glass" style="width:120px;height:120px;border-radius:36px;margin:0 auto 12px;display:grid;place-items:center;color:var(--blue);position:relative">${I("box").replace('class="i ', 'style="width:60px;height:60px" class="i ')}
         <span class="dot" style="position:absolute;right:12px;bottom:12px;width:20px;height:20px;background:${stateColor(c?.state, c?.health)}"></span></div>
         <div class="muted" style="font-weight:600;font-size:17px">${esc(job || (c ? cap(c.state) + (c.health ? " · " + c.health : "") : "Loading…"))}</div><div class="muted" style="font-size:13px">${esc(c?.image || "")}</div></div>
+      ${troubleHtml || ""}
       ${isAdmin() && c ? `<div class="pillbar glass">${running ? pill("stop", "Stop", "do:stop") : pill("play", "Start", "do:start")}${pill("restart", "Restart", "do:restart")}${pill("update", "Update", "update")}${pill("term", "Shell", "shell")}</div>` : ""}
       ${c ? `${sec("Live")}${group(row("CPU", { sub: c.cpu || "—" }) + row("Memory", { sub: c.mem || "—" }) + row("Network in / out", { sub: c.net || "—" }) + row("Running since", { sub: `${c.started ? new Date(c.started).toLocaleString() : "—"} · restarted ${c.restarts ?? 0} times` }))}
         ${group(row("Logs", { sub: "See what it's been saying", blue: true, icon: "article", click: "logs" }) + (isAdmin() ? row("Terminal", { sub: "Run commands inside it (approved on your phone)", blue: true, icon: "term", click: "shell" }) : ""))}
@@ -307,7 +317,10 @@ async function container(ctx, name) {
         ${isAdmin() && c.custom ? group(row("Remove this container", { sub: "Stops it and moves its folder to /opt/.nova-uninstalled (nothing is deleted)", icon: "del", tint: "var(--red)", click: "rmcustom" })) : ""}` : ""}`,
       { title: name });
   };
-  const load = async () => { try { await get(path); } catch (e) { toast(e.message); } if (ctx.alive()) draw(); };
+  let diag = null;
+  const load = async () => { try { await get(path); } catch (e) { toast(e.message); }
+    const c = S.cache[path]; if (c && c.state !== "running") diag = await get(`${path}/diagnose`).catch(() => null); else if (c?.state === "running" && !(diag?.restart_count > 2)) diag = null;
+    if (ctx.alive()) draw(); };
   ctx.handlers({
     do: async a => {
       if (a !== "start" && !(await confirm(`${cap(a)} ${name}?`, "Your phone will ask you to confirm with your fingerprint.", cap(a)))) return;
@@ -322,6 +335,13 @@ async function container(ctx, name) {
     },
     shell: () => S.cache[path]?.state === "running" ? ctx.go(`containers/${encodeURIComponent(name)}/shell`) : toast("Start it first"),
     logs: () => ctx.go(`containers/${encodeURIComponent(name)}/logs`),
+    fix: async k => {
+      const what = { kill: ["Stop it?", `${name} stops, and its automatic restarts are turned off until you start it again.`, "Stop"], rollback: ["Go back to the previous version?", `${name} restarts on the image it had before its last update. Its data stays.`, "Go back"],
+        recreate: ["Recreate it?", `${name} is rebuilt from its compose file. Its data stays.`, "Recreate"] }[k];
+      if (!(await confirm(what[0], what[1] + " Your phone confirms it.", what[2], k === "kill" ? "var(--red)" : "var(--blue)"))) return;
+      job = { kill: "Stopping…", rollback: "Going back…", recreate: "Recreating…" }[k]; draw();
+      try { const r = await post(`${path}/fix/${k}`); toast(r?.note || "Done"); } catch (e) { toast(e.message); } finally { job = null; await load(); }
+    },
     rmcustom: async () => {
       if (!(await confirm(`Remove ${name}?`, "It stops, and its folder is kept in /opt/.nova-uninstalled. Your phone will ask for your fingerprint.", "Remove"))) return;
       job = "Removing…"; draw();
@@ -477,6 +497,8 @@ function liveHtml() {
       <span class="muted" style="font-variant-numeric:tabular-nums">${t.state === "running" ? Math.round(t.pct || 0) + "%" : t.state === "done" ? "Done" : t.state === "stopped" ? "Stopped" : "Failed"}</span></div>
       ${t.state === "running" ? bar((t.pct || 0) / 100) : ""}<small>${esc(t.state === "running" ? (t.note || t.step || "") : t.state === "done" ? (t.step || "Finished") : (t.error || t.step || ""))}</small></div></div>`).join(""));
 }
+const dayOf = e => { const d = new Date(e.t * 1000), now = new Date(), y = new Date(now - 86400000);
+  return d.toDateString() === now.toDateString() ? "Today" : d.toDateString() === y.toDateString() ? "Yesterday" : d.toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" }); };
 export async function inbox(ctx) {
   let filter = 0, picked = new Set(), last = null;
   // live progress: every 2 s while something runs, else every 15 s
@@ -487,7 +509,7 @@ export async function inbox(ctx) {
   const draw = () => {
     const all = S.cache["/api/v1/events?since=0"]?.events, ev = shown();
     picked = new Set([...picked].filter(t => ev.some(e => String(e.t) === t)));
-    const days = {}; ev.forEach(e => (days[new Date(e.t * 1000).toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" })] ||= []).push(e));
+    const days = {}; ev.forEach(e => (days[dayOf(e)] ||= []).push(e));
     const bar = mouse ? `<div class="selbar glass fadeok${picked.size ? " show" : ""}" id="selbar" aria-live="polite"><b id="selcount">${picked.size || 1} selected</b><span class="sp"></span><button class="pillbtn press" data-act="selall">Select all</button>
         <button class="pillbtn press" data-act="selnone">Clear</button><button class="btn" style="height:40px;padding:0 18px;font-size:15px" data-act="archsel">${I("down")} Archive <span id="selnum">${picked.size || 1}</span></button></div>` : "";
     const nudge = "Notification" in window && Notification.permission === "default" && !prefs.browserNotify && !prefs.browserNotifyNudged
@@ -495,15 +517,15 @@ export async function inbox(ctx) {
     ctx.show(`${nudge}<div id="live">${liveHtml()}</div>${attentionHtml()}${segmented(["All", "Issues", "Critical", "Logins"], filter, "f")}
       ${ev.length ? `<p class="note" style="margin-top:6px">${mouse ? "Tick events to archive several at once, or use the archive button on a row. Keys: <b>x</b> select · <b>Ctrl+A</b> all · <b>e</b> archive · <b>Shift</b>-click a range." : "Swipe left to archive"} — archived events are kept on the server (Inbox → Archive), for every device.</p>` : ""}
       ${bar}
-      ${Object.entries(days).map(([d, l]) => sec(d) + group(l.map(e => { const k = String(e.t), on = picked.has(k);
-          return `<div class="swipe fadeok${mouse ? " mouse" : ""}${on ? " picked" : ""}" data-key="${e.t}" data-left="Archive" tabindex="0"><div class="swbg"></div><div class="swfg"><div class="row" style="align-items:flex-start">
+      ${Object.entries(days).map(([d, l]) => `<div class="sechead dayhead">${sec(d)}${mouse || picked.size ? `<button class="pillbtn press dayall" data-act="pickday:${esc(encodeURIComponent(d))}">${l.every(e => picked.has(String(e.t))) ? "Unselect day" : "Select day"}</button>` : ""}</div>` + group(l.map(e => { const k = String(e.t), on = picked.has(k);
+          return `<div class="swipe fadeok${mouse ? " mouse" : ""}${on ? " picked" : ""}" data-key="${e.t}" data-left="Archive" data-right="Archive" tabindex="0"><div class="swbg"></div><div class="swfg"><div class="row" style="align-items:flex-start">
             ${mouse ? `<button class="tick fadeok${on ? " on" : ""}" data-act="pick:${k}" aria-label="Select" aria-pressed="${on}">${I("check")}</button>` : `<span class="dot" style="margin-top:7px;background:${levelColor(e.level)}"></span>`}
             <div class="t">${mouse ? `<span class="dot" style="display:inline-block;margin-right:8px;background:${levelColor(e.level)}"></span>` : ""}<b style="font-size:16px;display:inline">${esc(cleanTitle(e.title))}</b>${e.detail ? `<small>${esc(e.detail)}</small>` : ""}</div>
             <span class="end" style="font-size:13px">${hm(e.t)}</span><button class="xbtn" data-act="del:${e.t}" aria-label="Archive" title="Archive">${I("down")}</button></div></div></div>`; }).join(""))).join("")
         || note(all ? "Nothing here — all quiet." : "Loading…")}`,
       { title: "Inbox", actions: [{ icon: "book", label: "Archive", act: "go:archive" }, { icon: "del", label: "Archive everything", act: "clear" }, { icon: "gear", label: "Notification settings", act: "go:notify" }] });
     wireCommon(ctx.root, { onSeg: (_, i) => { filter = i; picked.clear(); draw(); } });
-    swipeable(ctx.root, { onRight: key => dismissAlert(key, draw), onLeft: t => remove([+t]) });
+    swipeable(ctx.root, { onRight: key => /^[\d.]+$/.test(key) ? remove([+key]) : dismissAlert(key, draw), onLeft: t => remove([+t]) });
     $$(".swipe.mouse", ctx.root).forEach(el => el.onfocus = () => { last = el.dataset.key; });
   };
   // Selection changes update the page in place (so ticks, rows and the bar can animate) instead of redrawing it.
@@ -518,11 +540,11 @@ export async function inbox(ctx) {
     if (!isAdmin()) return viewOnly();
     const c = S.cache["/api/v1/events?since=0"];
     // rows fold away first, then the list is redrawn without them
-    const rows = $$(".swipe[data-key]", ctx.root).filter(el => ts.some(t => Math.abs(t - +el.dataset.key) < .0005));
+    const rows = $$(".swipe[data-key]", ctx.root).filter(el => ts.some(t => Math.abs(t - +el.dataset.key) < .000005));
     rows.forEach(el => { el.style.height = el.offsetHeight + "px"; }); void ctx.root.offsetHeight; rows.forEach(el => el.classList.add("gone"));
     ts.forEach(t => picked.delete(String(t))); updateSel();
     if (rows.length && !document.documentElement.classList.contains("reduce")) await sleep(380);
-    if (c) c.events = c.events.filter(e => !ts.some(t => Math.abs(t - e.t) < .0005));
+    if (c) c.events = c.events.filter(e => !ts.some(t => Math.abs(t - e.t) < .000005));
     draw();
     try { await post("/api/v1/events/delete", { t: ts }); toast(ts.length > 1 ? `Archived ${ts.length}` : "Archived"); }
     catch (e) { toast(e.message); await get("/api/v1/events?since=0").catch(() => {}); draw(); }
@@ -537,6 +559,8 @@ export async function inbox(ctx) {
   ctx.handlers({
     alert: (...a) => alertMenu(keyOf(a), draw), ignore: (...a) => dismissAlert(keyOf(a), draw), del: t => remove([+t]),
     pick: (k, el) => toggle(k, lastClickShift), selall: () => { shown().forEach(e => picked.add(String(e.t))); updateSel(); }, selnone: () => { picked.clear(); updateSel(); },
+    pickday: d => { d = decodeURIComponent(d); const l = shown().filter(e => dayOf(e) === d).map(e => String(e.t)), all = l.every(k => picked.has(k));
+      l.forEach(k => all ? picked.delete(k) : picked.add(k)); draw(); },
     archsel: () => remove([...picked].map(Number)),
     bnotify: async () => { prefs.browserNotifyNudged = true; await toggleBrowserNotify(); draw(); }, bnudgeno: () => { prefs.browserNotifyNudged = true; draw(); },
     clear: async () => {
@@ -570,11 +594,11 @@ export async function archive(ctx) {
   // The archive lives on the server (any device can read it). This browser's own copy fills gaps
   // from before the server kept one, and works when the server can't be reached.
   let filter = 0, local = await archiveAll(), server = [], more = false, loading = true, failed = false;
-  const k4 = e => e.t.toFixed(4);
+  const k4 = e => e.t.toFixed(6);
   const merged = () => {
     const by = new Map(), la = new Set(local.archived);
     for (const e of [...server, ...(S.cache["/api/v1/events?since=0"]?.events || []), ...local.events]) {
-      const k = k4(e), was = by.get(k), a = !!(e.archived || la.has(k) || was?.archived);
+      const k = k4(e), was = by.get(k), a = !!(e.archived || la.has(k) || la.has(e.t.toFixed(4)) || was?.archived);
       by.set(k, { ...(was || e), archived: a });
     }
     return [...by.values()].sort((x, y) => y.t - x.t);
@@ -590,13 +614,19 @@ export async function archive(ctx) {
     const days = {}; ev.slice(0, 3000).forEach(e => (days[new Date(e.t * 1000).toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric", year: "numeric" })] ||= []).push(e));
     ctx.show(`${note(failed ? `Couldn't reach ${serverName()} — showing the copy saved in this browser.` : `Everything ${serverName()} has kept — archived from the Inbox or older than it shows. Stored on the server, so every phone and browser sees the same history.`)}
       ${segmented(["All", "Archived", "Issues", "Logins"], filter, "f")}
-      ${Object.entries(days).map(([d, l]) => sec(d) + group(l.map(e => `<div class="row" style="align-items:flex-start"><span class="dot" style="margin-top:7px;background:${levelColor(e.level)};opacity:${e.archived ? .5 : 1}"></span><div class="t"><b style="font-size:16px;${e.archived ? "color:var(--sub)" : ""}">${esc(cleanTitle(e.title))}</b>${e.detail ? `<small>${esc(e.detail)}</small>` : ""}${e.archived ? `<small>Archived</small>` : ""}</div><span class="end" style="font-size:13px">${hm(e.t)}</span></div>`).join(""))).join("")
+      ${Object.entries(days).map(([d, l]) => sec(d) + group(l.map(e => `<div class="row" style="align-items:flex-start"><span class="dot" style="margin-top:7px;background:${levelColor(e.level)};opacity:${e.archived ? .5 : 1}"></span><div class="t"><b style="font-size:16px;${e.archived ? "color:var(--sub)" : ""}">${esc(cleanTitle(e.title))}</b>${e.detail ? `<small>${esc(e.detail)}</small>` : ""}${e.archived ? `<small>Archived</small>` : ""}</div><span class="end" style="font-size:13px">${hm(e.t)}</span>${(e.archived || server.some(x => Math.abs(x.t - e.t) < .000005)) && isAdmin() ? `<button class="xbtn" style="opacity:.8" data-act="restore:${e.t}" title="Back to Inbox" aria-label="Back to Inbox">${I("inbox")}</button>` : ""}</div>`).join(""))).join("")
         || note(loading ? "Loading…" : all.length ? "Nothing matches." : "Nothing yet.")}
       ${more && !loading ? `<div class="center" style="padding:14px"><button class="btn" data-act="older">Load older</button></div>` : loading && all.length ? `<div class="center" style="padding:14px"><div class="spinner" style="margin:auto"></div></div>` : ""}`,
       { title: "Archive", actions: [{ icon: "update", label: "Export", act: "export" }, { icon: "del", label: "Erase this browser's copy", act: "erase" }] });
     wireCommon(ctx.root, { onSeg: (_, i) => { filter = i; draw(); } });
   };
   ctx.handlers({
+    restore: async t => {
+      t = +t;
+      try { await post("/api/v1/events/restore", { t: [t] }); server = server.filter(x => Math.abs(x.t - t) >= .000005);
+        await archiveUnmark([t]); local = await archiveAll(); toast("Back in the Inbox"); await get("/api/v1/events?since=0").catch(() => {}); draw(); }
+      catch (e) { toast(e.message); }
+    },
     older: load,
     export: () => {
       const q = v => `"${String(v || "").replace(/"/g, '""')}"`;

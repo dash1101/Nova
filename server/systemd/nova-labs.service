@@ -1,0 +1,8 @@
+[Unit]
+Description=Nova Labs: crash-loop guard and weekly container updates (only what you turned on)
+After=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 -I /usr/local/lib/nova-api/labs.py tick
+TimeoutStartSec=120

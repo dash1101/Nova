@@ -19,7 +19,7 @@ against your team's public keys — so the edge rejects strangers before they re
 and if Access is ever switched off by mistake, remote access fails closed.
 Pairing is only possible from the home LAN, with a one-time code shown by `sudo nova add`.
 """
-import base64, hashlib, hmac, ipaddress, json, os, re, secrets, subprocess, sys, threading, time, urllib.error, urllib.parse, urllib.request
+import base64, hashlib, hmac, ipaddress, json, os, re, secrets, socket, subprocess, sys, threading, time, urllib.error, urllib.parse, urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 import nodes
@@ -38,7 +38,7 @@ try:                       # optional module: fan/case lighting (modules/fan-gig
 except ImportError:
     nova_rgb = None
 
-API_VERSION = "0.5.9-alpha.2"
+API_VERSION = "0.5.10-alpha"
 CONFIG = "/etc/nova-api/config.json"
 DATA = "/var/lib/nova-api"
 DEVICES = f"{DATA}/devices.json"
@@ -48,7 +48,13 @@ AUDIT = "/var/log/nova-api/audit.log"
 STATUS = "/var/lib/nova-alerts/www/status.json"
 MAX_BODY = 64 * 1024
 UPLOAD_CHUNK = 4 * 1024 * 1024 + 1024
-LABS = {"cloudflare_sync": {"name": "Cloudflare auto-setup", "about": "Put an app on your own domain in one step: Nova adds the Cloudflare tunnel route, the DNS record and the Access login for you. Needs a Cloudflare API token."}}
+LABS = {"cloudflare_sync": {"name": "Cloudflare auto-setup", "about": "Put an app on your own domain in one step: Nova adds the Cloudflare tunnel route, the DNS record and the Access login for you. Needs a Cloudflare API token."},
+        "crash_guard": {"name": "Crash-loop guard", "about": "If a container restarts 5 times in 10 minutes, Nova stops it and tells you, instead of letting it restart forever. Starting it again turns its automatic restarts back on."},
+        "auto_updates": {"name": "Weekly container updates", "about": "Once a week, Nova updates the containers that have a newer version. One that won't start on its new version is put back on the old one."},
+        "image_cleanup": {"name": "Clean up old images", "about": "See the container images nothing uses anymore (old versions left behind by updates) and remove them to free up space. The versions Nova keeps to roll back to stay."},
+        "wake_on_lan": {"name": "Wake-on-LAN", "about": "Turn on other computers on your network from Nova: the server sends them a wake-up packet."}}
+WOL = f"{DATA}/wol.json"                         # Labs → Wake-on-LAN: [{id, name, mac}]
+LABS_STATE = f"{DATA}/labs-state.json"           # written by labs.py (root): last weekly update, …
 RAW_BODY_PATHS = ("/api/v1/files/upload", "/api/v1/files/save")
 FILE_UNLOCK = {}          # browser device id → until when it may change files (after a phone approved it)
 NOTIFY_KEYS = {"push_min_level": ("info", "warning", "critical"), "push_logins": bool, "push_usb": bool,
@@ -433,6 +439,7 @@ def shell_account():
 
 def describe_action(a):
     p = [x for x in a["path"].split("/") if x][2:]
+    if p == ["labs", "images", "clean"]: return "Remove the container images nothing uses anymore (the versions kept for rolling back stay)"
     if p == ["terminal"]: return f"Open a terminal on the server as {shell_account()} — that's full control if the account can use sudo or Docker"
     if p == ["files", "unlock"]: return f"Let this browser change files on the server as {shell_account()} for 15 minutes"
     if p == ["cloudflare", "publish"]: return f"Put {a.get('data', {}).get('host', '?')} on the internet through your Cloudflare tunnel (behind your Access login)"
@@ -442,6 +449,7 @@ def describe_action(a):
     if p[:1] == ["apps"] and p[-1:] == ["run"]: return "Run a command app"
     if p == ["containers", "custom"]: return f"Add your own container “{a.get('data', {}).get('spec', {}).get('name', '?')}” ({a.get('data', {}).get('spec', {}).get('image', '?')})"
     if p[:1] == ["containers"] and p[-1:] == ["remove-custom"]: return f"Remove the container {p[1]} (its data is kept)"
+    if p[:1] == ["containers"] and len(p) == 4 and p[2] == "fix": return {"kill": f"Force-stop {p[1]}", "recreate": f"Recreate {p[1]}", "rollback": f"Put {p[1]} back on its previous version"}.get(p[3], "Fix a container")
     if p[:1] == ["containers"] and len(p) == 3: return f"{p[2].title()} the container {p[1]}"
     if p[:1] == ["store"]: return f"{p[2].title()} {p[1]} from the app store"
     if p[:1] == ["programs"]: return f"{p[2].title()} the program {p[1]}"
@@ -528,6 +536,7 @@ def needs_stepup(method, parts):
     if method == "POST" and parts[:1] == ["devices"] and parts[-1:] in (["access"], ["invite"]): return True
     if method != "POST": return False
     if parts[:1] == ["containers"] and len(parts) == 3 and parts[2] in ("stop", "restart", "shell", "policy"): return True
+    if parts[:1] == ["containers"] and len(parts) == 4 and parts[2] == "fix": return True
     if parts[:1] in (["store"], ["programs"]) and len(parts) == 3: return True
     if parts[:1] == ["drives"] and parts[-1:] == ["unmount"]: return True
     if parts[:1] == ["power"]: return True
@@ -539,6 +548,7 @@ def needs_stepup(method, parts):
     if parts == ["apps", "command"]: return True                           # what a command app runs: fingerprint
     if parts in (["cloudflare", "token"], ["cloudflare", "publish"], ["cloudflare", "remove"]): return True     # changes your Cloudflare account
     if parts[:1] == ["containers"] and parts[-1:] == ["remove-custom"]: return True
+    if parts == ["labs", "images", "clean"]: return True                    # deletes images: fingerprint
     if parts == ["notify", "discord"]: return True                         # where alerts get sent: fingerprint
     if parts[:1] == ["backups"] and len(parts) == 3 and parts[2] == "restore": return True
     return False
@@ -1269,6 +1279,47 @@ class Handler(BaseHTTPRequestHandler):
                     if k in LABS: lb[k] = bool(v)
                 st["labs"] = lb; save_json(SETTINGS, st)
             return 200, {"labs": {k: bool(lb.get(k)) for k in LABS}, "about": LABS}
+        if parts[:1] == ["labs"] and len(parts) > 1:
+            lb = load_json(SETTINGS, {}).get("labs", {})
+            if role_of(dev) != "admin" and not (parts[1] == "wol" and (method == "GET" or parts[-1:] == ["wake"])): return 403, {"error": "admins only"}
+            if parts == ["labs", "schedule"] and method in ("GET", "POST"):
+                if method == "POST":
+                    day, hour = data.get("day"), data.get("hour")
+                    if not (isinstance(day, int) and 0 <= day <= 6 and isinstance(hour, int) and 0 <= hour <= 23): raise ValueError("a day (0 = Monday … 6 = Sunday) and an hour (0–23)")
+                    with lock:
+                        st = load_json(SETTINGS, {}); st.setdefault("labs_cfg", {})["auto_updates"] = {"day": day, "hour": hour}; save_json(SETTINGS, st)
+                cfg = load_json(SETTINGS, {}).get("labs_cfg", {}).get("auto_updates", {}); ls = load_json(LABS_STATE, {})
+                return 200, {"day": cfg.get("day", 6), "hour": cfg.get("hour", 4), "last": ls.get("auto_updates_last"), "error": ls.get("auto_updates_error")}
+            if parts[1] == "images":
+                if not lb.get("image_cleanup"): return 403, {"error": "turn on “Clean up old images” in Settings → Labs first"}
+                if method == "GET" and len(parts) == 2: rc, res = helper("labs-images", timeout=120); return (200 if rc == 0 else 400), res
+                if method == "POST" and parts == ["labs", "images", "clean"]:
+                    rc, res = helper("task-start", "images-prune", "{}"); return (202 if rc == 0 else 400), ({"task": res.get("id"), **res} if rc == 0 else res)
+            if parts[1] == "wol":
+                if not lb.get("wake_on_lan"): return 403, {"error": "turn on Wake-on-LAN in Settings → Labs first"}
+                lst = load_json(WOL, [])
+                if method == "GET" and len(parts) == 2: return 200, {"devices": lst}
+                if method == "POST" and len(parts) == 2:
+                    name = "".join(c for c in str(data.get("name", "")) if c.isprintable()).strip()[:40]
+                    mac = re.sub(r"[^0-9a-f]", "", str(data.get("mac", "")).lower())
+                    if not name or len(mac) != 12: raise ValueError("a name and a MAC address like 3c:7c:3f:12:34:56")
+                    if len(lst) >= 50: raise ValueError("that's a lot of computers — remove one first")
+                    e = {"id": secrets.token_hex(4), "name": name, "mac": ":".join(mac[i:i + 2] for i in range(0, 12, 2))}
+                    with lock: lst = load_json(WOL, []) + [e]; save_json(WOL, lst)
+                    return 200, {"devices": lst}
+                if len(parts) == 4 and re.fullmatch(r"[0-9a-f]{8}", parts[2]) and method == "POST":
+                    e = next((x for x in lst if x["id"] == parts[2]), None)
+                    if not e: return 404, {"error": "no such computer"}
+                    if parts[3] == "remove":
+                        with lock: lst = [x for x in load_json(WOL, []) if x["id"] != parts[2]]; save_json(WOL, lst)
+                        return 200, {"devices": lst}
+                    if parts[3] == "wake":
+                        mac = bytes.fromhex(e["mac"].replace(":", "")); pkt = b"\xff" * 6 + mac * 16
+                        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as so:
+                            so.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+                            for port in (9, 7): so.sendto(pkt, ("255.255.255.255", port))
+                        return 200, {"ok": True, "note": f"Sent the wake-up to {e['name']}. It can take a minute to come on."}
+            return 404, {"error": "no such endpoint"}
         if parts[:1] == ["cloudflare"]:
             if role_of(dev) != "admin": return 403, {"error": "admins only"}
             if not load_json(SETTINGS, {}).get("labs", {}).get("cloudflare_sync"): return 403, {"error": "turn on Cloudflare auto-setup in Settings → Labs first"}
@@ -1422,6 +1473,10 @@ class Handler(BaseHTTPRequestHandler):
                 return (200 if rc == 0 else 400), res
             if method == "POST" and len(parts) == 3 and parts[2] in ("start", "stop", "restart"):
                 rc, res = helper("container", parts[2], name, timeout=180); return (200 if rc == 0 else 400), res
+            if method == "GET" and parts[2:] == ["diagnose"]:
+                rc, res = helper("container-diagnose", name, timeout=60); return (200 if rc == 0 else 400), res
+            if method == "POST" and len(parts) == 4 and parts[2] == "fix" and parts[3] in ("kill", "recreate", "rollback"):
+                rc, res = helper("container-fix", parts[3], name, timeout=700); return (200 if rc == 0 else 400), res
             if method == "POST" and parts[2:] == ["remove-custom"]:
                 rc, res = helper("task-start", "custom-uninstall", json.dumps({"name": name})); return (202 if rc == 0 else 400), ({"task": res.get("id"), **res} if rc == 0 else res)
             if method == "POST" and parts[2:] == ["update"]:
@@ -1517,8 +1572,11 @@ class Handler(BaseHTTPRequestHandler):
             return 200, res
         if method == "POST" and parts == ["alerts", "dismiss"]:
             rc, res = helper("alerts-dismiss", str(data.get("key", ""))[:220], timeout=160); return (200 if rc == 0 else 400), res
+        if method == "POST" and parts == ["events", "restore"]:
+            ts = data.get("t"); arg = ",".join(f"{float(x):.6f}" for x in (ts if isinstance(ts, list) else [ts])[:200])
+            rc, res = helper("events-restore", arg, timeout=160); return (200 if rc == 0 else 400), res
         if method == "POST" and parts == ["events", "delete"]:
-            ts = data.get("t"); arg = "all" if data.get("all") is True else ",".join(f"{float(x):.4f}" for x in (ts if isinstance(ts, list) else [ts])[:200])
+            ts = data.get("t"); arg = "all" if data.get("all") is True else ",".join(f"{float(x):.6f}" for x in (ts if isinstance(ts, list) else [ts])[:200])
             rc, res = helper("events-delete", arg, timeout=160); return (200 if rc == 0 else 400), res
         if method == "POST" and parts == ["mounts", "mount"]:
             rc, res = helper("mount-fstab", str(data.get("mount", ""))[:200], timeout=90); return (200 if rc == 0 else 400), res

@@ -207,10 +207,14 @@ const AKEY = () => "history:" + (S.device || "");
 export async function archiveMerge(events, markArchived = false) {
   if (!events?.length) return;
   const h = (await kv(AKEY()).catch(() => null)) || { events: [], archived: [] };
-  const have = new Set(h.events.map(e => e.t.toFixed(4)));
-  h.events = [...events.filter(e => !have.has(e.t.toFixed(4))), ...h.events].sort((a, b) => b.t - a.t).slice(0, 10000);
-  if (markArchived) h.archived = [...new Set([...h.archived, ...events.map(e => e.t.toFixed(4))])].slice(-10000);
+  const have = new Set(h.events.map(e => e.t.toFixed(6)));
+  h.events = [...events.filter(e => !have.has(e.t.toFixed(6))), ...h.events].sort((a, b) => b.t - a.t).slice(0, 10000);
+  if (markArchived) h.archived = [...new Set([...h.archived, ...events.map(e => e.t.toFixed(6))])].slice(-10000);
   await kv(AKEY(), h).catch(() => {});
+}
+export async function archiveUnmark(ts) {
+  const h = (await kv(AKEY()).catch(() => null)); if (!h) return;
+  const drop = new Set(ts.map(t => (+t).toFixed(6))); h.archived = h.archived.filter(k => !drop.has(k)); await kv(AKEY(), h).catch(() => {});
 }
 export async function archiveAll() { return (await kv(AKEY()).catch(() => null)) || { events: [], archived: [] }; }
 export async function archiveClear() { await kv(AKEY(), null).catch(() => {}); }

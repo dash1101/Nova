@@ -28,8 +28,8 @@ export async function files(ctx) {
   if (!isAdmin()) return ctx.show(note("Only admins can use the file manager."), { title: "Files" });
   const path = ctx.args.length ? decodeURIComponent(ctx.args.join("/")) : "";
   if (ctx.args[0] === "edit") return editor(ctx, decodeURIComponent(ctx.args.slice(1).join("/")));
-  let d = null, busy = null, picked = new Set();
-  const load = async () => { try { d = await get(`/api/v1/files?path=${enc(path)}`); } catch (e) { d = { error: e.message }; } if (ctx.alive()) draw(); };
+  let d = S.cache[`/api/v1/files?path=${enc(path)}`] || null, busy = null, picked = new Set(), hopIn = window.__filesHop || 0;     // came from another folder: only the list slides
+  const load = async () => { try { d = await get(`/api/v1/files?path=${enc(path)}`); } catch (e) { d = { error: e.message }; } if (ctx.alive()) { draw(); hopIn = 0; } };
   const crumbs = p => { const parts = p.split("/").filter(Boolean); let acc = "";
     return `<div class="crumbs">${[["/", "Server"], ...parts.map(x => [acc += "/" + x, x])].map(([to, l], i, all) => `<button class="crumb${i === all.length - 1 ? " on" : ""}" data-act="cd:${esc(enc(to))}">${i === 0 ? I("dns") : ""}${esc(l)}</button>`).join(`<span class="muted">›</span>`)}</div>`; };
   const draw = () => {
@@ -39,7 +39,7 @@ export async function files(ctx) {
     ctx.show(`${crumbs(d.path)}
       ${busy ? `<div class="taskbar glass"><div class="tb-top"><b>${esc(busy.label)}</b><span>${Math.round(busy.pct)}%</span></div><div class="bar"><i style="width:${busy.pct}%;background:var(--blue)"></i></div></div>` : ""}
       <div class="fsel${picked.size ? " show" : ""}"><b>${picked.size} selected</b><span class="sp"></span><button class="pillbtn press" data-act="selmove">Move…</button><button class="pillbtn press" data-act="selcopy">Copy…</button><button class="pillbtn press red" data-act="seldel">Delete</button><button class="pillbtn press" data-act="selnone">Clear</button></div>
-      <div class="group glass fslist" id="drop">${d.parent != null ? `<div class="row click" data-act="cd:${esc(enc(d.parent))}"><span class="ri" style="color:var(--sub);background:color-mix(in srgb,var(--sub) 14%,transparent)">${I("back")}</span><div class="t"><b>Up one folder</b><small>${esc(d.parent)}</small></div></div>` : ""}
+      <div class="group glass fslist${hopIn > 0 ? " hop-in" : hopIn < 0 ? " hop-back" : ""}" id="drop">${d.parent != null ? `<div class="row click" data-act="cd:${esc(enc(d.parent))}"><span class="ri" style="color:var(--sub);background:color-mix(in srgb,var(--sub) 14%,transparent)">${I("back")}</span><div class="t"><b>Up one folder</b><small>${esc(d.parent)}</small></div></div>` : ""}
         ${show.map((e, i) => `<div class="row click fsrow${picked.has(e.name) ? " picked" : ""}" data-i="${d.items.indexOf(e)}" draggable="false">
           <button class="tick${picked.has(e.name) ? " on" : ""}" data-act="pick:${d.items.indexOf(e)}" aria-label="Select">${I("check")}</button>
           <span class="ri" style="color:${e.dir ? "var(--blue)" : "var(--sub)"};background:color-mix(in srgb,${e.dir ? "var(--blue)" : "var(--sub)"} 14%,transparent)">${I(kindIcon(e))}</span>
@@ -146,7 +146,8 @@ export async function files(ctx) {
   const dropped = ev => { if (!d?.writable || !ev.dataTransfer?.files?.length) return; ev.preventDefault(); leave(); upload([...ev.dataTransfer.files]); };
   addEventListener("dragover", over); addEventListener("dragleave", leave); addEventListener("drop", dropped);
   ctx.onLeave(() => { removeEventListener("dragover", over); removeEventListener("dragleave", leave); removeEventListener("drop", dropped); });
-  draw(); await load();
+  draw(); if (d) hopIn = 0;      // the cached list slid in; the fresh one replaces it in place
+  await load();
 }
 
 /** A plain text editor for files up to 1 MB. Ctrl+S saves. */

@@ -20,6 +20,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.*
@@ -31,6 +32,7 @@ import java.util.*
     val data by dataLive
     var clearAll by remember { mutableStateOf(false) }
     var picked by remember { mutableStateOf(setOf<Double>()) }       // hold an event to start selecting
+    var leaving by remember { mutableStateOf(setOf<Double>()) }      // being archived: folding away
     val selecting = picked.isNotEmpty()
     val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
     LaunchedEffect(Unit) { app.banner = null }                         // you're looking at them now
@@ -41,14 +43,21 @@ import java.util.*
         if (!app.isAdmin) { app.toast("This ${DeviceForm.noun} has view-only access"); return }
         val before = dataLive.value
         before?.optJSONArray("events")?.let { ev -> InboxArchive.archive(app.activity, app.pairing.profile,
-            (0 until ev.length()).map { ev.getJSONObject(it) }.filter { e -> ts.any { kotlin.math.abs(it - e.optDouble("t")) < 0.0005 } }) }
+            (0 until ev.length()).map { ev.getJSONObject(it) }.filter { e -> ts.any { kotlin.math.abs(it - e.optDouble("t")) < 0.000005 } }) }
         dataLive.value = JSONObject(before.toString()).also { o ->        // gone at once; the server catches up
             val left = org.json.JSONArray(); val ev = o.optJSONArray("events") ?: org.json.JSONArray()
-            for (i in 0 until ev.length()) if (ts.none { kotlin.math.abs(it - ev.getJSONObject(i).optDouble("t")) < 0.0005 }) left.put(ev.getJSONObject(i))
+            for (i in 0 until ev.length()) if (ts.none { kotlin.math.abs(it - ev.getJSONObject(i).optDouble("t")) < 0.000005 }) left.put(ev.getJSONObject(i))
             o.put("events", left)
         }
         app.act { try { app.api.post("/api/v1/events/delete", JSONObject().put("t", org.json.JSONArray(ts))) }
                   catch (e: Exception) { dataLive.value = before; throw e } }
+    }
+    val scope = rememberCoroutineScope()
+    /** Archive with the row folding away first, so the rest slide up. */
+    fun archive(ts: List<Double>) {
+        if (!app.isAdmin) { app.toast("This ${DeviceForm.noun} has view-only access"); return }
+        leaving = leaving + ts
+        scope.launch { delay(if (reduceMotion()) 0 else 300); delete(ts); leaving = leaving - ts.toSet() }
     }
     val events = data?.optJSONArray("events")?.let { a -> (0 until a.length()).map { a.getJSONObject(it) } } ?: emptyList()
     LaunchedEffect(events.firstOrNull()?.optDouble("t")) {
@@ -78,20 +87,33 @@ import java.util.*
                 Text("${picked.size} selected", color = N.text, fontWeight = FontWeight.Bold, fontSize = 16.sp, modifier = Modifier.weight(1f))
                 val all = picked.size == shown.size
                 TextButton({ picked = if (all) emptySet() else shown.map { it.optDouble("t") }.toSet() }) { Text(if (all) "Clear" else "Select all", color = N.blue, fontWeight = FontWeight.SemiBold) }
-                TextButton({ val ts = picked.toList(); picked = emptySet(); delete(ts) }) {
+                TextButton({ val ts = picked.toList(); picked = emptySet(); archive(ts) }) {
                     Icon(Icons.Rounded.Inventory2, null, tint = N.blue, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(6.dp))
                     Text("Archive", color = N.blue, fontWeight = FontWeight.SemiBold)
                 }
             }
         }
         shown.groupBy { dayLabel(it.optDouble("t")) }.forEach { (d, list) ->
-            SectionLabel(d)
+            val dayTs = list.map { it.optDouble("t") }.toSet(); val allDay = picked.containsAll(dayTs)
+            // the day's title: hold it (or tap "Select day" while selecting) to pick the whole day
+            Row(Modifier.fillMaxWidth().combinedClickable(onClick = { if (selecting) picked = if (allDay) picked - dayTs else picked + dayTs },
+                    onLongClick = { haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress); picked = if (allDay) picked - dayTs else picked + dayTs })
+                .padding(end = Space.gutter), verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.weight(1f)) { SectionLabel(d) }
+                androidx.compose.animation.AnimatedVisibility(selecting, enter = androidx.compose.animation.fadeIn(), exit = androidx.compose.animation.fadeOut()) {
+                    Text(if (allDay) "Unselect day" else "Select day", color = N.blue, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp))
+                }
+            }
             Group {
                 list.forEachIndexed { i, e ->
-                    if (i > 0) RowDivider()
                     val lvl = e.optString("level"); val t = e.optDouble("t"); val on = t in picked
                     val bg by androidx.compose.animation.animateColorAsState(if (on) N.blue.copy(alpha = 0.14f) else androidx.compose.ui.graphics.Color.Transparent, label = "pick")
-                    key(t) { SwipeRow(end = if (selecting) null else SwipeAction("Archive", Icons.Rounded.Inventory2, N.blue) { delete(listOf(t)) }) {
+                    // archived rows fold away and the ones below slide up, instead of jumping
+                    key(t) { androidx.compose.animation.AnimatedVisibility(t !in leaving,
+                        exit = if (reduceMotion()) androidx.compose.animation.fadeOut() else androidx.compose.animation.shrinkVertically(androidx.compose.animation.core.tween(280)) + androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(180))) { Column {
+                    if (i > 0) RowDivider()
+                    SwipeRow(start = if (selecting) null else SwipeAction("Archive", Icons.Rounded.Inventory2, N.blue) { archive(listOf(t)) },
+                             end = if (selecting) null else SwipeAction("Archive", Icons.Rounded.Inventory2, N.blue) { archive(listOf(t)) }) {
                     Row(Modifier.fillMaxWidth().background(bg)
                         .combinedClickable(onClick = { if (selecting) picked = if (on) picked - t else picked + t },
                             onLongClick = { haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress); picked = if (on) picked - t else picked + t })
@@ -112,7 +134,7 @@ import java.util.*
                         }
                         Text(hm.format(Date((e.optDouble("t") * 1000).toLong())), color = N.sub, fontSize = 13.sp)
                     }
-                    } }
+                    } } } }
                 }
             }
         }
@@ -445,5 +467,89 @@ private fun taskRoute(t: JSONObject): Route? {
         if (l?.optJSONObject("labs")?.optBoolean("cloudflare_sync") == true)
             Text("Add the Cloudflare API token in Nova web (Settings → Labs → Cloudflare). Then hold an app in Apps → Open it from anywhere.",
                 color = N.sub, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 30.dp, vertical = 8.dp))
+        val on = l?.optJSONObject("labs") ?: JSONObject()
+        if (on.optBoolean("auto_updates")) LabsSchedule(app)
+        if (on.optBoolean("image_cleanup")) LabsImages(app)
+        if (on.optBoolean("wake_on_lan")) LabsWol(app)
     }
+}
+
+private val DAYS = listOf("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
+private fun hourLabel(h: Int) = java.text.DateFormat.getTimeInstance(java.text.DateFormat.SHORT).format(GregorianCalendar(2000, 0, 1, h, 0).time)
+
+@Composable private fun LabsSchedule(app: AppState) {
+    var s by remember { mutableStateOf<JSONObject?>(null) }
+    var pick by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(Unit) { s = runCatching { app.api.get("/api/v1/labs/schedule") }.getOrNull() }
+    val day = s?.optInt("day", 6) ?: 6; val hour = s?.optInt("hour", 4) ?: 4
+    fun save(d: Int, h: Int) = app.act("Saved") { s = app.api.post("/api/v1/labs/schedule", JSONObject().put("day", d).put("hour", h)) }
+    SectionLabel("Weekly updates")
+    Group {
+        Row1("Day", DAYS[day], true, Icons.Rounded.CalendarMonth, enabled = app.isAdmin, onClick = { pick = "day" }); RowDivider()
+        Row1("Time", hourLabel(hour) + (s?.optDouble("last", 0.0)?.takeIf { it > 0 }?.let { " · last ran " + SimpleDateFormat("MMM d", Locale.getDefault()).format(Date((it * 1000).toLong())) } ?: ""),
+            true, Icons.Rounded.Schedule, enabled = app.isAdmin, onClick = { pick = "hour" })
+    }
+    Text("Pick a quiet time — each container is offline for a few seconds while it restarts.", color = N.sub, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 30.dp, vertical = 4.dp))
+    pick?.let { k -> OneDialog({ pick = null }, if (k == "day") "Which day?" else "What time?") {
+        Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
+            if (k == "day") DAYS.forEachIndexed { i, d -> DialogChoice(d, selected = i == day) { pick = null; save(i, hour) } }
+            else (0..23).forEach { h -> DialogChoice(hourLabel(h), selected = h == hour) { pick = null; save(day, h) } }
+        }
+    } }
+}
+
+@Composable private fun LabsImages(app: AppState) {
+    var d by remember { mutableStateOf<JSONObject?>(null) }
+    var err by remember { mutableStateOf<String?>(null) }
+    var ask by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { try { d = app.api.get("/api/v1/labs/images") } catch (e: Exception) { err = e.message } }
+    val imgs = d?.optJSONArray("images").objs()
+    SectionLabel("Old images")
+    Group {
+        when {
+            err != null -> Row1(err!!)
+            d == null -> Row1("Looking through your images…")
+            imgs.isEmpty() -> Row1("Nothing to clean up", "Every image is in use", icon = Icons.Rounded.CheckCircle, iconTint = N.green)
+            else -> {
+                imgs.take(8).forEachIndexed { i, e -> if (i > 0) RowDivider()
+                    Row1(e.optJSONArray("tags")?.optString(0)?.ifEmpty { null } ?: e.optString("what").ifEmpty { null }?.let { "Old version of $it" } ?: "Untagged image", listOf(e.optString("size"), e.optString("created")).filter { it.isNotEmpty() }.joinToString(" · "), icon = Icons.Rounded.Storage) }
+                if (imgs.size > 8) { RowDivider(); Row1("…and ${imgs.size - 8} more") }
+                if (app.isAdmin) { RowDivider(); Row1("Clean up", "Removes these ${imgs.size}. You have ${bytesHuman(d!!.optLong("free"))} free now.", false, Icons.Rounded.Delete, N.red, onClick = { ask = true }) }
+            }
+        }
+    }
+    Text("Images no container uses — mostly old versions left behind by updates. The versions kept for rolling back stay.", color = N.sub, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 30.dp, vertical = 4.dp))
+    if (ask) OneDialog({ ask = false }, "Remove ${imgs.size} unused image${if (imgs.size == 1) "" else "s"}?", "Images a container uses, and the versions kept for rolling back, stay.",
+        listOf(DialogButton("Cancel") { ask = false }, DialogButton("Clean up", N.red) { ask = false
+            app.act { val r = app.stepUp("Clean up old images", "POST", "/api/v1/labs/images/clean"); r.optString("task").ifEmpty { null }?.let { app.go(Route.Task(it)) } } }))
+}
+
+@Composable private fun LabsWol(app: AppState) {
+    var list by remember { mutableStateOf<List<JSONObject>?>(null) }
+    var add by remember { mutableStateOf(false) }
+    var rm by remember { mutableStateOf<JSONObject?>(null) }
+    LaunchedEffect(Unit) { list = runCatching { app.api.get("/api/v1/labs/wol").optJSONArray("devices").objs() }.getOrNull() }
+    SectionLabel("Wake-on-LAN")
+    Group {
+        val l = list
+        if (l == null) Row1("Loading…")
+        else if (l.isEmpty()) Row1("No computers yet", "Add one with its MAC address")
+        l?.forEachIndexed { i, e -> if (i > 0) RowDivider()
+            Row1(e.optString("name"), e.optString("mac"), false, Icons.Rounded.PowerSettingsNew, onClick = { app.act { app.toast(app.api.post("/api/v1/labs/wol/${e.optString("id")}/wake").optString("note").ifEmpty { "Sent" }) } },
+                trailing = if (app.isAdmin) ({ IconButton({ rm = e }) { Icon(Icons.Rounded.Delete, "Remove", tint = N.sub) } }) else null) }
+        if (app.isAdmin) { if (l != null) RowDivider(); Row1("Add a computer", null, false, Icons.Rounded.Add, onClick = { add = true }) }
+    }
+    Text("Tap a computer to turn it on. Wake-on-LAN has to be turned on in its BIOS (and its network settings) first.", color = N.sub, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 30.dp, vertical = 4.dp))
+    if (add) { var name by remember { mutableStateOf("") }; var mac by remember { mutableStateOf("") }
+        OneDialog({ add = false }, "Add a computer", "Its MAC address is in its network settings (Windows: ipconfig /all, “Physical Address”; Linux: ip link).",
+            listOf(DialogButton("Cancel") { add = false }, DialogButton("Add", N.blue) { add = false
+                app.act { list = app.api.post("/api/v1/labs/wol", JSONObject().put("name", name).put("mac", mac)).optJSONArray("devices").objs() } })) {
+            Column(Modifier.padding(horizontal = 22.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                OneTextField(name, { name = it.take(40) }, "Name, like Gaming PC", Modifier.fillMaxWidth())
+                OneTextField(mac, { mac = it.take(17) }, "MAC, like 3c:7c:3f:12:34:56", Modifier.fillMaxWidth(), mono = true)
+            }
+        } }
+    rm?.let { e -> OneDialog({ rm = null }, "Remove ${e.optString("name")}?", "It only leaves this list.",
+        listOf(DialogButton("Cancel") { rm = null }, DialogButton("Remove", N.red) { rm = null
+            app.act { list = app.api.post("/api/v1/labs/wol/${e.optString("id")}/remove").optJSONArray("devices").objs() } })) }
 }

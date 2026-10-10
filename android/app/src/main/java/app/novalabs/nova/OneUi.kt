@@ -44,6 +44,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
@@ -164,8 +165,10 @@ data class TopAction(val icon: ImageVector, val label: String, val onClick: () -
     SnackbarHost(state, modifier) { data ->
         if (N.material) {
             Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp), contentAlignment = Alignment.Center) {
-                Text(data.visuals.message, color = MaterialTheme.colorScheme.inverseOnSurface, fontSize = 15.sp,
-                    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.inverseSurface).padding(horizontal = 18.dp, vertical = 14.dp))
+                // Material You: a tonal bar in the wallpaper's colors, lifted off the page
+                Text(data.visuals.message, color = MaterialTheme.colorScheme.onSecondaryContainer, fontSize = 15.sp, fontWeight = FontWeight.Medium,
+                    modifier = Modifier.fillMaxWidth().shadow(6.dp, RoundedCornerShape(16.dp)).clip(RoundedCornerShape(16.dp))
+                        .background(MaterialTheme.colorScheme.secondaryContainer).padding(horizontal = 20.dp, vertical = 15.dp))
             }
             return@SnackbarHost
         }

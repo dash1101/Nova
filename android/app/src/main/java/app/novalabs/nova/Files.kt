@@ -25,6 +25,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -43,6 +44,7 @@ import org.json.JSONObject
 // download, new files and folders, rename, move, copy, delete (to the server's Trash).
 
 private const val CHUNK = 4 * 1024 * 1024
+private val FilesSeen = java.util.concurrent.ConcurrentHashMap<String, JSONObject>()
 private fun enc(s: String) = Uri.encode(s)
 private fun join(d: String, n: String) = (if (d == "/") "" else d) + "/" + n
 private fun isText(e: JSONObject): Boolean { val m = e.optString("mime"); val n = e.optString("name")
@@ -61,7 +63,7 @@ private fun whenOf(t: Long): String { val d = java.util.Date(t * 1000); val toda
 @OptIn(ExperimentalFoundationApi::class)
 @Composable fun FilesScreen(app: AppState, path: String) {
     val ctx = LocalContext.current; val scope = rememberCoroutineScope()
-    var d by remember(path) { mutableStateOf<JSONObject?>(null) }
+    var d by remember(path) { mutableStateOf(FilesSeen[path]) }        // what this folder looked like last time: no "Loading…" flash
     var err by remember(path) { mutableStateOf<String?>(null) }
     var tick by remember { mutableIntStateOf(0) }
     var picked by remember(path) { mutableStateOf(setOf<String>()) }
@@ -73,7 +75,7 @@ private fun whenOf(t: Long): String { val d = java.util.Date(t * 1000); val toda
     var busy by remember { mutableStateOf<Pair<String, Float>?>(null) }
     var showHidden by remember { mutableStateOf(false) }
     var pendingDl by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(path, tick) { runCatching { d = app.api.get("/api/v1/files?path=${enc(path)}"); err = null }.onFailure { err = it.message } }
+    LaunchedEffect(path, tick) { runCatching { d = app.api.get("/api/v1/files?path=${enc(path)}").also { FilesSeen[path] = it; FilesSeen[it.optString("path")] = it }; err = null }.onFailure { err = it.message } }
     fun reload() { picked = emptySet(); tick++ }
     fun op(body: JSONObject, ok: String? = null) = app.act { app.api.post("/api/v1/files", body); ok?.let { app.toast(it) }; reload() }
 
@@ -143,7 +145,10 @@ private fun whenOf(t: Long): String { val d = java.util.Date(t * 1000); val toda
         }
         androidx.activity.compose.BackHandler(enabled = picked.isNotEmpty()) { picked = emptySet() }
         val items = dd.optJSONArray("items").objs().filter { showHidden || !it.optBoolean("hidden") }
-        Group {
+        // came from another folder: only the list slides in (the way you went), the rest of the page stays
+        val slide = remember(path) { androidx.compose.animation.core.Animatable(if (reduceMotion()) 0f else FilesHop.dir.toFloat()) }
+        LaunchedEffect(path) { FilesHop.dir = 0; slide.animateTo(0f, androidx.compose.animation.core.spring(dampingRatio = 0.85f, stiffness = 500f)) }
+        Group(Modifier.graphicsLayer { translationX = slide.value * 90.dp.toPx(); alpha = 1f - 0.8f * kotlin.math.abs(slide.value) }) {
             if (dd.has("parent") && !dd.isNull("parent")) { Row1("Up one folder", dd.optString("parent"), false, Icons.AutoMirrored.Rounded.ArrowBack, N.sub, onClick = { app.go(Route.Files(dd.optString("parent"))) }); if (items.isNotEmpty()) RowDivider() }
             if (items.isEmpty()) Text(if (dd.optJSONArray("items")?.length() ?: 0 > 0) "Only hidden files here" else "This folder is empty", color = N.sub, modifier = Modifier.padding(22.dp))
             items.forEachIndexed { i, e ->

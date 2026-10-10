@@ -352,13 +352,14 @@ class MainActivity : ComponentActivity() {
                                 translationX += dirX * size.width * 0.35f * x       // released: it carries on out…
                                 alpha = 1f - x                                      // …and fades away
                             } },
-                        transitionSpec = { navTransition(app.navDir, reduceMotion()) }, label = "nav") { r ->
+                        transitionSpec = { hop(initialState, targetState, app.navDir) ?: navTransition(app.navDir, reduceMotion()) }, label = "nav") { r ->
                         // each page is opaque, so slides don't show through; after a finished back gesture the
                         // page that left is hidden at once (it already animated away)
                         GlowBackground(Modifier.graphicsLayer { alpha = if (app.navDir == 2 && r != app.top) 0f else 1f }) { Screen(app, r) }
                     }
                     }
                     StatusBarScrim(Modifier.align(Alignment.TopCenter))
+                    BottomScrim(Modifier.align(Alignment.BottomCenter))
                     val tabs = navTabs(app)
                     val tabIndex = tabs.indexOfFirst { it.route == app.top }
                     val openApp = (app.top as? Route.AppFrame)?.id
@@ -376,6 +377,13 @@ class MainActivity : ComponentActivity() {
 }
 
 /** Forward: the new page slides in from the right over a slight parallax; back: the reverse. */
+/** Folder to folder in Files: the page stays put (header, path, buttons) and only the list slides (FilesScreen does it). */
+object FilesHop { var dir by mutableIntStateOf(0) }
+fun hop(from: Route, to: Route, dir: Int): androidx.compose.animation.ContentTransform? {
+    if (from !is Route.Files || to !is Route.Files || dir == 2) return null
+    FilesHop.dir = if (dir == 0) 1 else dir
+    return androidx.compose.animation.EnterTransition.None togetherWith androidx.compose.animation.ExitTransition.None
+}
 fun navTransition(dir: Int, reduce: Boolean): androidx.compose.animation.ContentTransform {
     if (dir == 2) return androidx.compose.animation.EnterTransition.None togetherWith androidx.compose.animation.ExitTransition.None
     if (reduce || dir == 0) return fadeIn(androidx.compose.animation.core.tween(160)) togetherWith fadeOut(androidx.compose.animation.core.tween(120))
@@ -434,13 +442,14 @@ private fun Modifier.paneTouch(app: AppState, left: Boolean) = pointerInput(left
                                     shape = androidx.compose.foundation.shape.RoundedCornerShape(36.dp * e); clip = true
                                     alpha = 1f - x
                                 } },
-                            transitionSpec = { navTransition(app.navDir, reduceMotion()) }, label = "wide") { r ->
+                            transitionSpec = { hop(initialState, targetState, app.navDir) ?: navTransition(app.navDir, reduceMotion()) }, label = "wide") { r ->
                             Box(Modifier.fillMaxSize().graphicsLayer { alpha = if (app.navDir == 2 && r != app.top) 0f else 1f }) { Screen(app, r) }
                         }
                     }
                 }
             }
             StatusBarScrim(Modifier.align(Alignment.TopCenter))
+            BottomScrim(Modifier.align(Alignment.BottomCenter))
         }
     } }
 }

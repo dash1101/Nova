@@ -90,7 +90,15 @@ fun localTime(utc: String): String = runCatching {
             app.act { job = "Removing…"; try { app.stepUp("Remove $name", "POST", "/api/v1/containers/$name/remove-custom"); app.toast("Removing $name…"); app.back() } finally { job = null } } }))
     suspend fun load() { runCatching { c = app.api.get("/api/v1/containers/$name") } }
     val state = c?.optString("state") ?: ""
-    val running = state == "running"
+    val running = state == "running" || state == "restarting"          // a crash-looping container can always be stopped
+    var diag by remember { mutableStateOf<JSONObject?>(null) }
+    var fixAsk by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(state, c?.optString("started")) { diag = if (state.isNotEmpty() && state != "running") runCatching { app.api.get("/api/v1/containers/$name/diagnose") }.getOrNull() else null }
+    fun fix(k: String) = app.act {
+        job = mapOf("kill" to "Stopping…", "rollback" to "Going back…", "recreate" to "Recreating…")[k]
+        try { val r = app.stepUp(mapOf("kill" to "Stop $name", "rollback" to "Put $name on its previous version", "recreate" to "Recreate $name")[k]!!, "POST", "/api/v1/containers/$name/fix/$k")
+              app.toast(r.optString("note").ifEmpty { "Done" }) } finally { job = null; load() }
+    }
 
     fun action(a: String) = app.act {
         job = "${a.replaceFirstChar { it.uppercase() }}ing…"
@@ -125,6 +133,37 @@ fun localTime(utc: String): String = runCatching {
             PillItem(Icons.Rounded.Terminal, "Shell") { if (running) app.go(Route.Shell(name)) else app.toast("Start it first") },
         ))
         Spacer(Modifier.height(10.dp))
+        val dg = diag
+        val trouble = dg != null && (state == "restarting" || dg.optInt("restart_count") > 2 || (state == "exited" && dg.optInt("exit_code") != 0))
+        if (trouble && dg != null) {
+            SectionLabel("Troubleshoot")
+            Group {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 14.dp)) {
+                    Icon(Icons.Rounded.Warning, null, tint = N.amber, modifier = Modifier.padding(top = 2.dp).size(22.dp)); Spacer(Modifier.width(14.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(if (state == "restarting") "It keeps crashing — restarted ${dg.optInt("restart_count")} times" else "It stopped with an error (code ${dg.optInt("exit_code")})",
+                            color = N.text, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                        if (dg.optBoolean("oom")) Text("It ran out of memory.", color = N.sub, fontSize = 13.sp)
+                        dg.optString("last_error").takeIf { it.isNotEmpty() }?.let { Text(it, color = N.text, fontSize = 12.sp, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                            modifier = Modifier.padding(top = 6.dp).clip(RoundedCornerShape(10.dp)).background(N.amber.copy(alpha = 0.12f)).padding(10.dp)) }
+                    }
+                }
+                if (app.isAdmin) {
+                    RowDivider(); Row1("Stop it", "Stops the restart loop — it won't start again until you start it", false, Icons.Rounded.Stop, N.red, onClick = { fixAsk = "kill" })
+                    if (dg.optBoolean("can_rollback")) { RowDivider(); Row1("Go back to the previous version", "The image it had before its last update in Nova", true, Icons.Rounded.History, onClick = { fixAsk = "rollback" }) }
+                    if (dg.optBoolean("compose")) { RowDivider(); Row1("Update it again", "Download the newest image — a fixed version may be out", false, Icons.Rounded.SystemUpdate, onClick = {
+                        app.act { job = "Updating…"; val j = app.waitTask(app.api.post("/api/v1/containers/$name/update").optString("task")) { t -> job = "Updating… ${t.optDouble("pct", 0.0).toInt()}%" }
+                            job = null; app.toast(if (j.optString("state") == "done") "$name updated" else "Update failed: ${j.optString("error")}"); load() } })
+                        RowDivider(); Row1("Recreate it", "Rebuild it from its compose file (keeps its data)", false, Icons.Rounded.Autorenew, onClick = { fixAsk = "recreate" }) }
+                }
+                RowDivider(); Row1("Read its logs", "The last lines usually say what's wrong", true, Icons.AutoMirrored.Rounded.Article, onClick = { app.go(Route.Logs(name)) })
+            }
+            Text("Apps sometimes change what they need between versions; their release notes say what to add.", color = N.sub, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 30.dp, vertical = 4.dp))
+        }
+        fixAsk?.let { k -> OneDialog({ fixAsk = null }, mapOf("kill" to "Stop it?", "rollback" to "Go back to the previous version?", "recreate" to "Recreate it?")[k],
+            mapOf("kill" to "$name stops, and its automatic restarts are off until you start it again.", "rollback" to "$name restarts on the image it had before its last update. Its data stays.",
+                "recreate" to "$name is rebuilt from its compose file. Its data stays.")[k],
+            listOf(DialogButton("Cancel") { fixAsk = null }, DialogButton(mapOf("kill" to "Stop", "rollback" to "Go back", "recreate" to "Recreate")[k]!!, if (k == "kill") N.red else N.blue) { fixAsk = null; fix(k) })) }
         c?.let { c ->
             SectionLabel("Live")
             Group {

@@ -22,15 +22,16 @@ STORAGE_KINDS = {"format", "combine", "raid", "pool-remove", "pool-add", "fstab-
 DIAG_KINDS = {"net-internet", "disk-speed", "cpu-stress", "mem-test"}
 BACKUP_KINDS = {"backup-run", "restore", "tools"}
 UPDATE_KINDS = {"updates-check", "apt-upgrade", "containers-update"}
+LABS_KINDS = {"images-prune"}
 INSTALL_KINDS = {"run-command", "store-install", "store-uninstall", "custom-install", "custom-uninstall", "program-install", "program-remove"}
-KINDS = STORAGE_KINDS | DIAG_KINDS | BACKUP_KINDS | UPDATE_KINDS | INSTALL_KINDS
+KINDS = STORAGE_KINDS | DIAG_KINDS | BACKUP_KINDS | UPDATE_KINDS | INSTALL_KINDS | LABS_KINDS
 TITLES = {"format": "Set up a drive", "combine": "Combine drives", "raid": "Create a RAID array", "pool-remove": "Remove a pool",
           "pool-add": "Add a drive", "fstab-nofail": "Boot without missing drives", "fstab-add": "Keep a drive mounted",
           "net-internet": "Internet speed test", "disk-speed": "Drive speed test", "cpu-stress": "CPU stress test", "mem-test": "Memory test",
           "backup-run": "Backup", "restore": "Restore from backup", "tools": "Install tools",
-          "updates-check": "Check for updates", "apt-upgrade": "Update packages", "containers-update": "Update containers"}
+          "updates-check": "Check for updates", "apt-upgrade": "Update packages", "containers-update": "Update containers", "images-prune": "Clean up old images"}
 GROUP = {**{k: "storage" for k in STORAGE_KINDS}, **{k: "diag" for k in DIAG_KINDS}, "restore": "storage", "tools": "storage",
-         **{k: "updates" for k in UPDATE_KINDS}, "program-install": "updates", "program-remove": "updates"}     # one apt at a time
+         **{k: "updates" for k in UPDATE_KINDS | LABS_KINDS}, "program-install": "updates", "program-remove": "updates"}     # one apt at a time
 
 
 def path(tid, ext="json"): return f"{DIR}/{tid}.{ext}"
@@ -154,6 +155,9 @@ def execute(tid):
         elif kind in INSTALL_KINDS:
             import installs
             res = installs.OPS[kind](spec, log, progress)
+        elif kind == "images-prune":
+            import labs
+            res = labs.prune(spec, log, progress)
         elif kind == "tools":
             import storage
             storage.ensure_tools(spec["tools"], log); res = {"installed": spec["tools"]}

@@ -32,7 +32,7 @@ const ROUTES = {
   devices: V.devices, settings: V.settings, server: V.serverSettings, appearance: V.appearance, "edit-home": V.editHome,
   "edit-shortcuts": V.editShortcuts, "edit-tabs": V.editTabs, about: V.about, guide: V.guide, terminal: V.terminal,
   dashboard: V.dashboard, "edit-dash": V.editDash, archive: V.archive,
-  apps: ST.apps, updates: ST.updates, search: SR.search, start: SR.start, "start-edit": SR.startEdit, favorites: SR.favorites, servers: SV.servers, "container-new": ST.containerNew, term: V.hostTerminal, files: FM.files, labs: ST.labs, cloudflare: ST.cloudflare, setup: ST.setup, pool: ST.pool, task: ST.task, backups: ST.backups, backup: ST.backup, "backup-edit": ST.backupEdit, restore: ST.restore, diag: ST.diag,
+  apps: ST.apps, updates: ST.updates, search: SR.search, start: SR.start, "start-edit": SR.startEdit, favorites: SR.favorites, servers: SV.servers, "container-new": ST.containerNew, term: V.hostTerminal, files: FM.files, labs: ST.labs, "labs-images": ST.labsImages, wol: ST.wol, cloudflare: ST.cloudflare, setup: ST.setup, pool: ST.pool, task: ST.task, backups: ST.backups, backup: ST.backup, "backup-edit": ST.backupEdit, restore: ST.restore, diag: ST.diag,
 };
 // Wide screens and phones in landscape: the bottom bar's pill stands on its end down the left edge.
 const SIDE = matchMedia("(min-width: 900px), (orientation: landscape) and (max-height: 540px)");
@@ -93,7 +93,7 @@ addEventListener("click", async e => {
 function ensureShell() {
   if ($("#shell")) return;
   $("#app").innerHTML = `<div class="shell" id="shell"><main class="main" id="main"></main></div>
-    <div class="scrim"></div><div class="topbar" id="topbar"></div><nav class="nav frost" id="nav" hidden></nav>`;
+    <div class="scrim"></div><div class="scrim-bottom"></div><div class="topbar" id="topbar"></div><nav class="nav frost" id="nav" hidden></nav>`;
   addEventListener("scroll", fade, { passive: true });
 }
 function fade() { const f = Math.max(0, Math.min(1, scrollY / 36)); $$("#topbar .bgc").forEach(b => b.style.setProperty("--fade", f)); }
@@ -122,6 +122,7 @@ function drawNav(route) {
 }
 
 // ── render a route ───────────────────────────────────────────────────────────────
+let lastRendered = null;
 function render(dir = 0) {
   const my = ++seq, [r, ...args] = parse(), view = ROUTES[r] || V.home;
   current?.leave(); closeSheet();
@@ -152,7 +153,7 @@ function render(dir = 0) {
       const header = o.noHeader ? "" : o.root ? `<div class="ph root"><h1>${esc(o.title || "")}</h1></div>` : `<div class="ph"><h1>${esc(o.title || "")}</h1></div>`;
       const wide = o.narrow === false || r === "home";
       const keepY = scrollY;
-      main.innerHTML = `<div class="page${wide ? "" : " narrow"}${V.navTabs().some(t => t.route === r) ? " tabroot" : ""}${first && dir !== 0 && !document.startViewTransition ? ` enter-${dir}` : first ? " enter-0" : ""}"><div class="col">${header}${html}</div></div>`;
+      main.innerHTML = `<div class="page${wide ? "" : " narrow"}${V.navTabs().some(t => t.route === r) ? " tabroot" : ""}${window.__filesHop ? "" : first && dir !== 0 && !document.startViewTransition ? ` enter-${dir}` : first ? " enter-0" : ""}"><div class="col">${header}${html}</div></div>`;
       main.dataset.seq = my; ctx.root = main;
       $("#topbar").innerHTML = (o.root || o.noHeader ? "" : `<button class="circle press" data-act="back" aria-label="Back"><span class="bgc frost"></span>${I("back")}</button>`)
         + `<span class="sp"></span>` + (o.actions || []).map(a => `<button class="circle press" data-act="${esc(a.act)}" aria-label="${esc(a.label)}"><span class="bgc frost"></span>${I(a.icon)}</button>`).join("");
@@ -171,7 +172,9 @@ function render(dir = 0) {
   current = { leave: () => { timers.forEach(t => t()); leaveFns.forEach(f => { try { f(); } catch {} }); }, ctx, get handlers() { return handlers; } };
   if (r !== "dashboard" && !$("#shell")) ensureShell();
   const run = () => { Promise.resolve().then(() => view(ctx)).catch(e => { if (e.code === 401) unauthorized(); else if (!e.offline) toast(e.message); }); return firstShow; };
-  const vt = document.startViewTransition && !document.documentElement.classList.contains("reduce") && dir !== 0 && $("#shell") && r !== "dashboard";
+  // folder to folder in Files: the page stays, only the list slides (files.js)
+  const hop = r === "files" && lastRendered === "files" && dir !== 0; window.__filesHop = hop ? dir : 0; lastRendered = r;
+  const vt = !hop && document.startViewTransition && !document.documentElement.classList.contains("reduce") && dir !== 0 && $("#shell") && r !== "dashboard";
   if (vt) {
     document.documentElement.classList.toggle("vt-fwd", dir === 1); document.documentElement.classList.toggle("vt-back", dir === -1);
     const t = document.startViewTransition(() => Promise.race([run(), sleep(400)]));

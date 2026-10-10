@@ -171,6 +171,12 @@ fun levelColor(level: String, t: NovaColors) = when (level) {
 }
 
 /** Fades scrolled content out under the status bar. */
+/** The same soft fade at the bottom edge, so content slides out of sight under the navigation pill. */
+@Composable fun BottomScrim(modifier: Modifier = Modifier) {
+    Box(modifier.fillMaxWidth().windowInsetsBottomHeight(WindowInsets.navigationBars.add(WindowInsets(bottom = 56.dp)))
+        .background(Brush.verticalGradient(listOf(Color.Transparent, N.bg.copy(alpha = 0.85f), N.bg))))
+}
+
 @Composable fun StatusBarScrim(modifier: Modifier = Modifier) {
     Box(modifier.fillMaxWidth().windowInsetsTopHeight(WindowInsets.statusBars.add(WindowInsets(top = 14.dp)))
         .background(Brush.verticalGradient(listOf(N.bg, N.bg.copy(alpha = 0.85f), Color.Transparent))))

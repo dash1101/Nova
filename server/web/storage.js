@@ -712,10 +712,75 @@ export async function labs(ctx) {
     const l = S.cache["/api/v1/labs"];
     ctx.show(`${note("Experimental features. They work, but haven't had as much use as the rest of Nova — so they're off until you turn them on.")}
       ${l ? group(Object.entries(l.about).map(([k, a]) => switchRow(a.name, a.about, !!l.labs[k], isAdmin() ? "lab:" + k : "", { blue: !!l.labs[k] })).join("")) : note("Loading…")}
-      ${l?.labs.cloudflare_sync ? group(row("Cloudflare", { sub: "API token, and the addresses Nova has set up", blue: true, icon: "cloud", click: "go:cloudflare" })) : ""}`, { title: "Labs" });
+      ${l && Object.values(l.labs).some(Boolean) ? sec("Set up") : ""}
+      ${l ? group([
+        l.labs.cloudflare_sync ? row("Cloudflare", { sub: "API token, and the addresses Nova has set up", blue: true, icon: "cloud", click: "go:cloudflare" }) : "",
+        l.labs.auto_updates ? row("Weekly updates", { sub: sched ? `${DAYS[sched.day]}s at ${hh(sched.hour)}${sched.last ? " · last ran " + new Date(sched.last * 1000).toLocaleDateString() : ""}` : "…", blue: true, icon: "update", click: isAdmin() ? "sched" : "" }) : "",
+        l.labs.image_cleanup ? row("Old images", { sub: "See what's taking space, and clean it up", blue: true, icon: "disk", click: "go:labs-images" }) : "",
+        l.labs.wake_on_lan ? row("Wake-on-LAN", { sub: "Turn on other computers on your network", blue: true, icon: "power", click: "go:wol" }) : "",
+      ].join("")) : ""}`, { title: "Labs" });
   };
-  ctx.handlers({ lab: async k => { try { const l = S.cache["/api/v1/labs"]; S.cache["/api/v1/labs"] = await post("/api/v1/labs", { [k]: !l.labs[k] }); } catch (e) { toast(e.message); } draw(); } });
-  draw(); await get("/api/v1/labs").catch(e => toast(e.message)); if (ctx.alive()) draw();
+  ctx.handlers({
+    lab: async k => { try { const l = S.cache["/api/v1/labs"]; S.cache["/api/v1/labs"] = await post("/api/v1/labs", { [k]: !l.labs[k] }); } catch (e) { toast(e.message); } draw(); if (k === "auto_updates") loadSched(); },
+    sched: async () => {
+      let day = sched?.day ?? 6, hour = sched?.hour ?? 4;
+      const p = dialog("When should it update?", "Pick a quiet time — each container is offline for a few seconds while it restarts.", [{ label: "Cancel", value: null }, { label: "Save", color: "var(--blue)", value: "save" }],
+        `<div class="pad" style="display:flex;gap:10px"><select class="field" id="lsd">${DAYS.map((d, i) => `<option value="${i}"${i === day ? " selected" : ""}>${d}</option>`).join("")}</select>
+         <select class="field" id="lsh">${[...Array(24).keys()].map(h => `<option value="${h}"${h === hour ? " selected" : ""}>${hh(h)}</option>`).join("")}</select></div>`);
+      $("#lsd").onchange = e => day = +e.target.value; $("#lsh").onchange = e => hour = +e.target.value;
+      if ((await p) !== "save") return;
+      try { sched = await post("/api/v1/labs/schedule", { day, hour }); toast("Saved"); } catch (e) { toast(e.message); } draw();
+    },
+  });
+  let sched = null;
+  const loadSched = async () => { if (!S.cache["/api/v1/labs"]?.labs.auto_updates) return; try { sched = await get("/api/v1/labs/schedule"); } catch {} if (ctx.alive()) draw(); };
+  draw(); await get("/api/v1/labs").catch(e => toast(e.message)); if (ctx.alive()) draw(); loadSched();
+}
+const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+const hh = h => new Date(2000, 0, 1, h).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+
+// Labs → Old images: what nothing uses anymore, and removing it
+export async function labsImages(ctx) {
+  let d = null, err = null;
+  const load = async () => { try { d = await get("/api/v1/labs/images"); err = null; } catch (e) { err = e.message; } if (ctx.alive()) draw(); };
+  const draw = () => {
+    if (err) return ctx.show(note(err), { title: "Old images" });
+    if (!d) return ctx.show(note("Looking through your images…"), { title: "Old images" });
+    ctx.show(`${note(d.images.length ? `${d.images.length} image${d.images.length === 1 ? "" : "s"} that no container uses — mostly old versions left behind by updates. Removing them is safe: anything you install again is simply downloaded again.` : "Nothing to clean up — every image is in use.")}
+      ${d.images.length ? group(d.images.map(e => row(e.tags[0] || (e.what ? `Old version of ${e.what}` : "Untagged image"), { sub: `${e.size}${e.created ? " · " + e.created : ""}${e.tags.length > 1 ? ` · +${e.tags.length - 1} more name${e.tags.length > 2 ? "s" : ""}` : ""}`, icon: "disk" })).join("")) : ""}
+      ${d.kept ? note(`${d.kept} earlier version${d.kept === 1 ? " is" : "s are"} kept so you can roll back (Containers → Troubleshoot). Those stay.`) : ""}
+      ${d.images.length && isAdmin() ? group(row("Clean up", { sub: `Removes these ${d.images.length}. You have ${bytes(d.free)} free now.`, icon: "del", tint: "var(--red)", click: "clean" })) : ""}`, { title: "Old images" });
+  };
+  ctx.handlers({ clean: async () => {
+    if (!(await confirm(`Remove ${d.images.length} unused image${d.images.length === 1 ? "" : "s"}?`, "Images a container uses, and the versions kept for rolling back, stay.", "Clean up"))) return;
+    try { const r = await post("/api/v1/labs/images/clean", {}); if (r?.task) ctx.go("task/" + r.task); } catch (e) { toast(e.message); }
+  } });
+  draw(); await load();
+}
+
+// Labs → Wake-on-LAN
+export async function wol(ctx) {
+  let d = null, err = null;
+  const load = async () => { try { d = await get("/api/v1/labs/wol"); err = null; } catch (e) { err = e.message; } if (ctx.alive()) draw(); };
+  const draw = () => {
+    if (err) return ctx.show(note(err), { title: "Wake-on-LAN" });
+    ctx.show(`${note("Turn on a computer that's asleep or off, from anywhere: the server sends it a wake-up packet on your network. Wake-on-LAN has to be turned on in that computer's BIOS (and its network settings) first.")}
+      ${d ? group((d.devices.map(e => row(e.name, { sub: e.mac, icon: "power", click: "wake:" + e.id,
+          end: isAdmin() ? `<button class="rmbtn press" data-act="rm:${esc(e.id)}" aria-label="Remove" title="Remove">${I("del")}</button>` : "" })).join("")) || row("No computers yet", { sub: "Add one with its MAC address" }))
+        + (isAdmin() ? group(row("Add a computer", { icon: "add", blue: true, click: "add" })) : "") : note("Loading…")}`, { title: "Wake-on-LAN" });
+  };
+  ctx.handlers({
+    wake: async id => { try { const r = await post(`/api/v1/labs/wol/${id}/wake`, {}); toast(r.note || "Sent"); } catch (e) { toast(e.message); } },
+    rm: async id => { const e = d.devices.find(x => x.id === id); if (!(await confirm(`Remove ${e?.name}?`, "It only leaves this list.", "Remove"))) return;
+      try { d = await post(`/api/v1/labs/wol/${id}/remove`, {}); } catch (e) { toast(e.message); } draw(); },
+    add: async () => { let name = "", mac = "";
+      const p = dialog("Add a computer", "Its MAC address is in its network settings (on Windows: ipconfig /all, “Physical Address”; on Linux: ip link).", [{ label: "Cancel", value: null }, { label: "Add", color: "var(--blue)", value: "add" }],
+        `<div class="pad" style="display:grid;gap:10px"><input class="field" id="wn" placeholder="Name, like Gaming PC" maxlength="40"><input class="field" id="wm" placeholder="MAC, like 3c:7c:3f:12:34:56" autocomplete="off" spellcheck="false"></div>`);
+      $("#wn").oninput = e => name = e.target.value; $("#wm").oninput = e => mac = e.target.value; $("#wn").focus();
+      if ((await p) !== "add") return;
+      try { d = await post("/api/v1/labs/wol", { name, mac }); } catch (e) { toast(e.message); } draw(); },
+  });
+  draw(); await load();
 }
 
 export async function cloudflare(ctx) {
