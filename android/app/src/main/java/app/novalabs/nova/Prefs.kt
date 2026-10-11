@@ -44,6 +44,8 @@ object AppPrefs {
     var startCustom by mutableStateOf(""); private set                     // start page: your own search engine (https://…%s)
     var startSuggest by mutableStateOf(true); private set                  // start page: suggestions while typing
     var dismissedUpdate by mutableStateOf(""); private set                 // the update note you closed (shown again for a newer one)
+    var shakeSense by mutableStateOf("normal"); private set               // how hard a shake has to be: low | normal | high
+    var shakeLast by mutableStateOf("report"); private set                // what to go back to when shake is switched on again
     var shakeAction by mutableStateOf("report"); private set              // what a shake does: report | none | search | quick | lights | home | inbox
 
     fun init(ctx: Context) {
@@ -62,6 +64,7 @@ object AppPrefs {
         homeChips = sp.getString("home_chips", null)?.let { s -> s.split(",").filter { it.isNotBlank() } } ?: DEFAULT_SHORTCUTS
         startCustom = sp.getString("start_custom", "")!!; startSuggest = sp.getBoolean("start_suggest", true)
         dismissedUpdate = sp.getString("dismissed_update", "")!!; shakeAction = sp.getString("shake_action", "report")!!
+        shakeSense = sp.getString("shake_sense", "normal")!!; shakeLast = sp.getString("shake_last", "report")!!
     }
     fun set(key: String, v: Any) {
         when (key) {
@@ -78,6 +81,7 @@ object AppPrefs {
             "home_chips" -> homeChips = (v as String).split(",").filter { it.isNotBlank() }
             "start_custom" -> startCustom = v as String; "start_suggest" -> startSuggest = v as Boolean
             "dismissed_update" -> dismissedUpdate = v as String; "shake_action" -> shakeAction = v as String
+            "shake_sense" -> shakeSense = v as String; "shake_last" -> shakeLast = v as String
         }
         sp.edit().apply { if (v is Boolean) putBoolean(key, v) else putString(key, v.toString()) }.apply()
     }
@@ -153,10 +157,7 @@ object AppLock {
         }
         AppIconPicker(app)
         SectionLabel("Shake")
-        Group { var pick by remember { mutableStateOf(false) }
-            Row1("Shake to…", SHAKE_ACTIONS.firstOrNull { it.first == AppPrefs.shakeAction }?.second ?: "Report a problem", true, Icons.Rounded.Vibration, onClick = { pick = true })
-            if (pick) OneDialog({ pick = false }, "When you shake your ${DeviceForm.noun}") {
-                SHAKE_ACTIONS.forEach { (k, l) -> DialogChoice(l, null, AppPrefs.shakeAction == k) { AppPrefs.set("shake_action", k); pick = false } } } }
+        ShakeSettings()
         SectionLabel("Home")
         Group {
             Row1("Home layout", AppPrefs.homeOrder.filter { sectionOn(it) }.joinToString(" · ") { sectionName(it) }.ifEmpty { "Just the header" }, true,

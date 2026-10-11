@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.5.19-alpha (app and server)
+- **Web apps render properly inside Nova:** pages got a zero-height viewport, so full-height backgrounds stopped short (Immich), lazy photo grids drew nothing and fixed wallpapers (Homepage) went missing. They now fill the frame like in a browser.
+- **Uploads and downloads in web apps:** an app's upload button opens your phone's file picker (pick one or several), and downloads go to Downloads with a notification. (Android 9: downloads aren't supported yet.)
+- **The dock's glass bead follows you into apps:** it glides from a tab to the app you open (even in a scrolled dock) and back, instead of jumping; on an app it becomes a circle.
+- **More apps this way:** small arrows on the dock's edges when it can scroll, and a longer fade.
+- **Tap the page you're on** in the navigation pill to glide back to the top.
+- **Shake settings where you need them:** turn shaking off, pick what it does, and choose how hard you have to shake (Hard · Normal · Light), in Appearance and on the Report screen — at the top when a shake opened it, in case it was an accident.
+- **Cloudflare token steps, corrected:** step-by-step instructions, now including **Zone · Zone · Read** (needed to find your domain) and the newer name of the Tunnel permission. Tokens made under *Manage Account → API Tokens* work too.
+
 ## 0.5.18-alpha (app)
 - **The dock slides:** when more apps are open or pinned than fit in the navigation pill, they scroll sideways, with the edges fading; the one you're in scrolls into view.
 - **Round, centered highlight** on the app you're in (and a round ring in the Material look).

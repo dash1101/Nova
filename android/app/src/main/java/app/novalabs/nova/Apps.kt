@@ -295,6 +295,9 @@ fun openApp(app: AppState, a: JSONObject) {
 
 /** One open app: a rounded frame below a bar with its name, the server's status and the controls. */
 @SuppressLint("SetJavaScriptEnabled")
+/** The file picker a web app's upload button opens, and where its answer goes. */
+object WebPick { var launch: ((android.content.Intent) -> Unit)? = null; var cb: android.webkit.ValueCallback<Array<android.net.Uri>>? = null }
+
 @Composable fun AppFrameScreen(app: AppState, id: String) {
     val s = AppSessions.get(id)
     if (s == null) { LaunchedEffect(Unit) { app.back() }; return }
@@ -305,6 +308,15 @@ fun openApp(app: AppState, a: JSONObject) {
     var failed by remember { mutableStateOf<String?>(null) }
     val ctx = androidx.compose.ui.platform.LocalContext.current
     val status = app.overview?.optJSONObject("status")?.optString("level") ?: "ok"
+    // file inputs in the page (uploading photos to Immich, say) open the phone's picker
+    // (a kept WebView outlives this screen, so its client reaches the current picker through WebPick)
+    val picker = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()) { r ->
+        WebPick.cb?.onReceiveValue(WebChromeClient.FileChooserParams.parseResult(r.resultCode, r.data) ?: run {
+            // several files picked: they come back as clip data
+            r.data?.clipData?.let { c -> Array(c.itemCount) { c.getItemAt(it).uri } } })
+        WebPick.cb = null
+    }
+    SideEffect { WebPick.launch = { picker.launch(it) } }
     Column(Modifier.fillMaxSize().statusBarsPadding().padding(bottom = if (LocalWide.current) 12.dp else 96.dp)) {
         Row(Modifier.fillMaxWidth().padding(start = 10.dp, end = 10.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             CircleButton(Icons.AutoMirrored.Rounded.ArrowBack, "Back", 1f, { if (s.web?.canGoBack() == true) s.web?.goBack() else app.back() })
@@ -326,6 +338,9 @@ fun openApp(app: AppState, a: JSONObject) {
             if (url == null) Text("This app isn't reachable from here.", color = N.sub, modifier = Modifier.align(Alignment.Center))
             else AndroidView(factory = {
                 s.web?.also { (it.parent as? android.view.ViewGroup)?.removeView(it) } ?: WebView(ctx).apply {
+                    // fill the frame (AndroidView's default wrap_content gives pages a 0-high viewport: 100% heights
+                    // collapse, so backgrounds stop short, fixed wallpapers vanish and lazy photo grids draw nothing)
+                    layoutParams = android.view.ViewGroup.LayoutParams(android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.MATCH_PARENT)
                     settings.javaScriptEnabled = true; settings.domStorageEnabled = true; settings.loadWithOverviewMode = true; settings.useWideViewPort = true
                     settings.mediaPlaybackRequiresUserGesture = true; settings.setSupportZoom(true); settings.builtInZoomControls = true; settings.displayZoomControls = false
                     settings.mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
@@ -333,6 +348,24 @@ fun openApp(app: AppState, a: JSONObject) {
                     webChromeClient = object : WebChromeClient() {
                         override fun onProgressChanged(v: WebView, p: Int) { progress = p }
                         override fun onReceivedTitle(v: WebView, t: String?) { if (!t.isNullOrBlank() && !t.startsWith("http")) s.title = t }
+                        override fun onShowFileChooser(v: WebView, cb: android.webkit.ValueCallback<Array<android.net.Uri>>, p: FileChooserParams): Boolean {
+                            WebPick.cb?.onReceiveValue(null); WebPick.cb = cb
+                            val i = p.createIntent().apply { if (p.mode == FileChooserParams.MODE_OPEN_MULTIPLE) putExtra(android.content.Intent.EXTRA_ALLOW_MULTIPLE, true) }
+                            return runCatching { WebPick.launch!!(i) }.isSuccess.also { if (!it) { WebPick.cb = null; cb.onReceiveValue(null) } }
+                        }
+                    }
+                    // downloads (a photo, an export) go to the phone's Downloads, with the page's login cookies
+                    setDownloadListener { u, ua, cd, mime, _ ->
+                        if (!u.startsWith("http")) { app.toast("This app saves files in a way Nova can't follow yet — open it in your browser for that"); return@setDownloadListener }
+                        runCatching {
+                            val name = android.webkit.URLUtil.guessFileName(u, cd, mime)
+                            val req = android.app.DownloadManager.Request(android.net.Uri.parse(u)).setMimeType(mime)
+                                .addRequestHeader("Cookie", CookieManager.getInstance().getCookie(u) ?: "").addRequestHeader("User-Agent", ua)
+                                .setNotificationVisibility(android.app.DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+                                .setDestinationInExternalPublicDir(android.os.Environment.DIRECTORY_DOWNLOADS, name)
+                            (ctx.getSystemService(android.content.Context.DOWNLOAD_SERVICE) as android.app.DownloadManager).enqueue(req)
+                            app.toast("Downloading $name")
+                        }.onFailure { app.toast("Couldn't download that") }
                     }
                     webViewClient = object : WebViewClient() {
                         override fun doUpdateVisitedHistory(v: WebView, u: String?, r: Boolean) { canBack = v.canGoBack() }

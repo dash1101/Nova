@@ -819,7 +819,14 @@ export async function cloudflare(ctx) {
     ctx.show(`${st.error ? `<div class="rcheck open">${I("warn")}<span>${esc(st.error)}</span></div>` : st.token ? `<div class="rcheck protected">${I("shield")}<span>Connected — new app addresses are protected by “${esc(st.access_app || "?")}”, the same login as Nova.</span></div>` : ""}
       ${sec("API token")}${group(row(st.token ? "Change the API token" : "Add an API token", { sub: "Kept on the server, readable only by root. Saving it asks for your fingerprint.", blue: true, icon: "key", click: "token" })
         + (st.token ? row("Remove the token", { icon: "del", tint: "var(--red)", click: "untoken" }) : ""))}
-      <p class="note">Create one at dash.cloudflare.com → My Profile → API Tokens → Create Token → Custom, with: <b>Account · Cloudflare Tunnel · Edit</b>, <b>Account · Access: Apps and Policies · Edit</b>, <b>Zone · DNS · Edit</b> (for your domain).</p>
+      ${sec("Making the token")}<ol class="note cfsteps">
+        <li>Go to <b>dash.cloudflare.com</b> → your profile icon (top right) → <b>My Profile</b> → <b>API Tokens</b>, and select <b>Create Token</b>.</li>
+        <li>Next to “Create Custom Token”, select <b>Get started</b>. Name it something like Nova.</li>
+        <li>Under <b>Permissions</b>, add four rows: <b>Account · Cloudflare Tunnel · Edit</b> (newer dashboards may call it “Cloudflare One Connector: cloudflared”), <b>Account · Access: Apps and Policies · Edit</b>, <b>Zone · DNS · Edit</b> and <b>Zone · Zone · Read</b>.</li>
+        <li><b>Account Resources</b>: Include → your account. <b>Zone Resources</b>: Include → Specific zone → your domain.</li>
+        <li>Select <b>Continue to summary</b> → <b>Create Token</b>, copy it (Cloudflare shows it only once) and paste it with <b>Add an API token</b>.</li>
+      </ol>
+      <p class="note">Your tunnel has to be one you run with a token (set up in the Cloudflare dashboard).</p>
       ${st.token && !st.error ? sec("On your tunnel") + group(((st.hostnames || []).map(h => row(h, { sub: h === nova ? "Nova itself" : (st.protected || []).includes(h) ? "Behind your Access login" : "Not behind Nova's Access app — check it in Cloudflare",
           icon: h === nova ? "dns" : "cloud", tint: (st.protected || []).includes(h) || h === nova ? "var(--green)" : "var(--amber)",
           end: h === nova ? "" : `<button class="rmbtn press" data-act="unpub:${esc(h)}" aria-label="Take it off" title="Take it off">${I("del")}</button>` })).join("")) || row("Nothing yet", { sub: "Apps → hold an app → From anywhere…" })) : ""}

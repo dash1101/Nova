@@ -537,6 +537,14 @@ private fun taskRoute(t: JSONObject): Route? {
     }
 }
 
+/** How to make the Cloudflare API token (checked against Cloudflare's docs: listing zones needs Zone · Zone · Read too). */
+val CF_STEPS = listOf(
+    "Go to dash.cloudflare.com → your profile icon (top right) → My Profile → API Tokens, and select Create Token.",
+    "Next to “Create Custom Token”, select Get started. Name it something like Nova.",
+    "Under Permissions, add four rows: Account · Cloudflare Tunnel · Edit (newer dashboards may call it “Cloudflare One Connector: cloudflared”), Account · Access: Apps and Policies · Edit, Zone · DNS · Edit, and Zone · Zone · Read.",
+    "Account Resources: Include → your account. Zone Resources: Include → Specific zone → your domain.",
+    "Select Continue to summary → Create Token, copy it (Cloudflare shows it only once) and paste it here with Add an API token.")
+
 /** Labs → Cloudflare: the API token Nova uses, and what's on your tunnel. Then: Apps → hold an app → Open it from anywhere → Set it up for me. */
 @Composable private fun LabsCloudflare(app: AppState) {
     var st by remember { mutableStateOf<JSONObject?>(null) }; var err by remember { mutableStateOf<String?>(null) }
@@ -558,13 +566,18 @@ private fun taskRoute(t: JSONObject): Route? {
             }
         }
     }
-    Text("Make the token at dash.cloudflare.com → My Profile → API Tokens → Create Token → Custom, with Account · Cloudflare Tunnel · Edit, Account · Access: Apps and Policies · Edit, and Zone · DNS · Edit. Then hold an app in Apps → Open it from anywhere → Set it up for me.",
+    SectionLabel("Making the token")
+    Group { Column(Modifier.padding(horizontal = 22.dp, vertical = 14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        CF_STEPS.forEachIndexed { i, step -> Row { Text("${i + 1}.", color = N.blue, fontSize = 14.sp, fontWeight = FontWeight.Bold, modifier = Modifier.width(22.dp))
+            Text(step, color = N.text, fontSize = 14.sp) } }
+    } }
+    Text("Your tunnel has to be one you run with a token (set up in the Cloudflare dashboard). Then: hold an app in Apps → Open it from anywhere → Set it up for me.",
         color = N.sub, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 30.dp, vertical = 6.dp))
     if (tokenAsk) { var t by remember { mutableStateOf("") }
         OneDialog({ tokenAsk = false }, "Cloudflare API token", "Paste the token you created.", listOf(DialogButton("Cancel") { tokenAsk = false },
             DialogButton("Save", N.blue, enabled = t.length >= 30) { tokenAsk = false
                 app.act("Saved") { app.stepUp("Save the Cloudflare API token", "POST", "/api/v1/cloudflare/token", JSONObject().put("token", t.trim())); round++ } })) {
-            OneTextField(t, { t = it.trim().take(100) }, "Token", Modifier.fillMaxWidth().padding(horizontal = 22.dp), mono = true) } }
+            OneTextField(t, { t = it.trim().take(200) }, "Token", Modifier.fillMaxWidth().padding(horizontal = 22.dp), mono = true) } }
 }
 
 private val DAYS = listOf("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")

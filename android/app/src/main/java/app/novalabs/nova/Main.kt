@@ -108,6 +108,8 @@ class AppState(val activity: Activity, val pairing: Pairing, val scope: Coroutin
     fun tab(r: Route) {
         // Only real tabs (in your navigation pill) reset the stack; anything else opens as a page with a back button
         if (r != Route.Home && r !is Route.AppFrame && Builtins.current(r) == null && navTabs(this).none { it.route == r }) { go(r); return }
+        // already there: tapping its pill button glides back to the top instead
+        if (stack.size == 1 && top == r) { scope.launch { scrollFor(r).animateScrollTo(0) }; return }
         navDir = 0; stack.clear(); scrolls.clear(); stack.add(r)
     }
     /** [instant]: the page underneath is already on screen (predictive back finished) — swap with no transition. */

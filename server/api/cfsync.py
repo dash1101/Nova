@@ -31,7 +31,7 @@ def token():
 
 def save_token(t):
     t = str(t).strip()
-    if t and not re.fullmatch(r"[A-Za-z0-9_-]{30,80}", t): raise ValueError("that doesn't look like a Cloudflare API token")
+    if t and not re.fullmatch(r"[A-Za-z0-9_-]{30,200}", t): raise ValueError("that doesn't look like a Cloudflare API token")
     fd = os.open(TOKEN_FILE + ".tmp", os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(fd, "w") as f: json.dump({"token": t}, f)
     os.replace(TOKEN_FILE + ".tmp", TOKEN_FILE)
@@ -89,7 +89,8 @@ def status():
     except ValueError as e: out["error"] = str(e); return out
     if not out["token"]: return out
     try:
-        call("GET", "/user/tokens/verify")
+        try: call("GET", "/user/tokens/verify")                       # a token from My Profile…
+        except ValueError: call("GET", f"/accounts/{acct}/tokens/verify")   # …or one made under Manage Account
         cfg = call("GET", f"/accounts/{acct}/cfd_tunnel/{tun}/configurations") or {}
         out["hostnames"] = [r["hostname"] for r in (cfg.get("config") or {}).get("ingress", []) if r.get("hostname")]
         a = access_app(acct); out["access_app"] = a.get("name"); out["protected"] = _domains(a)

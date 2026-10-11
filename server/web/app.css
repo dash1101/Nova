@@ -119,6 +119,7 @@ html.vt-back::view-transition-old(root) { animation-name: vt-out-back; } html.vt
 .row .end { color: var(--sub); font-size: 14px; flex: none; }
 .dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
 .note { color: var(--sub); font-size: 13px; margin: 4px 30px 8px; line-height: 1.45; }
+.cfsteps { padding-left: 20px; display: grid; gap: 6px; } .cfsteps b { color: var(--text); font-weight: 600; }
 .links { margin: 14px var(--gutter); padding: 18px 22px 8px; border-radius: 26px; }
 .links b { display: block; font-size: 17px; margin-bottom: 4px; }
 .links button { display: block; color: var(--link); font-size: 17px; padding: 9px 0; text-align: left; }
