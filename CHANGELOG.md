@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.5.17-alpha (app and server)
+- **Android 9 and newer** (was 12). On 9–11, Material uses its own palette instead of wallpaper colors, and on 9 fingerprint confirmation can't fall back to your PIN; everything else is the same.
+- **Updates on open:** when Nova opens it checks for a newer app and server release and shows a small note on Home (close it to hide it until the next one). The server checks GitHub at most every 30 minutes, however often you open the app.
+- **Menu, reorganized:** four live tiles (containers, storage, lighting, Inbox), your **apps** right there (with Files, Terminal and “All apps”), favorites, then Server · Apps & tools · Alerts · You. Same on the web.
+- **Plugins:** add apps and one-tap tools with a small plugin.json — `sudo nova plugin add FOLDER` shows what it adds and asks first; its tools run as your normal account, never root; switch each on or off in **Settings → Plugins**. An example (*System tools*: temperatures, disk space, busiest processes, who's logged in) is in `plugins/examples`. See docs/PLUGINS.md.
+- **Files and Terminal open like your apps:** in the dock, with their own spot and a close button.
+- **Shake to…** report a problem (new screen: saved on your server, or opened as a GitHub issue), search, the quick panel, the Inbox, lights on/off, Home — or nothing (Appearance → Shake).
+- **Favorites** can be a page in the navigation pill.
+- **Start page:** hold an app to edit it, **+** to add one, your own search engine, and suggestions on/off.
+- Swipe an alert in *Needs attention* either way to ignore it.
+- Security test: 309 checks, all passing.
+
 ## 0.5.16-alpha (app and server)
 - **App store, reworked:** *Containers* and *Programs*, each with a search box. Containers: 51 ready-made apps (Plex, Home Assistant, Nextcloud, Paperless-ngx, Immich-style photo apps, the *arr apps, Open WebUI + Ollama, Stirling PDF, AdGuard Home and more), an **Editor's choice**, and a **Docker Hub search** for anything else — a result opens *Your own container* with the image filled in. Programs: our picks, and typing searches everything apt offers.
 - **Works without Docker:** the store and Containers say when Docker isn't there and offer **Install Docker** (with Compose). The package no longer pulls Docker in by itself.

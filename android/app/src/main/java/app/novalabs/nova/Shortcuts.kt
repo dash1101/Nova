@@ -173,6 +173,7 @@ val NAV_TABS = listOf(
     Shortcut("menu", Icons.AutoMirrored.Rounded.List, "Menu", Route.Menu),
     Shortcut("start", Icons.Rounded.TravelExplore, "Start", Route.Start),
     Shortcut("search", Icons.Rounded.Search, "Search", Route.Search),
+    Shortcut("favorites", Icons.Rounded.Star, "Favorites", Route.Favorites),
 ) + SHORTCUTS.filter { it.id in listOf("apps", "status", "containers", "storage", "inbox", "quick", "lighting", "terminal") }
 val DEFAULT_TABS = listOf("store", "home", "menu")
 const val MAX_TABS = 5

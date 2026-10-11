@@ -23,6 +23,7 @@ import base64, hashlib, hmac, ipaddress, json, os, re, secrets, socket, subproce
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 import nodes
+import plugins
 
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import hashes, serialization
@@ -38,7 +39,7 @@ try:                       # optional module: fan/case lighting (modules/fan-gig
 except ImportError:
     nova_rgb = None
 
-API_VERSION = "0.5.16-alpha"
+API_VERSION = "0.5.17-alpha"
 CONFIG = "/etc/nova-api/config.json"
 DATA = "/var/lib/nova-api"
 DEVICES = f"{DATA}/devices.json"
@@ -117,6 +118,17 @@ def app_list():
         o = ov.get(a["id"], {})
         out.append({**a, "name": o.get("name") or a["name"], "slug": o.get("icon") or a["slug"], "hidden": bool(o.get("hidden")),
                     "url": o.get("url", ""), "remote_url": o.get("remote_url", "")})
+    off = set(load_json(SETTINGS, {}).get("plugins_off", []))
+    for p in plugins.all_plugins():                      # Settings → Plugins: their apps and one-tap tools
+        if p["id"] in off: continue
+        for i, a in enumerate(p["apps"]):
+            out.append({"id": f"plugin-{p['id']}-a{i}", "name": a["name"], "slug": a.get("icon", ""), "url": a.get("url", ""), "remote_url": ov.get(f"plugin-{p['id']}-a{i}", {}).get("remote_url", ""),
+                        "port": a.get("port"), "scheme": a.get("scheme", ""), "path": a.get("path", ""), "host_ip": "", "hidden": bool(ov.get(f"plugin-{p['id']}-a{i}", {}).get("hidden")),
+                        "source": "plugin", "plugin": p["name"]})
+        for c in p["commands"]:
+            out.append({"id": f"plugin-{p['id']}--{c['id']}", "name": c["name"], "slug": c.get("icon") or "bash", "url": "", "remote_url": "", "kind": "command",
+                        "command": c["command"], "timeout": c["timeout"], "confirm": c["confirm"], "hidden": False, "source": "plugin", "plugin": p["name"],
+                        "port": None, "scheme": "", "path": "", "host_ip": ""})
     for c in cfg.get("custom", []):
         out.append({"id": c["id"], "name": c["name"], "slug": c.get("icon") or "", "url": c.get("url", ""), "remote_url": c.get("remote_url", ""),
                     **({"kind": "command", "command": c["command"], "timeout": c.get("timeout", 600), "confirm": bool(c.get("confirm"))} if c.get("command") else {}),
@@ -565,6 +577,7 @@ def needs_stepup(method, parts):
     if parts in (["cloudflare", "token"], ["cloudflare", "publish"], ["cloudflare", "remove"]): return True     # changes your Cloudflare account
     if parts[:1] == ["containers"] and parts[-1:] == ["remove-custom"]: return True
     if parts == ["features"]: return True                                 # switching parts of Nova on/off: fingerprint
+    if parts == ["plugins"]: return True                                  # turning a plugin on runs its tools as you: fingerprint
     if parts == ["labs", "images", "clean"]: return True                    # deletes images: fingerprint
     if parts == ["notify", "discord"]: return True                         # where alerts get sent: fingerprint
     if parts[:1] == ["backups"] and len(parts) == 3 and parts[2] == "restore": return True
@@ -988,6 +1001,17 @@ class Handler(BaseHTTPRequestHandler):
         if parts == ["terminal"] and not feat_on("terminal"): return 403, {"error": "the server terminal is turned off (Settings → Features)"}
         if parts[:1] in (["fan"], ["lights"]) and nova_rgb and not feat_on("lighting") and method != "GET":
             return 409, {"error": "Nova isn't controlling the lights (Settings → Features)"}
+        if parts == ["plugins"]:
+            if method == "POST":
+                if role_of(dev) != "admin": return 403, {"error": "admins only"}
+                with lock:
+                    st = load_json(SETTINGS, {}); off = set(st.get("plugins_off", [])); known = {p["id"] for p in plugins.all_plugins()}
+                    for k, v in data.items():
+                        if k in known: (off.discard if v else off.add)(k)
+                    st["plugins_off"] = sorted(off); save_json(SETTINGS, st)
+            off = set(load_json(SETTINGS, {}).get("plugins_off", []))
+            return 200, {"plugins": [{**{k: p[k] for k in ("id", "name", "version", "author", "description")}, "on": p["id"] not in off,
+                                      "apps": [a["name"] for a in p["apps"]], "commands": [c["name"] for c in p["commands"]]} for p in plugins.all_plugins()], "folder": plugins.DIR}
         if parts == ["features"]:
             if method == "POST":
                 if role_of(dev) != "admin": return 403, {"error": "admins only"}
@@ -1163,6 +1187,9 @@ class Handler(BaseHTTPRequestHandler):
             if method == "GET" and len(parts) == 2:
                 rc, res = helper("update-status"); return 200, res
             if method == "POST" and parts[2:] == ["check"]:
+                if data.get("quiet"):              # the apps ask on every open: really check at most every 30 minutes
+                    st = load_json(f"{DATA}/update.json", {})
+                    if time.time() - (st.get("t") or 0) < 1800: rc, res = helper("update-status"); return 200, res
                 rc, res = helper("update-check", timeout=200); return (200 if rc == 0 else 400), res
             if method == "POST" and len(parts) == 2:
                 rc, res = helper("update-start"); return (200 if rc == 0 else 500), res
@@ -1457,7 +1484,7 @@ class Handler(BaseHTTPRequestHandler):
             return 200, {"ok": True, "id": aid, "apps": app_list()}
         if method == "POST" and len(parts) == 3 and parts[0] == "apps" and parts[2] == "run":
             if role_of(dev) != "admin": return 403, {"error": "admins only"}
-            if not re.fullmatch(r"custom-[0-9a-f]{8}", parts[1]): return 404, {"error": "no such command app"}
+            if not re.fullmatch(r"custom-[0-9a-f]{8}", parts[1]) and not plugins.command(parts[1]): return 404, {"error": "no such command app"}
             rc, res = helper("task-start", "run-command", json.dumps({"id": parts[1]})); return (202 if rc == 0 else 400), ({"task": res.get("id"), **res} if rc == 0 else res)
         if method == "GET" and len(parts) == 3 and parts[0] == "apps" and parts[2] == "remote" and re.fullmatch(r"[A-Za-z0-9_.-]{1,64}", parts[1]):
             if role_of(dev) != "admin" or dev.get("type") == "watch": return 403, {"error": "admins only"}

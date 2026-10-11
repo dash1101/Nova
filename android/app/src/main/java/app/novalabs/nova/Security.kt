@@ -49,7 +49,7 @@ class DeviceKey(profile: String) {
         val k = ks.getKey(DEVICE_KEY, null) as PrivateKey
         val info = java.security.KeyFactory.getInstance(k.algorithm, "AndroidKeyStore")
             .getKeySpec(k, android.security.keystore.KeyInfo::class.java)
-        info.securityLevel == KeyProperties.SECURITY_LEVEL_STRONGBOX
+        if (Compat.S) info.securityLevel == KeyProperties.SECURITY_LEVEL_STRONGBOX else @Suppress("DEPRECATION") info.isInsideSecureHardware
     } catch (_: Exception) { false }
 
     fun publicKeyPem(): String {
@@ -97,9 +97,7 @@ class DeviceKey(profile: String) {
             val spec = KeyGenParameterSpec.Builder(STEPUP_KEY, KeyProperties.PURPOSE_SIGN)
                 .setAlgorithmParameterSpec(ECGenParameterSpec("secp256r1"))
                 .setDigests(KeyProperties.DIGEST_SHA256)
-                .setUserAuthenticationRequired(true)
-                .setUserAuthenticationParameters(0,       // 0 = a fresh confirmation for every signature
-                    KeyProperties.AUTH_BIOMETRIC_STRONG or KeyProperties.AUTH_DEVICE_CREDENTIAL)
+                .let { Compat.userAuth(it, 0) }           // 0 = a fresh confirmation for every signature
                 .setInvalidatedByBiometricEnrollment(false)
                 .setIsStrongBoxBacked(strongBox)
                 .build()

@@ -66,6 +66,7 @@ fun webTarget(q0: String): String {
     if (Regex("^[\\w-]+(\\.[\\w-]+)+(:\\d+)?(/\\S*)?$").matches(q) && ' ' !in q) return "https://$q"
     val m = Regex("^(\\S+)\\s+(.+)$").find(q)
     val bang = m?.let { mm -> ENGINES.firstOrNull { it.bang == mm.groupValues[1].lowercase() } }
+    if (bang == null && AppPrefs.startEngine == "custom" && "%s" in AppPrefs.startCustom) return AppPrefs.startCustom.replace("%s", Uri.encode(q))
     val e = bang ?: ENGINES.firstOrNull { it.id == AppPrefs.startEngine } ?: ENGINES[1]
     return e.url + Uri.encode(if (bang != null) m!!.groupValues[2] else q)
 }
@@ -85,11 +86,13 @@ private fun greeting(): String = when (java.time.LocalTime.now().hour) { in 0..4
     LaunchedEffect(q) {
         if (q.isBlank()) { sugg = emptyList(); return@LaunchedEffect }
         delay(220)
-        sugg = runCatching { app.api.get("/api/v1/suggest?q=" + Uri.encode(q.trim())).optJSONArray("suggestions").strs().take(5) }.getOrDefault(emptyList())
+        sugg = if (!AppPrefs.startSuggest) emptyList() else runCatching { app.api.get("/api/v1/suggest?q=" + Uri.encode(q.trim())).optJSONArray("suggestions").strs().take(5) }.getOrDefault(emptyList())
     }
     var editLink by remember { mutableStateOf<Int?>(null) }       // index, or -1 for a new one
+    var appEdit by remember { mutableStateOf<JSONObject?>(null) }; var appAdd by remember { mutableStateOf(false) }
+    var appWeb by remember { mutableStateOf(false) }; var appCmd by remember { mutableStateOf(false) }
     val hidden = AppPrefs.startHidden
-    val engine = ENGINES.firstOrNull { it.id == AppPrefs.startEngine } ?: ENGINES[1]
+    val engine = ENGINES.firstOrNull { it.id == AppPrefs.startEngine } ?: if (AppPrefs.startEngine == "custom") Engine("custom", Uri.parse(AppPrefs.startCustom).host ?: "Your search", AppPrefs.startCustom, "") else ENGINES[1]
 
     TabOrPage(app, "Start") {
         Box(Modifier.fillMaxWidth()) {
@@ -130,14 +133,18 @@ private fun greeting(): String = when (java.time.LocalTime.now().hour) { in 0..4
         if ("stats" !in hidden) { SectionLabel("Server at a glance"); HomeStats(app) }
         if ("apps" !in hidden) {
             val apps = live(app, "/api/v1/apps", 60_000).value?.optJSONArray("apps").objs().filter { !it.optBoolean("hidden") }
-            if (apps.isNotEmpty()) {
+            run {
                 SectionLabel("Your apps")
                 Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = Space.gutter), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                     apps.forEach { a ->
-                        Column(Modifier.width(72.dp).clip(RoundedCornerShape(16.dp)).clickable { openApp(app, a) }.padding(vertical = 6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Column(Modifier.width(72.dp).clip(RoundedCornerShape(16.dp)).combinedClickable(onLongClick = { if (app.isAdmin) appEdit = a else app.toast("View-only access") }) { openApp(app, a) }.padding(vertical = 6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                             AppIcon(app, a, 52.dp); Spacer(Modifier.height(6.dp))
                             Text(a.optString("name"), color = N.text, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
+                    }
+                    if (app.isAdmin) Column(Modifier.width(72.dp).clip(RoundedCornerShape(16.dp)).clickable { appAdd = true }.padding(vertical = 6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Box(Modifier.size(52.dp).clip(RoundedCornerShape(15.dp)).background(N.blue.copy(alpha = 0.16f)), contentAlignment = Alignment.Center) { Icon(Icons.Rounded.Add, "Add an app", tint = N.blue) }
+                        Spacer(Modifier.height(6.dp)); Text("Add", color = N.text, fontSize = 12.sp)
                     }
                 }
             }
@@ -157,6 +164,11 @@ private fun greeting(): String = when (java.time.LocalTime.now().hour) { in 0..4
             }
         }
     }
+    appEdit?.let { a -> if (a.optString("kind") == "command") CommandAppDialog(app, a) { r -> appEdit = null; r?.let { Cache.put("/api/v1/apps", it) } }
+        else AppEditDialog(app, a, onDone = { r -> appEdit = null; r?.let { Cache.put("/api/v1/apps", it) } }) }
+    if (appAdd) AddAppChoice(onWeb = { appAdd = false; appWeb = true }, onCommand = { appAdd = false; appCmd = true }, onDismiss = { appAdd = false })
+    if (appWeb) AppEditDialog(app, null, onDone = { r -> appWeb = false; r?.let { Cache.put("/api/v1/apps", it) } })
+    if (appCmd) CommandAppDialog(app, null) { r -> appCmd = false; r?.let { Cache.put("/api/v1/apps", it) } }
     editLink?.let { idx ->
         val links = startLinks(); val cur = links.getOrNull(idx)
         var name by remember(idx) { mutableStateOf(cur?.first ?: "") }
@@ -196,7 +208,18 @@ private fun greeting(): String = when (java.time.LocalTime.now().hour) { in 0..4
                 Row1(e.name, "Or type “${e.bang} …” to use it once", onClick = { AppPrefs.set("start_engine", e.id) }) { OneRadio(AppPrefs.startEngine == e.id) }
             }
         }
-        Text("Typing a web address opens it. Suggestions come from DuckDuckGo, through your server.", color = N.sub, fontSize = 13.sp,
+        Group {
+            var custom by remember { mutableStateOf(false) }
+            Row1("Your own search engine", AppPrefs.startCustom.ifEmpty { "Any site: a web address with %s where the search goes" }, onClick = { custom = true }) { OneRadio(AppPrefs.startEngine == "custom") }
+            RowDivider()
+            SwitchRow("Suggestions while you type", "From DuckDuckGo, through your server (it never sees your phone)", AppPrefs.startSuggest) { AppPrefs.set("start_suggest", it) }
+            if (custom) { var u by remember { mutableStateOf(AppPrefs.startCustom.ifEmpty { "https://" }) }
+                OneDialog({ custom = false }, "Your own search engine", "Search on any site: its search address with %s where the words go, e.g. https://search.example.com/?q=%s",
+                    listOf(DialogButton("Cancel") { custom = false }, DialogButton("Use it", N.blue, enabled = u.startsWith("https://") && "%s" in u) {
+                        AppPrefs.set("start_custom", u.trim()); AppPrefs.set("start_engine", "custom"); custom = false })) {
+                    OneTextField(u, { u = it.trim().take(300) }, "https://…?q=%s", Modifier.fillMaxWidth().padding(horizontal = 22.dp)) } }
+        }
+        Text("Typing a web address opens it.", color = N.sub, fontSize = 13.sp,
             modifier = Modifier.padding(horizontal = 30.dp, vertical = 4.dp))
         SectionLabel("Open Nova on")
         Group {

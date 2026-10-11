@@ -322,6 +322,8 @@ import java.util.*
             RowDivider()
             Row1("Features", "Switch off parts of Nova you don't use, like lighting control", true, Icons.Rounded.Tune, onClick = { app.go(Route.Features) })
             RowDivider()
+            Row1("Plugins", "Add-ons that bring more apps and tools", true, Icons.Rounded.Extension, onClick = { app.go(Route.Plugins) })
+            RowDivider()
             Row1("Setup guide", "Install Nova on a server, remote access, browsers", true, androidx.compose.material.icons.Icons.AutoMirrored.Rounded.MenuBook, onClick = { app.go(Route.SetupGuide) })
         }
         Group { Row1("Unpair this ${DeviceForm.noun}", "Erases its keys", false, Icons.Rounded.LinkOff, N.red, onClick = { confirmUnpair = true }) }
@@ -492,6 +494,23 @@ private fun taskRoute(t: JSONObject): Route? {
             SwitchRow(f.optString("name"), f.optString("about"), f.optBoolean("on"), app.isAdmin) { v -> app.act("${f.optString("name")}: ${if (v) "on" else "off"}") {
                 live.value = app.stepUp("${if (v) "Turn on" else "Turn off"} ${f.optString("name")}", "POST", "/api/v1/features", JSONObject().put(f.optString("id"), v))
                 app.refresh() } } } }
+    }
+}
+
+/** Settings → Plugins: what's installed on the server (sudo nova plugin add …), and on/off for each. */
+@Composable fun PluginsScreen(app: AppState) {
+    val live = live(app, "/api/v1/plugins")
+    val list = live.value?.optJSONArray("plugins").objs()
+    Page("Plugins", app::back) {
+        Text("Plugins add apps and one-tap tools to Nova. Their tools run as your normal account on the server, never as root.",
+            color = N.sub, fontSize = 14.sp, modifier = Modifier.padding(horizontal = 30.dp, vertical = 6.dp))
+        if (live.value == null) Text("Loading…", color = N.sub, modifier = Modifier.padding(30.dp))
+        else if (list.isEmpty()) Group { Row1("No plugins yet", "On the server: sudo nova plugin add FOLDER — there's an example in the Nova repo (plugins/examples)", icon = Icons.Rounded.Extension) }
+        else Group { list.forEachIndexed { i, p -> if (i > 0) RowDivider()
+            val adds = listOfNotNull(p.optJSONArray("apps")?.length()?.takeIf { it > 0 }?.let { "$it app${if (it > 1) "s" else ""}" }, p.optJSONArray("commands")?.length()?.takeIf { it > 0 }?.let { "$it tool${if (it > 1) "s" else ""}" }).joinToString(", ")
+            SwitchRow("${p.optString("name")} ${p.optString("version")}", listOf(p.optString("description"), adds, p.optString("author").takeIf { it.isNotEmpty() }?.let { "by $it" }).filter { !it.isNullOrEmpty() }.joinToString(" · "), p.optBoolean("on"), app.isAdmin) { v ->
+                app.act { live.value = app.stepUp("${if (v) "Turn on" else "Turn off"} ${p.optString("name")}", "POST", "/api/v1/plugins", JSONObject().put(p.optString("id"), v)); Cache.put("/api/v1/apps", app.api.get("/api/v1/apps")) } } } }
+        Text("Make your own: a folder with a plugin.json (see docs/PLUGINS.md), then sudo nova plugin add it.", color = N.sub, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 30.dp, vertical = 6.dp))
     }
 }
 

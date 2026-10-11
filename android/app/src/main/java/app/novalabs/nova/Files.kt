@@ -116,8 +116,8 @@ private fun whenOf(t: Long): String { val d = java.util.Date(t * 1000); val toda
     Page(title, app::back, if (dd?.optBoolean("writable") == true) listOf(
             TopAction(Icons.Rounded.Add, "New") { newMenu = true },
             TopAction(Icons.Rounded.Upload, "Upload") { up.launch(arrayOf("*/*")) },
-            TopAction(Icons.Rounded.Home, "Home folder") { app.go(Route.Files(dd.optString("home"))) })
-        else listOf(TopAction(Icons.Rounded.Home, "Home folder") { dd?.let { app.go(Route.Files(it.optString("home"))) } })) {
+            TopAction(Icons.Rounded.Home, "Home folder") { app.go(Route.Files(dd.optString("home"))) }) + closeBuiltin(app, "nova-files")
+        else listOf(TopAction(Icons.Rounded.Home, "Home folder") { dd?.let { app.go(Route.Files(it.optString("home"))) } }) + closeBuiltin(app, "nova-files")) {
         if (!app.isAdmin) { Text("Only admins can use the file manager.", color = N.sub, modifier = Modifier.padding(30.dp)); return@Page }
         err?.let { Text(it, color = N.sub, modifier = Modifier.padding(30.dp)) }
         if (dd == null) { if (err == null) Text("Loading…", color = N.sub, modifier = Modifier.padding(30.dp)); return@Page }

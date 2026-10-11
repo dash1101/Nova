@@ -291,6 +291,8 @@ def run_command(spec, log, progress):
     aid = str(spec.get("id", ""))
     cfg = json.load(open(APPS)) if os.path.exists(APPS) else {}
     a = next((c for c in cfg.get("custom", []) if c.get("id") == aid and c.get("command")), None)
+    if a is None and aid.startswith("plugin-"):
+        import plugins; a = plugins.command(aid)           # a plugin's tool: from its root-owned manifest
     if not a: raise ValueError("no such command app")
     user = SITE.get("shell_user", "")
     if not user:

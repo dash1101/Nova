@@ -16,6 +16,7 @@ object DeviceForm {
 
     /** Smallest side of the whole screen in dp (not this window, which shrinks in split screen). */
     private fun screenDp(ctx: Context): Int {
+        if (!Compat.R) { val m = ctx.resources.displayMetrics; return (minOf(m.widthPixels, m.heightPixels) / m.density).toInt() }
         val b = ctx.getSystemService(WindowManager::class.java).maximumWindowMetrics.bounds
         return (minOf(b.width(), b.height()) / ctx.resources.displayMetrics.density).toInt()
     }

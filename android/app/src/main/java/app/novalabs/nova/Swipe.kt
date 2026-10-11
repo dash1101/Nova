@@ -112,13 +112,14 @@ fun dismissAlert(app: AppState, a: JSONObject, done: () -> Unit = {}) {
         active.forEachIndexed { i, a ->
             if (i > 0) RowDivider()
             val key = a.optString("key"); val lvl = a.optString("level")
-            key(key.ifEmpty { "$i" }) { SwipeRow(start = SwipeAction(if (key.startsWith("drive:")) "Removed on purpose" else "Ignore", Icons.Rounded.NotificationsOff, N.amber) { dismissAlert(app, a) }) {
+            val ign = SwipeAction(if (key.startsWith("drive:")) "Removed on purpose" else "Ignore", Icons.Rounded.NotificationsOff, N.amber) { dismissAlert(app, a) }
+            key(key.ifEmpty { "$i" }) { SwipeRow(start = ign, end = ign) {
                 Row1(cleanAlertTitle(a.optString("title")), listOf(a.optString("detail"), a.optString("since").takeIf { it.isNotEmpty() }?.let { "since $it" })
                     .filterNotNull().filter { it.isNotEmpty() }.joinToString(" · "), false, Icons.Rounded.Warning, levelColor(lvl, N), onClick = { menu = a })
             } }
         }
     }
-    Text("Swipe right to ignore an alert you've dealt with — it comes back if the problem returns after clearing.",
+    Text("Swipe either way to ignore an alert you've dealt with — it comes back if the problem returns after clearing.",
         color = N.sub, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 30.dp, vertical = 2.dp))
     menu?.let { a ->
         val key = a.optString("key")

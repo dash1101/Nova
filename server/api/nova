@@ -19,8 +19,13 @@
     sudo nova log [N]              the last N actions from the audit log
     sudo nova alert LEVEL TITLE [DETAIL]   send an alert (info, warning, critical)
     sudo nova publish APK [NOTES]  put an app build in the in-app updater
+
+  Plugins (docs/PLUGINS.md)
+    sudo nova plugin list          what's installed
+    sudo nova plugin add FOLDER    install a plugin (a folder with plugin.json) — it shows what it adds first
+    sudo nova plugin remove ID     uninstall one
 """
-import hashlib, json, os, secrets, shutil, subprocess, sys, time
+import hashlib, json, os, re, secrets, shutil, subprocess, sys, time
 
 DATA = "/var/lib/nova-api"; DEVICES = f"{DATA}/devices.json"; PAIRING = f"{DATA}/pairing.json"
 SHELL_APPROVE = f"{DATA}/shell-approve.json"; PENDING = f"{DATA}/pending.json"
@@ -170,6 +175,40 @@ def log(args):
     for l in open("/var/log/nova-api/audit.log").readlines()[-n:]: print(l.rstrip())
 
 
+def plugin(args):
+    sys.path.insert(0, "/usr/lib/nova-api"); sys.path.insert(1, os.path.dirname(os.path.realpath(__file__)))
+    import plugins
+    sub = args[0] if args else "list"
+    if sub == "list":
+        ps = plugins.all_plugins()
+        if not ps: print("No plugins. Add one with:  sudo nova plugin add FOLDER   (see docs/PLUGINS.md)"); return
+        for p in ps: print(f"  {p['id']:<24} {p['name']} {p['version']}  — {len(p['apps'])} app(s), {len(p['commands'])} tool(s)")
+        return
+    if sub == "add" and len(args) == 2:
+        src = os.path.realpath(args[1]); man = os.path.join(src, "plugin.json")
+        try: m = json.load(open(man))
+        except Exception as e: sys.exit(f"Can't read {man}: {e}")
+        pid = str(m.get("id", ""))
+        if not re.fullmatch(plugins.ID_RE, pid) or "--" in pid: sys.exit("plugin.json needs an id: lowercase letters, digits and single dashes")
+        print(f"\n  {m.get('name', pid)} {m.get('version', '')}  by {m.get('author', '?')}\n  {m.get('description', '')}\n")
+        for x in m.get("apps", []): print(f"  app:   {x.get('name')}  → {x.get('url') or ':' + str(x.get('port'))}")
+        for c in m.get("commands", []): print(f"  tool:  {c.get('name')}  — runs as your normal account:  {str(c.get('command'))[:120]}")
+        if input("\n  Install it? [y/N]: ").strip().lower() != "y": print("  Not installed."); return
+        dst = os.path.join(plugins.DIR, pid)
+        os.makedirs(plugins.DIR, mode=0o755, exist_ok=True)
+        if os.path.exists(dst): shutil.rmtree(dst)
+        shutil.copytree(src, dst, symlinks=False)
+        for root, dirs, files in os.walk(dst):          # root's, read-only for everyone else
+            os.chown(root, 0, 0); os.chmod(root, 0o755)
+            for f in files: fp = os.path.join(root, f); os.chown(fp, 0, 0); os.chmod(fp, 0o644)
+        if not plugins.load(pid): shutil.rmtree(dst); sys.exit("  That plugin.json didn't check out (see docs/PLUGINS.md) — not installed.")
+        print("  ✓ Installed. Its apps and tools are in Apps; switch it off in Settings → Plugins."); return
+    if sub == "remove" and len(args) == 2:
+        dst = os.path.join(plugins.DIR, args[1])
+        if not re.fullmatch(plugins.ID_RE, args[1]) or not os.path.isdir(dst): sys.exit("No such plugin.")
+        shutil.rmtree(dst); print("  ✓ Removed."); return
+    sys.exit("usage: sudo nova plugin list | add FOLDER | remove ID")
+
 if __name__ == "__main__":
     a = sys.argv[1:]
     cmd = a[0] if a else "help"
@@ -190,4 +229,5 @@ if __name__ == "__main__":
     elif cmd == "log": log(rest)
     elif cmd == "alert": run("/usr/sbin/nova-alert", *rest)
     elif cmd == "publish": run("/usr/sbin/nova-app-publish", *rest)
+    elif cmd == "plugin": plugin(rest)
     else: print(f"{Y}Unknown command: {cmd}{X}\n"); help_()

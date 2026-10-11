@@ -485,7 +485,7 @@ async function appIcon(id) {
   catch { iconCache[id] = null; }
   return iconCache[id];
 }
-const appHref = a => {
+export const appHref = a => {
   // away from home = came in through Cloudflare (the server says so); a home or Tailscale address works directly
   const ip = /^(\d+\.){3}\d+$|^\[/.test(location.hostname);
   const remote = S.me?.via ? S.me.via === "remote" : !ip && !/\.local$/.test(location.hostname);
@@ -707,6 +707,18 @@ export async function containerNew(ctx) {
     },
   });
   draw();
+}
+
+// ── Plugins: add-ons installed on the server (sudo nova plugin add …) ─────────────────────
+export async function plugins(ctx) {
+  let d = null;
+  const draw = () => ctx.show(`${note("Plugins add apps and one-tap tools to Nova. Their tools run as your normal account on the server, never as root.")}
+    ${!d ? note("Loading…") : d.plugins.length ? group(d.plugins.map(p => switchRow(`${p.name} ${p.version}`, [p.description, [p.apps.length ? p.apps.length + " app" + (p.apps.length > 1 ? "s" : "") : "", p.commands.length ? p.commands.length + " tool" + (p.commands.length > 1 ? "s" : "") : ""].filter(Boolean).join(", "), p.author ? "by " + p.author : ""].filter(Boolean).join(" · "), p.on, isAdmin() ? "plug:" + p.id : "", { blue: p.on })).join(""))
+      : group(row("No plugins yet", { sub: "On the server: sudo nova plugin add FOLDER — there's an example in the Nova repo (plugins/examples)", icon: "widgets" }))}
+    ${note("Make your own: a folder with a plugin.json (see docs/PLUGINS.md), then sudo nova plugin add it.")}`, { title: "Plugins" });
+  ctx.handlers({ plug: async id => { const p = d.plugins.find(x => x.id === id);
+    try { d = await post("/api/v1/plugins", { [id]: !p.on }); await get("/api/v1/apps").catch(() => {}); } catch (e) { toast(e.message); } draw(); } });
+  draw(); try { d = await get("/api/v1/plugins"); } catch (e) { toast(e.message); } if (ctx.alive()) draw();
 }
 
 // ── Features: parts of Nova you can switch off ──────────────────────────────────────────

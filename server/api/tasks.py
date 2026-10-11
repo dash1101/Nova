@@ -81,7 +81,7 @@ def check_spec(kind, spec):
     if kind in INSTALL_KINDS:
         import installs
         if kind.startswith("store-") and not re.fullmatch(r"[a-z0-9-]{1,40}", str(spec.get("id", ""))): raise ValueError("bad app id")
-        if kind == "run-command" and not re.fullmatch(r"custom-[0-9a-f]{8}", str(spec.get("id", ""))): raise ValueError("bad app id")
+        if kind == "run-command" and not re.fullmatch(r"custom-[0-9a-f]{8}|plugin-[a-z0-9-]{1,40}--[a-z0-9-]{1,40}", str(spec.get("id", ""))): raise ValueError("bad app id")
         if kind.startswith("program-") and not re.fullmatch(installs.PKG_RE, str(spec.get("pkg", ""))): raise ValueError("bad package name")
         if kind == "custom-install": installs.custom_spec(spec)
         if kind == "custom-uninstall" and not re.fullmatch(installs.CUSTOM_NAME, str(spec.get("name", ""))): raise ValueError("bad name")
@@ -104,7 +104,9 @@ def start(kind, spec):
         what = spec.get("pkg") or spec.get("name") or (installs.catalog().get(spec.get("id"), {}).get("name")) or spec.get("id")
         if kind == "run-command":
             cfg = json.load(open(installs.APPS)) if os.path.exists(installs.APPS) else {}
-            what = next((c.get("name") for c in cfg.get("custom", []) if c.get("id") == spec.get("id")), None) or (_ for _ in ()).throw(ValueError("no such command app"))
+            import plugins
+            pc = plugins.command(spec.get("id"))
+            what = (pc or {}).get("name") or next((c.get("name") for c in cfg.get("custom", []) if c.get("id") == spec.get("id")), None) or (_ for _ in ()).throw(ValueError("no such command app"))
         title = f"{installs.TITLES[kind]} {what}"
     if kind == "backup-run":
         import backups

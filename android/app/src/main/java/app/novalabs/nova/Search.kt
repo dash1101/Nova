@@ -74,6 +74,8 @@ val PLACES: List<Triple<String, String, Pair<ImageVector, Route>>> = listOf(
     Triple("Approve a browser or watch", "approve browser watch wear code pair computer", Icons.Rounded.Watch to Route.Devices),
     Triple("Add a server", "add server another server pair new server", Icons.Rounded.AddCircle to Route.Servers),
     Triple("Troubleshoot a container", "troubleshoot crash restart loop rollback previous version recreate container fix", Icons.Rounded.Build to Route.Containers),
+    Triple("Report a problem", "report problem bug issue feedback broken shake", Icons.Rounded.BugReport to Route.Report),
+    Triple("Plugins", "plugins add-ons extensions tools tweaks", Icons.Rounded.Extension to Route.Plugins),
     Triple("Features", "features turn off disable lighting control rgb software openrgb terminal file manager discovery", Icons.Rounded.Tune to Route.Features),
     Triple("Install Docker", "docker install containers engine compose", Icons.Rounded.ViewInAr to Route.ProgramSearch),
 )
@@ -173,6 +175,25 @@ fun searchNova(app: AppState, q0: String, data: Map<String, org.json.JSONObject?
 }
 
 /** Menu → Favorites: any screen in Nova, starred. */
+/** A page of your favorites, for the navigation pill: big tiles, two to a row. */
+@Composable fun FavoritesScreen(app: AppState) {
+    val favs = AppPrefs.favorites.mapNotNull { f -> PLACES.firstOrNull { it.first == f } }
+    TabOrPage(app, "Favorites") {
+        if (favs.isEmpty()) Text("Star the screens you use most — in Search, or with Edit below — and they show up here.", color = N.sub, fontSize = 15.sp,
+            modifier = Modifier.padding(horizontal = 30.dp, vertical = 10.dp))
+        Column(Modifier.padding(horizontal = Space.gutter, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            favs.chunked(2).forEach { row -> Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                row.forEach { (t, _, ir) -> Column(Modifier.weight(1f).glassCard(androidx.compose.foundation.shape.RoundedCornerShape(24.dp)).clickable { app.go(ir.second) }.padding(18.dp)) {
+                    Icon(ir.first, null, tint = N.amber, modifier = Modifier.size(28.dp)); Spacer(Modifier.height(12.dp))
+                    Text(t, color = N.text, fontSize = 16.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold, maxLines = 2) } }
+                if (row.size == 1) Spacer(Modifier.weight(1f))
+            } }
+        }
+        LinksCard(listOf("Edit favorites" to { app.go(Route.EditFavorites) }))
+        Spacer(Modifier.height(130.dp))
+    }
+}
+
 @Composable fun FavoritesGroup(app: AppState) {
     val favs = AppPrefs.favorites.mapNotNull { f -> PLACES.firstOrNull { it.first == f } }
     SectionLabel("Favorites")

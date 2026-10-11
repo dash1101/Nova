@@ -50,7 +50,7 @@ object AppSessions {
     private val idle = mutableMapOf<String, Session>()      // pinned apps that aren't open: just their icon in the dock
     /** What the dock shows: pinned apps first (open or not), then the other open apps. */
     fun dock(): List<Session> {
-        val known = Cache["/api/v1/apps"]?.optJSONArray("apps").objs().associateBy { it.optString("id") }
+        val known = Cache["/api/v1/apps"]?.optJSONArray("apps").objs().associateBy { it.optString("id") } + mapOf("nova-files" to Builtins.FILES, "nova-term" to Builtins.TERM)
         val pinned = AppPrefs.pinnedApps.mapNotNull { id -> get(id) ?: known[id]?.let { a -> idle.getOrPut(id) { Session(id, a).also { it.icon = icons[id] } }.also { it.icon = icons[id] ?: it.icon } } }
         return pinned + open.filter { it.id !in AppPrefs.pinnedApps }
     }
@@ -58,8 +58,29 @@ object AppSessions {
     fun togglePin(id: String) = AppPrefs.set("pinned_apps", (if (isPinned(id)) AppPrefs.pinnedApps - id else (AppPrefs.pinnedApps + id).takeLast(4)).joinToString(","))
 }
 
+/** Nova's own apps (Files, Terminal): they open like your web apps — in the dock, as their own page —
+ *  but show Nova's screens instead of a web page. */
+object Builtins {
+    val FILES = JSONObject().put("id", "nova-files").put("name", "Files").put("builtin", "files")
+    val TERM = JSONObject().put("id", "nova-term").put("name", "Terminal").put("builtin", "term")
+    fun of(id: String) = when (id) { "nova-files" -> FILES; "nova-term" -> TERM; else -> null }
+    fun icon(id: String) = when (id) { "nova-files" -> Icons.Rounded.Folder; else -> Icons.Rounded.Terminal }
+    /** The open built-in app the current page belongs to, if any. */
+    fun current(r: Route): String? = when (r) {
+        is Route.Files, is Route.FileEdit -> "nova-files".takeIf { AppSessions.get(it) != null }
+        Route.Ssh, Route.SshTerm -> "nova-term".takeIf { AppSessions.get(it) != null }
+        else -> null
+    }
+    fun route(id: String): Route = if (id == "nova-files") Route.Files() else if (SshSession.active) Route.SshTerm else Route.Ssh
+}
+/** The ✕ on a built-in app's page: off the dock, back Home (the terminal also disconnects). */
+fun closeBuiltin(app: AppState, id: String): List<TopAction> = if (AppSessions.get(id) == null) emptyList() else listOf(TopAction(Icons.Rounded.Close, "Close") {
+    AppSessions.close(id); if (id == "nova-term") SshSession.disconnect(); app.tab(Route.Home) })
+fun openBuiltin(app: AppState, id: String) { val b = Builtins.of(id) ?: return; AppSessions.open(b); app.tab(Builtins.route(id)) }
+
 /** Tap on an app in the dock: switch to it, or open it if it's only pinned. */
 fun dockTap(app: AppState, id: String) {
+    if (Builtins.of(id) != null) { if (Builtins.current(app.top) != id) openBuiltin(app, id); return }
     if (AppSessions.get(id) != null) { app.tab(Route.AppFrame(id)); return }
     val a = Cache["/api/v1/apps"]?.optJSONArray("apps").objs().firstOrNull { it.optString("id") == id } ?: return
     if (appUrl(app, a) == null) { app.toast("Away from home this app needs its own link — hold it in Apps → Open it from anywhere"); return }
@@ -114,7 +135,7 @@ fun appUrl(app: AppState, a: JSONObject): String? {
         if (app.isAdmin) {
             SectionLabel("Built in")
             Row(Modifier.fillMaxWidth().padding(horizontal = Space.gutter, vertical = 6.dp)) {
-                listOf(Triple("Files", Icons.Rounded.Folder, N.blue) to { app.go(Route.Files()) }, Triple("Terminal", Icons.Rounded.Terminal, N.green) to { app.go(if (SshSession.active) Route.SshTerm else Route.Ssh) })
+                listOf(Triple("Files", Icons.Rounded.Folder, N.blue) to { openBuiltin(app, "nova-files") }, Triple("Terminal", Icons.Rounded.Terminal, N.green) to { openBuiltin(app, "nova-term") })
                     .forEach { (t, go) -> Column(Modifier.weight(1f).clip(RoundedCornerShape(18.dp)).clickable { go() }.padding(vertical = 10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                         Box(Modifier.size(60.dp).clip(RoundedCornerShape(16.dp)).background(t.third.copy(alpha = 0.16f)), contentAlignment = Alignment.Center) { Icon(t.second, null, tint = t.third, modifier = Modifier.size(30.dp)) }
                         Text(t.first, color = N.text, fontSize = 13.sp, modifier = Modifier.padding(top = 6.dp)) } }
@@ -162,7 +183,7 @@ fun openApp(app: AppState, a: JSONObject) {
     AppSessions.open(a); app.go(Route.AppFrame(a.optString("id")))
 }
 
-@Composable private fun AppEditDialog(app: AppState, a: JSONObject?, onDone: (JSONObject?) -> Unit) {
+@Composable fun AppEditDialog(app: AppState, a: JSONObject?, onDone: (JSONObject?) -> Unit) {
     var anywhere by remember { mutableStateOf(false) }
     if (anywhere && a != null) { AppRemoteDialog(app, a) { anywhere = false }; return }
     var name by remember { mutableStateOf(a?.optString("name") ?: "") }
@@ -331,12 +352,12 @@ fun openApp(app: AppState, a: JSONObject) {
 }
 
 
-@Composable private fun AddAppChoice(onWeb: () -> Unit, onCommand: () -> Unit, onDismiss: () -> Unit) =
+@Composable fun AddAppChoice(onWeb: () -> Unit, onCommand: () -> Unit, onDismiss: () -> Unit) =
     OneDialog(onDismiss, "Add an app", "A web page on your network opens like any other app. A command or script runs on the server with one tap and shows you its output.",
         listOf(DialogButton("Cancel", onClick = onDismiss), DialogButton("Command or script", onClick = onCommand), DialogButton("Web page", N.blue, onClick = onWeb)))
 
 /** A command app: what it runs (as your normal account on the server). Saving asks for your fingerprint. */
-@Composable private fun CommandAppDialog(app: AppState, a: JSONObject?, onDone: (JSONObject?) -> Unit) {
+@Composable fun CommandAppDialog(app: AppState, a: JSONObject?, onDone: (JSONObject?) -> Unit) {
     var name by remember { mutableStateOf(a?.optString("name") ?: "") }
     var cmd by remember { mutableStateOf(a?.optString("command") ?: "") }
     var confirm by remember { mutableStateOf(a?.optBoolean("confirm") ?: false) }

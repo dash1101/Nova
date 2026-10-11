@@ -61,7 +61,7 @@ sealed class Route {
     data class BackupWizard(val id: String?, val sources: List<String> = emptyList(), val dest: String? = null) : Route()
     data class BackupBrowse(val id: String, val snap: String = "", val path: String = "") : Route()
     data object Diagnostics : Route()
-    data object Apps : Route(); data class AppFrame(val id: String) : Route(); data object Updates : Route(); data object Search : Route(); data object Start : Route(); data object StartEdit : Route(); data object EditFavorites : Route(); data object NewContainer : Route(); data object ProgramSearch : Route(); data class Files(val path: String = "") : Route(); data class FileEdit(val path: String) : Route(); data object Labs : Route(); data object Lights : Route(); data object Features : Route()
+    data object Apps : Route(); data class AppFrame(val id: String) : Route(); data object Updates : Route(); data object Search : Route(); data object Start : Route(); data object StartEdit : Route(); data object EditFavorites : Route(); data object NewContainer : Route(); data object ProgramSearch : Route(); data class Files(val path: String = "") : Route(); data class FileEdit(val path: String) : Route(); data object Labs : Route(); data object Lights : Route(); data object Features : Route(); data object Report : Route(); data object Favorites : Route(); data object Plugins : Route()
 }
 
 /** Shared app state: the API, live data, navigation, messages. */
@@ -107,7 +107,7 @@ class AppState(val activity: Activity, val pairing: Pairing, val scope: Coroutin
     fun go(r: Route) { navDir = 1; if (wide && leftPane && stack.size >= 2) pop(); stack.add(r) }
     fun tab(r: Route) {
         // Only real tabs (in your navigation pill) reset the stack; anything else opens as a page with a back button
-        if (r != Route.Home && r !is Route.AppFrame && navTabs(this).none { it.route == r }) { go(r); return }
+        if (r != Route.Home && r !is Route.AppFrame && Builtins.current(r) == null && navTabs(this).none { it.route == r }) { go(r); return }
         navDir = 0; stack.clear(); scrolls.clear(); stack.add(r)
     }
     /** [instant]: the page underneath is already on screen (predictive back finished) — swap with no transition. */
@@ -212,8 +212,18 @@ class AppState(val activity: Activity, val pairing: Pairing, val scope: Coroutin
     }
 
     /** First run on v0.2 (and every launch on home Wi-Fi): crash reports, step-up key, remote settings. */
+    /** What's new, found when Nova opens: {"app": version name, "server": version} (only what's newer). */
+    var updates by mutableStateOf<JSONObject?>(null)
+    suspend fun checkUpdates() {
+        val o = JSONObject()
+        runCatching { Updater.latest(api)?.takeIf { Updater.isNewer(it, activity) }?.let { o.put("app", it.optString("version_name")) } }
+        if (isAdmin) runCatching { api.post("/api/v1/server/update/check", JSONObject().put("quiet", true)) }
+            .getOrNull()?.takeIf { it.optString("state") == "available" }?.let { o.put("server", it.optString("available").replace('~', '-')) }
+        updates = if (o.length() > 0) o else null
+    }
     suspend fun housekeeping() {
         CrashReporter.flush(activity, pairing, api)
+        scope.launch { checkUpdates() }
         runCatching {
             val who = api.get("/api/v1/whoami")
             who.optString("role").takeIf { it.isNotEmpty() }?.let { pairing.role = it; role = it }
@@ -250,7 +260,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         DeviceForm.init(this)
-        if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED)
+        if (android.os.Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED)
             requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1)
         val openInbox = intent?.getStringExtra("open") == "inbox"
         openApprovals = intent?.getStringExtra("open") == "approvals"
@@ -329,6 +339,7 @@ class MainActivity : ComponentActivity() {
             throw e
         }
     }
+    ShakeListener(app)
     LaunchedEffect(openApprovals) { if (openApprovals) { openApprovals = false; app.go(Route.Approvals) } }
     LaunchedEffect(openUpdate) { if (openUpdate) { openUpdate = false; app.go(Route.Settings) } }
 
@@ -375,7 +386,7 @@ class MainActivity : ComponentActivity() {
                     BottomScrim(Modifier.align(Alignment.BottomCenter))
                     val tabs = navTabs(app)
                     val tabIndex = tabs.indexOfFirst { it.route == app.top }
-                    val openApp = (app.top as? Route.AppFrame)?.id
+                    val openApp = (app.top as? Route.AppFrame)?.id ?: Builtins.current(app.stack.first())
                     if (tabIndex >= 0 || openApp != null) FloatingNav(tabIndex, tabs.map { it.icon }, tabs.map { it.label }, { i -> app.tab(tabs[i].route) },
                         Modifier.align(Alignment.BottomCenter), onLongClick = { app.go(Route.EditTabs) },
                         apps = AppSessions.dock(), selectedApp = openApp, onApp = { id -> dockTap(app, id) })
@@ -456,7 +467,7 @@ private fun Modifier.paneTouch(app: AppState, left: Boolean) = pointerInput(left
         if (app.top != Route.Dashboard)        // the always-on dashboard gets the whole screen
             Box(Modifier.fillMaxHeight().statusBarsPadding().navigationBarsPadding().padding(start = 12.dp, end = 4.dp), contentAlignment = Alignment.Center) {
                 VerticalNav(tabs.indexOfFirst { it.route == root }, tabs.map { it.icon }, tabs.map { it.label }, { i -> app.tab(tabs[i].route) },
-                    onLongClick = { app.go(Route.EditTabs) }, apps = AppSessions.dock(), selectedApp = (root as? Route.AppFrame)?.id, onApp = { id -> dockTap(app, id) })
+                    onLongClick = { app.go(Route.EditTabs) }, apps = AppSessions.dock(), selectedApp = (root as? Route.AppFrame)?.id ?: Builtins.current(root), onApp = { id -> dockTap(app, id) })
             }
         val parent = app.stack.getOrNull(app.stack.size - 2)
         val split = parent != null && width >= 900.dp
@@ -502,7 +513,7 @@ private fun Modifier.paneTouch(app: AppState, left: Boolean) = pointerInput(left
 }
 
 @Composable fun Screen(app: AppState, r: Route) = CompositionLocalProvider(LocalRouteScroll provides app.scrollFor(r),
-        LocalNavPad provides (if (!app.wide && navTabs(app).any { it.route == r }) 84.dp else 0.dp)) {
+        LocalNavPad provides (if (!app.wide && (navTabs(app).any { it.route == r } || Builtins.current(r) != null)) 84.dp else 0.dp)) {
     when (r) {
         Route.Home -> HomeScreen(app)
         Route.Store -> StoreScreen(app)
@@ -546,6 +557,9 @@ private fun Modifier.paneTouch(app: AppState, left: Boolean) = pointerInput(left
         Route.Labs -> LabsScreen(app)
         Route.Lights -> LightsScreen(app)
         Route.Features -> FeaturesScreen(app)
+        Route.Report -> ReportScreen(app)
+        Route.Favorites -> FavoritesScreen(app)
+        Route.Plugins -> PluginsScreen(app)
         is Route.AppFrame -> AppFrameScreen(app, r.id)
         Route.Status -> StatusScreen(app)
         Route.Ssh -> SshScreen(app)

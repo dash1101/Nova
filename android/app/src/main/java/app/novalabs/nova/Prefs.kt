@@ -41,6 +41,10 @@ object AppPrefs {
     var favorites by mutableStateOf(listOf<String>()); private set         // Menu → Favorites
     var searchRecent by mutableStateOf(listOf<String>()); private set      // Search: recent queries (newest first)
     var searchPinned by mutableStateOf(listOf<String>()); private set      // Search: pinned queries
+    var startCustom by mutableStateOf(""); private set                     // start page: your own search engine (https://…%s)
+    var startSuggest by mutableStateOf(true); private set                  // start page: suggestions while typing
+    var dismissedUpdate by mutableStateOf(""); private set                 // the update note you closed (shown again for a newer one)
+    var shakeAction by mutableStateOf("report"); private set              // what a shake does: report | none | search | quick | lights | home | inbox
 
     fun init(ctx: Context) {
         if (::sp.isInitialized) return
@@ -56,6 +60,8 @@ object AppPrefs {
         pinnedApps = sp.getString("pinned_apps", "")!!.split(",").filter { it.isNotBlank() }; favorites = sp.getString("favorites", "")!!.split(",").filter { it.isNotBlank() }
         navTabs = sp.getString("nav_tabs", null)?.split(",")?.filter { it.isNotBlank() } ?: DEFAULT_TABS
         homeChips = sp.getString("home_chips", null)?.let { s -> s.split(",").filter { it.isNotBlank() } } ?: DEFAULT_SHORTCUTS
+        startCustom = sp.getString("start_custom", "")!!; startSuggest = sp.getBoolean("start_suggest", true)
+        dismissedUpdate = sp.getString("dismissed_update", "")!!; shakeAction = sp.getString("shake_action", "report")!!
     }
     fun set(key: String, v: Any) {
         when (key) {
@@ -70,6 +76,8 @@ object AppPrefs {
             "pinned_apps" -> pinnedApps = (v as String).split(",").filter { it.isNotBlank() }; "favorites" -> favorites = (v as String).split(",").filter { it.isNotBlank() }
             "nav_tabs" -> navTabs = (v as String).split(",").filter { it.isNotBlank() }
             "home_chips" -> homeChips = (v as String).split(",").filter { it.isNotBlank() }
+            "start_custom" -> startCustom = v as String; "start_suggest" -> startSuggest = v as Boolean
+            "dismissed_update" -> dismissedUpdate = v as String; "shake_action" -> shakeAction = v as String
         }
         sp.edit().apply { if (v is Boolean) putBoolean(key, v) else putString(key, v.toString()) }.apply()
     }
@@ -97,8 +105,7 @@ object AppLock {
     fun onStop() { leftAt = System.currentTimeMillis() }
     fun onStart() { if (AppPrefs.appLock && leftAt > 0 && System.currentTimeMillis() - leftAt > 5 * 60_000) unlocked = false }
     fun prompt(a: Activity, onDone: (Boolean) -> Unit) {
-        BiometricPrompt.Builder(a).setTitle("Unlock Nova").setSubtitle("Confirm it's you")
-            .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG or BiometricManager.Authenticators.DEVICE_CREDENTIAL).build()
+        Compat.prompt(a, "Unlock Nova", "Confirm it's you", crypto = false).build()
             .authenticate(CancellationSignal(), a.mainExecutor, object : BiometricPrompt.AuthenticationCallback() {
                 override fun onAuthenticationSucceeded(r: BiometricPrompt.AuthenticationResult) { unlocked = true; onDone(true) }
                 override fun onAuthenticationError(code: Int, msg: CharSequence) { onDone(false) }
@@ -145,6 +152,11 @@ object AppLock {
             SwitchRow("Reduce motion", "Simple fades instead of slides and bounces, and no back-gesture animation", AppPrefs.reduceMotion) { AppPrefs.set("reduce_motion", it) }
         }
         AppIconPicker(app)
+        SectionLabel("Shake")
+        Group { var pick by remember { mutableStateOf(false) }
+            Row1("Shake to…", SHAKE_ACTIONS.firstOrNull { it.first == AppPrefs.shakeAction }?.second ?: "Report a problem", true, Icons.Rounded.Vibration, onClick = { pick = true })
+            if (pick) OneDialog({ pick = false }, "When you shake your ${DeviceForm.noun}") {
+                SHAKE_ACTIONS.forEach { (k, l) -> DialogChoice(l, null, AppPrefs.shakeAction == k) { AppPrefs.set("shake_action", k); pick = false } } } }
         SectionLabel("Home")
         Group {
             Row1("Home layout", AppPrefs.homeOrder.filter { sectionOn(it) }.joinToString(" · ") { sectionName(it) }.ifEmpty { "Just the header" }, true,

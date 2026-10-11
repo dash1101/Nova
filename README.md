@@ -1,4 +1,4 @@
-# Nova  ·  0.5.16-alpha
+# Nova  ·  0.5.17-alpha
 
 **A secure remote control for your home server, from your Android phone.**
 Status and live graphs, containers (logs, shell, start/stop), a one-tap app store, drives,
@@ -51,6 +51,7 @@ network, and optionally from anywhere through Cloudflare Access, without a VPN.
 | **Two looks** | Default (frosted glass and a soft glow) or Material You Expressive with wallpaper colors — picked automatically, switchable in Appearance |
 | **Nova web** | The same design in any browser, at `https://<server>:8495/`. Risky actions are approved on your phone |
 | **Lighting** | Fans and LED strips on a Gigabyte RGB Fusion 2 board: several lights, each with its own effect (wave, comet, fire, gradients, palettes…), presets, schedules with sunrise/sunset and fades, and a status light |
+| **Plugins** | Add apps and one-tap tools from a small `plugin.json` ([docs/PLUGINS.md](docs/PLUGINS.md)) |
 | **Optional modules** | Lighting (above); plug in your own monitor for alerts |
 
 ## Security in one paragraph
@@ -77,6 +78,10 @@ Full walkthrough, extras and troubleshooting: **[docs/SETUP.md](docs/SETUP.md)**
 Everything else: `sudo nova` lists all commands (`approve`, `devices`, `remove`, `status`, `update`, `backup`, …).
 
 ## Install the app
+
+Android 9 or newer (phones, tablets and foldables; Wear OS 3+ for the watch app). On Android 9–11 a
+few extras step back: wallpaper colors need Android 12 (Material uses its own palette before that),
+and on Android 9 fingerprint confirmation can't fall back to your PIN.
 
 Build it yourself (below), or install a release APK. Updates after that come from inside the app
 (Settings → Software update), served by your own server: `sudo nova-app-publish app.apk "notes"`.

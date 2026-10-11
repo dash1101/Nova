@@ -1,0 +1,13 @@
+{
+ "id": "system-tools",
+ "name": "System tools",
+ "version": "1.0",
+ "author": "Nova",
+ "description": "A few one-tap checks: temperatures, disk space, the busiest processes and who's logged in.",
+ "commands": [
+  {"id": "temps", "name": "Temperatures", "description": "CPU, drive and board sensors", "command": "sensors 2>/dev/null || cat /sys/class/thermal/thermal_zone*/temp", "timeout": 30, "icon": "thermometer"},
+  {"id": "disk", "name": "Disk space", "description": "Every mounted drive, biggest first", "command": "df -h --output=target,size,used,avail,pcent -x tmpfs -x devtmpfs | sort -k5 -h -r", "timeout": 30},
+  {"id": "top", "name": "Busiest processes", "description": "The ten using the most CPU right now", "command": "ps -eo pid,user,%cpu,%mem,comm --sort=-%cpu | head -11", "timeout": 30},
+  {"id": "who", "name": "Who's logged in", "description": "Sessions on the server", "command": "who; echo; last -n 10 | head -12", "timeout": 30}
+ ]
+}

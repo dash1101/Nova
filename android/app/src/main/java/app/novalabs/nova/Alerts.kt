@@ -1,5 +1,6 @@
 package app.novalabs.nova
 
+import android.os.Build
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -87,7 +88,7 @@ class AlertService : Service() {
             .setContentTitle("Watching your server").setContentText("Alerts arrive as they happen")
             .setOngoing(true).setSilent(true).setContentIntent(open).setPriority(NotificationCompat.PRIORITY_MIN).build()
         // If Android won't let us run in the foreground right now, step aside: the 15-minute worker covers it.
-        try { startForeground(41, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE) }
+        try { if (Build.VERSION.SDK_INT >= 34) startForeground(41, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE) else startForeground(41, n) }
         catch (e: Exception) { stopSelf(); return START_NOT_STICKY }
         for (id in Servers.all(this)) if (loops[id]?.isActive != true && Pairing(this, id).paired) loops[id] = scope.launch { watch(id) }
         return START_STICKY

@@ -1,5 +1,6 @@
 package app.novalabs.nova
 
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.background
@@ -70,6 +71,17 @@ import org.json.JSONObject
                 Text("${cs.optInt("running")}/${cs.optInt("total")} running", color = N.sub, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
             }
         }
+        // Found on open: a newer Nova app or server release
+        val up = app.updates
+        androidx.compose.animation.AnimatedVisibility(up != null && AppPrefs.dismissedUpdate != up.toString()) {
+            Row(Modifier.padding(horizontal = Space.gutter, vertical = 4.dp).fillMaxWidth().clip(androidx.compose.foundation.shape.RoundedCornerShape(20.dp))
+                .background(N.blue.copy(alpha = 0.14f)).clickable { app.go(Route.Settings) }.padding(start = 14.dp, end = 4.dp, top = 6.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Rounded.SystemUpdate, null, tint = N.blue, modifier = Modifier.size(20.dp)); Spacer(Modifier.width(10.dp))
+                Text(listOfNotNull(up?.optString("app")?.ifEmpty { null }?.let { "App $it" }, up?.optString("server")?.ifEmpty { null }?.let { "server $it" }).joinToString(" and ").replaceFirstChar { it.uppercase() } + " ready to install",
+                    color = N.text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f), maxLines = 2)
+                IconButton({ AppPrefs.set("dismissed_update", up.toString()) }) { Icon(Icons.Rounded.Close, "Not now", tint = N.sub) }
+            }
+        }
         // Something running in the background (installs, updates, backups…): a small note, tap → Inbox
         val tk = app.overview?.optJSONArray("tasks").objs()
         androidx.compose.animation.AnimatedVisibility(tk.isNotEmpty(), enter = androidx.compose.animation.fadeIn() + androidx.compose.animation.expandVertically(),
@@ -135,67 +147,93 @@ import org.json.JSONObject
 @Composable fun MenuScreen(app: AppState) {
     val m = app.overview?.optJSONObject("status")?.optJSONObject("metrics")
     val cs = app.overview?.optJSONObject("containers")
+    val appsLive = live(app, "/api/v1/apps")
+    val apps = appsLive.value?.optJSONArray("apps").objs().filter { !it.optBoolean("hidden") }
     TabOrPage(app, "Menu") {
         Row(Modifier.fillMaxWidth().padding(horizontal = Space.gutter, vertical = 4.dp).clip(androidx.compose.foundation.shape.RoundedCornerShape(28.dp)).background(N.pill)
             .clickable { app.go(Route.Search) }.padding(horizontal = 18.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Rounded.Search, null, tint = N.sub); Spacer(Modifier.width(12.dp))
             Text("Search Nova", color = N.sub, fontSize = 17.sp)
         }
-        FavoritesGroup(app)
-        SectionLabel("Everything")
-        Group {
-            Row1("Containers", cs?.let { "${it.optInt("running")} of ${it.optInt("total")} running" }, true,
-                Icons.Rounded.ViewInAr, onClick = { app.go(Route.Containers) })
-            if (app.has("lighting")) RowDivider()
-            if (app.has("lighting")) Row1("Lighting", app.fan?.let { if (it.optBoolean("on")) "${it.optString("effect").replaceFirstChar { c -> c.uppercase() }} · ${it.optInt("brightness")}%" else "Off" },
-                true, Icons.Rounded.Lightbulb, androidx.compose.ui.graphics.Color(0xFFFFB020), onClick = { app.go(Route.Lighting) })
+        // at a glance: four live tiles
+        val disk = storageList(m).maxByOrNull { it.pct }
+        val tiles = listOfNotNull(
+            Quad("Containers", cs?.let { "${it.optInt("running")}/${it.optInt("total")} up" } ?: "—", Icons.Rounded.ViewInAr, N.blue) to { app.go(Route.Containers) },
+            Quad("Storage", disk?.let { "${it.name} ${it.pct.toInt()}%" } ?: "—", Icons.Rounded.Storage, androidx.compose.ui.graphics.Color(0xFF3ECF6E)) to { app.go(Route.Hardware) },
+            if (app.has("lighting")) Quad("Lighting", app.fan?.let { if (it.optBoolean("on")) "${it.optString("effect").replaceFirstChar { c -> c.uppercase() }} · ${it.optInt("brightness")}%" else "Off" } ?: "—",
+                Icons.Rounded.Lightbulb, androidx.compose.ui.graphics.Color(0xFFFFB020)) to { app.go(Route.Lighting) }
+            else Quad("Status", "Live graphs", Icons.Rounded.MonitorHeart, androidx.compose.ui.graphics.Color(0xFF3ECF6E)) to { app.go(Route.Status) },
+            Quad("Inbox", if (app.unread > 0) "${app.unread} new" else "All caught up", Icons.Rounded.Notifications, androidx.compose.ui.graphics.Color(0xFFFF5A5A)) to { app.go(Route.Inbox) })
+        Column(Modifier.padding(horizontal = Space.gutter, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            tiles.chunked(2).forEach { row -> Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                row.forEach { (q, go) -> Column(Modifier.weight(1f).glassCard(androidx.compose.foundation.shape.RoundedCornerShape(24.dp)).clickable { go() }.padding(16.dp)) {
+                    Icon(q.icon, null, tint = q.color, modifier = Modifier.size(24.dp)); Spacer(Modifier.height(10.dp))
+                    Text(q.title, color = N.text, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                    Text(q.sub, color = N.sub, fontSize = 13.sp, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                } }
+            } }
         }
+        // your apps, right here
+        SectionLabel("Apps")
+        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = Space.gutter), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+            @Composable fun Cell(label: String, onClick: () -> Unit, icon: @Composable () -> Unit) =
+                Column(Modifier.width(68.dp).clip(androidx.compose.foundation.shape.RoundedCornerShape(16.dp)).clickable(onClick = onClick).padding(vertical = 6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    icon(); Text(label, color = N.text, fontSize = 12.sp, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.padding(top = 6.dp)) }
+            @Composable fun Glyph(i: androidx.compose.ui.graphics.vector.ImageVector, c: androidx.compose.ui.graphics.Color) =
+                Box(Modifier.size(52.dp).clip(androidx.compose.foundation.shape.RoundedCornerShape(15.dp)).background(c.copy(alpha = 0.18f)), contentAlignment = Alignment.Center) { Icon(i, null, tint = c) }
+            if (app.isAdmin && app.has("files")) Cell("Files", { openBuiltin(app, "nova-files") }) { Glyph(Icons.Rounded.Folder, N.blue) }
+            Cell("Terminal", { openBuiltin(app, "nova-term") }) { Glyph(Icons.Rounded.Terminal, N.green) }
+            apps.take(10).forEach { a -> Cell(a.optString("name"), { dockTap(app, a.optString("id")) }) { AppIcon(app, a, 52.dp) } }
+            Cell("All apps", { app.go(Route.Apps) }) { Glyph(Icons.Rounded.Apps, N.sub) }
+            if (app.isAdmin) Cell("Add", { app.go(Route.Apps) }) { Glyph(Icons.Rounded.Add, N.blue) }
+        }
+        FavoritesGroup(app)
+        SectionLabel("Server")
         Group {
-            Row1("Storage & hardware", "Drives, pools, set up drives" + (storageList(m).filter { it.mount != "/" }.maxByOrNull { it.pct }?.let { " · ${it.name} ${it.pct.toInt()}%" } ?: ""), true, Icons.Rounded.Storage,
-                androidx.compose.ui.graphics.Color(0xFF3ECF6E), onClick = { app.go(Route.Hardware) })
+            Row1("Status", "Live graphs, storage, backups", true, Icons.Rounded.MonitorHeart, androidx.compose.ui.graphics.Color(0xFF3ECF6E), onClick = { app.go(Route.Status) })
+            RowDivider()
+            Row1("Storage & hardware", "Drives, pools, set up drives", true, Icons.Rounded.Storage, androidx.compose.ui.graphics.Color(0xFF3ECF6E), onClick = { app.go(Route.Hardware) })
             RowDivider()
             Row1("Backups", "What's backed up, restore files", true, Icons.Rounded.Backup, onClick = { app.go(Route.Backups) })
             RowDivider()
-            Row1("Diagnostics", "Speed, stress and network tests", true, Icons.Rounded.Speed, androidx.compose.ui.graphics.Color(0xFF64D2FF),
-                onClick = { app.go(Route.Diagnostics) })
-            RowDivider()
             Row1("Updates", "Packages, containers and Nova", true, Icons.Rounded.Update, androidx.compose.ui.graphics.Color(0xFF3ECF6E), onClick = { app.go(Route.Updates) })
-            if (app.isAdmin) { RowDivider()
-                Row1("Files", "Browse, upload, download and edit files on the server", true, Icons.Rounded.Folder, onClick = { app.go(Route.Files()) }) }
+            RowDivider()
+            Row1("Diagnostics", "Speed, stress and network tests", true, Icons.Rounded.Speed, androidx.compose.ui.graphics.Color(0xFF64D2FF), onClick = { app.go(Route.Diagnostics) })
+        }
+        SectionLabel("Apps & tools")
+        Group {
+            Row1("App store", "Containers and programs", true, Icons.Rounded.Storefront, androidx.compose.ui.graphics.Color(0xFFBF5AF2), onClick = { app.tab(Route.Store) })
+            RowDivider()
+            Row1("Containers", cs?.let { "${it.optInt("running")} of ${it.optInt("total")} running" }, true, Icons.Rounded.ViewInAr, onClick = { app.go(Route.Containers) })
+            if (app.has("lighting")) { RowDivider()
+                Row1("Lighting", "Effects, colors, schedules, your lights", true, Icons.Rounded.Lightbulb, androidx.compose.ui.graphics.Color(0xFFFFB020), onClick = { app.go(Route.Lighting) }) }
             RowDivider()
             Row1("Quick panel", "Your shortcuts — tap ✎ to customize", true, Icons.Rounded.Widgets, onClick = { app.go(Route.QuickPanel) })
             RowDivider()
-            Row1("Server status", "Live graphs, storage, backups", true, Icons.Rounded.MonitorHeart, androidx.compose.ui.graphics.Color(0xFF3ECF6E),
-                onClick = { app.go(Route.Status) })
-            RowDivider()
-            Row1("Dashboard mode", "Always-on screen for a tablet or spare phone", true, Icons.Rounded.Dashboard,
-                androidx.compose.ui.graphics.Color(0xFF64D2FF), onClick = { app.go(Route.Dashboard) })
-            RowDivider()
-            Row1("Terminal", if (SshSession.active) "Connected" else "SSH into the server", SshSession.active, Icons.Rounded.Terminal,
-                androidx.compose.ui.graphics.Color(0xFF8E8E93), onClick = { app.go(if (SshSession.active) Route.SshTerm else Route.Ssh) })
+            Row1("Dashboard mode", "Always-on screen for a tablet or spare phone", true, Icons.Rounded.Dashboard, androidx.compose.ui.graphics.Color(0xFF64D2FF), onClick = { app.go(Route.Dashboard) })
         }
+        SectionLabel("Alerts")
         Group {
-            Row1("Inbox", if (app.unread > 0) "${app.unread} new" else "Alerts, logins and server events", true, Icons.Rounded.Notifications,
-                androidx.compose.ui.graphics.Color(0xFFFF5A5A), onClick = { app.go(Route.Inbox) })
+            Row1("Inbox", if (app.unread > 0) "${app.unread} new" else "Alerts, logins and server events", true, Icons.Rounded.Notifications, androidx.compose.ui.graphics.Color(0xFFFF5A5A), onClick = { app.go(Route.Inbox) })
             RowDivider()
-            Row1("Notifications", "Phone, Discord, logins", false, Icons.Rounded.NotificationsActive,
-                onClick = { app.go(Route.NotifySettings) })
+            Row1("Notifications", "Phone, Discord, logins", false, Icons.Rounded.NotificationsActive, onClick = { app.go(Route.NotifySettings) })
         }
+        SectionLabel("You and this ${DeviceForm.noun}")
         Group {
-            Row1("App store", "Install apps & programs", true, Icons.Rounded.Storefront,
-                androidx.compose.ui.graphics.Color(0xFFBF5AF2), onClick = { app.tab(Route.Store) })
-        }
-        Group {
-            Row1("Users & devices", if (app.isAdmin) "Invite phones, approve browsers, roles" else "Who can reach this server", true,
-                Icons.Rounded.Group, onClick = { app.go(Route.Devices) })
+            Row1("Users & devices", if (app.isAdmin) "Invite phones, approve browsers and watches, roles" else "Who can reach this server", true, Icons.Rounded.Group, onClick = { app.go(Route.Devices) })
             RowDivider()
-            Row1("Settings", null, icon = Icons.Rounded.Settings, iconTint = N.sub, onClick = { app.go(Route.Settings) })
+            Row1("Appearance", "Look, theme, app icon, home layout", true, Icons.Rounded.Palette, onClick = { app.go(Route.Appearance) })
+            RowDivider()
+            Row1("Settings", "Labs, features, software update", true, Icons.Rounded.Settings, N.sub, onClick = { app.go(Route.Settings) })
+            RowDivider()
+            Row1("Report a problem", "Or shake your ${DeviceForm.noun}", false, Icons.Rounded.BugReport, N.sub, onClick = { app.go(Route.Report) })
             RowDivider()
             Row1("About Nova", "Version $APP_VERSION", false, Icons.Rounded.Info, N.sub, onClick = { app.go(Route.About) })
         }
         Spacer(Modifier.height(130.dp))
     }
 }
+private data class Quad(val title: String, val sub: String, val icon: androidx.compose.ui.graphics.vector.ImageVector, val color: androidx.compose.ui.graphics.Color)
 
 /** Live numbers under the hero: CPU, memory, disk, services. Tap any for the full status page. */
 @Composable fun HomeStats(app: AppState) {

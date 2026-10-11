@@ -500,3 +500,12 @@ html.material .alertcard { border-radius: 16px; background: var(--card); backdro
 .taskchip { display: inline-flex; align-items: center; gap: 6px; color: var(--blue); cursor: pointer; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .taskchip svg { width: 18px; height: 18px; flex: none; animation: spin 1.6s linear infinite; }
 .reduce .taskchip svg { animation: none; }
+
+/* Menu: four live tiles, then a row of apps */
+.mtiles { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 6px var(--gutter) 2px; }
+.mtile { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; padding: 16px; border: 0; border-radius: 24px; text-align: left; font: inherit; color: var(--text); cursor: pointer; min-width: 0; }
+.mtile svg { width: 24px; height: 24px; margin-bottom: 6px; } .mtile b { font-size: 16px; font-weight: 600; } .mtile small { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.mapps { display: flex; gap: 6px; overflow-x: auto; padding: 0 var(--gutter); scrollbar-width: none; } .mapps .appcell { flex: none; width: 84px; } .mapps .appic { width: 52px; height: 52px; }
+.mapps .appic.img { background-size: 70%; background-position: center; background-repeat: no-repeat; }
+.upnote { display: flex; align-items: center; gap: 10px; margin: 6px var(--gutter); padding: 6px 6px 6px 14px; border-radius: 20px; }
+.upnote svg { width: 20px; height: 20px; }

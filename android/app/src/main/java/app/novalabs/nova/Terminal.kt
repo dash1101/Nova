@@ -74,7 +74,7 @@ private fun copy(ctx: Context, label: String, text: String) =
         }
     }
 
-    Page("Terminal", app::back) {
+    Page("Terminal", app::back, closeBuiltin(app, "nova-term")) {
         Column(Modifier.fillMaxWidth().padding(vertical = 18.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Box(Modifier.size(96.dp).clip(RoundedCornerShape(30.dp)).background(Color(0xFF0B0B0D)), contentAlignment = Alignment.Center) {
                 Text(">_", color = Color(0xFF3ECF6E), fontFamily = Mono, fontSize = 34.sp, fontWeight = FontWeight.Bold)

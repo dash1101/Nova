@@ -75,9 +75,9 @@ const activeAlerts = () => (S.overview?.status?.active || []).filter(a => a.leve
 function attentionHtml() {
   const l = activeAlerts(); if (!l.length) return "";
   return sec("Needs attention") + group(l.map(a => { const drive = (a.key || "").startsWith("drive:");
-    return `<div class="swipe" data-key="${esc(a.key || "")}" data-right="${drive ? "Removed on purpose" : "Ignore"}"><div class="swbg"></div><div class="swfg">${row(cleanTitle(a.title), { sub: [a.detail, a.since && "since " + a.since].filter(Boolean).join(" · "), icon: "warn", tint: levelColor(a.level), click: "alert:" + (a.key || ""),
+    return `<div class="swipe" data-key="${esc(a.key || "")}" data-right="${drive ? "Removed on purpose" : "Ignore"}" data-left="${drive ? "Removed on purpose" : "Ignore"}"><div class="swbg"></div><div class="swfg">${row(cleanTitle(a.title), { sub: [a.detail, a.since && "since " + a.since].filter(Boolean).join(" · "), icon: "warn", tint: levelColor(a.level), click: "alert:" + (a.key || ""),
       end: a.key ? `<button class="xbtn" data-act="ignore:${esc(a.key)}" aria-label="Ignore">${I("remc")}</button>` : "" })}</div></div>`; }).join(""))
-    + note("Swipe right (or tap) to ignore an alert you've dealt with — it comes back if the problem returns after clearing.");
+    + note("Swipe (or tap ×) to ignore an alert you've dealt with — it comes back if the problem returns after clearing.");
 }
 async function dismissAlert(key, redraw) {
   if (!key) return toast("Update the server to dismiss alerts from here");
@@ -99,7 +99,7 @@ async function alertMenu(key, redraw) {
   if (v === "mount") { if (!isAdmin()) return viewOnly(); try { await post("/api/v1/mounts/mount", { mount: key.slice(6) }); toast("Mounted"); } catch (e) { toast(e.message); } await refresh(); redraw?.(); }
 }
 function wireAttention(ctx, redraw) {
-  swipeable(ctx.root, { onRight: key => dismissAlert(key, redraw) });
+  swipeable(ctx.root, { onRight: key => dismissAlert(key, redraw), onLeft: key => dismissAlert(key, redraw) });
 }
 
 function liveNow() { return S.cache["/api/v1/stats?now"]?.now || S.lastNow || S.cache["/api/v1/stats"]?.now || null; }
@@ -138,7 +138,7 @@ export async function home(ctx) {
     const top = `<div class="home-title"><h1><span>${esc(serverName())}</span></h1><span class="sp"></span>
         <button class="circle" data-act="search" aria-label="Search (press /)">${I("search")}</button><button class="circle" data-act="refresh" aria-label="Refresh">${I("refresh")}</button><button class="circle" data-act="more" aria-label="More">${I("more")}</button></div>
       <div class="statusline" data-act="go:status"><span style="color:${S.error || S.reconnecting ? "var(--sub)" : levelColor(lvl)};display:flex">${I(icon)}</span>${esc(head)}${cs ? `<span class="sep"></span>${cs.running}/${cs.total} running` : ""}${tasksChip()}</div>
-      <div style="height:14px"></div>${topBanner()}`;
+      <div style="height:14px"></div>${topBanner()}${S.serverUpdate && localStorage.getItem("nova.dismissedUpdate") !== S.serverUpdate ? `<div class="upnote glass"><span style="color:var(--blue);display:flex">${I("update")}</span><b data-act="go:updates" style="flex:1;cursor:pointer">Nova ${esc(S.serverUpdate)} is ready to install</b><button class="xbtn" data-act="upx" aria-label="Not now">${I("close")}</button></div>` : ""}`;
     const order = prefs.homeOrder.filter(id => prefs[HOME_SECTIONS.find(s => s[0] === id)?.[3]]);
     const block = id => id === "hero" ? `<canvas class="hero" id="hero" data-act="${has("lighting") ? "go:lighting" : ""}"></canvas>` : id === "shortcuts" ? pills() : stats();
     const wide = innerWidth >= 1100;
@@ -148,7 +148,11 @@ export async function home(ctx) {
     animate($("#hero"), "server", () => S.error ? "#9e9ea4" : getComputedStyle(document.documentElement).getPropertyValue(lvl === "ok" ? "--green" : lvl === "warning" ? "--amber" : "--red").trim());
     onHold($("#chips"), () => ctx.go("edit-shortcuts"));
   };
+  // once per visit: is there a newer signed release for the server? (the server checks at most every 30 minutes)
+  if (isAdmin() && !S.updateAsked) { S.updateAsked = true;
+    post("/api/v1/server/update/check", { quiet: true }).then(u => { if (u?.state === "available") { S.serverUpdate = String(u.available || "").replace("~", "-"); if (ctx.alive()) draw(); } }).catch(() => {}); }
   ctx.handlers({
+    upx: () => { try { localStorage.setItem("nova.dismissedUpdate", S.serverUpdate); } catch {} draw(); },
     refresh: async () => { await refresh(); await fetchNow(); draw(); toast("Up to date"); },
     disconnected: async () => { if (await showDisconnected()) draw(); },
     more: async () => {
@@ -164,30 +168,42 @@ export async function home(ctx) {
 // ═════════════════════════════════════ MENU ═════════════════════════════════════
 export async function menu(ctx) {
   const draw = () => {
-    const m = S.overview?.status?.metrics || {}, cs = S.overview?.containers, f = S.fan;
-    ctx.show(`<button class="searchbox glass" data-act="search" style="width:calc(100% - 2*var(--gutter));text-align:left">${I("search")}<span class="muted" style="font-size:17px">Search Nova</span><span class="muted" style="margin-left:auto;font-size:13px">/</span></button>
-      ${favoritesHtml()}${sec("Everything")}
-      ${group(row("Containers", { sub: cs ? `${cs.running} of ${cs.total} running` : null, blue: true, icon: "box", click: "go:containers" })
-        + (has("lighting") ? row("Lighting", { sub: f ? (f.on !== false ? `${cap(f.effect)} · ${f.brightness}%` : "Off") : null, blue: true, icon: "bulb", tint: "#ffb020", click: "go:lighting" }) : ""))}
-      ${group(row("Storage & hardware", { sub: "Drives, pools, set up drives" + (storageList(m).length ? " · " + storageList(m).map(x => `${x.name} ${Math.round(x.pct)}%`).slice(0, 2).join(" · ") : ""), blue: true, icon: "disk", tint: "#3ecf6e", click: "go:hardware" })
+    const m = S.overview?.status?.metrics || {}, cs = S.overview?.containers, f = S.fan, disk = storageList(m).sort((a, b) => b.pct - a.pct)[0];
+    const tile = (icon, tint, title, sub, act) => `<button class="mtile glass press" data-act="${act}"><span style="color:${tint};display:flex">${I(icon)}</span><b>${esc(title)}</b><small class="muted">${esc(sub)}</small></button>`;
+    const apps = (S.cache["/api/v1/apps"]?.apps || []).filter(a => !a.hidden).slice(0, 10);
+    const cell = (label, inner, act, href) => href ? `<a class="appcell press" href="${esc(href)}" target="_blank" rel="noopener">${inner}<span class="appname">${esc(label)}</span></a>`
+      : `<button class="appcell press" data-act="${act}" style="border:0;background:none;font:inherit;color:var(--text);cursor:pointer">${inner}<span class="appname">${esc(label)}</span></button>`;
+    const glyph = (ic, c) => `<span class="appic" style="background:color-mix(in srgb,${c} 18%,var(--card));color:${c}">${I(ic)}</span>`;
+    ctx.show(`<button class="searchbox glass" data-act="search" style="width:calc(100% - 2*var(--gutter));text-align:left">${I("search")}<span class="muted" style="font-size:17px">Search Nova</span></button>
+      <div class="mtiles">${tile("box", "var(--blue)", "Containers", cs ? `${cs.running}/${cs.total} up` : "—", "go:containers")}${tile("disk", "#3ecf6e", "Storage", disk ? `${disk.name} ${Math.round(disk.pct)}%` : "—", "go:hardware")}
+        ${has("lighting") ? tile("bulb", "#ffb020", "Lighting", f ? (f.on !== false ? `${cap(f.effect)} · ${f.brightness}%` : "Off") : "—", "go:lighting") : tile("status", "#3ecf6e", "Status", "Live graphs", "go:status")}
+        ${tile("bell", "#ff5a5a", "Inbox", S.unread ? `${S.unread} new` : "All caught up", "go:inbox")}</div>
+      ${sec("Apps")}<div class="mapps">${isAdmin() && has("files") ? cell("Files", glyph("folder", "#3e91ff"), "go:files") : ""}${isAdmin() ? cell("Terminal", glyph("term", "#3ecf6e"), "go:term") : ""}
+        ${apps.map(a => { const h = ST.appHref(a); return a.kind === "command" ? cell(a.name, glyph("term", "#8e8e93"), "go:apps") : cell(a.name, `<span class="appic" data-ic="${esc(a.id)}">${esc((a.name || "?")[0])}</span>`, "go:apps", h); }).join("")}
+        ${cell("All apps", glyph("apps", "var(--sub)"), "go:apps")}</div>
+      ${favoritesHtml()}
+      ${sec("Server")}${group(row("Status", { sub: "Live graphs, storage, backups", blue: true, icon: "status", tint: "#3ecf6e", click: "go:status" })
+        + row("Storage & hardware", { sub: "Drives, pools, set up drives", blue: true, icon: "disk", tint: "#3ecf6e", click: "go:hardware" })
         + row("Backups", { sub: "What's backed up, restore files", blue: true, icon: "backup", click: "go:backups" })
-        + row("Diagnostics", { sub: "Speed, stress and network tests", blue: true, icon: "speed", tint: "#64d2ff", click: "go:diag" })
         + row("Updates", { sub: "Packages, containers and Nova", blue: true, icon: "update", tint: "#3ecf6e", click: "go:updates" })
-        + (isAdmin() ? row("Files", { sub: "Browse, upload, download and edit files on the server", blue: true, icon: "folder", tint: "#3e91ff", click: "go:files" }) : "")
-        + row("Servers", { sub: (S.cache["/api/v1/nodes"]?.nodes || []).length ? `${S.cache["/api/v1/nodes"].nodes.length + 1} servers, at a glance` : "Your other Nova servers in one place — add one with +", blue: true, icon: "dns", tint: "#64d2ff", click: "go:servers" })
+        + row("Diagnostics", { sub: "Speed, stress and network tests", blue: true, icon: "speed", tint: "#64d2ff", click: "go:diag" })
+        + row("Servers", { sub: (S.cache["/api/v1/nodes"]?.nodes || []).length ? `${S.cache["/api/v1/nodes"].nodes.length + 1} servers, at a glance` : "Your other Nova servers in one place — add one with +", blue: true, icon: "dns", click: "go:servers" }))}
+      ${sec("Apps & tools")}${group((has("store") ? row("App store", { sub: "Containers and programs", blue: true, icon: "store", tint: "#bf5af2", click: navTabs().some(t => t.route === "store") ? "tab:store" : "go:store" }) : "")
+        + row("Containers", { sub: cs ? `${cs.running} of ${cs.total} running` : null, blue: true, icon: "box", click: "go:containers" })
+        + (has("lighting") ? row("Lighting", { sub: "Effects, colors, schedules, your lights", blue: true, icon: "bulb", tint: "#ffb020", click: "go:lighting" }) : "")
         + row("Quick panel", { sub: "Your shortcuts — tap ✎ to customize", blue: true, icon: "widgets", click: "go:quick" })
-        + row("Server status", { sub: "Live graphs, storage, backups", blue: true, icon: "status", tint: "#3ecf6e", click: "go:status" })
-        + row("Dashboard mode", { sub: "Always-on screen for a tablet or spare screen", blue: true, icon: "dash", tint: "#64d2ff", click: "go:dashboard" })
-        + row("Terminal", { sub: "Container shells here · SSH in the phone app", icon: "term", tint: "#8e8e93", click: "go:terminal" }))}
-      ${group(row("Inbox", { sub: S.unread ? `${S.unread} new` : "Alerts, logins and server events", blue: true, icon: "bell", tint: "#ff5a5a", click: "go:inbox" })
+        + row("Dashboard mode", { sub: "Always-on screen for a tablet or spare screen", blue: true, icon: "dash", tint: "#64d2ff", click: "go:dashboard" }))}
+      ${sec("Alerts")}${group(row("Inbox", { sub: S.unread ? `${S.unread} new` : "Alerts, logins and server events", blue: true, icon: "bell", tint: "#ff5a5a", click: "go:inbox" })
         + row("Notifications", { sub: "Discord, logins, USB", icon: "bell", click: "go:notify" }))}
-      ${has("store") ? group(row("App store", { sub: "Install apps & programs", blue: true, icon: "store", tint: "#bf5af2", click: navTabs().some(t => t.route === "store") ? "tab:store" : "go:store" })) : ""}
-      ${group(row("Users & devices", { sub: "Who can reach this server", blue: true, icon: "group", click: "go:devices" })
-        + row("Settings", { icon: "gear", tint: "var(--sub)", click: "go:settings" })
+      ${sec("You and this browser")}${group(row("Users & devices", { sub: "Who can reach this server", blue: true, icon: "group", click: "go:devices" })
+        + row("Appearance", { sub: "Look, theme, home layout", blue: true, icon: "palette", click: "go:appearance" })
+        + row("Settings", { sub: "Labs, features, plugins", icon: "gear", tint: "var(--sub)", click: "go:settings" })
         + row("About Nova", { sub: "Nova web", icon: "info", tint: "var(--sub)", click: "go:about" }))}`,
       { title: "Menu", root: true, tabroot: true });
+    $$("[data-ic]", ctx.root).forEach(async el => { const u = await ST.appIconUrl(el.dataset.ic); if (u && el.isConnected) { el.classList.add("img"); el.style.backgroundImage = `url(${u})`; el.textContent = ""; } });
   };
-  draw(); ctx.every(15000, async () => { await refresh(); draw(); });
+  draw(); get("/api/v1/apps").then(() => ctx.alive() && draw()).catch(() => {});
+  ctx.every(15000, async () => { await refresh(); draw(); });
 }
 
 // ════════════════════════════════════ STATUS ════════════════════════════════════
@@ -563,7 +579,7 @@ export async function inbox(ctx) {
         || note(all ? "Nothing here — all quiet." : "Loading…")}`,
       { title: "Inbox", actions: [{ icon: "book", label: "Archive", act: "go:archive" }, { icon: "del", label: "Archive everything", act: "clear" }, { icon: "gear", label: "Notification settings", act: "go:notify" }] });
     wireCommon(ctx.root, { onSeg: (_, i) => { filter = i; picked.clear(); draw(); } });
-    swipeable(ctx.root, { onRight: key => key.startsWith("live:") ? hideLive(key) : /^[\d.]+$/.test(key) ? remove([+key]) : dismissAlert(key, draw), onLeft: t => t.startsWith("live:") ? hideLive(t) : remove([+t]) });
+    swipeable(ctx.root, { onRight: key => key.startsWith("live:") ? hideLive(key) : /^[\d.]+$/.test(key) ? remove([+key]) : dismissAlert(key, draw), onLeft: t => t.startsWith("live:") ? hideLive(t) : /^[\d.]+$/.test(t) ? remove([+t]) : dismissAlert(t, draw) });
     $$(".swipe.mouse", ctx.root).forEach(el => el.onfocus = () => { last = el.dataset.key; });
   };
   // Selection changes update the page in place (so ticks, rows and the bar can animate) instead of redrawing it.
@@ -1194,7 +1210,8 @@ export async function settings(ctx) {
         + row("Setup guide", { sub: "Install Nova on a server, remote access, browsers", blue: true, icon: "book", click: "go:guide" }))}
       ${group(row("Remove this browser", { sub: "Erases its key", icon: "del", tint: "var(--red)", click: "forget" }))}
       ${sec("Labs")}${group(row("Labs", { sub: "Experimental features you can try", blue: true, icon: "science", tint: "#bf5af2", click: "go:labs" })
-        + row("Features", { sub: "Switch off parts of Nova you don't use, like lighting control", blue: true, icon: "tune", click: "go:features" }))}
+        + row("Features", { sub: "Switch off parts of Nova you don't use, like lighting control", blue: true, icon: "tune", click: "go:features" })
+        + row("Plugins", { sub: "Add-ons that bring more apps and tools", blue: true, icon: "widgets", click: "go:plugins" }))}
       ${links([["About Nova", "go:about"]])}`, { title: "Settings" });
     wireCommon(ctx.root);
   };

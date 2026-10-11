@@ -65,7 +65,9 @@ fun materialTokens(c: ColorScheme, dark: Boolean) = NovaColors(
     val dark = when (AppPrefs.theme) { "dark" -> true; "light" -> false; else -> isSystemInDarkTheme() }
     val ctx = androidx.compose.ui.platform.LocalContext.current
     val material = materialStyle()
-    val dyn = if (material) (if (dark) dynamicDarkColorScheme(ctx) else dynamicLightColorScheme(ctx)) else null
+    // wallpaper colors are Android 12+; before that, Material uses its own baseline palette
+    val dyn = if (!material) null else if (Compat.S) (if (dark) dynamicDarkColorScheme(ctx) else dynamicLightColorScheme(ctx))
+              else (if (dark) androidx.compose.material3.darkColorScheme() else androidx.compose.material3.lightColorScheme())
     val t = if (dyn != null) materialTokens(dyn, dark) else if (dark) DarkTokens else LightTokens
     val view = androidx.compose.ui.platform.LocalView.current
     if (!view.isInEditMode) SideEffect {                // status/nav bar icons follow the app's theme, not just the phone's
@@ -344,7 +346,8 @@ class Bead(val pos: Dp, val size: Dp, val alpha: Float)
             Box(Modifier.size(34.dp).clip(RoundedCornerShape(10.dp)).background(if (ring) N.blue else Color.Transparent).padding(if (ring) 2.dp else 0.dp)
                 .clip(RoundedCornerShape(9.dp)).background(N.card), contentAlignment = Alignment.Center) {
                 val b = s.icon
-                if (b != null) androidx.compose.foundation.Image(b, s.app.optString("name"), Modifier.fillMaxSize().padding(3.dp))
+                if (s.app.has("builtin")) Icon(Builtins.icon(s.id), s.app.optString("name"), tint = N.blue, modifier = Modifier.size(20.dp))
+                else if (b != null) androidx.compose.foundation.Image(b, s.app.optString("name"), Modifier.fillMaxSize().padding(3.dp))
                 else Text(s.app.optString("name").take(1).uppercase(), color = N.blue, fontWeight = FontWeight.Bold)
             }
         }

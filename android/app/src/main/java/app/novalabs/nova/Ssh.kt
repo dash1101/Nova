@@ -42,8 +42,7 @@ class SshKey(profile: String) {
         val g = KeyPairGenerator.getInstance(KeyProperties.KEY_ALGORITHM_EC, "AndroidKeyStore")
         fun spec(strong: Boolean) = KeyGenParameterSpec.Builder(ALIAS, KeyProperties.PURPOSE_SIGN)
             .setAlgorithmParameterSpec(ECGenParameterSpec("secp256r1")).setDigests(KeyProperties.DIGEST_SHA256)
-            .setUserAuthenticationRequired(true)
-            .setUserAuthenticationParameters(30, KeyProperties.AUTH_BIOMETRIC_STRONG or KeyProperties.AUTH_DEVICE_CREDENTIAL)
+            .let { Compat.userAuth(it, 30) }
             .setIsStrongBoxBacked(strong).build()
         try { g.initialize(spec(true)); g.generateKeyPair() }
         catch (e: Exception) { g.initialize(spec(false)); g.generateKeyPair() }      // no StrongBox: TEE
@@ -140,8 +139,7 @@ object SshSession {
     /** Fingerprint/PIN unlocks the SSH key for 30 s (no crypto object: time-bound key). */
     suspend fun unlock(activity: Activity) = suspendCancellableCoroutine { cont ->
         val cancel = CancellationSignal(); cont.invokeOnCancellation { cancel.cancel() }
-        BiometricPrompt.Builder(activity).setTitle("Open a terminal on the server").setSubtitle("Nova · confirm it's you")
-            .setAllowedAuthenticators(Authenticators.BIOMETRIC_STRONG or Authenticators.DEVICE_CREDENTIAL).build()
+        Compat.prompt(activity, "Open a terminal on the server", "Nova · confirm it's you", crypto = false).build()
             .authenticate(cancel, activity.mainExecutor, object : BiometricPrompt.AuthenticationCallback() {
                 override fun onAuthenticationSucceeded(r: BiometricPrompt.AuthenticationResult) { cont.resume(Unit) }
                 override fun onAuthenticationError(code: Int, msg: CharSequence) {

@@ -165,7 +165,7 @@ class FanTileService : TileService() {
         scope.launch {
             runCatching { NovaApi(pairing).get("/api/v1/fan") }.onSuccess { f ->
                 qsTile?.state = if (f.optBoolean("on")) Tile.STATE_ACTIVE else Tile.STATE_INACTIVE
-                qsTile?.subtitle = if (f.optBoolean("on")) "${f.optInt("brightness")}%" else "Off"
+                if (Compat.Q) qsTile?.subtitle = if (f.optBoolean("on")) "${f.optInt("brightness")}%" else "Off"
                 qsTile?.updateTile()
             }
         }

@@ -107,10 +107,7 @@ class NovaApi(private val pairing: Pairing) {
         val pr = prepare(method, path, body)
         val sig = pairing.keys.stepUpSignature()
         val authed = suspendCancellableCoroutine { cont ->
-            val prompt = BiometricPrompt.Builder(activity)
-                .setTitle(title).setSubtitle("Nova · confirm it's you")
-                .setAllowedAuthenticators(Authenticators.BIOMETRIC_STRONG or Authenticators.DEVICE_CREDENTIAL)
-                .build()
+            val prompt = Compat.prompt(activity, title, "Nova · confirm it's you", crypto = true).build()
             val cancel = CancellationSignal()
             cont.invokeOnCancellation { cancel.cancel() }
             prompt.authenticate(BiometricPrompt.CryptoObject(sig), cancel, activity.mainExecutor,
