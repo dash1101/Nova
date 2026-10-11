@@ -30,6 +30,7 @@ import androidx.wear.compose.material3.*
 import androidx.wear.input.RemoteInputIntentHelper
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import androidx.lifecycle.lifecycleScope
 import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.*
@@ -42,6 +43,16 @@ class WearActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         val store = WearStore(this)
         val given = intent.getStringExtra("address")      // an address handed over at launch (adb, or a helper app) — the same as typing it; approval still needed
+        if (intent.getStringExtra("action") == "lights" && store.paired) {   // the lights tile: switch, say so, done
+            lifecycleScope.launch {
+                val msg = try { val api = WearApi(store); val on = api.get("/api/v1/fan").optBoolean("on")
+                    api.post("/api/v1/fan", JSONObject().put("on", !on)); if (on) "Lights off" else "Lights on" } catch (e: WearApiException) { e.message ?: "Couldn't reach the server" }
+                android.widget.Toast.makeText(this@WearActivity, msg, android.widget.Toast.LENGTH_SHORT).show()
+                androidx.wear.tiles.TileService.getUpdater(this@WearActivity).requestUpdate(LightsTile::class.java)
+                finish()
+            }
+            return
+        }
         setContent {
             MaterialTheme {
                 var paired by remember { mutableStateOf(store.paired) }
@@ -160,6 +171,7 @@ private suspend fun probePin(url: String): String = kotlinx.coroutines.withConte
     var busy by remember { mutableStateOf<String?>(null) }
     var confirmUnpair by remember { mutableStateOf(false) }
     var lost by remember { mutableStateOf(false) }
+    var lights by remember { mutableStateOf<Boolean?>(null) }
     val ctx = LocalContext.current
     val secure = ctx.getSystemService(android.app.KeyguardManager::class.java)?.isDeviceSecure == true
     suspend fun refresh() {
@@ -167,6 +179,7 @@ private suspend fun probePin(url: String): String = kotlinx.coroutines.withConte
             val o = api.get("/api/v1/overview"); ov = o; store.lastOverview = o.toString()
             approvals = api.get("/api/v1/approvals").optJSONArray("approvals").objs().filter { it.optString("state") == "pending" }
             events = api.get("/api/v1/events").optJSONArray("events").objs().take(12)
+            lights = if (o.optJSONObject("features")?.optBoolean("lighting") == true) runCatching { api.get("/api/v1/fan").optBoolean("on") }.getOrNull() else null
             err = null
         } catch (e: WearApiException) { err = e.message; lost = e.code == 401 }      // 401 can be a skewed clock too: never wipe on our own
     }
@@ -199,6 +212,18 @@ private suspend fun probePin(url: String): String = kotlinx.coroutines.withConte
                         fontSize = 12.sp, color = MaterialTheme.colorScheme.primary, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
                 }
             }
+            lights?.let { on -> item {
+                Card(onClick = { scope.launch { busy = "lights"
+                    try { lights = api.post("/api/v1/fan", JSONObject().put("on", !on)).optBoolean("on", !on) } catch (e: WearApiException) { err = e.message }
+                    busy = null } }, enabled = busy == null, modifier = Modifier.fillMaxWidth()) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.size(12.dp).clip(CircleShape).background(if (on) AMBER else Color.DarkGray))
+                        Spacer(Modifier.width(8.dp))
+                        Column { Text("Lights", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                            Text(if (busy == "lights") "…" else if (on) "On · tap to turn off" else "Off · tap to turn on", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    }
+                }
+            } }
             if (lost) item {
                 Card(onClick = { onUnpair() }, modifier = Modifier.fillMaxWidth()) {
                     Text("The server doesn't recognize this watch", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)

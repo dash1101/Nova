@@ -561,6 +561,22 @@ export async function apps(ctx) {
     $("#cfh").oninput = e => h = e.target.value.trim().toLowerCase(); if ((await r0) !== "next") return;
     const tls = /^https:/.test(g.service || "");
     try { p = await post("/api/v1/cloudflare/plan", { host: h, service: g.service, no_tls_verify: tls }); } catch (e) { return toast(e.message); }
+    if (p.conflict) {        // taken: never overwritten — a free name nearby, or (yours, on this tunnel, open to anyone) protect it
+      const btns = [{ label: "Cancel", value: null }];
+      if (p.suggest) btns.push({ label: "Use " + p.suggest, color: "var(--blue)", value: "suggest" });
+      if (p.can_protect) btns.push({ label: "Protect it", color: "var(--blue)", value: "protect" });
+      const c = await dialog(`${p.host} is already in use`, `Nova won't change it: ${p.why}.`, btns,
+        p.can_protect ? `<div class="pad"><p class="muted">Or keep this address and put it behind the same Cloudflare login as Nova (only the login changes; your route and DNS record stay).</p></div>` : "");
+      if (c === "suggest") return autoSetup(a, g, p.suggest);
+      if (c !== "protect") return;
+      const sure = await dialog(`Put ${p.host} behind the login?`, "Anyone opening it will have to sign in with your Cloudflare login first, like Nova. Your route and DNS record don't change, and you can take the login off again later.",
+        [{ label: "Cancel", value: null }, { label: "Protect it", color: "var(--blue)", value: "go" }],
+        `<div class="pad"><p class="muted" style="color:var(--amber)">Heads-up: an app's own phone app (Immich, Jellyfin, Home Assistant…) can't get past a web login by itself — it needs a Cloudflare Access service token added in its settings (Immich: Settings → Advanced → Custom proxy headers).</p></div>`);
+      if (sure !== "go") return;
+      try { const res = await post("/api/v1/cloudflare/protect", { host: p.host, app: a.id }); toast(`${p.host} now asks for your login`); await get("/api/v1/apps"); draw(); remoteSetup({ ...a, remote_url: res.url }); }
+      catch (e) { toast(e.message); }
+      return;
+    }
     const ok = await dialog("Here's what Nova will do", "", [{ label: "Cancel", value: null }, { label: "Do it", color: "var(--blue)", value: "go" }],
       `<div class="pad"><ol class="steps">${p.steps.map(x => `<li>${esc(x)}</li>`).join("")}</ol><p class="muted">In that order, so the app is never reachable without the login. Your phone confirms it.</p></div>`);
     if (ok !== "go") return;
@@ -744,6 +760,7 @@ export async function labs(ctx) {
         l.labs.auto_updates ? row("Weekly updates", { sub: sched ? `${DAYS[sched.day]}s at ${hh(sched.hour)}${sched.last ? " · last ran " + new Date(sched.last * 1000).toLocaleDateString() : ""}` : "…", blue: true, icon: "update", click: isAdmin() ? "sched" : "" }) : "",
         l.labs.image_cleanup ? row("Old images", { sub: "See what's taking space, and clean it up", blue: true, icon: "disk", click: "go:labs-images" }) : "",
         l.labs.wake_on_lan ? row("Wake-on-LAN", { sub: "Turn on other computers on your network", blue: true, icon: "power", click: "go:wol" }) : "",
+        l.labs.openrgb ? row("OpenRGB", { sub: "Where it runs, and the devices it has", blue: true, icon: "bulb", click: "go:openrgb" }) : "",
       ].join("")) : ""}`, { title: "Labs" });
   };
   ctx.handlers({
@@ -809,6 +826,30 @@ export async function wol(ctx) {
   draw(); await load();
 }
 
+// Labs → OpenRGB: where its SDK server is, and its devices (each can be a light in Lighting)
+export async function openrgb(ctx) {
+  let d = null, err = null, busy = false;
+  const load = async () => { try { d = await get("/api/v1/labs/openrgb"); err = null; } catch (e) { err = e.message; } if (ctx.alive()) draw(); };
+  const draw = () => {
+    if (err) return ctx.show(note(err), { title: "OpenRGB" });
+    if (!d) return ctx.show(note("Loading…"), { title: "OpenRGB" });
+    ctx.show(`${note("With OpenRGB on, Nova draws every effect itself and sends the colors to OpenRGB, so they work on any device it supports. Nova stops talking to the motherboard's lighting controller directly (OpenRGB does that now); turn this off in Labs to go back.")}
+      ${group(row(`OpenRGB at ${esc(d.host)}:${d.port}`, { sub: "Its SDK server (in OpenRGB: SDK Server → Start Server, or run openrgb --server)", blue: true, icon: "dns", click: isAdmin() ? "where" : "" })
+        + row(busy ? "Looking…" : "Look for devices", { sub: "Then add them as lights in Lighting → Set up", blue: true, icon: "refresh", click: isAdmin() && !busy ? "scan" : "" }))}
+      ${d.devices.length ? sec("Devices") + group(d.devices.map(x => row(x.name, { sub: `${x.leds} LEDs${x.zones.length > 1 ? " · " + x.zones.map(z => z.name).join(", ") : ""}`, icon: "bulb", tint: "var(--amber)", click: "go:lights" })).join("")) : ""}`, { title: "OpenRGB" });
+  };
+  ctx.handlers({
+    scan: async () => { busy = true; draw(); try { d = await post("/api/v1/labs/openrgb/scan", {}); toast(`${d.devices.length} device${d.devices.length === 1 ? "" : "s"}`); } catch (e) { toast(e.message); } busy = false; draw(); },
+    where: async () => { let host = d.host, port = String(d.port);
+      const p = dialog("Where's OpenRGB?", "On this server it's 127.0.0.1. It can also run on another computer on your network.", [{ label: "Cancel", value: null }, { label: "Save", color: "var(--blue)", value: "save" }],
+        `<div class="pad" style="display:grid;gap:10px"><input class="field" id="oh" value="${esc(host)}" placeholder="Address, like 127.0.0.1" autocomplete="off" spellcheck="false"><input class="field" id="op" value="${esc(port)}" placeholder="Port (6742)" inputmode="numeric"></div>`);
+      $("#oh").oninput = e => host = e.target.value.trim(); $("#op").oninput = e => port = e.target.value.replace(/\D/g, "");
+      if ((await p) !== "save") return;
+      try { d = await post("/api/v1/labs/openrgb", { host, port: +port || 6742 }); toast("Saved"); } catch (e) { toast(e.message); } draw(); },
+  });
+  draw(); await load();
+}
+
 export async function cloudflare(ctx) {
   let st = null, err = null;
   const load = async () => { try { st = await get("/api/v1/cloudflare"); err = null; } catch (e) { err = e.message; } if (ctx.alive()) draw(); };
@@ -827,9 +868,11 @@ export async function cloudflare(ctx) {
         <li>Select <b>Continue to summary</b> → <b>Create Token</b>, copy it (Cloudflare shows it only once) and paste it with <b>Add an API token</b>.</li>
       </ol>
       <p class="note">Your tunnel has to be one you run with a token (set up in the Cloudflare dashboard).</p>
-      ${st.token && !st.error ? sec("On your tunnel") + group(((st.hostnames || []).map(h => row(h, { sub: h === nova ? "Nova itself" : (st.protected || []).includes(h) ? "Behind your Access login" : "Not behind Nova's Access app — check it in Cloudflare",
-          icon: h === nova ? "dns" : "cloud", tint: (st.protected || []).includes(h) || h === nova ? "var(--green)" : "var(--amber)",
-          end: h === nova ? "" : `<button class="rmbtn press" data-act="unpub:${esc(h)}" aria-label="Take it off" title="Take it off">${I("del")}</button>` })).join("")) || row("Nothing yet", { sub: "Apps → hold an app → From anywhere…" })) : ""}
+      ${st.token && !st.error ? sec("On your tunnel") + group(((st.hostnames || []).map(h => { const kind = (st.nova_added || {})[h], prot = (st.protected || []).includes(h);
+          return row(h, { sub: h === nova ? "Nova itself" : kind === "added" ? "Added by Nova" : kind === "protected" ? "Yours — Nova added the login" : prot ? "Yours · behind the login" : "Yours · open to anyone (no login)",
+          icon: h === nova ? "dns" : "cloud", tint: prot || h === nova ? "var(--green)" : "var(--amber)",
+          // only what Nova did can be undone here; everything else stays as you set it up
+          end: kind && isAdmin() ? `<button class="rmbtn press" data-act="unpub:${esc(h)}" aria-label="Take it off" title="Take it off">${I("del")}</button>` : "" }); }).join("")) || row("Nothing yet", { sub: "Apps → hold an app → From anywhere…" })) : ""}
       ${note("To put an app online: Apps → hold (or right-click) an app → From anywhere… → Set it up for me.")}`, { title: "Cloudflare" });
   };
   ctx.handlers({
@@ -840,8 +883,11 @@ export async function cloudflare(ctx) {
       try { await post("/api/v1/cloudflare/token", { token: v }); toast("Saved"); } catch (e) { toast(e.message); } load(); },
     untoken: async () => { if (!(await confirm("Remove the API token?", "Addresses already set up keep working; Nova just can't add or remove them any more.", "Remove"))) return;
       try { await post("/api/v1/cloudflare/token", { token: "" }); } catch (e) { toast(e.message); } load(); },
-    unpub: async h => { if (!(await confirm(`Take ${h} off the internet?`, "Nova removes its tunnel route and DNS record, then its Access entry. The app itself isn't touched.", "Take it off"))) return;
-      try { await post("/api/v1/cloudflare/remove", { host: h }); toast(`${h} removed`); } catch (e) { toast(e.message); } load(); },
+    unpub: async h => { const pub = (st.nova_added || {})[h] === "protected";
+      if (!(await confirm(pub ? `Take the login off ${h}?` : `Take ${h} off?`,
+        pub ? `Nova only added the login to this address (it was yours before). Taking it off makes ${h} open to anyone again — the route and DNS record stay.`
+            : "Nova removes what it added for it: the tunnel route, the DNS record and the login. Anything else in your Cloudflare account stays as it is.", pub ? "Make it public" : "Take it off"))) return;
+      try { await post("/api/v1/cloudflare/remove", { host: h, allow_public: pub }); toast("Done"); } catch (e) { toast(e.message); } load(); },
   });
   draw(); await load();
 }

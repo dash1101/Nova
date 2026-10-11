@@ -24,6 +24,10 @@
     sudo nova plugin list          what's installed
     sudo nova plugin add FOLDER    install a plugin (a folder with plugin.json) — it shows what it adds first
     sudo nova plugin remove ID     uninstall one
+
+  Cloudflare (Labs → Cloudflare auto-setup)
+    sudo nova cloudflare list      what Nova changed in your Cloudflare account
+    sudo nova cloudflare undo      take it all back (e.g. before uninstalling); asks first
 """
 import hashlib, json, os, re, secrets, shutil, subprocess, sys, time
 
@@ -209,6 +213,29 @@ def plugin(args):
         shutil.rmtree(dst); print("  ✓ Removed."); return
     sys.exit("usage: sudo nova plugin list | add FOLDER | remove ID")
 
+def cloudflare(args):
+    """What Nova changed in your Cloudflare account, and taking it all back (e.g. before uninstalling)."""
+    sys.path.insert(0, "/usr/lib/nova-api"); sys.path.insert(1, os.path.dirname(os.path.realpath(__file__)))
+    import cfsync
+    led = cfsync.ledger(); sub = args[0] if args else "list"
+    if sub == "list":
+        if not led: print("Nova hasn't changed anything in your Cloudflare account."); return
+        for h, r in led.items():
+            what = "your existing address, put behind the login" if r.get("protected_existing") else "added by Nova (route, DNS record, login)"
+            print(f"  {h:<36} {what}")
+        return
+    if sub == "undo":
+        if not led: print("Nothing to undo — Nova hasn't changed your Cloudflare account."); return
+        unprotect = "--unprotect" in args
+        print("This takes off everything Nova added to your Cloudflare account:")
+        for h, r in led.items():
+            if r.get("protected_existing"): print(f"  {h:<36} " + ("login removed — it will be OPEN TO ANYONE again" if unprotect else "kept behind the login (it was yours before; add --unprotect to remove the login too)"))
+            else: print(f"  {h:<36} route, DNS record and login removed")
+        if input("\nGo ahead? [y/N]: ").strip().lower() != "y": print("Nothing changed."); return
+        for h, r in cfsync.undo_all(unprotect).items(): print(f"  {h:<36} {r}")
+        return
+    sys.exit("usage: sudo nova cloudflare list | undo [--unprotect]")
+
 if __name__ == "__main__":
     a = sys.argv[1:]
     cmd = a[0] if a else "help"
@@ -230,4 +257,5 @@ if __name__ == "__main__":
     elif cmd == "alert": run("/usr/sbin/nova-alert", *rest)
     elif cmd == "publish": run("/usr/sbin/nova-app-publish", *rest)
     elif cmd == "plugin": plugin(rest)
+    elif cmd == "cloudflare": cloudflare(rest)
     else: print(f"{Y}Unknown command: {cmd}{X}\n"); help_()

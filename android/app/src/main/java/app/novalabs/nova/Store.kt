@@ -3,6 +3,8 @@ package app.novalabs.nova
 import kotlinx.coroutines.delay
 import android.content.Intent
 import android.net.Uri
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -61,6 +63,7 @@ private fun storeItem(id: String) = Cache["/api/v1/store"]?.optJSONArray("items"
     val docker = appsLive.value?.optBoolean("docker", true) ?: true
     var busy by remember { mutableStateOf<String?>(null) }
     var q by remember { mutableStateOf("") }
+    var cat by remember { mutableStateOf<String?>(null) }           // a category picked from the chips (null: everything)
     var hub by remember { mutableStateOf<List<JSONObject>?>(null) }; var hubBusy by remember { mutableStateOf(false) }
     var found by remember { mutableStateOf<List<JSONObject>?>(null) }      // the whole apt catalog, for the Programs search
     var round by remember { mutableIntStateOf(0) }
@@ -99,7 +102,19 @@ private fun storeItem(id: String) = Cache["/api/v1/store"]?.optJSONArray("items"
                     if (busy == "docker.io") OneSpinner() } }
             }
             val ql = q.trim().lowercase()
-            if (ql.isEmpty()) {
+            if (ql.isEmpty() && items.isNotEmpty()) {
+                // categories at a glance: tap one to see just those
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = Space.gutter, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    (listOf<String?>(null) + items.map { it.optString("category") }.distinct().sorted()).forEach { c ->
+                        val on = cat == c
+                        Text(c ?: "All", color = if (on) N.bg else N.text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.clip(RoundedCornerShape(18.dp)).background(if (on) N.text else N.pill).clickable { cat = c }.padding(horizontal = 14.dp, vertical = 8.dp))
+                    }
+                }
+            }
+            if (ql.isEmpty() && cat != null) {
+                SectionLabel(cat!!); Group { items.filter { it.optString("category") == cat }.forEachIndexed { i, it -> if (i > 0) RowDivider(); StoreRow(app, it) } }
+            } else if (ql.isEmpty()) {
                 val installed = items.filter { it.optBoolean("installed") }
                 val featured = items.filter { it.optBoolean("featured") && !it.optBoolean("installed") }
                 if (installed.isNotEmpty()) { SectionLabel("Installed"); Group { installed.forEachIndexed { i, it -> if (i > 0) RowDivider(); StoreRow(app, it) } } }
@@ -153,7 +168,7 @@ private fun storeItem(id: String) = Cache["/api/v1/store"]?.optJSONArray("items"
         Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
             Text(it.optString("name"), color = N.text, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
-            Text(it.optString("description"), color = N.sub, fontSize = 13.sp, maxLines = 2)
+            ExpandableSub(it.optString("description"), N.sub, lines = 2, size = 13.sp)
         }
         Spacer(Modifier.width(8.dp))
         PillButton(if (it.optBoolean("installed")) "Open" else "Get") { app.go(Route.StoreItem(it.optString("id"))) }
@@ -230,7 +245,7 @@ private fun storeItem(id: String) = Cache["/api/v1/store"]?.optJSONArray("items"
             Row1("Image", it.optString("image")); RowDivider()
             Row1("Data", "/opt/$id/data on the server")
         }
-        if (inst) LinksCard(listOf("Manage it in Containers" to { app.go(Route.Containers) }))
+        if (inst) LinksCard(listOf("Manage it — logs, restart, troubleshoot, roll back" to { app.go(Route.Container(id)) }, "Check for updates" to { app.go(Route.Updates) }))
     }
     if (confirmRemove) OneDialog({ confirmRemove = false }, "Uninstall ${it.optString("name")}?",
         "It stops and is removed. Its data is kept on the server (in /opt/.nova-uninstalled) in case you want it back.",

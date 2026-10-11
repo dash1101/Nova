@@ -56,6 +56,42 @@ object AppSessions {
     }
     fun isPinned(id: String) = id in AppPrefs.pinnedApps
     fun togglePin(id: String) = AppPrefs.set("pinned_apps", (if (isPinned(id)) AppPrefs.pinnedApps - id else (AppPrefs.pinnedApps + id).takeLast(8)).joinToString(","))
+    /** Can [id] move one place left (-1) or right (+1) in the dock? Pinned apps stay ahead of the rest. */
+    fun canMove(id: String, dir: Int): Boolean {
+        val group = if (isPinned(id)) AppPrefs.pinnedApps else open.map { it.id }.filter { !isPinned(it) }
+        val i = group.indexOf(id); return i >= 0 && i + dir in group.indices
+    }
+    fun move(id: String, dir: Int) {
+        if (!canMove(id, dir)) return
+        if (isPinned(id)) { val l = AppPrefs.pinnedApps.toMutableList(); val i = l.indexOf(id); l[i] = l[i + dir].also { l[i + dir] = id }; AppPrefs.set("pinned_apps", l.joinToString(",")) }
+        else { val others = open.filter { !isPinned(it.id) }; val i = others.indexOfFirst { it.id == id }
+            val a = open.indexOf(others[i]); val b = open.indexOf(others[i + dir]); open[a] = open[b].also { open[b] = open[a] } }
+    }
+}
+
+/** Hold an app in the dock: move it, pin or unpin it, reload it, close it. */
+@Composable fun DockAppMenu(app: AppState, id: String, onDone: () -> Unit) {
+    val s = AppSessions.dock().firstOrNull { it.id == id } ?: run { onDone(); return }
+    val isOpen = AppSessions.get(id) != null; val pinned = AppSessions.isPinned(id)
+    fun close() {
+        val here = (app.top as? Route.AppFrame)?.id == id || Builtins.current(app.stack.first()) == id
+        AppSessions.close(id); if (id == "nova-term") SshSession.disconnect()
+        if (here) app.tab(Route.Home)
+    }
+    OneDialog(onDone, s.app.optString("name").ifEmpty { s.title }) {
+        Column {
+            val l = AppSessions.canMove(id, -1); val r = AppSessions.canMove(id, 1)
+            if (l || r) Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Box(Modifier.weight(1f)) { PillButton("◀  Move left", enabled = l, color = N.text) { AppSessions.move(id, -1) } }
+                Box(Modifier.weight(1f)) { PillButton("Move right  ▶", enabled = r, color = N.text) { AppSessions.move(id, 1) } }
+            }
+            Row1(if (pinned) "Unpin from the dock" else "Pin to the dock", if (pinned) "It leaves the dock when it's closed" else "It stays in the dock, even when closed",
+                icon = Icons.Rounded.PushPin, onClick = { AppSessions.togglePin(id); onDone() })
+            if (isOpen && s.web != null) Row1("Reload", null, icon = Icons.Rounded.Refresh, onClick = { s.web?.reload(); onDone() })
+            if (isOpen) Row1("Close", if (pinned) "Its icon stays in the dock" else null, icon = Icons.Rounded.Close, iconTint = N.red, onClick = { close(); onDone() })
+            Spacer(Modifier.height(8.dp))
+        }
+    }
 }
 
 /** Nova's own apps (Files, Terminal): they open like your web apps — in the dock, as their own page —
@@ -195,7 +231,8 @@ fun openApp(app: AppState, a: JSONObject) {
 
 @Composable fun AppEditDialog(app: AppState, a: JSONObject?, onDone: (JSONObject?) -> Unit) {
     var anywhere by remember { mutableStateOf(false) }
-    if (anywhere && a != null) { AppRemoteDialog(app, a) { anywhere = false }; return }
+    // closing "from anywhere" closes this one too (it would otherwise pop back up, looking like the same dialog again)
+    if (anywhere && a != null) { AppRemoteDialog(app, a) { anywhere = false; onDone(null) }; return }
     var name by remember { mutableStateOf(a?.optString("name") ?: "") }
     var url by remember { mutableStateOf(a?.optString("url") ?: "") }
     var remote by remember { mutableStateOf(a?.optString("remote_url") ?: "") }
@@ -239,10 +276,30 @@ fun openApp(app: AppState, a: JSONObject) {
     var autoHost by remember { mutableStateOf("") }
     var plan by remember { mutableStateOf<JSONObject?>(null) }
     val tlsSvc = g?.optString("service")?.startsWith("https") == true
+    fun replan(h: String) = app.act { autoHost = h; plan = app.api.post("/api/v1/cloudflare/plan", JSONObject().put("host", h).put("service", g?.optString("service")).put("no_tls_verify", tlsSvc)); auto = "plan" }
     if (auto == "host") { OneDialog({ auto = null }, "Address for ${a.optString("name")}", "On your domain, like photos.example.com.",
         listOf(DialogButton("Cancel") { auto = null }, DialogButton("Next", N.blue, enabled = autoHost.contains('.')) {
-            app.act { plan = app.api.post("/api/v1/cloudflare/plan", JSONObject().put("host", autoHost.trim().lowercase()).put("service", g?.optString("service")).put("no_tls_verify", tlsSvc)); auto = "plan" } })) {
+            replan(autoHost.trim().lowercase()) })) {
         OneTextField(autoHost, { autoHost = it.trim().take(253) }, "photos.example.com", Modifier.fillMaxWidth().padding(horizontal = 22.dp)) }; return }
+    if (auto == "plan" && plan?.has("conflict") == true) { val p = plan!!; val sug = p.optString("suggest").ifEmpty { null }
+        // the address is taken: never overwrite — offer a free name nearby, or (yours, on this tunnel, open to anyone) to protect it
+        OneDialog({ auto = null }, "${p.optString("host")} is already in use", "Nova won't change it: ${p.optString("why")}.", listOfNotNull(
+            DialogButton("Cancel") { auto = null },
+            sug?.let { DialogButton("Use $it", N.blue) { replan(it) } },
+            if (p.optBoolean("can_protect")) DialogButton("Protect it", N.blue) { auto = "protect" } else null)) {
+            if (p.optBoolean("can_protect")) Text("Or keep this address and put it behind the same Cloudflare login as Nova (only the login changes; your route and DNS record stay).",
+                color = N.sub, fontSize = 14.sp, modifier = Modifier.padding(horizontal = 26.dp)) }
+        return }
+    if (auto == "protect") { val p = plan ?: return
+        OneDialog({ auto = null }, "Put ${p.optString("host")} behind the login?",
+            "Anyone opening it will have to sign in with your Cloudflare login first, like Nova. Your route and DNS record don't change, and you can take the login off again later.",
+            listOf(DialogButton("Cancel") { auto = null }, DialogButton("Protect it", N.blue) { auto = null
+                app.act { val r = app.stepUp("Put your existing ${p.optString("host")} behind your Cloudflare login", "POST", "/api/v1/cloudflare/protect",
+                        JSONObject().put("host", p.optString("host")).put("app", id))
+                    app.toast("${p.optString("host")} now asks for your login"); Cache.put("/api/v1/apps", app.api.get("/api/v1/apps")); link = r.optString("url"); tick++ } })) {
+            Text("Heads-up: an app's own phone app (Immich, Jellyfin, Home Assistant…) can't get past a web login by itself — it needs a Cloudflare Access service token added in its settings (Immich: Settings → Advanced → Custom proxy headers).",
+                color = N.amber, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 26.dp)) }
+        return }
     if (auto == "plan") { val p = plan ?: return
         OneDialog({ auto = null }, "Here's what Nova will do", "In this order, so the app is never reachable without the login.",
             listOf(DialogButton("Cancel") { auto = null }, DialogButton("Do it", N.blue) { auto = null
@@ -295,6 +352,33 @@ fun openApp(app: AppState, a: JSONObject) {
 
 /** One open app: a rounded frame below a bar with its name, the server's status and the controls. */
 @SuppressLint("SetJavaScriptEnabled")
+/** Desktop site: the same page as a computer browser asks for (some apps hide features on phones). */
+fun desktopMode(w: WebView, on: Boolean) {
+    w.settings.userAgentString = if (on) "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36" else null
+}
+
+/** A web app's video in full screen, over Nova, until it's closed (or back is pressed). */
+object WebFull {
+    private var view by mutableStateOf<android.view.View?>(null); private var cb: WebChromeClient.CustomViewCallback? = null
+    val showing get() = view != null
+    fun show(a: android.app.Activity, v: android.view.View, c: WebChromeClient.CustomViewCallback) {
+        if (view != null) { c.onCustomViewHidden(); return }
+        view = v; cb = c
+        (a.window.decorView as android.view.ViewGroup).addView(v, android.view.ViewGroup.LayoutParams(-1, -1))
+        v.setBackgroundColor(android.graphics.Color.BLACK)
+        androidx.core.view.WindowCompat.getInsetsController(a.window, a.window.decorView).apply {
+            hide(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+            systemBarsBehavior = androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        }
+    }
+    fun hide(a: android.app.Activity) {
+        val v = view ?: return
+        (a.window.decorView as android.view.ViewGroup).removeView(v); view = null
+        androidx.core.view.WindowCompat.getInsetsController(a.window, a.window.decorView).show(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+        cb?.onCustomViewHidden(); cb = null
+    }
+}
+
 /** The file picker a web app's upload button opens, and where its answer goes. */
 object WebPick { var launch: ((android.content.Intent) -> Unit)? = null; var cb: android.webkit.ValueCallback<Array<android.net.Uri>>? = null }
 
@@ -331,6 +415,20 @@ object WebPick { var launch: ((android.content.Intent) -> Unit)? = null; var cb:
             }
             CircleButton(Icons.Rounded.Refresh, "Reload", 1f, { failed = null; s.web?.reload() })
             Spacer(Modifier.width(6.dp))
+            Box {
+                var more by remember { mutableStateOf(false) }
+                CircleButton(Icons.Rounded.MoreVert, "More", 1f, { more = true })
+                val desktop = id in AppPrefs.desktopApps
+                OneMenu(more, { more = false }, listOfNotNull(
+                    "Open in your browser" to { (s.web?.url ?: url)?.let { u -> runCatching { ctx.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(u))) } } },
+                    "Copy the link" to { (s.web?.url ?: url)?.let { u -> ctx.getSystemService(android.content.ClipboardManager::class.java)?.setPrimaryClip(android.content.ClipData.newPlainText("link", u)); app.toast("Link copied") } },
+                    (if (desktop) "Mobile site" else "Desktop site") to {
+                        AppPrefs.set("desktop_apps", (if (desktop) AppPrefs.desktopApps - id else AppPrefs.desktopApps + id).joinToString(","))
+                        s.web?.let { w -> desktopMode(w, !desktop); w.reload() } },
+                    "Text size: ${s.web?.settings?.textZoom ?: 100}%" to { s.web?.settings?.let { st -> st.textZoom = when (st.textZoom) { 100 -> 115; 115 -> 130; 130 -> 85; else -> 100 } } },
+                ))
+            }
+            Spacer(Modifier.width(6.dp))
             CircleButton(Icons.Rounded.Close, "Close", 1f, { AppSessions.close(id); app.back() })
         }
         if (progress in 1..99) ProgressBar(progress / 100f)
@@ -344,10 +442,14 @@ object WebPick { var launch: ((android.content.Intent) -> Unit)? = null; var cb:
                     settings.javaScriptEnabled = true; settings.domStorageEnabled = true; settings.loadWithOverviewMode = true; settings.useWideViewPort = true
                     settings.mediaPlaybackRequiresUserGesture = true; settings.setSupportZoom(true); settings.builtInZoomControls = true; settings.displayZoomControls = false
                     settings.mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
+                    if (id in AppPrefs.desktopApps) desktopMode(this, true)
                     CookieManager.getInstance().setAcceptCookie(true)
                     webChromeClient = object : WebChromeClient() {
                         override fun onProgressChanged(v: WebView, p: Int) { progress = p }
                         override fun onReceivedTitle(v: WebView, t: String?) { if (!t.isNullOrBlank() && !t.startsWith("http")) s.title = t }
+                        // full-screen video (a player's ⛶ button): over everything, with the system bars hidden
+                        override fun onShowCustomView(view: android.view.View, cb: CustomViewCallback) { WebFull.show(app.activity, view, cb) }
+                        override fun onHideCustomView() { WebFull.hide(app.activity) }
                         override fun onShowFileChooser(v: WebView, cb: android.webkit.ValueCallback<Array<android.net.Uri>>, p: FileChooserParams): Boolean {
                             WebPick.cb?.onReceiveValue(null); WebPick.cb = cb
                             val i = p.createIntent().apply { if (p.mode == FileChooserParams.MODE_OPEN_MULTIPLE) putExtra(android.content.Intent.EXTRA_ALLOW_MULTIPLE, true) }
@@ -387,6 +489,7 @@ object WebPick { var launch: ((android.content.Intent) -> Unit)? = null; var cb:
         }
     }
     androidx.activity.compose.BackHandler(enabled = canBack) { s.web?.goBack() }
+    androidx.activity.compose.BackHandler(enabled = WebFull.showing) { WebFull.hide(app.activity) }
     sslAsk?.let { h ->
         OneDialog({ h.cancel(); sslAsk = null }, "Open with the server's own certificate?",
             "${s.app.optString("name")} uses a certificate your phone doesn't know (common for apps on a home server). Only continue if this is your server.",

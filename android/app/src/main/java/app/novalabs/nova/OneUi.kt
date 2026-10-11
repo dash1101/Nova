@@ -181,20 +181,49 @@ data class TopAction(val icon: ImageVector, val label: String, val onClick: () -
 }
 
 // ── Dialog ────────────────────────────────────────────────────────────────────────
+/** Dialogs open right now. A dialog is its own window, so the page's toasts would sit underneath it:
+ *  the topmost dialog shows them instead, just above its card. */
+object DialogStack {
+    var depth by mutableIntStateOf(0); var snack: SnackbarHostState? = null
+    /** Which copy of a dialog is showing: the same dialog asked for twice (a screen composed twice, a double
+     *  hold) shows once; the other copy waits and only takes over if the first goes away. */
+    val owners = androidx.compose.runtime.snapshots.SnapshotStateMap<String, Any>()
+}
+
+/** Inside a dialog's card: counts the dialog, and (on the top one) shows toasts just above the card. */
+@Composable private fun DialogToasts() {
+    val mine = remember { DialogStack.depth + 1 }
+    DisposableEffect(Unit) { DialogStack.depth++; onDispose { DialogStack.depth-- } }
+    val snack = DialogStack.snack ?: return
+    if (DialogStack.depth != mine) return
+    val d = androidx.compose.ui.platform.LocalDensity.current
+    androidx.compose.ui.window.Popup(alignment = Alignment.TopCenter, offset = with(d) { androidx.compose.ui.unit.IntOffset(0, -(80.dp).roundToPx()) },
+        properties = androidx.compose.ui.window.PopupProperties(focusable = false, clippingEnabled = false)) {
+        Box(Modifier.width(androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp.dp)) { OneToastHost(snack) }
+    }
+}
+
 data class DialogButton(val label: String, val color: Color? = null, val enabled: Boolean = true, val onClick: () -> Unit)
 
 /** One UI dialog: floats at the bottom of the screen, big rounded card, text buttons split by a hairline. */
 @Composable fun OneDialog(onDismiss: () -> Unit, title: String? = null, text: String? = null,
                           buttons: List<DialogButton> = emptyList(), content: (@Composable ColumnScope.() -> Unit)? = null) {
+    val key = (title ?: "") + "\u0000" + (text ?: "")
+    val me = remember { Any().also { if (DialogStack.owners[key] == null) DialogStack.owners[key] = it } }
+    DisposableEffect(key) { onDispose { if (DialogStack.owners[key] === me) DialogStack.owners.remove(key) } }
+    if (DialogStack.owners[key] !== me) { if (DialogStack.owners[key] == null) SideEffect { DialogStack.owners.putIfAbsent(key, me) }; return }
     if (N.material) {                       // M3 dialog: centered, 28dp corners, text buttons on the right
         Dialog(onDismiss, DialogProperties(usePlatformDefaultWidth = false)) {
             Column(Modifier.padding(horizontal = 24.dp).widthIn(max = 560.dp).fillMaxWidth().clip(RoundedCornerShape(28.dp))
                 .background(MaterialTheme.colorScheme.surfaceContainerHigh).padding(top = 24.dp, bottom = 12.dp)) {
+                DialogToasts()
                 if (title != null) Text(title, color = N.text, fontSize = 24.sp, modifier = Modifier.padding(horizontal = 24.dp))
                 if (text != null) Text(text, color = N.sub, fontSize = 14.sp, lineHeight = 20.sp,
                     modifier = Modifier.padding(start = 24.dp, end = 24.dp, top = if (title != null) 16.dp else 0.dp))
                 if (content != null) Column(Modifier.padding(top = 12.dp)) { content() }
-                if (buttons.isNotEmpty()) Row(Modifier.fillMaxWidth().padding(top = 16.dp, start = 12.dp, end = 12.dp), horizontalArrangement = Arrangement.End) {
+                // a FlowRow: long labels move to the next line instead of squeezing a button down to nothing
+                @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+                if (buttons.isNotEmpty()) androidx.compose.foundation.layout.FlowRow(Modifier.fillMaxWidth().padding(top = 16.dp, start = 12.dp, end = 12.dp), horizontalArrangement = Arrangement.End) {
                     buttons.forEach { b ->
                         Box(Modifier.clip(RoundedCornerShape(20.dp)).clickable(enabled = b.enabled, onClick = b.onClick).padding(horizontal = 14.dp, vertical = 10.dp)) {
                             Text(b.label, color = if (!b.enabled) N.sub else b.color?.takeIf { it == N.red } ?: N.blue, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
@@ -212,12 +241,20 @@ data class DialogButton(val label: String, val color: Color? = null, val enabled
         Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.BottomCenter) {
         Column(Modifier.padding(start = 12.dp, end = 12.dp, bottom = 28.dp).widthIn(max = 600.dp).fillMaxWidth()
             .clip(RoundedCornerShape(30.dp)).background(N.card).padding(top = 24.dp, bottom = 6.dp)) {
+            DialogToasts()
             if (title != null) Text(title, color = N.text, fontSize = 20.sp, fontWeight = FontWeight.Bold,
                 modifier = Modifier.padding(horizontal = 26.dp))
             if (text != null) Text(text, color = N.text.copy(alpha = 0.85f), fontSize = 15.sp,
                 modifier = Modifier.padding(start = 26.dp, end = 26.dp, top = if (title != null) 10.dp else 0.dp))
             if (content != null) Column(Modifier.padding(top = 10.dp)) { content() }
-            if (buttons.isNotEmpty()) Row(Modifier.fillMaxWidth().padding(top = 14.dp, start = 8.dp, end = 8.dp),
+            // three buttons with a long label don't fit side by side: one per line then
+            if (buttons.size >= 3 && buttons.sumOf { it.label.length } > 30) Column(Modifier.fillMaxWidth().padding(top = 10.dp, start = 8.dp, end = 8.dp)) {
+                buttons.reversed().forEach { b ->
+                    Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).clickable(enabled = b.enabled, onClick = b.onClick).padding(vertical = 13.dp), contentAlignment = Alignment.Center) {
+                        Text(b.label, color = if (!b.enabled) N.sub else b.color ?: N.text, fontSize = 17.sp, fontWeight = FontWeight.Bold, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                    }
+                }
+            } else if (buttons.isNotEmpty()) Row(Modifier.fillMaxWidth().padding(top = 14.dp, start = 8.dp, end = 8.dp),
                 verticalAlignment = Alignment.CenterVertically) {
                 buttons.forEachIndexed { i, b ->
                     if (i > 0) Box(Modifier.width(1.dp).height(20.dp).background(N.divider))

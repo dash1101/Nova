@@ -1,5 +1,7 @@
 package app.novalabs.nova
 
+import kotlinx.coroutines.launch
+import androidx.compose.ui.layout.layout
 import androidx.compose.foundation.border
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.foundation.horizontalScroll
@@ -133,11 +135,11 @@ fun levelColor(level: String, t: NovaColors) = when (level) {
     else HorizontalDivider(Modifier.padding(horizontal = 22.dp), thickness = 0.8.dp, color = N.divider)
 
 /** A row's description: three lines, and if there's more, a small arrow that opens the rest (and closes it again). */
-@Composable fun ExpandableSub(text: String, color: Color, lines: Int = 3) {
+@Composable fun ExpandableSub(text: String, color: Color, lines: Int = 3, size: androidx.compose.ui.unit.TextUnit = 14.sp) {
     var open by remember(text) { mutableStateOf(false) }
     var more by remember(text) { mutableStateOf(false) }
     Row(Modifier.padding(top = 2.dp).then(if (more || open) Modifier.animateContentSize() else Modifier), verticalAlignment = Alignment.Bottom) {   // only rows that can open pay for it
-        Text(text, fontSize = 14.sp, color = color, maxLines = if (open) Int.MAX_VALUE else lines, overflow = TextOverflow.Ellipsis,
+        Text(text, fontSize = size, color = color, maxLines = if (open) Int.MAX_VALUE else lines, overflow = TextOverflow.Ellipsis,
             onTextLayout = { if (!open) more = it.hasVisualOverflow }, modifier = Modifier.weight(1f, fill = false))
         if (more || open) {
             val turn by animateFloatAsState(if (open) 180f else 0f, label = "more")
@@ -257,14 +259,15 @@ val LocalWide = staticCompositionLocalOf { false }
  *  slides from tab to tab; hold the bar to choose its tabs. */
 @Composable fun FloatingNav(selected: Int, icons: List<ImageVector>, labels: List<String>, onSelect: (Int) -> Unit,
                             modifier: Modifier = Modifier, onLongClick: (() -> Unit)? = null,
-                            apps: List<AppSessions.Session> = emptyList(), selectedApp: String? = null, onApp: (String) -> Unit = {}) {
+                            apps: List<AppSessions.Session> = emptyList(), selectedApp: String? = null, onApp: (String) -> Unit = {},
+                            onAppHold: ((String) -> Unit)? = null) {
     val itemW = 76.dp; val gap = 4.dp
-    // the apps strip can scroll, so the bead follows an app to where it is in the strip right now (kept inside it)
-    val strip = rememberScrollState(); val density = androidx.compose.ui.platform.LocalDensity.current
+    // the apps strip can scroll: on an app the bead rides along with it (and fades as it scrolls out of view)
+    val strip = rememberScrollState()
     val room = appRoom(icons.size, itemW + gap)
+    val stripStart = (itemW + gap) * icons.size + 9.dp + gap             // 9dp: the hairline and its padding
     val stripW = minOf(room, 52.dp * apps.size)
-    val bead = rememberBead(selected, icons.size, apps, selectedApp, itemW, 52.dp, gap,
-        appShift = { j -> (with(density) { strip.value.toDp() }).let { sx -> ((52.dp * j - sx).coerceIn(0.dp, (stripW - 52.dp).coerceAtLeast(0.dp))) - 52.dp * j } })
+    val bead = rememberPillBead(selected, apps.indexOfFirst { it.id == selectedApp }, itemW, gap, stripStart)
     val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
     if (N.material) {                         // M3 Expressive: a floating bar, pill indicator behind the icon, labels
         Row(modifier.navigationBarsPadding().padding(bottom = 12.dp).frosted(null, RoundedCornerShape(32.dp), 6.dp)
@@ -281,16 +284,27 @@ val LocalWide = staticCompositionLocalOf { false }
                     Text(labels[i], fontSize = 12.sp, fontWeight = if (on) FontWeight.Bold else FontWeight.Medium, color = if (on) N.text else N.sub, maxLines = 1, modifier = Modifier.padding(top = 4.dp))
                 }
             }
-            PillApps(apps, selectedApp, onApp, vertical = false, maxWidth = appRoom(icons.size, 84.dp))
+            PillApps(apps, selectedApp, onApp, vertical = false, maxWidth = appRoom(icons.size, 84.dp), onHold = onAppHold)
         }
         return
     }
     Box(modifier.navigationBarsPadding().padding(bottom = 14.dp).frosted(LocalRootHaze.current, RoundedCornerShape(40.dp), 18.dp)
         .pointerInput(onLongClick) { detectTapGestures(onLongPress = { onLongClick?.let { l -> haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress); l() } }) }
         .padding(6.dp)) {
-        // on an app the bead narrows to a true circle around it (52 across, centered in the pill's height)
-        val beadH = minOf(56.dp, bead.size)
-        Box(Modifier.offset(x = bead.pos, y = (56.dp - beadH) / 2).size(width = bead.size, height = beadH).graphicsLayer { alpha = bead.alpha }
+        // on an app the bead narrows to a true circle around it (52 across, centered in the pill's height).
+        // Everything here is read while laying out / drawing, so a moving bead never recomposes the bar.
+        Box(Modifier
+            .layout { m, _ ->
+                val w = bead.w.value.dp.roundToPx(); val h = minOf(56f, bead.w.value).dp.roundToPx()
+                val pl = m.measure(androidx.compose.ui.unit.Constraints.fixed(w, h))
+                layout(w, h) { pl.place(((bead.x.value - strip.value.toDp().value * bead.onApp.value).dp.roundToPx()), (56.dp.roundToPx() - h) / 2) }
+            }
+            .graphicsLayer {
+                val x = bead.x.value - strip.value.toDp().value * bead.onApp.value
+                val lo = stripStart.value; val hi = (stripStart + stripW - 52.dp).value
+                val out = maxOf(lo - x, x - hi, 0f) / 44f * bead.onApp.value
+                alpha = bead.shown.value * (1f - out).coerceIn(0f, 1f)
+            }
             .frosted(LocalRootHaze.current, RoundedCornerShape(50), 4.dp)
             .background(if (N.dark) Color.White.copy(alpha = 0.10f) else Color.Black.copy(alpha = 0.05f)))
         Row(horizontalArrangement = Arrangement.spacedBy(gap), verticalAlignment = Alignment.CenterVertically) {
@@ -300,7 +314,7 @@ val LocalWide = staticCompositionLocalOf { false }
                     Icon(ic, labels[i], tint = N.text, modifier = Modifier.size(26.dp))
                 }
             }
-            PillApps(apps, selectedApp, onApp, vertical = false, maxWidth = room, sc = strip, beadMarks = true)
+            PillApps(apps, selectedApp, onApp, vertical = false, maxWidth = room, sc = strip, beadMarks = true, onHold = onAppHold)
         }
     }
 }
@@ -366,10 +380,38 @@ class Bead(val pos: Dp, val size: Dp, val alpha: Float)
     return Bead(pos, size, alpha)
 }
 
+/** The floating bar's bead, in the bar's own coordinates (dp): where it is, how wide, how much it's
+ *  "on an app" (0 on a tab, 1 on an app — the strip's scroll is subtracted by that much, so moving
+ *  between a tab and an app blends smoothly), and how visible. */
+class PillBead(val x: androidx.compose.animation.core.Animatable<Float, androidx.compose.animation.core.AnimationVector1D>,
+               val w: androidx.compose.animation.core.Animatable<Float, androidx.compose.animation.core.AnimationVector1D>,
+               val onApp: androidx.compose.animation.core.Animatable<Float, androidx.compose.animation.core.AnimationVector1D>,
+               val shown: androidx.compose.animation.core.Animatable<Float, androidx.compose.animation.core.AnimationVector1D>)
+@Composable fun rememberPillBead(selected: Int, appIndex: Int, item: Dp, gap: Dp, stripStart: Dp): PillBead {
+    // (x, width, onApp) for where it should be; null on pages that aren't in the bar (it fades where it was)
+    val target = when {
+        selected >= 0 -> Triple(((item + gap) * selected).value, item.value, 0f)
+        appIndex >= 0 -> Triple((stripStart + 52.dp * appIndex).value, 52f, 1f)
+        else -> null
+    }
+    val A = { v: Float -> androidx.compose.animation.core.Animatable(v) }
+    val b = remember { (target ?: Triple(0f, item.value, 0f)).let { (x, w, a) -> PillBead(A(x), A(w), A(a), A(if (target != null) 1f else 0f)) } }
+    val reduce = reduceMotion()
+    LaunchedEffect(target) {
+        if (target == null) { b.shown.animateTo(0f, androidx.compose.animation.core.tween(180)); return@LaunchedEffect }
+        val spec = androidx.compose.animation.core.spring<Float>(dampingRatio = 0.78f, stiffness = 380f)
+        val (x, w, a) = target
+        if (reduce || b.shown.value == 0f) { b.x.snapTo(x); b.w.snapTo(w); b.onApp.snapTo(a) }   // nothing to glide from
+        launch { b.shown.animateTo(1f, androidx.compose.animation.core.tween(160)) }
+        launch { b.x.animateTo(x, spec) }; launch { b.w.animateTo(w, spec) }; launch { b.onApp.animateTo(a, spec) }
+    }
+    return b
+}
+
 /** One UI segmented tabs (pill). */
 /** Open apps in the navigation pill: a hairline, then each app's icon (a ring on the one you're in). */
 @Composable fun PillApps(apps: List<AppSessions.Session>, selected: String?, onApp: (String) -> Unit, vertical: Boolean, maxWidth: Dp? = null,
-                         sc: androidx.compose.foundation.ScrollState = rememberScrollState(), beadMarks: Boolean = false) {
+                         sc: androidx.compose.foundation.ScrollState = rememberScrollState(), beadMarks: Boolean = false, onHold: ((String) -> Unit)? = null) {
     if (apps.isEmpty()) return
     if (vertical) Box(Modifier.padding(vertical = 4.dp).width(32.dp).height(1.dp).background(N.sub.copy(alpha = 0.35f)))
     else Box(Modifier.padding(horizontal = 4.dp).width(1.dp).height(30.dp).background(N.sub.copy(alpha = 0.35f)))
@@ -380,7 +422,7 @@ class Bead(val pos: Dp, val size: Dp, val alpha: Float)
         LaunchedEffect(idx, apps.size) { if (idx >= 0) with(density) { sc.animateScrollTo(((52.dp * idx) - maxWidth / 2 + 26.dp).roundToPx().coerceIn(0, sc.maxValue)) } }
         Box(contentAlignment = Alignment.Center) {
             Row(Modifier.widthIn(max = maxWidth).fadeEdges(sc, true, 40.dp).horizontalScroll(sc), verticalAlignment = Alignment.CenterVertically) {
-                apps.forEach { s -> PillApp(s, s.id == selected, onApp, false, highlight = !beadMarks) }
+                apps.forEach { s -> PillApp(s, s.id == selected, onApp, false, highlight = !beadMarks, onHold = onHold) }
             }
             // small arrows on the faded edges: there's more this way
             // (on a small disc of the pill's own color, so it never sits on top of a half-faded icon)
@@ -392,16 +434,16 @@ class Bead(val pos: Dp, val size: Dp, val alpha: Float)
         }
         return
     }
-    apps.forEach { s -> PillApp(s, s.id == selected, onApp, vertical, highlight = false) }
+    apps.forEach { s -> PillApp(s, s.id == selected, onApp, vertical, highlight = false, onHold = onHold) }
 }
 
-@Composable private fun PillApp(s: AppSessions.Session, on: Boolean, onApp: (String) -> Unit, vertical: Boolean, highlight: Boolean) {
+@Composable private fun PillApp(s: AppSessions.Session, on: Boolean, onApp: (String) -> Unit, vertical: Boolean, highlight: Boolean, onHold: ((String) -> Unit)? = null) {
     run {
         // a cell of the pill's size, with a true circle centered in it: the touch target and, when you're in it, the highlight
         Box(Modifier.size(if (vertical) 64.dp else 52.dp, 56.dp), contentAlignment = Alignment.Center) {
         Box(Modifier.size(48.dp).clip(CircleShape)
             .background(if (highlight && on && !N.material) (if (N.dark) Color.White.copy(alpha = 0.14f) else Color.Black.copy(alpha = 0.07f)) else Color.Transparent)
-            .bouncy { onApp(s.id) }, contentAlignment = Alignment.Center) {
+            .bouncy(onLongClick = onHold?.let { h -> { h(s.id) } }) { onApp(s.id) }, contentAlignment = Alignment.Center) {
             val ring = on && N.material
             // Material: a round ring around the icon (centered in the cell), not a squircle hugging it
             Box(Modifier.size(46.dp).then(if (ring) Modifier.border(2.dp, N.blue, CircleShape) else Modifier), contentAlignment = Alignment.Center) {
@@ -421,7 +463,8 @@ class Bead(val pos: Dp, val size: Dp, val alpha: Float)
  *  frosted glass, same sliding bead, same tabs (hold it to choose them). */
 @Composable fun VerticalNav(selected: Int, icons: List<ImageVector>, labels: List<String>, onSelect: (Int) -> Unit,
                             modifier: Modifier = Modifier, onLongClick: (() -> Unit)? = null,
-                            apps: List<AppSessions.Session> = emptyList(), selectedApp: String? = null, onApp: (String) -> Unit = {}) {
+                            apps: List<AppSessions.Session> = emptyList(), selectedApp: String? = null, onApp: (String) -> Unit = {},
+                            onAppHold: ((String) -> Unit)? = null) {
     val itemH = 64.dp; val gap = 4.dp
     val bead = rememberBead(selected, icons.size, apps, selectedApp, itemH, 56.dp, gap)
     val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
@@ -439,7 +482,7 @@ class Bead(val pos: Dp, val size: Dp, val alpha: Float)
                     Text(labels[i], fontSize = 11.sp, fontWeight = if (on) FontWeight.Bold else FontWeight.Medium, color = if (on) N.text else N.sub, maxLines = 1, modifier = Modifier.padding(top = 3.dp))
                 }
             }
-            PillApps(apps, selectedApp, onApp, vertical = true)
+            PillApps(apps, selectedApp, onApp, vertical = true, onHold = onAppHold)
         }
         return
     }
@@ -454,7 +497,7 @@ class Bead(val pos: Dp, val size: Dp, val alpha: Float)
                     Icon(ic, labels[i], tint = N.text, modifier = Modifier.size(26.dp))
                 }
             }
-            PillApps(apps, selectedApp, onApp, vertical = true)
+            PillApps(apps, selectedApp, onApp, vertical = true, onHold = onAppHold)
         }
     }
 }

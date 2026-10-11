@@ -15,6 +15,7 @@ because the controller's own wave doesn't render on this board's ARGB header.
 import colorsys, json, math, os, sys, time, uuid
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import fusion2
+import openrgb
 
 STATE = "/var/lib/nova-rgb/state.json"
 APPLIED = "/var/lib/nova-rgb/applied.json"     # what's physically on the fan right now
@@ -163,7 +164,9 @@ def validate_setup(d, st, zid=None):
         if not 1 <= v <= 120: raise ValueError("led_count 1-120")
         out["led_count"] = v
     if "target" in d:
-        if d["target"] not in TARGETS: raise ValueError("unknown target")
+        T = targets()
+        if d["target"] not in T: raise ValueError("unknown target")
+        if "leds" in T[d["target"]]: out["led_count"] = T[d["target"]]["leds"]     # OpenRGB knows how many
         used = {z["target"]: z["id"] for z in all_zones(st)}
         if used.get(d["target"], zid) != zid: raise ValueError("another light already uses that header")
         out["target"] = d["target"]
@@ -172,19 +175,20 @@ def validate_setup(d, st, zid=None):
 def validate_look(patch, target):
     """A zone's look: the usual checks, and only one-color effects on a 12 V RGB header."""
     out = validate({k: v for k, v in patch.items() if k in ZONE_LOOK}, allow_schedules=False)
-    if TARGETS.get(target, {}).get("kind") == "rgb" and out.get("effect") and out["effect"] not in RGB_EFFECTS:
+    if targets().get(target, {}).get("kind") == "rgb" and out.get("effect") and out["effect"] not in RGB_EFFECTS:
         raise ValueError("a 12 V RGB header shows one color at a time: static, pulse, blink or cycle")
     return out
 
 def all_zones(st):
     """The main light first (its look is the top-level fields), then the extra ones."""
     main = {"id": "main", **{k: st.get(k, DEFAULT.get(k)) for k in ("name", "shape", "target", "led_count", *ZONE_LOOK)}}
-    return [main] + [z for z in st.get("zones", []) if z.get("target") in TARGETS]
+    T = targets()
+    return [main] + [z for z in st.get("zones", []) if z.get("target") in T]
 
 def new_zone(st, setup):
     if len(st.get("zones", [])) >= 7: raise ValueError("that's a lot of lights — remove one first")
     if "target" not in setup: raise ValueError("pick where it's plugged in")
-    kind = TARGETS[setup["target"]]["kind"]
+    kind = targets()[setup["target"]]["kind"]
     z = {"id": uuid.uuid4().hex[:8], "name": setup.get("name", "Light"), "shape": setup.get("shape", "strip"),
          "target": setup["target"], "led_count": setup.get("led_count", 30 if setup.get("shape") == "strip" else 12),
          "on": True, "effect": "static", "color": st.get("color", "#005aff"), "color2": st.get("color2", "#bf5af2"),
@@ -201,6 +205,71 @@ def hands_off():
     try: return json.load(open("/var/lib/nova-api/settings.json")).get("features", {}).get("lighting") is False
     except Exception: return False
 
+# ── Labs → OpenRGB: Nova's lights drawn on whatever OpenRGB controls (Nova leaves the Fusion 2 alone then) ──
+ORGB_CACHE = "/var/lib/nova-rgb/openrgb.json"      # the devices OpenRGB had at the last scan
+ORGB_RAINBOW = ["#ff0000", "#ffaa00", "#ffff00", "#00ff00", "#00ffff", "#0040ff", "#a000ff", "#ff00aa"]
+
+def orgb():
+    """(host, port) of the OpenRGB SDK server when Labs → OpenRGB is on, else None."""
+    try: s = json.load(open("/var/lib/nova-api/settings.json"))
+    except Exception: return None
+    if not s.get("labs", {}).get("openrgb"): return None
+    c = s.get("labs_cfg", {}).get("openrgb", {})
+    return (c.get("host") or "127.0.0.1"), int(c.get("port") or openrgb.PORT)
+
+def _slug(name): return "".join(ch.lower() if ch.isalnum() else "-" for ch in name).strip("-")[:40] or "device"
+
+def orgb_devices():
+    try: return json.load(open(ORGB_CACHE))
+    except Exception: return []
+
+def orgb_scan():
+    """Ask OpenRGB what it controls (and remember it, so the setup page can offer each device)."""
+    o = orgb()
+    if not o: raise ValueError("turn on OpenRGB in Settings → Labs first")
+    with openrgb.Client(*o) as c: devs = c.devices()
+    seen, out = set(), []
+    for d in devs:
+        sl = _slug(d["name"])
+        while sl in seen: sl += "-2"
+        seen.add(sl); out.append({"slug": sl, "name": d["name"], "leds": d["leds"], "zones": d["zones"], "location": d.get("location", "")})
+    tmp = ORGB_CACHE + ".tmp"
+    with open(tmp, "w") as fh: json.dump(out, fh)
+    os.replace(tmp, ORGB_CACHE)
+    return out
+
+def targets():
+    """Where a light can be: the Fusion 2 headers, or (with OpenRGB on) the devices OpenRGB controls."""
+    if not orgb(): return TARGETS
+    return {f"openrgb:{d['slug']}": {"kind": "argb", "label": f"{d['name']} (OpenRGB)", "tested": True, "device": d["name"], "leds": max(1, d["leds"])}
+            for d in orgb_devices() if d.get("leds")}
+
+def _orgb_look(eff, n):
+    """A look as Nova draws it for OpenRGB: everything is drawn here, so one-color controller effects
+    (pulse, blink, cycle, gradient) become their software versions."""
+    e = {**eff, "led_count": n}
+    if not uses_palette(e):
+        if e["effect"] in ("pulse", "blink"): e["palette"] = [e["color"], e["color"]]
+        elif e["effect"] == "cycle": e.update(palette=ORGB_RAINBOW, rainbow=False)
+        elif e["effect"] == "gradient": e["palette"] = [e["color"], e["color2"]]
+    return e
+
+def _orgb_moving(e): return e["on"] and e["effect"] not in ("static", "gradient")
+
+def _orgb_push(o, looks):
+    """Send each OpenRGB light its colors now; returns the moving ones for the animator."""
+    moving = []
+    with openrgb.Client(*o) as c:
+        idx = {_slug(d["name"]): (i, d["leds"]) for i, d in enumerate(c.devices())}
+        for eff in looks:
+            sl = eff["target"].split(":", 1)[1]
+            if sl not in idx: continue                                 # unplugged / renamed in OpenRGB
+            i, n = idx[sl]; e = _orgb_look(eff, n)
+            cols = [_scaled(col, e["brightness"]) for col in frame(e, time.time())] if e["on"] else [(0, 0, 0)] * n
+            c.direct(i); c.set_leds(i, cols)
+            if _orgb_moving(e): moving.append({"slug": sl, **{k: e.get(k) for k in ("on", "effect", "color", "color2", "brightness", "speed", "rainbow", "led_count", "palette")}})
+    return moving
+
 def apply(st, override=None):
     """Push every light to the hardware in one pass (the controller's direct-mode mask and its reset
     cover all headers at once, so one light is never set without the others). `override` (the status
@@ -211,6 +280,15 @@ def apply(st, override=None):
         eff = dict(z)
         if z["id"] == "main" and override: eff.update({"palette": [], **override})   # the status light is its own color, never your palette
         looks.append(eff)
+    o = orgb()
+    if o:                                  # OpenRGB owns the hardware: Nova only talks to it
+        try: moving = _orgb_push(o, [e for e in looks if str(e["target"]).startswith("openrgb:")])
+        except openrgb.OpenRGBError as e: moving = []; print("openrgb:", e, flush=True)
+        tmp = APPLIED + ".tmp"
+        with open(tmp, "w") as fh: json.dump({"t": time.time(), "override": override or None, "anim": None, "anims": [], "direct": [], "orgb": moving}, fh)
+        os.replace(tmp, APPLIED)
+        return
+    looks = [e for e in looks if e["target"] in TARGETS]
     direct, anims = [], []
     with fusion2.Fusion2() as f:          # resets every header; holds the hardware lock until the end
         for eff in looks:
@@ -237,7 +315,7 @@ def apply(st, override=None):
                     cols = [tuple(round(a[i] + (b[i] - a[i]) * (j / max(1, n - 1))) for i in range(3)) for j in range(n)]
                 f.set_direct([_scaled(c, eff["brightness"]) for c in cols], orders[hdr], hdr)
         # Written under the lock, so the animator can never draw a frame over a newer setting.
-        main_anim = next((a for a in anims if a["header"] == TARGETS[st.get("target", "fusion2:argb")]["header"]), None)
+        main_anim = next((a for a in anims if a["header"] == TARGETS.get(st.get("target"), TARGETS["fusion2:argb"])["header"]), None)
         tmp = APPLIED + ".tmp"
         with open(tmp, "w") as fh:
             json.dump({"t": time.time(), "override": override or None, "anim": main_anim, "anims": anims,
@@ -338,6 +416,7 @@ def wave_frame(eff, t):                    # (older name, still used by the boot
 def animate(fps=30):
     """Service loop: draw the software effects of every light in applied.json, one frame for all of them."""
     orders, dev, seen, cur, hs = None, None, None, [], ()
+    ocur, oc, oidx = [], None, {}
     while True:
         try:
             m = os.stat(APPLIED).st_mtime_ns
@@ -345,6 +424,20 @@ def animate(fps=30):
                 seen = m; a = json.load(open(APPLIED)); orders = None
                 cur = a.get("anims") if "anims" in a else ([{"header": "argb", **a["anim"]}] if a.get("anim") else [])
                 hs = tuple(a.get("direct") or [x["header"] for x in cur])
+                ocur = a.get("orgb") or []; oidx = {}
+            if ocur and not hands_off():                  # OpenRGB lights: one frame each, over the network
+                o = orgb()
+                if not o: ocur = []; continue
+                try:
+                    if oc is None: oc = openrgb.Client(*o)
+                    if not oidx: oidx = {_slug(d["name"]): i for i, d in enumerate(oc.devices())}
+                    now = time.time()
+                    for z in ocur:
+                        if z["slug"] in oidx: oc.set_leds(oidx[z["slug"]], [_scaled(c, z["brightness"]) for c in frame(z, now)])
+                except openrgb.OpenRGBError as e:
+                    print("animate (openrgb):", e, flush=True); oc and oc.close(); oc, oidx = None, {}; time.sleep(2)
+                time.sleep(1 / fps); continue
+            if oc is not None: oc.close(); oc = None
             if not cur or hands_off():
                 if dev: dev.close(); dev = None
                 time.sleep(0.25 if cur is not None and not cur else 2); continue
@@ -366,7 +459,7 @@ def animate(fps=30):
 def intro(st, seconds=2.6, fps=30):
     """Boot: a wave in your color (or rainbow) fades in and comes up to your brightness; the
     caller then applies your real setting."""
-    if hands_off(): return
+    if hands_off() or orgb(): return
     look = {**st, "effect": "wave", "speed": max(55, st.get("speed", 50))}
     target = max(20, st.get("brightness", 50)) if st.get("on", True) else 35
     hdr = TARGETS.get(st.get("target"), TARGETS["fusion2:argb"])["header"]
@@ -381,7 +474,14 @@ def intro(st, seconds=2.6, fps=30):
 def off():
     """Shutdown: every LED dark (the setting itself is kept for the next boot)."""
     if hands_off(): return
-    hdrs = {TARGETS[z["target"]]["header"] for z in all_zones(load())}
+    o = orgb()
+    if o:
+        try: _orgb_push(o, [{**z, "on": False} for z in all_zones(load()) if str(z["target"]).startswith("openrgb:")])
+        except openrgb.OpenRGBError: pass
+        tmp = APPLIED + ".tmp"
+        with open(tmp, "w") as fh: json.dump({"t": time.time(), "override": None, "anim": None, "off": True}, fh)
+        os.replace(tmp, APPLIED); return
+    hdrs = {TARGETS[z["target"]]["header"] for z in all_zones(load()) if z["target"] in TARGETS}
     with fusion2.Fusion2() as f:
         for h in hdrs & set(fusion2.ARGB):
             try: f.set_direct([(0, 0, 0)] * 32, None, h)

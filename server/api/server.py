@@ -39,7 +39,7 @@ try:                       # optional module: fan/case lighting (modules/fan-gig
 except ImportError:
     nova_rgb = None
 
-API_VERSION = "0.5.19-alpha"
+API_VERSION = "0.6.0-alpha"
 CONFIG = "/etc/nova-api/config.json"
 DATA = "/var/lib/nova-api"
 DEVICES = f"{DATA}/devices.json"
@@ -53,7 +53,8 @@ LABS = {"cloudflare_sync": {"name": "Cloudflare auto-setup", "about": "Put an ap
         "crash_guard": {"name": "Crash-loop guard", "about": "If a container restarts 5 times in 10 minutes, Nova stops it and tells you, instead of letting it restart forever. Starting it again turns its automatic restarts back on."},
         "auto_updates": {"name": "Weekly container updates", "about": "Once a week, Nova updates the containers that have a newer version. One that won't start on its new version is put back on the old one."},
         "image_cleanup": {"name": "Clean up old images", "about": "See the container images nothing uses anymore (old versions left behind by updates) and remove them to free up space. The versions Nova keeps to roll back to stay."},
-        "wake_on_lan": {"name": "Wake-on-LAN", "about": "Turn on other computers on your network from Nova: the server sends them a wake-up packet."}}
+        "wake_on_lan": {"name": "Wake-on-LAN", "about": "Turn on other computers on your network from Nova: the server sends them a wake-up packet."},
+        "openrgb": {"name": "OpenRGB", "about": "Run your lights through OpenRGB, so Nova's effects work on any RGB device it supports (motherboards, RAM, GPUs, fans, strips). Nova stops talking to the motherboard's lighting controller directly. Needs OpenRGB with its SDK server on."}}
 # Settings → Features: parts of Nova you can switch off (another program does it, or you don't want it).
 # Turning one off here never turns on anything the server's own config (config.json) switched off.
 FEATURES = {"lighting": {"name": "Nova controls the lights", "about": "Off: Nova leaves the RGB controller alone — use this if the board maker's software or OpenRGB runs the lights."},
@@ -82,6 +83,7 @@ lock = threading.Lock()          # devices.json / pairing.json writes
 rgb_lock = threading.Lock()      # one HID conversation at a time
 nonces = {}                      # nonce -> expiry (seconds)
 fails = {}                       # ip -> [timestamps]
+stale_ids = {}                   # (ip, device id) of a removed device -> when it last counted as a failure
 
 
 def server_location():
@@ -471,7 +473,9 @@ def describe_action(a):
     if p == ["terminal"]: return f"Open a terminal on the server as {shell_account()} — that's full control if the account can use sudo or Docker"
     if p == ["files", "unlock"]: return f"Let this browser change files on the server as {shell_account()} for 15 minutes"
     if p == ["cloudflare", "publish"]: return f"Put {a.get('data', {}).get('host', '?')} on the internet through your Cloudflare tunnel (behind your Access login)"
-    if p == ["cloudflare", "remove"]: return f"Take {a.get('data', {}).get('host', '?')} off your Cloudflare tunnel"
+    if p == ["cloudflare", "remove"]: return (f"Take Nova's login off {a.get('data', {}).get('host', '?')} — it will be open to anyone" if a.get('data', {}).get('allow_public') is True
+                                              else f"Take {a.get('data', {}).get('host', '?')} off your Cloudflare tunnel")
+    if p == ["cloudflare", "protect"]: return f"Put your existing {a.get('data', {}).get('host', '?')} behind your Cloudflare Access login"
     if p == ["cloudflare", "token"]: return "Save a Cloudflare API token on the server"
     if p == ["apps", "command"]: return f"Save the command app “{a.get('data', {}).get('name', '?')}”: {str(a.get('data', {}).get('command', ''))[:80]}"
     if p[:1] == ["apps"] and p[-1:] == ["run"]: return "Run a command app"
@@ -574,7 +578,7 @@ def needs_stepup(method, parts):
     if parts == ["containers", "custom"]: return True                      # new container: fingerprint
     if parts == ["terminal"]: return True                                   # server terminal: fingerprint
     if parts == ["apps", "command"]: return True                           # what a command app runs: fingerprint
-    if parts in (["cloudflare", "token"], ["cloudflare", "publish"], ["cloudflare", "remove"]): return True     # changes your Cloudflare account
+    if parts in (["cloudflare", "token"], ["cloudflare", "publish"], ["cloudflare", "remove"], ["cloudflare", "protect"]): return True     # changes your Cloudflare account
     if parts[:1] == ["containers"] and parts[-1:] == ["remove-custom"]: return True
     if parts == ["features"]: return True                                 # switching parts of Nova on/off: fingerprint
     if parts == ["plugins"]: return True                                  # turning a plugin on runs its tools as you: fingerprint
@@ -673,7 +677,16 @@ class Handler(BaseHTTPRequestHandler):
         ts, nonce = self.headers.get("X-Nova-Time", ""), self.headers.get("X-Nova-Nonce", "")
         sig = self.headers.get("X-Nova-Signature", "")
         dev = load_json(DEVICES, {}).get(dev_id)
-        if not dev or dev.get("revoked"): self.fail(ip, 401, "unknown device"); return None
+        if not dev or dev.get("revoked"):
+            # A removed phone that keeps checking in sends the same id over and over: count it against the
+            # address once a minute, not on every poll (that would lock out everything else behind that
+            # address). Made-up ids are all different, so guessing is still throttled as before.
+            k = (ip, str(self.headers.get("X-Nova-Device", ""))[:64]); now = time.time()
+            if now - stale_ids.get(k, 0) < 60:
+                self.send(401, {"error": "unauthorized"}); return None
+            if len(stale_ids) > 2000: stale_ids.clear()
+            stale_ids[k] = now
+            self.fail(ip, 401, "unknown device"); return None
         try: ts_i = int(ts)
         except ValueError: self.fail(ip, 401, "bad time"); return None
         if abs(time.time() * 1000 - ts_i) > CLOCK_SKEW_MS: self.fail(ip, 401, "clock skew"); return None
@@ -770,10 +783,12 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(403, {"error": "watch_only_approves"})
             dev["stepup_ok"] = True
         if dev.get("type") == "wear":
-            # The Nova watch app: a glance (overview, live numbers, recent events) and approvals. Nothing else.
+            # The Nova watch app: a glance (overview, live numbers, recent events), approvals, and the lights on/off
+            # (only {"on": true/false} — the fan handler refuses anything else from a watch). Nothing else.
             # Its key is in the watch's hardware and works only while the watch is unlocked, so approving counts as the fingerprint step.
-            ok = (method == "GET" and (parts in (["whoami"], ["overview"], ["stats"], ["events"], ["approvals"]) or (len(parts) == 2 and parts[0] == "approvals"))) \
+            ok = (method == "GET" and (parts in (["whoami"], ["overview"], ["stats"], ["events"], ["approvals"], ["fan"]) or (len(parts) == 2 and parts[0] == "approvals"))) \
                 or (method == "POST" and len(parts) == 3 and parts[0] == "approvals" and parts[2] in ("approve", "deny")) \
+                or (method == "POST" and parts == ["fan"]) \
                 or (method == "DELETE" and parts == ["devices", dev.get("id")])
             owner = load_json(DEVICES, {}).get(dev.get("owner", ""))
             if not owner or role_of(owner) != "admin":
@@ -1300,7 +1315,7 @@ class Handler(BaseHTTPRequestHandler):
                     def view():
                         used = {z["target"]: z["name"] for z in nova_rgb.all_zones(st)}
                         return {"zones": nova_rgb.all_zones(st), "effects": nova_rgb.EFFECT_NAMES, "rgb_effects": nova_rgb.RGB_EFFECTS,
-                                "targets": [{"id": k, **v, "used_by": used.get(k)} for k, v in nova_rgb.TARGETS.items()],
+                                "targets": [{"id": k, **v, "used_by": used.get(k)} for k, v in (nova_rgb.targets() if hasattr(nova_rgb, "targets") else nova_rgb.TARGETS).items()],
                                 "status_override": nova_rgb.status_override(st)}
                     if method == "GET" and parts == ["lights"]: return 200, view()
                     if role_of(dev) != "admin": return 403, {"error": "admins only"}
@@ -1315,7 +1330,7 @@ class Handler(BaseHTTPRequestHandler):
                         if zid == "main": st.update(setup)
                         else:
                             z.update(setup)
-                            if nova_rgb.TARGETS[z["target"]]["kind"] == "rgb" and z["effect"] not in nova_rgb.RGB_EFFECTS: z["effect"] = "static"
+                            if (nova_rgb.targets() if hasattr(nova_rgb, "targets") else nova_rgb.TARGETS)[z["target"]]["kind"] == "rgb" and z["effect"] not in nova_rgb.RGB_EFFECTS: z["effect"] = "static"
                     elif method == "POST" and len(parts) == 2:                        # an extra light's look
                         z.update(nova_rgb.validate_look(data, z["target"]))
                     elif method == "DELETE" and len(parts) == 2 and z:
@@ -1331,6 +1346,8 @@ class Handler(BaseHTTPRequestHandler):
             with rgb_lock:
                 st = nova_rgb.load()
                 if method == "POST":
+                    if dev.get("type") == "wear" and not (isinstance(data, dict) and set(data) == {"on"} and isinstance(data["on"], bool)):
+                        return 403, {"error": "watch_read_only"}         # a watch may only switch the lights on or off
                     pid = data.pop("apply_preset", None) if isinstance(data, dict) else None
                     if isinstance(data, dict) and "location" in data:   # the server's location lives in its settings now
                         loc = valid_location(data.pop("location"))
@@ -1400,13 +1417,41 @@ class Handler(BaseHTTPRequestHandler):
             if role_of(dev) != "admin": return 403, {"error": "admins only"}
             with lock:
                 st = load_json(SETTINGS, {}); lb = st.get("labs", {})
+                was = bool(lb.get("openrgb"))
                 for k, v in data.items():
                     if k in LABS: lb[k] = bool(v)
                 st["labs"] = lb; save_json(SETTINGS, st)
+            if nova_rgb and hasattr(nova_rgb, "orgb") and bool(lb.get("openrgb")) != was and feat_on("lighting"):
+                # OpenRGB on: Nova lets go of the controller (OpenRGB drives it now); off: Nova takes it back
+                try:
+                    with rgb_lock:
+                        st2 = nova_rgb.load()
+                        if lb.get("openrgb"):
+                            try: nova_rgb.orgb_scan()
+                            except Exception: pass
+                        nova_rgb.apply(st2, nova_rgb.status_override(st2))
+                except Exception as e: print(f"openrgb switch: {e}", file=sys.stderr, flush=True)
             return 200, {"labs": {k: bool(lb.get(k)) for k in LABS}, "about": LABS}
         if parts[:1] == ["labs"] and len(parts) > 1:
             lb = load_json(SETTINGS, {}).get("labs", {})
             if role_of(dev) != "admin" and not (parts[1] == "wol" and (method == "GET" or parts[-1:] == ["wake"])): return 403, {"error": "admins only"}
+            if parts[1] == "openrgb" and nova_rgb and hasattr(nova_rgb, "orgb"):
+                if not lb.get("openrgb"): return 403, {"error": "turn on OpenRGB in Settings → Labs first"}
+                if method == "POST" and parts == ["labs", "openrgb"]:              # where OpenRGB's SDK server is
+                    host = str(data.get("host") or "127.0.0.1").strip(); port = data.get("port", 6742)
+                    if not (isinstance(port, int) and 1 <= port <= 65535): raise ValueError("port 1–65535")
+                    if host != "localhost":
+                        try: ip = ipaddress.ip_address(host)
+                        except ValueError: raise ValueError("an IP address on this network (or localhost)")
+                        if not (ip.is_private or ip.is_loopback): raise ValueError("OpenRGB has to be on this server or your home network")
+                    with lock:
+                        st = load_json(SETTINGS, {}); st.setdefault("labs_cfg", {})["openrgb"] = {"host": host, "port": port}; save_json(SETTINGS, st)
+                if method == "POST" and parts == ["labs", "openrgb", "scan"]:
+                    with rgb_lock:
+                        devs = nova_rgb.orgb_scan()                     # OpenRGBError / ValueError → 400 with the reason
+                        st2 = nova_rgb.load(); nova_rgb.apply(st2, nova_rgb.status_override(st2))
+                cfg = load_json(SETTINGS, {}).get("labs_cfg", {}).get("openrgb", {})
+                return 200, {"host": cfg.get("host", "127.0.0.1"), "port": cfg.get("port", 6742), "devices": nova_rgb.orgb_devices()}
             if parts == ["labs", "schedule"] and method in ("GET", "POST"):
                 if method == "POST":
                     day, hour = data.get("day"), data.get("hour")
@@ -1459,7 +1504,16 @@ class Handler(BaseHTTPRequestHandler):
                     else: cfg.setdefault("overrides", {}).setdefault(aid, {})["remote_url"] = res["url"]
                     save_json(APPS, cfg)
                 return (200 if rc == 0 else 400), res
-            if method == "POST" and parts == ["cloudflare", "remove"]: rc, res = helper("cf-remove", str(data.get("host", ""))[:253], timeout=120); return (200 if rc == 0 else 400), res
+            if method == "POST" and parts == ["cloudflare", "remove"]:
+                rc, res = helper("cf-remove", json.dumps({"host": str(data.get("host", ""))[:253], "allow_public": data.get("allow_public") is True}), timeout=120); return (200 if rc == 0 else 400), res
+            if method == "POST" and parts == ["cloudflare", "protect"]:      # an address you already have, open to anyone → behind the login
+                rc, res = helper("cf-protect", str(data.get("host", ""))[:253], timeout=120)
+                if rc == 0 and data.get("app"):
+                    cfg = load_json(APPS, {"overrides": {}, "custom": []}); aid = str(data["app"])
+                    if aid.startswith("custom-"): cfg["custom"] = [dict(c, remote_url=res["url"]) if c["id"] == aid else c for c in cfg.get("custom", [])]
+                    else: cfg.setdefault("overrides", {}).setdefault(aid, {})["remote_url"] = res["url"]
+                    save_json(APPS, cfg)
+                return (200 if rc == 0 else 400), res
             return 404, {"error": "no such endpoint"}
         if method == "GET" and parts == ["apps"]:
             return 200, {"apps": app_list()}

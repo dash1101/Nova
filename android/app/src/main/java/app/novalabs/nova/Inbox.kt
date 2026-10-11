@@ -465,7 +465,7 @@ import java.util.*
             LinearProgressIndicator(progress = { anim }, modifier = Modifier.fillMaxWidth().height(6.dp).clip(androidx.compose.foundation.shape.RoundedCornerShape(3.dp)), color = N.blue, trackColor = N.pill)
         }
         val sub = if (st == "running") t.optString("note").ifEmpty { t.optString("step") } else if (st == "done") "Moved to your Inbox" else t.optString("error").ifEmpty { t.optString("step") }
-        if (sub.isNotEmpty()) Text(sub, color = if (st == "done") N.green else N.sub, fontSize = 13.sp, maxLines = 2)
+        if (sub.isNotEmpty()) ExpandableSub(sub, if (st == "done") N.green else N.sub, lines = 2, size = 13.sp)
     }
 }
 
@@ -534,7 +534,39 @@ private fun taskRoute(t: JSONObject): Route? {
         if (on.optBoolean("auto_updates")) LabsSchedule(app)
         if (on.optBoolean("image_cleanup")) LabsImages(app)
         if (on.optBoolean("wake_on_lan")) LabsWol(app)
+        if (on.optBoolean("openrgb")) LabsOpenRgb(app)
     }
+}
+
+/** Labs → OpenRGB: where its SDK server is, and the devices it has (each one can be a light in Lighting). */
+@Composable private fun LabsOpenRgb(app: AppState) {
+    var cfg by remember { mutableStateOf<JSONObject?>(null) }
+    var edit by remember { mutableStateOf(false) }
+    var busy by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { cfg = runCatching { app.api.get("/api/v1/labs/openrgb") }.getOrNull() }
+    SectionLabel("OpenRGB")
+    Group {
+        val c = cfg
+        Row1("OpenRGB at ${c?.optString("host") ?: "…"}:${c?.optInt("port") ?: 6742}", "Its SDK server (in OpenRGB: SDK Server → Start Server, or run openrgb --server)", true, Icons.Rounded.Lan,
+            onClick = if (app.isAdmin) ({ edit = true }) else null)
+        RowDivider()
+        Row1(if (busy) "Looking…" else "Look for devices", "Then add them as lights in Lighting → Set up", true, Icons.Rounded.Refresh, enabled = !busy && app.isAdmin, onClick = {
+            busy = true; app.act { try { cfg = app.api.post("/api/v1/labs/openrgb/scan") } finally { busy = false } } })
+        c?.optJSONArray("devices").objs().forEach { d -> RowDivider()
+            Row1(d.optString("name"), "${d.optInt("leds")} LEDs" + (d.optJSONArray("zones").objs().takeIf { it.size > 1 }?.let { z -> " · " + z.joinToString(", ") { it.optString("name") } } ?: ""),
+                icon = Icons.Rounded.Lightbulb, iconTint = N.amber, onClick = { app.go(Route.Lights) }) }
+    }
+    Text("With OpenRGB on, Nova draws every effect itself and sends the colors to OpenRGB, so they work on any device it supports. Nova stops talking to the motherboard's lighting controller directly (OpenRGB does that now); turn this off to go back.",
+        color = N.sub, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 30.dp, vertical = 4.dp))
+    if (edit) { var host by remember { mutableStateOf(cfg?.optString("host") ?: "127.0.0.1") }; var port by remember { mutableStateOf((cfg?.optInt("port") ?: 6742).toString()) }
+        OneDialog({ edit = false }, "Where's OpenRGB?", "On this server it's 127.0.0.1. It can also run on another computer on your network.",
+            listOf(DialogButton("Cancel") { edit = false }, DialogButton("Save", N.blue) { edit = false
+                app.act { cfg = app.api.post("/api/v1/labs/openrgb", JSONObject().put("host", host.trim()).put("port", port.toIntOrNull() ?: 6742)) } })) {
+            Column(Modifier.padding(horizontal = 22.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                OneTextField(host, { host = it.trim().take(64) }, "Address, like 127.0.0.1", Modifier.fillMaxWidth(), mono = true)
+                OneTextField(port, { port = it.filter(Char::isDigit).take(5) }, "Port (6742)", Modifier.fillMaxWidth(), mono = true)
+            }
+        } }
 }
 
 /** How to make the Cloudflare API token (checked against Cloudflare's docs: listing zones needs Zone · Zone · Read too). */
@@ -550,6 +582,14 @@ val CF_STEPS = listOf(
     var st by remember { mutableStateOf<JSONObject?>(null) }; var err by remember { mutableStateOf<String?>(null) }
     var round by remember { mutableIntStateOf(0) }
     var tokenAsk by remember { mutableStateOf(false) }
+    var undo by remember { mutableStateOf<Pair<String, String>?>(null) }
+    undo?.let { (h, kind) -> val pub = kind == "protected"
+        OneDialog({ undo = null }, if (pub) "Take the login off $h?" else "Take $h off?",
+            if (pub) "Nova only added the login to this address (it was yours before). Taking it off makes $h open to anyone again — the route and DNS record stay."
+            else "Nova removes what it added for $h: the tunnel route, the DNS record and the login. Anything else in your Cloudflare account stays as it is.",
+            listOf(DialogButton("Cancel") { undo = null }, DialogButton(if (pub) "Make it public" else "Take it off", N.red) { undo = null
+                app.act { app.stepUp(if (pub) "Take Nova's login off $h — it will be open to anyone" else "Take $h off your Cloudflare tunnel", "POST", "/api/v1/cloudflare/remove",
+                    JSONObject().put("host", h).put("allow_public", pub)); app.toast("Done"); round++ } })) }
     LaunchedEffect(round) { try { st = app.api.get("/api/v1/cloudflare"); err = null } catch (e: Exception) { err = e.message } }
     SectionLabel("Cloudflare")
     Group {
@@ -562,7 +602,14 @@ val CF_STEPS = listOf(
                 Row1(if (ok) "Connected" else if (!s.optBoolean("token")) "Add an API token to start" else "Not working", if (ok) "New app addresses get the login of “${s.optString("access_app")}”" else s.optString("error").ifEmpty { "Nova needs a Cloudflare API token to make changes for you." },
                     false, if (ok) Icons.Rounded.Shield else Icons.Rounded.Cloud, if (ok) N.green else N.amber)
                 if (app.isAdmin) { RowDivider(); Row1(if (s.optBoolean("token")) "Change the API token" else "Add an API token", "Kept on the server, readable only by root", true, Icons.Rounded.Key, onClick = { tokenAsk = true }) }
-                s.optJSONArray("hostnames")?.let { hs -> for (i in 0 until hs.length()) { RowDivider(); Row1(hs.getString(i), if (hs.getString(i) == s.optString("nova_host")) "Nova itself" else "On your tunnel", icon = Icons.Rounded.Public) } }
+                val mine = s.optJSONObject("nova_added") ?: JSONObject(); val prot = s.optJSONArray("protected").let { p -> (0 until (p?.length() ?: 0)).map { p!!.getString(it) }.toSet() }
+                s.optJSONArray("hostnames")?.let { hs -> for (i in 0 until hs.length()) { val h = hs.getString(i); RowDivider()
+                    val kind = mine.optString(h)
+                    Row1(h, when { h == s.optString("nova_host") -> "Nova itself"; kind == "added" -> "Added by Nova"; kind == "protected" -> "Yours — Nova added the login"
+                                   h in prot -> "Yours · behind the login"; else -> "Yours · open to anyone (no login)" },
+                        icon = Icons.Rounded.Public, iconTint = if (h in prot || h == s.optString("nova_host")) N.green else N.amber,
+                        // only what Nova did can be undone from here; everything else stays as you set it up
+                        trailing = if (app.isAdmin && kind.isNotEmpty()) ({ IconButton({ undo = h to kind }) { Icon(Icons.Rounded.Delete, "Take it off", tint = N.sub) } }) else null) } }
             }
         }
     }

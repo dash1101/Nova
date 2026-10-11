@@ -43,7 +43,7 @@ val SHAKE_ACTIONS = listOf("report" to "Report a problem", "search" to "Search N
             }
             override fun onAccuracyChanged(s: Sensor?, a: Int) {}
         }
-        fun on() { if (enabled && acc != null) sm.registerListener(l, acc, SensorManager.SENSOR_DELAY_UI) }
+        fun on() { if (enabled && acc != null) sm.registerListener(l, acc, SensorManager.SENSOR_DELAY_GAME) }   // fast enough to catch a jolt's peak
         fun off() = sm.unregisterListener(l)
         val obs = LifecycleEventObserver { _, ev -> when (ev) { Lifecycle.Event.ON_RESUME -> on(); Lifecycle.Event.ON_PAUSE -> off(); else -> {} } }
         owner.lifecycle.addObserver(obs)
@@ -53,7 +53,7 @@ val SHAKE_ACTIONS = listOf("report" to "Report a problem", "search" to "Search N
 }
 
 /** How hard a jolt has to be (in g): a light shake is enough on "high", it takes a hard one on "low". */
-private fun shakeThreshold() = when (AppPrefs.shakeSense) { "high" -> 2.0f; "low" -> 3.4f; else -> 2.6f }
+private fun shakeThreshold() = when (AppPrefs.shakeSense) { "high" -> 1.8f; "low" -> 2.8f; else -> 2.3f }
 private val SENSES = listOf("low" to "Hard shake", "normal" to "Normal", "high" to "Light shake")
 
 /** Shake on/off, what it does and how hard you need to shake — in Appearance, and right on the screen a shake opens. */

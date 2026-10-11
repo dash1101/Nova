@@ -40,3 +40,20 @@ Nova web from anywhere, let *you* log in to Cloudflare as well:
 
 Nova still needs the browser's own signing key on top of the Cloudflare login, and risky actions
 from a browser are always approved on your phone.
+
+## Putting your apps online (Labs → Cloudflare auto-setup)
+
+With an API token (steps in Labs → Cloudflare), hold an app → *Open it from anywhere* → **Set it up
+for me**. Nova shows what it will change and asks for your fingerprint first.
+
+- **The address is already taken?** Nova never changes it. It offers a free name nearby (like
+  `photos-nova.example.com`), or — if the address is already on your tunnel but open to anyone —
+  **Protect it**: only the Cloudflare login is added in front; your route and DNS record stay.
+  Note that an app's own phone app (Immich, Jellyfin, Home Assistant…) can't get past a web login
+  by itself; give it a Cloudflare Access service token in its settings (Immich: *Settings →
+  Advanced → Custom proxy headers*: `CF-Access-Client-Id` and `CF-Access-Client-Secret`).
+- **Taking it off:** Labs → Cloudflare lists your tunnel's addresses; the ones Nova added (or put
+  the login on) have a remove button. Nothing else can be removed from Nova.
+- **Undo everything** (for example before uninstalling): `sudo nova cloudflare undo`. It lists what
+  it will remove and asks. Addresses that were yours before keep their login unless you add
+  `--unprotect`.

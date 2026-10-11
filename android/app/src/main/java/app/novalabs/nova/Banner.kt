@@ -41,7 +41,7 @@ import androidx.compose.ui.unit.sp
             Column(Modifier.weight(1f)) {
                 Text(b.optString("title").replace(Regex("^[^\\p{L}\\p{N}]+\\s*"), ""), color = N.text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 2)
                 val sub = listOf(b.optString("detail"), if (app.bannerMore > 0) "and ${app.bannerMore} more" else "").filter { it.isNotBlank() }.joinToString(" · ")
-                if (sub.isNotEmpty()) Text(sub, color = N.sub, fontSize = 13.sp, maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                if (sub.isNotEmpty()) ExpandableSub(sub, N.sub, lines = 2, size = 13.sp)
             }
             Icon(Icons.Rounded.Close, "Dismiss", tint = N.sub, modifier = Modifier.size(20.dp).clickable { app.banner = null })
         }

@@ -77,7 +77,7 @@ object Cache {
     LaunchedEffect(path, everyMs) {
         owner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
             while (true) {
-                runCatching { app.api.get(path) }.onSuccess { st.value = it }
+                if (!app.notAuthorized) runCatching { app.api.get(path) }.onSuccess { st.value = it }   // removed from the server: stay quiet
                 if (everyMs <= 0) break
                 delay(everyMs)
             }

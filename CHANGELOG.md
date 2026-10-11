@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.6.0-alpha (app, server and watch)
+- **Cloudflare, safely:** Nova keeps a record of exactly what it adds for each address, and only ever removes those parts — your own routes, DNS records and Access settings are never touched. Every other tunnel rule stays, in order; a setup that fails halfway is rolled back.
+- **Address already in use?** *Set it up for me* never overwrites it: it offers a free name nearby (like `photos-nova.example.com`), or — for an address already on your tunnel but open to anyone — **Protect it**, which puts just the Cloudflare login in front of it (route and DNS record stay). It warns that the app's own phone app then needs an Access service token.
+- **Taking things off:** Labs → Cloudflare shows which addresses Nova added (or put the login on) and lets you remove exactly those, with your fingerprint. `sudo nova cloudflare list` / `undo` shows or takes back everything (it asks first); uninstalling leaves your account as it is and tells you about that command. Addresses an older Nova published are recognized too.
+- **OpenRGB (Labs):** run your lights through OpenRGB, so every Nova effect works on any device it supports (motherboards, RAM, GPUs, fans, strips). Point Nova at OpenRGB's SDK server, look for devices, then add each one as a light in Lighting. Nova stops talking to the motherboard's controller directly while it's on.
+- **Dock:** hold an app to move it left or right, pin or unpin it, reload it or close it. The glass bead rides along with the app you're in as the dock scrolls (and fades as it slides out of view), and moves smoothly — it no longer redraws the whole bar each frame. The dock slides away and back on pages without it, instead of blinking.
+- **Web apps:** a ⋮ menu with *Open in your browser*, *Copy the link*, *Desktop site* (remembered per app) and text size; full-screen video works.
+- **Watch:** a *Nova lights* tile (tap to switch them), and a Lights card in the app. A watch may only switch the lights on or off.
+- **Store:** category chips to browse the containers; an installed app's page links straight to its container (logs, restart, troubleshoot, roll back) and to updates.
+- Toasts show above dialogs. The same dialog can't open twice, and a second shake no longer stacks another Report screen. Closing *Open it from anywhere* closes the edit dialog behind it too.
+- **Hard shake works** (shakes are measured faster, and the levels are reachable).
+- Store descriptions (and a few others) that get cut off have the little arrow to expand them.
+- **A removed phone goes quiet:** it checks in every 5 minutes instead of every 4 seconds, and the server counts a removed phone against its address once a minute — so it can't lock out the other devices on that address.
+- Dialog buttons wrap onto a new line instead of squeezing when there are three long ones.
+
 ## 0.5.19-alpha (app and server)
 - **Web apps render properly inside Nova:** pages got a zero-height viewport, so full-height backgrounds stopped short (Immich), lazy photo grids drew nothing and fixed wallpapers (Homepage) went missing. They now fill the frame like in a browser.
 - **Uploads and downloads in web apps:** an app's upload button opens your phone's file picker (pick one or several), and downloads go to Downloads with a notification. (Android 9: downloads aren't supported yet.)

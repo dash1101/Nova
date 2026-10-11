@@ -42,6 +42,7 @@ object AppPrefs {
     var searchRecent by mutableStateOf(listOf<String>()); private set      // Search: recent queries (newest first)
     var searchPinned by mutableStateOf(listOf<String>()); private set      // Search: pinned queries
     var startCustom by mutableStateOf(""); private set                     // start page: your own search engine (https://…%s)
+    var desktopApps by mutableStateOf(listOf<String>()); private set       // web apps shown as their desktop site
     var startSuggest by mutableStateOf(true); private set                  // start page: suggestions while typing
     var dismissedUpdate by mutableStateOf(""); private set                 // the update note you closed (shown again for a newer one)
     var shakeSense by mutableStateOf("normal"); private set               // how hard a shake has to be: low | normal | high
@@ -64,6 +65,7 @@ object AppPrefs {
         homeChips = sp.getString("home_chips", null)?.let { s -> s.split(",").filter { it.isNotBlank() } } ?: DEFAULT_SHORTCUTS
         startCustom = sp.getString("start_custom", "")!!; startSuggest = sp.getBoolean("start_suggest", true)
         dismissedUpdate = sp.getString("dismissed_update", "")!!; shakeAction = sp.getString("shake_action", "report")!!
+        desktopApps = sp.getString("desktop_apps", "")!!.split(",").filter { it.isNotBlank() }
         shakeSense = sp.getString("shake_sense", "normal")!!; shakeLast = sp.getString("shake_last", "report")!!
     }
     fun set(key: String, v: Any) {
@@ -81,6 +83,7 @@ object AppPrefs {
             "home_chips" -> homeChips = (v as String).split(",").filter { it.isNotBlank() }
             "start_custom" -> startCustom = v as String; "start_suggest" -> startSuggest = v as Boolean
             "dismissed_update" -> dismissedUpdate = v as String; "shake_action" -> shakeAction = v as String
+            "desktop_apps" -> desktopApps = (v as String).split(",").filter { it.isNotBlank() }
             "shake_sense" -> shakeSense = v as String; "shake_last" -> shakeLast = v as String
         }
         sp.edit().apply { if (v is Boolean) putBoolean(key, v) else putString(key, v.toString()) }.apply()

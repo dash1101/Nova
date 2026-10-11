@@ -1,8 +1,10 @@
 # Nova on your watch (Wear OS)
 
 A small companion for Wear OS 3 and newer: your server's health at a glance, anything waiting for
-your approval (approve or deny on your wrist), and the latest events. There's also a **tile** with
-the status, so a swipe from the watch face is enough.
+your approval (approve or deny on your wrist), the latest events, and the lights on or off. There are
+two **tiles**: *Nova status* (health at a glance) and *Nova lights* (one tap switches them), so a swipe
+from the watch face is enough. A watch can only switch the lights on or off — the server refuses any
+other change from it.
 
 ## Install
 

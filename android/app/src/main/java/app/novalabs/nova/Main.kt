@@ -87,6 +87,8 @@ class AppState(val activity: Activity, val pairing: Pairing, val scope: Coroutin
     var lastNow by mutableStateOf<JSONObject?>(null)
     var paired by mutableStateOf(pairing.paired)
     var notAuthorized by mutableStateOf(false)
+    /** The dock app being held (its menu is open). */
+    var dockMenu by mutableStateOf<String?>(null)
     private var failures = 0
     /** The newest event already announced (−1: not yet known), and the banner on screen. */
     private var alertSince = -1.0
@@ -104,7 +106,8 @@ class AppState(val activity: Activity, val pairing: Pairing, val scope: Coroutin
     /** In the tablet list/detail view, opening something from the list replaces the detail instead of stacking. */
     /** Which way the last navigation went, so transitions slide the right way. */
     var navDir by mutableIntStateOf(0)          // 1 forward, -1 back, 0 tab switch / instant
-    fun go(r: Route) { navDir = 1; if (wide && leftPane && stack.size >= 2) pop(); stack.add(r) }
+    fun go(r: Route) { if (top == r) return                      // already here (a second shake, a double tap): don't stack a copy
+        navDir = 1; if (wide && leftPane && stack.size >= 2) pop(); stack.add(r) }
     fun tab(r: Route) {
         // Only real tabs (in your navigation pill) reset the stack; anything else opens as a page with a back button
         if (r != Route.Home && r !is Route.AppFrame && Builtins.current(r) == null && navTabs(this).none { it.route == r }) { go(r); return }
@@ -160,6 +163,7 @@ class AppState(val activity: Activity, val pairing: Pairing, val scope: Coroutin
             if (e.code == 401) {
                 // One 401 can be a clock hiccup or a replayed nonce; only a repeat means revoked.
                 // Never wipe keys automatically — the user decides on the banner.
+                reconnecting = false
                 if (failures >= 2) notAuthorized = true
             } else {
                 reconnecting = true
@@ -291,6 +295,7 @@ class MainActivity : ComponentActivity() {
     val scope = rememberCoroutineScope()
     val pairing = remember { Pairing(activity, profile) }
     val app = remember { AppState(activity, pairing, scope, switchServer) }
+    DialogStack.snack = app.snack
     LaunchedEffect(Unit) { START_ROUTES.firstOrNull { it.first == AppPrefs.startRoute && it.first != "home" }?.second?.second?.let { app.tab(it) } }
     if (!app.paired) {
         // Adding another server: offer a way back to the ones already paired.
@@ -311,7 +316,9 @@ class MainActivity : ComponentActivity() {
         // Poll only while Nova is on screen; coming back refreshes immediately on fresh sockets.
         owner.lifecycle.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.STARTED) {
             app.api.wake()
-            while (true) { app.refresh(); delay(if (app.reconnecting) 4_000 else 15_000) }
+            // removed from the server: only look in now and then (every attempt counts against this
+            // address, and other devices behind it would be locked out by a phone that keeps knocking)
+            while (true) { app.refresh(); delay(if (app.notAuthorized) 300_000 else if (app.reconnecting) 4_000 else 15_000) }
         }
     }
     // Predictive back: the page follows your thumb, the one underneath shows through.
@@ -342,6 +349,7 @@ class MainActivity : ComponentActivity() {
         }
     }
     ShakeListener(app)
+    app.dockMenu?.let { id -> DockAppMenu(app, id) { app.dockMenu = null } }
     LaunchedEffect(openApprovals) { if (openApprovals) { openApprovals = false; app.go(Route.Approvals) } }
     LaunchedEffect(openUpdate) { if (openUpdate) { openUpdate = false; app.go(Route.Settings) } }
 
@@ -389,14 +397,18 @@ class MainActivity : ComponentActivity() {
                     val tabs = navTabs(app)
                     val tabIndex = tabs.indexOfFirst { it.route == app.top }
                     val openApp = (app.top as? Route.AppFrame)?.id ?: Builtins.current(app.stack.first())
-                    if (tabIndex >= 0 || openApp != null) FloatingNav(tabIndex, tabs.map { it.icon }, tabs.map { it.label }, { i -> app.tab(tabs[i].route) },
-                        Modifier.align(Alignment.BottomCenter), onLongClick = { app.go(Route.EditTabs) },
-                        apps = AppSessions.dock(), selectedApp = openApp, onApp = { id -> dockTap(app, id) })
+                    // pages outside the pill (a setup, a detail page) have no dock: it slides away and back instead of blinking
+                    androidx.compose.animation.AnimatedVisibility(tabIndex >= 0 || openApp != null, Modifier.align(Alignment.BottomCenter),
+                        enter = if (reduceMotion()) fadeIn() else androidx.compose.animation.slideInVertically(androidx.compose.animation.core.spring(0.85f, 420f)) { it } + fadeIn(),
+                        exit = if (reduceMotion()) fadeOut() else androidx.compose.animation.slideOutVertically(androidx.compose.animation.core.tween(220)) { it } + fadeOut(androidx.compose.animation.core.tween(180))) {
+                    FloatingNav(tabIndex, tabs.map { it.icon }, tabs.map { it.label }, { i -> app.tab(tabs[i].route) },
+                        Modifier, onLongClick = { app.go(Route.EditTabs) },
+                        apps = AppSessions.dock(), selectedApp = openApp, onApp = { id -> dockTap(app, id) }, onAppHold = { id -> app.dockMenu = id }) }
                 } else WideLayout(app, maxWidth, { backP.value }, { backExit.value })
             }
             CompositionLocalProvider(LocalRootHaze provides rootHaze) {        // so the toast is real frosted glass
                 AlertBanner(app, Modifier.align(Alignment.TopCenter))
-                OneToastHost(app.snack, Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = if (wide) 24.dp else 96.dp))
+                if (DialogStack.depth == 0) OneToastHost(app.snack, Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = if (wide) 24.dp else 96.dp))
             }
         }
     }
@@ -469,7 +481,7 @@ private fun Modifier.paneTouch(app: AppState, left: Boolean) = pointerInput(left
         if (app.top != Route.Dashboard)        // the always-on dashboard gets the whole screen
             Box(Modifier.fillMaxHeight().statusBarsPadding().navigationBarsPadding().padding(start = 12.dp, end = 4.dp), contentAlignment = Alignment.Center) {
                 VerticalNav(tabs.indexOfFirst { it.route == root }, tabs.map { it.icon }, tabs.map { it.label }, { i -> app.tab(tabs[i].route) },
-                    onLongClick = { app.go(Route.EditTabs) }, apps = AppSessions.dock(), selectedApp = (root as? Route.AppFrame)?.id ?: Builtins.current(root), onApp = { id -> dockTap(app, id) })
+                    onLongClick = { app.go(Route.EditTabs) }, apps = AppSessions.dock(), selectedApp = (root as? Route.AppFrame)?.id ?: Builtins.current(root), onApp = { id -> dockTap(app, id) }, onAppHold = { id -> app.dockMenu = id })
             }
         val parent = app.stack.getOrNull(app.stack.size - 2)
         val split = parent != null && width >= 900.dp

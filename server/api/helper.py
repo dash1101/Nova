@@ -525,7 +525,11 @@ if verb.startswith("cf-") and len(args) <= 1:
             r = fn(a.get("host", ""), a.get("service", ""), bool(a.get("no_tls_verify")))
             if verb == "cf-apply": changelog(f"Cloudflare: published {r['host']} → {a.get('service')} behind Access (from the Nova app)")
             out(r)
-        if verb == "cf-remove" and args: r = cfsync.remove(args[0]); changelog(f"Cloudflare: removed {args[0]} (from the Nova app)"); out(r)
+        if verb == "cf-remove" and args:
+            a = json.loads(args[0]) if args[0].startswith("{") else {"host": args[0]}
+            r = cfsync.remove(a.get("host", ""), bool(a.get("allow_public"))); changelog(f"Cloudflare: took {a.get('host')} off (from the Nova app)"); out(r)
+        if verb == "cf-protect" and args: r = cfsync.protect(args[0]); changelog(f"Cloudflare: put the existing {r['host']} behind the Access login (from the Nova app)"); out(r)
+        if verb == "cf-undo-all": r = cfsync.undo_all(bool(args and args[0] == "public")); changelog(f"Cloudflare: undid Nova's changes: {r}"); out({"done": r})
         fail("bad request", 2)
     except ValueError as e: fail(str(e))
 

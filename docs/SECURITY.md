@@ -99,6 +99,24 @@ container uses or the versions kept for rolling back; Wake-on-LAN only sends a m
 local network; Cloudflare auto-setup protects an address with your Access login before it creates
 the DNS record and tunnel route.
 
+**Cloudflare auto-setup never overwrites or removes what isn't Nova's.** It keeps a root-only record
+(`/etc/nova-api/cloudflare-added.json`) of exactly what it added for each address (the Access entry,
+the DNS record by id, the tunnel route). An address that's already in use is never touched: Nova
+offers a free name nearby, or — for an address already on your tunnel but open to anyone — to put
+just the login in front of it. Every other tunnel rule is kept, in order. A setup that fails halfway
+is rolled back. Taking an address off removes only the recorded parts; taking the login off an
+address that was yours before needs an explicit confirmation (it becomes public again). All of these
+need your fingerprint. `sudo nova cloudflare list` shows the record, `sudo nova cloudflare undo` takes
+it all back (it lists everything and asks first); uninstalling Nova leaves your Cloudflare account
+as it is and tells you about that command.
+
+**A watch** can see the glance, approve requests and switch the lights on or off — the server refuses
+anything else from it (even other light settings).
+
+**A removed phone** that keeps checking in counts against its address once a minute, not on every
+request, so it can't lock out the other devices behind that address; made-up device ids are still
+throttled as before. The app itself goes quiet (one check every 5 minutes) once it's told it was removed.
+
 ## The SSH terminal
 
 The app is a normal SSH client to the server's sshd. Its key is a hardware-keystore key that
