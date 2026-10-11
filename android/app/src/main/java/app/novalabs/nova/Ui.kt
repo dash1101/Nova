@@ -1,5 +1,9 @@
 package app.novalabs.nova
 
+import androidx.compose.foundation.border
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.animateContentSize
@@ -252,7 +256,8 @@ val LocalWide = staticCompositionLocalOf { false }
                             modifier: Modifier = Modifier, onLongClick: (() -> Unit)? = null,
                             apps: List<AppSessions.Session> = emptyList(), selectedApp: String? = null, onApp: (String) -> Unit = {}) {
     val itemW = 76.dp; val gap = 4.dp
-    val bead = rememberBead(selected, icons.size, apps, selectedApp, itemW, 52.dp, gap)
+    // the bead marks tabs only; an open app (in a strip that can scroll) gets its own highlight
+    val bead = rememberBead(selected, icons.size, emptyList(), selectedApp, itemW, 52.dp, gap)
     val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
     if (N.material) {                         // M3 Expressive: a floating bar, pill indicator behind the icon, labels
         Row(modifier.navigationBarsPadding().padding(bottom = 12.dp).frosted(null, RoundedCornerShape(32.dp), 6.dp)
@@ -269,7 +274,7 @@ val LocalWide = staticCompositionLocalOf { false }
                     Text(labels[i], fontSize = 12.sp, fontWeight = if (on) FontWeight.Bold else FontWeight.Medium, color = if (on) N.text else N.sub, maxLines = 1, modifier = Modifier.padding(top = 4.dp))
                 }
             }
-            PillApps(apps, selectedApp, onApp, vertical = false)
+            PillApps(apps, selectedApp, onApp, vertical = false, maxWidth = appRoom(icons.size, 84.dp))
         }
         return
     }
@@ -286,10 +291,26 @@ val LocalWide = staticCompositionLocalOf { false }
                     Icon(ic, labels[i], tint = N.text, modifier = Modifier.size(26.dp))
                 }
             }
-            PillApps(apps, selectedApp, onApp, vertical = false)
+            PillApps(apps, selectedApp, onApp, vertical = false, maxWidth = appRoom(icons.size, itemW + gap))
         }
     }
 }
+
+/** How much of the screen's width is left for open apps after the tabs (the pill never grows past the screen). */
+@Composable private fun appRoom(tabs: Int, perTab: Dp): Dp =
+    (androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp.dp - 40.dp - perTab * tabs - 14.dp).coerceAtLeast(56.dp)
+
+/** Fades the start/end of a scrolling strip when there's more to see that way. */
+fun Modifier.fadeEdges(s: androidx.compose.foundation.ScrollState, horizontal: Boolean, edge: Dp = 22.dp) = this
+    .graphicsLayer { compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.Offscreen }
+    .drawWithContent {
+        drawContent()
+        val len = if (horizontal) size.width else size.height; if (len <= 0f) return@drawWithContent
+        val f = (edge.toPx() / len).coerceAtMost(0.45f)
+        val start = if (s.value > 0) Color.Transparent else Color.Black; val end = if (s.value < s.maxValue) Color.Transparent else Color.Black
+        val stops = arrayOf(0f to start, f to Color.Black, 1f - f to Color.Black, 1f to end)
+        drawRect(if (horizontal) Brush.horizontalGradient(*stops) else Brush.verticalGradient(*stops), blendMode = androidx.compose.ui.graphics.BlendMode.DstIn)
+    }
 
 @Composable fun CancelSavePill(onCancel: () -> Unit, onSave: () -> Unit, saveEnabled: Boolean = true,
                                saveLabel: String = "Save", modifier: Modifier = Modifier, cancelLabel: String = "Cancel") {
@@ -335,21 +356,41 @@ class Bead(val pos: Dp, val size: Dp, val alpha: Float)
 
 /** One UI segmented tabs (pill). */
 /** Open apps in the navigation pill: a hairline, then each app's icon (a ring on the one you're in). */
-@Composable fun PillApps(apps: List<AppSessions.Session>, selected: String?, onApp: (String) -> Unit, vertical: Boolean) {
+@Composable fun PillApps(apps: List<AppSessions.Session>, selected: String?, onApp: (String) -> Unit, vertical: Boolean, maxWidth: Dp? = null) {
     if (apps.isEmpty()) return
     if (vertical) Box(Modifier.padding(vertical = 4.dp).width(32.dp).height(1.dp).background(N.sub.copy(alpha = 0.35f)))
     else Box(Modifier.padding(horizontal = 4.dp).width(1.dp).height(30.dp).background(N.sub.copy(alpha = 0.35f)))
-    apps.forEach { s ->
-        val on = s.id == selected
-        Box(Modifier.size(if (vertical) 64.dp else 52.dp, 56.dp).clip(RoundedCornerShape(28.dp)).bouncy { onApp(s.id) }, contentAlignment = Alignment.Center) {
+    if (!vertical && maxWidth != null) {
+        // more apps than fit: they slide, with the edges fading; the one you're in scrolls into view
+        val sc = rememberScrollState(); val density = androidx.compose.ui.platform.LocalDensity.current
+        val idx = apps.indexOfFirst { it.id == selected }
+        LaunchedEffect(idx, apps.size) { if (idx >= 0) with(density) { sc.animateScrollTo(((52.dp * idx) - maxWidth / 2 + 26.dp).roundToPx().coerceIn(0, sc.maxValue)) } }
+        Row(Modifier.widthIn(max = maxWidth).fadeEdges(sc, true).horizontalScroll(sc), verticalAlignment = Alignment.CenterVertically) {
+            apps.forEach { s -> PillApp(s, s.id == selected, onApp, false, highlight = true) }
+        }
+        return
+    }
+    apps.forEach { s -> PillApp(s, s.id == selected, onApp, vertical, highlight = false) }
+}
+
+@Composable private fun PillApp(s: AppSessions.Session, on: Boolean, onApp: (String) -> Unit, vertical: Boolean, highlight: Boolean) {
+    run {
+        // a cell of the pill's size, with a true circle centered in it: the touch target and, when you're in it, the highlight
+        Box(Modifier.size(if (vertical) 64.dp else 52.dp, 56.dp), contentAlignment = Alignment.Center) {
+        Box(Modifier.size(48.dp).clip(CircleShape)
+            .background(if (highlight && on && !N.material) (if (N.dark) Color.White.copy(alpha = 0.14f) else Color.Black.copy(alpha = 0.07f)) else Color.Transparent)
+            .bouncy { onApp(s.id) }, contentAlignment = Alignment.Center) {
             val ring = on && N.material
-            Box(Modifier.size(34.dp).clip(RoundedCornerShape(10.dp)).background(if (ring) N.blue else Color.Transparent).padding(if (ring) 2.dp else 0.dp)
-                .clip(RoundedCornerShape(9.dp)).background(N.card), contentAlignment = Alignment.Center) {
+            // Material: a round ring around the icon (centered in the cell), not a squircle hugging it
+            Box(Modifier.size(46.dp).then(if (ring) Modifier.border(2.dp, N.blue, CircleShape) else Modifier), contentAlignment = Alignment.Center) {
+            Box(Modifier.size(32.dp).clip(RoundedCornerShape(9.dp)).background(N.card), contentAlignment = Alignment.Center) {
                 val b = s.icon
                 if (s.app.has("builtin")) Icon(Builtins.icon(s.id), s.app.optString("name"), tint = N.blue, modifier = Modifier.size(20.dp))
                 else if (b != null) androidx.compose.foundation.Image(b, s.app.optString("name"), Modifier.fillMaxSize().padding(3.dp))
                 else Text(s.app.optString("name").take(1).uppercase(), color = N.blue, fontWeight = FontWeight.Bold)
             }
+            }
+        }
         }
     }
 }

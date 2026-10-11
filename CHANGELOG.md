@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.18-alpha (app)
+- **The dock slides:** when more apps are open or pinned than fit in the navigation pill, they scroll sideways, with the edges fading; the one you're in scrolls into view.
+- **Round, centered highlight** on the app you're in (and a round ring in the Material look).
+- **Pin Files and Terminal to the dock:** hold them in Apps or the Menu. Up to 8 pinned apps now.
+- Button text in dialogs is centered (two-line labels like “Command or script” no longer sit off to one side).
+
 ## 0.5.17-alpha (app and server)
 - **Android 9 and newer** (was 12). On 9–11, Material uses its own palette instead of wallpaper colors, and on 9 fingerprint confirmation can't fall back to your PIN; everything else is the same.
 - **Updates on open:** when Nova opens it checks for a newer app and server release and shows a small note on Home (close it to hide it until the next one). The server checks GitHub at most every 30 minutes, however often you open the app.

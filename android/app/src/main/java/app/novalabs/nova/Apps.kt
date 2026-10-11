@@ -55,7 +55,7 @@ object AppSessions {
         return pinned + open.filter { it.id !in AppPrefs.pinnedApps }
     }
     fun isPinned(id: String) = id in AppPrefs.pinnedApps
-    fun togglePin(id: String) = AppPrefs.set("pinned_apps", (if (isPinned(id)) AppPrefs.pinnedApps - id else (AppPrefs.pinnedApps + id).takeLast(4)).joinToString(","))
+    fun togglePin(id: String) = AppPrefs.set("pinned_apps", (if (isPinned(id)) AppPrefs.pinnedApps - id else (AppPrefs.pinnedApps + id).takeLast(8)).joinToString(","))
 }
 
 /** Nova's own apps (Files, Terminal): they open like your web apps — in the dock, as their own page —
@@ -76,6 +76,14 @@ object Builtins {
 /** The ✕ on a built-in app's page: off the dock, back Home (the terminal also disconnects). */
 fun closeBuiltin(app: AppState, id: String): List<TopAction> = if (AppSessions.get(id) == null) emptyList() else listOf(TopAction(Icons.Rounded.Close, "Close") {
     AppSessions.close(id); if (id == "nova-term") SshSession.disconnect(); app.tab(Route.Home) })
+/** Hold Files or Terminal: open it, or pin it to the dock (it stays there, ready, like a pinned app). */
+@Composable fun BuiltinMenu(app: AppState, id: String, onDone: () -> Unit) {
+    val name = Builtins.of(id)?.optString("name") ?: return
+    var pinned by remember { mutableStateOf(AppSessions.isPinned(id)) }
+    OneDialog(onDone, name, buttons = listOf(DialogButton("Close") { onDone() }, DialogButton("Open", N.blue) { onDone(); openBuiltin(app, id) })) {
+        SwitchRow("Pinned to the dock", "Stays in the navigation pill, one tap away", pinned) { AppSessions.togglePin(id); pinned = AppSessions.isPinned(id) }
+    }
+}
 fun openBuiltin(app: AppState, id: String) { val b = Builtins.of(id) ?: return; AppSessions.open(b); app.tab(Builtins.route(id)) }
 
 /** Tap on an app in the dock: switch to it, or open it if it's only pinned. */
@@ -118,6 +126,7 @@ fun appUrl(app: AppState, a: JSONObject): String? {
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable fun AppsScreen(app: AppState) {
     val live = live(app, "/api/v1/apps", 30_000)
+    var builtinMenu by remember { mutableStateOf<String?>(null) }
     var editing by remember { mutableStateOf<JSONObject?>(null) }
     var adding by remember { mutableStateOf(false) }
     var addingWeb by remember { mutableStateOf(false) }
@@ -136,13 +145,14 @@ fun appUrl(app: AppState, a: JSONObject): String? {
             SectionLabel("Built in")
             Row(Modifier.fillMaxWidth().padding(horizontal = Space.gutter, vertical = 6.dp)) {
                 listOf(Triple("Files", Icons.Rounded.Folder, N.blue) to { openBuiltin(app, "nova-files") }, Triple("Terminal", Icons.Rounded.Terminal, N.green) to { openBuiltin(app, "nova-term") })
-                    .forEach { (t, go) -> Column(Modifier.weight(1f).clip(RoundedCornerShape(18.dp)).clickable { go() }.padding(vertical = 10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    .forEach { (t, go) -> Column(Modifier.weight(1f).clip(RoundedCornerShape(18.dp)).combinedClickable(onLongClick = { builtinMenu = if (t.first == "Files") "nova-files" else "nova-term" }) { go() }.padding(vertical = 10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                         Box(Modifier.size(60.dp).clip(RoundedCornerShape(16.dp)).background(t.third.copy(alpha = 0.16f)), contentAlignment = Alignment.Center) { Icon(t.second, null, tint = t.third, modifier = Modifier.size(30.dp)) }
                         Text(t.first, color = N.text, fontSize = 13.sp, modifier = Modifier.padding(top = 6.dp)) } }
                 repeat(cols - 2) { Spacer(Modifier.weight(1f)) }
             }
             SectionLabel("On your server")
         }
+        builtinMenu?.let { id -> BuiltinMenu(app, id) { builtinMenu = null } }
         val cells: List<JSONObject?> = shown + if (app.isAdmin && live.value != null) listOf(null) else emptyList()     // null: the Add tile
         cells.chunked(cols).forEach { rowApps ->
             Row(Modifier.fillMaxWidth().padding(horizontal = Space.gutter, vertical = 6.dp)) {

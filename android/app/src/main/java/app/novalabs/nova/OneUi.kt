@@ -197,7 +197,8 @@ data class DialogButton(val label: String, val color: Color? = null, val enabled
                 if (buttons.isNotEmpty()) Row(Modifier.fillMaxWidth().padding(top = 16.dp, start = 12.dp, end = 12.dp), horizontalArrangement = Arrangement.End) {
                     buttons.forEach { b ->
                         Box(Modifier.clip(RoundedCornerShape(20.dp)).clickable(enabled = b.enabled, onClick = b.onClick).padding(horizontal = 14.dp, vertical = 10.dp)) {
-                            Text(b.label, color = if (!b.enabled) N.sub else b.color?.takeIf { it == N.red } ?: N.blue, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                            Text(b.label, color = if (!b.enabled) N.sub else b.color?.takeIf { it == N.red } ?: N.blue, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center)
                         }
                     }
                 }
@@ -222,7 +223,8 @@ data class DialogButton(val label: String, val color: Color? = null, val enabled
                     if (i > 0) Box(Modifier.width(1.dp).height(20.dp).background(N.divider))
                     Box(Modifier.weight(1f).clip(RoundedCornerShape(20.dp)).clickable(enabled = b.enabled, onClick = b.onClick)
                         .padding(vertical = 14.dp), contentAlignment = Alignment.Center) {
-                        Text(b.label, color = if (!b.enabled) N.sub else b.color ?: N.text, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                        Text(b.label, color = if (!b.enabled) N.sub else b.color ?: N.text, fontSize = 17.sp, fontWeight = FontWeight.Bold,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center, modifier = Modifier.padding(horizontal = 6.dp))
                     }
                 }
             }

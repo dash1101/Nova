@@ -1,5 +1,6 @@
 package app.novalabs.nova
 
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.ui.graphics.graphicsLayer
@@ -149,6 +150,8 @@ import org.json.JSONObject
     val cs = app.overview?.optJSONObject("containers")
     val appsLive = live(app, "/api/v1/apps")
     val apps = appsLive.value?.optJSONArray("apps").objs().filter { !it.optBoolean("hidden") }
+    var builtinMenu by remember { mutableStateOf<String?>(null) }
+    builtinMenu?.let { id -> BuiltinMenu(app, id) { builtinMenu = null } }
     TabOrPage(app, "Menu") {
         Row(Modifier.fillMaxWidth().padding(horizontal = Space.gutter, vertical = 4.dp).clip(androidx.compose.foundation.shape.RoundedCornerShape(28.dp)).background(N.pill)
             .clickable { app.go(Route.Search) }.padding(horizontal = 18.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -176,13 +179,14 @@ import org.json.JSONObject
         // your apps, right here
         SectionLabel("Apps")
         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = Space.gutter), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-            @Composable fun Cell(label: String, onClick: () -> Unit, icon: @Composable () -> Unit) =
-                Column(Modifier.width(68.dp).clip(androidx.compose.foundation.shape.RoundedCornerShape(16.dp)).clickable(onClick = onClick).padding(vertical = 6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+            @Composable fun Cell(label: String, onClick: () -> Unit, onHold: (() -> Unit)? = null, icon: @Composable () -> Unit) =
+                Column(Modifier.width(68.dp).clip(androidx.compose.foundation.shape.RoundedCornerShape(16.dp)).combinedClickable(onLongClick = onHold, onClick = onClick).padding(vertical = 6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                     icon(); Text(label, color = N.text, fontSize = 12.sp, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.padding(top = 6.dp)) }
             @Composable fun Glyph(i: androidx.compose.ui.graphics.vector.ImageVector, c: androidx.compose.ui.graphics.Color) =
                 Box(Modifier.size(52.dp).clip(androidx.compose.foundation.shape.RoundedCornerShape(15.dp)).background(c.copy(alpha = 0.18f)), contentAlignment = Alignment.Center) { Icon(i, null, tint = c) }
-            if (app.isAdmin && app.has("files")) Cell("Files", { openBuiltin(app, "nova-files") }) { Glyph(Icons.Rounded.Folder, N.blue) }
-            Cell("Terminal", { openBuiltin(app, "nova-term") }) { Glyph(Icons.Rounded.Terminal, N.green) }
+            if (app.isAdmin && app.has("files")) Cell("Files", { openBuiltin(app, "nova-files") }, { builtinMenu = "nova-files" }) { Glyph(Icons.Rounded.Folder, N.blue) }
+            Cell("Terminal", { openBuiltin(app, "nova-term") }, { builtinMenu = "nova-term" }) { Glyph(Icons.Rounded.Terminal, N.green) }
             apps.take(10).forEach { a -> Cell(a.optString("name"), { dockTap(app, a.optString("id")) }) { AppIcon(app, a, 52.dp) } }
             Cell("All apps", { app.go(Route.Apps) }) { Glyph(Icons.Rounded.Apps, N.sub) }
             if (app.isAdmin) Cell("Add", { app.go(Route.Apps) }) { Glyph(Icons.Rounded.Add, N.blue) }
