@@ -213,10 +213,9 @@ private fun lookOf(f: JSONObject?): JSONObject = JSONObject().also { o ->
                 Text("Save current", color = N.blue, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
             }
         }
-        if (presets.isEmpty()) Text("Save the look you have now to switch back to it in one tap — or to use it in a schedule. Hold a preset to change it.",
-            color = N.sub, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 30.dp, vertical = 6.dp))
+        if (presets.isEmpty()) Note("Save the look you have now to switch back to it in one tap — or to use it in a schedule. Hold a preset to change it.", 13.sp, 6.dp)
         }
-        if (rgbOnly) Text("A 12 V RGB header lights every LED in the same color, so the effects that move along the LEDs aren't offered.", color = N.sub, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 30.dp, vertical = 6.dp))
+        if (rgbOnly) Note("A 12 V RGB header lights every LED in the same color, so the effects that move along the LEDs aren't offered.", 13.sp, 6.dp)
         // ── effect ──
         SectionLabel("Effect")
         Group {
@@ -423,8 +422,7 @@ private fun actionText(s: JSONObject, presets: List<JSONObject>): String =
                 }
             }
         }
-        Text("Fades change the light gradually, a step each minute. With an end time, the light goes back to how it was when the schedule started.",
-            color = N.sub, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 30.dp, vertical = 6.dp))
+        Note("Fades change the light gradually, a step each minute. With an end time, the light goes back to how it was when the schedule started.", 13.sp, 6.dp)
     }
     menu?.let { i ->
         val s = sch.optJSONObject(i) ?: return@let
@@ -557,8 +555,7 @@ private fun actionText(s: JSONObject, presets: List<JSONObject>): String =
                         .background(if (sel) N.blue else N.card).clickable { fade = m }.padding(horizontal = 14.dp, vertical = 8.dp))
                 }
             }
-            Text(if (fade == 0) "Changes straight away." else "Glides there over $fade minutes — a slow sunrise or a gentle fade to sleep.",
-                color = N.sub, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 30.dp, vertical = 6.dp))
+            Note(if (fade == 0) "Changes straight away." else "Glides there over $fade minutes — a slow sunrise or a gentle fade to sleep.", 13.sp, 6.dp)
             SectionLabel("Ends")
             Group { SwitchRow("Put the light back afterwards", if (hasEnd) "At the end time it returns to how it was" else "Stays like this", hasEnd) { hasEnd = it } }
             if (hasEnd) TriggerPicker(endTrig, { endTrig = it }, endHour, endMinute, { a, b -> endHour = a; endMinute = b }, endOffset) { endOffset = (Math.round(it / 5) * 5).toFloat() }
@@ -591,8 +588,7 @@ private val SHAPE_CHOICES = listOf("fan" to "A fan (a ring of LEDs)", "strip" to
     var edit by remember { mutableStateOf<Pair<String, JSONObject>?>(null) }   // field being changed + the light
     fun post(path: String, body: JSONObject, ok: String? = null) = app.act(ok) { app.lights = app.api.post(path, body) }
     Page("Your lights", app::back) {
-        Text("Each light plugged into the server, with its own effect and color. Add one for every fan, strip or header you light up.",
-            color = N.sub, fontSize = 14.sp, modifier = Modifier.padding(horizontal = 30.dp, vertical = 6.dp))
+        Note("Each light plugged into the server, with its own effect and color. Add one for every fan, strip or header you light up.", 14.sp, 6.dp)
         if (L == null) Text("Loading…", color = N.sub, modifier = Modifier.padding(30.dp))
         else Group {
             zones.forEachIndexed { i, z -> if (i > 0) RowDivider()
@@ -605,8 +601,7 @@ private val SHAPE_CHOICES = listOf("fan" to "A fan (a ring of LEDs)", "strip" to
             if (app.isAdmin && targets.any { it.isNull("used_by") || it.optString("used_by").isEmpty() }) { RowDivider()
                 Row1("Add a light", null, false, Icons.Rounded.Add, onClick = { draft = JSONObject(); step = "where" }) }
         }
-        Text("“Untested” headers follow the controller's documented protocol but haven't been tried on real hardware yet — if one doesn't light up, tell us which board you have. The main light is the one Presets, Schedules, the status light and the Home picture use.",
-            color = N.sub, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 30.dp, vertical = 6.dp))
+        Note("“Untested” headers follow the controller's documented protocol but haven't been tried on real hardware yet — if one doesn't light up, tell us which board you have. The main light is the one Presets, Schedules, the status light and the Home picture use.", 13.sp, 6.dp)
     }
     // adding a light, step by step
     when (step) {

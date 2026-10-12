@@ -488,8 +488,7 @@ private fun taskRoute(t: JSONObject): Route? {
     val live = live(app, "/api/v1/features")
     val list = live.value?.optJSONArray("features").objs().filter { it.optBoolean("available") }
     Page("Features", app::back) {
-        Text("Switch off what you don't use, or what another program takes care of — for example the board maker's RGB software. Switching these needs your fingerprint.",
-            color = N.sub, fontSize = 14.sp, modifier = Modifier.padding(horizontal = 30.dp, vertical = 6.dp))
+        Note("Switch off what you don't use, or what another program takes care of — for example the board maker's RGB software. Switching these needs your fingerprint.", 14.sp, 6.dp)
         if (live.value == null) Text("Loading…", color = N.sub, modifier = Modifier.padding(30.dp))
         else Group { list.forEachIndexed { i, f -> if (i > 0) RowDivider()
             SwitchRow(f.optString("name"), f.optString("about"), f.optBoolean("on"), app.isAdmin) { v -> app.act("${f.optString("name")}: ${if (v) "on" else "off"}") {
@@ -503,8 +502,7 @@ private fun taskRoute(t: JSONObject): Route? {
     val live = live(app, "/api/v1/plugins")
     val list = live.value?.optJSONArray("plugins").objs()
     Page("Plugins", app::back) {
-        Text("Plugins add apps and one-tap tools to Nova. Their tools run as your normal account on the server, never as root.",
-            color = N.sub, fontSize = 14.sp, modifier = Modifier.padding(horizontal = 30.dp, vertical = 6.dp))
+        Note("Plugins add apps and one-tap tools to Nova. Their tools run as your normal account on the server, never as root.", 14.sp, 6.dp)
         if (live.value == null) Text("Loading…", color = N.sub, modifier = Modifier.padding(30.dp))
         else if (list.isEmpty()) Group { Row1("No plugins yet", "On the server: sudo nova plugin add FOLDER — there's an example in the Nova repo (plugins/examples)", icon = Icons.Rounded.Extension) }
         else Group { list.forEachIndexed { i, p -> if (i > 0) RowDivider()
@@ -525,9 +523,8 @@ private fun taskRoute(t: JSONObject): Route? {
     val l = live.value
     val stableKeys = l?.optJSONArray("stable").let { a -> (0 until (a?.length() ?: 0)).map { a!!.getString(it) }.toSet() }
     Page(if (stable) "Automation" else "Labs", app::back) {
-        Text(if (stable) "Things the server can take care of by itself. Each is off until you turn it on."
-             else "Experimental features. They work, but haven't had as much use as the rest of Nova — so they're off until you turn them on.",
-            color = N.sub, fontSize = 14.sp, modifier = Modifier.padding(horizontal = 30.dp, vertical = 6.dp))
+        Note(if (stable) "Things the server can take care of by itself. Each is off until you turn it on."
+             else "Experimental features. They work, but haven't had as much use as the rest of Nova — so they're off until you turn them on.", 14.sp, 6.dp)
         if (l == null) Text("Loading…", color = N.sub, modifier = Modifier.padding(30.dp))
         else Group {
             val about = l.optJSONObject("about") ?: JSONObject(); val on = l.optJSONObject("labs") ?: JSONObject()
@@ -567,8 +564,7 @@ private fun taskRoute(t: JSONObject): Route? {
             Row1(d.optString("name"), "${d.optInt("leds")} LEDs" + (d.optJSONArray("zones").objs().takeIf { it.size > 1 }?.let { z -> " · " + z.joinToString(", ") { it.optString("name") } } ?: ""),
                 icon = Icons.Rounded.Lightbulb, iconTint = N.amber, onClick = { app.go(Route.Lights) }) }
     }
-    Text("With OpenRGB on, Nova draws every effect itself and sends the colors to OpenRGB, so they work on any device it supports. Nova stops talking to the motherboard's lighting controller directly (OpenRGB does that now); turn this off to go back.",
-        color = N.sub, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 30.dp, vertical = 4.dp))
+    Note("With OpenRGB on, Nova draws every effect itself and sends the colors to OpenRGB, so they work on any device it supports. Nova stops talking to the motherboard's lighting controller directly (OpenRGB does that now); turn this off to go back.", 13.sp, 4.dp)
     if (edit) { var host by remember { mutableStateOf(cfg?.optString("host") ?: "127.0.0.1") }; var port by remember { mutableStateOf((cfg?.optInt("port") ?: 6742).toString()) }
         OneDialog({ edit = false }, "Where's OpenRGB?", "On this server it's 127.0.0.1. It can also run on another computer on your network.",
             listOf(DialogButton("Cancel") { edit = false }, DialogButton("Save", N.blue) { edit = false
@@ -644,8 +640,7 @@ val CF_STEPS = listOf(
         CF_STEPS.forEachIndexed { i, step -> Row { Text("${i + 1}.", color = N.blue, fontSize = 14.sp, fontWeight = FontWeight.Bold, modifier = Modifier.width(22.dp))
             Text(step, color = N.text, fontSize = 14.sp) } }
     } }
-    Text("Your tunnel has to be one you run with a token (set up in the Cloudflare dashboard). Then: hold an app in Apps → Open it from anywhere → Set it up for me.",
-        color = N.sub, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 30.dp, vertical = 6.dp))
+    Note("Your tunnel has to be one you run with a token (set up in the Cloudflare dashboard). Then: hold an app in Apps → Open it from anywhere → Set it up for me.", 13.sp, 6.dp)
     if (tokenAsk) { var t by remember { mutableStateOf("") }
         OneDialog({ tokenAsk = false }, "Cloudflare API token", "Paste the token you created.", listOf(DialogButton("Cancel") { tokenAsk = false },
             DialogButton("Save", N.blue, enabled = t.length >= 30) { tokenAsk = false
@@ -697,7 +692,7 @@ private fun hourLabel(h: Int) = java.text.DateFormat.getTimeInstance(java.text.D
             }
         }
     }
-    Text("Images no container uses — mostly old versions left behind by updates. The versions kept for rolling back stay.", color = N.sub, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 30.dp, vertical = 4.dp))
+    Note("Images no container uses — mostly old versions left behind by updates. The versions kept for rolling back stay.", 13.sp, 4.dp)
     if (ask) OneDialog({ ask = false }, "Remove ${imgs.size} unused image${if (imgs.size == 1) "" else "s"}?", "Images a container uses, and the versions kept for rolling back, stay.",
         listOf(DialogButton("Cancel") { ask = false }, DialogButton("Clean up", N.red) { ask = false
             app.act { val r = app.stepUp("Clean up old images", "POST", "/api/v1/labs/images/clean"); r.optString("task").ifEmpty { null }?.let { app.go(Route.Task(it)) } } }))
@@ -718,7 +713,7 @@ private fun hourLabel(h: Int) = java.text.DateFormat.getTimeInstance(java.text.D
                 trailing = if (app.isAdmin) ({ IconButton({ rm = e }) { Icon(Icons.Rounded.Delete, "Remove", tint = N.sub) } }) else null) }
         if (app.isAdmin) { if (l != null) RowDivider(); Row1("Add a computer", null, false, Icons.Rounded.Add, onClick = { add = true }) }
     }
-    Text("Tap a computer to turn it on. Wake-on-LAN has to be turned on in its BIOS (and its network settings) first.", color = N.sub, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 30.dp, vertical = 4.dp))
+    Note("Tap a computer to turn it on. Wake-on-LAN has to be turned on in its BIOS (and its network settings) first.", 13.sp, 4.dp)
     if (add) { var name by remember { mutableStateOf("") }; var mac by remember { mutableStateOf("") }
         OneDialog({ add = false }, "Add a computer", "Its MAC address is in its network settings (Windows: ipconfig /all, “Physical Address”; Linux: ip link).",
             listOf(DialogButton("Cancel") { add = false }, DialogButton("Add", N.blue) { add = false

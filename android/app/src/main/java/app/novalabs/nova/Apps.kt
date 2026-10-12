@@ -172,8 +172,7 @@ fun appUrl(app: AppState, a: JSONObject): String? {
     val all = live.value?.optJSONArray("apps").objs()
     val shown = all.filter { showHidden || !it.optBoolean("hidden") }
     Page("Apps", app::back, listOf(TopAction(Icons.Rounded.Add, "Add an app") { if (app.isAdmin) adding = true else app.toast("View-only access") })) {
-        Text("The web apps on ${serverName(app)}. Open one and it stays in the navigation pill until you close it. Hold an app to rename or hide it.",
-            color = N.sub, fontSize = 14.sp, modifier = Modifier.padding(horizontal = 30.dp, vertical = 4.dp))
+        Note("The web apps on ${serverName(app)}. Open one and it stays in the navigation pill until you close it. Hold an app to rename or hide it.", 14.sp, 4.dp)
         if (live.value == null) Text("Looking for apps…", color = N.sub, modifier = Modifier.padding(30.dp))
         else if (shown.isEmpty()) Group { Row1("No web apps found", "Install one from the Store, or add a link with +", false, Icons.Rounded.Apps, N.blue) }
         val cols = if (LocalWide.current) 6 else 4

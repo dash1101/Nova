@@ -300,8 +300,7 @@ private fun survives(level: String, n: Int) = when (level) { "raid1" -> n - 1; "
                                 onClick = { goal = gg.id; picked = emptySet(); keep = emptySet(); name = ""; step = 1 }) { HelpButton(gg.help) }
                         }
                     }
-                    Text("Nova only offers drives that are safe to set up: never the system drive, or anything that's mounted or already in a pool.",
-                        color = N.sub, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 30.dp, vertical = 10.dp))
+                    Note("Nova only offers drives that are safe to set up: never the system drive, or anything that's mounted or already in a pool.", 13.sp, 10.dp)
                 }
                 "Drives" -> {
                     if (goal == "safe") {

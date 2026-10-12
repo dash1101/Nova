@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.6.5-alpha (app, watch, server and website)
+- **App:** everything from 0.6.3 and 0.6.4 comes to the phone too —
+  - **Lighter effects** (Appearance → Lighter effects: Automatic · On · Off): no live glass blur, smaller shadows, the server picture and live graphs at half the frame rate. Automatic turns it on for older or low-memory phones.
+  - **Long notes fold** to two lines with the small arrow (instructions, explanations — about 40 of them).
+  - **As many tabs as you like** in the navigation pill (up to 12): it slides with the edges fading, the next tab peeks in so you can tell there's more, the glass bead follows, and the tab you're on scrolls into view. Same in the side pill on tablets and in landscape.
+  - **The share address's login is your choice** (Anyone with a link · Only people you add · Only you).
+- **Notifications:** browser pop-ups now have the same three levels as the phone and Discord (Everything · Warnings and critical · Critical only).
+- **Website and Nova web:** a **Get the Android app** button (and the Wear OS app) that always downloads the newest release.
+
 ## 0.6.4-alpha (server and Nova web)
 - **A drive that stops responding is now a critical alert** (“Drive not responding: Cold storage”), not just a string of “disk errors” events: Nova checks that each drive can actually be read, not only that it's mounted.
 - **Nova web: Lighter effects** (Appearance): no frosted-glass blur or soft shadows, quicker transitions — much smoother on older computers. *Automatic* turns it on by itself when the device looks slow (it measures the frame rate once).

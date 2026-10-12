@@ -93,8 +93,7 @@ private fun copy(ctx: Context, label: String, text: String) =
                 SshSession.state != "connecting") { connect() }
         }
         // The usual first-time snag: the server doesn't know this phone's key yet. One tap (and your fingerprint) fixes it.
-        if (installed == false) Text("The server doesn't know this ${DeviceForm.noun}'s key yet. Nova adds it for you after your fingerprint.",
-            color = N.sub, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 30.dp))
+        if (installed == false) Note("The server doesn't know this ${DeviceForm.noun}'s key yet. Nova adds it for you after your fingerprint.", 13.sp, 0.dp)
         SectionLabel("Connect through")
         Group {
             (listOf("auto" to ("Automatic" to "Home network when you're home, otherwise the next route")) +

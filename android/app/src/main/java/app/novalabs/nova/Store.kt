@@ -268,8 +268,7 @@ private fun storeItem(id: String) = Cache["/api/v1/store"]?.optJSONArray("items"
     }
     Page("Find a program", app::back) {
         Box(Modifier.padding(horizontal = Space.gutter, vertical = 6.dp)) { OneTextField(q, { q = it.take(60) }, "Search, e.g. htop or “disk usage”", Modifier.fillMaxWidth()) }
-        Text("These come from your system's package manager (apt). Installing or removing asks for your fingerprint; Nova won't remove what the server needs to run.",
-            color = N.sub, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 30.dp, vertical = 6.dp))
+        Note("These come from your system's package manager (apt). Installing or removing asks for your fingerprint; Nova won't remove what the server needs to run.", 13.sp, 6.dp)
         val l = items
         when {
             q.trim().length < 2 -> {}

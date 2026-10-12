@@ -39,7 +39,7 @@ try:                       # optional module: fan/case lighting (modules/fan-gig
 except ImportError:
     nova_rgb = None
 
-API_VERSION = "0.6.4-alpha"
+API_VERSION = "0.6.5-alpha"
 CONFIG = "/etc/nova-api/config.json"
 DATA = "/var/lib/nova-api"
 DEVICES = f"{DATA}/devices.json"
@@ -741,7 +741,14 @@ class Handler(BaseHTTPRequestHandler):
         if not cl.isdigit() or self.headers.get("Transfer-Encoding"): return None     # no negative/odd lengths, no chunked bodies
         n = int(cl)
         raw_ok = self.path.split("?", 1)[0] in RAW_BODY_PATHS          # file uploads: raw bytes, bigger chunks
-        if n > (UPLOAD_CHUNK if raw_ok else MAX_BODY): return None
+        if n > (UPLOAD_CHUNK if raw_ok else MAX_BODY):
+            # read (and drop) a moderately oversized body first, so the client actually gets our 413 instead of a
+            # reset connection; anything bigger, we just close on
+            if n <= 1024 * 1024:
+                try: self.rfile.read(n)
+                except Exception: pass
+            self.close_connection = True
+            return None
         return self.rfile.read(n) if n else b""
 
     # ── routing ──

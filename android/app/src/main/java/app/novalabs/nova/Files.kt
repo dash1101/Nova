@@ -175,8 +175,7 @@ private fun whenOf(t: Long): String { val d = java.util.Date(t * 1000); val toda
                 }
             }
         }
-        Text("${size(dd.optLong("free"))} free of ${size(dd.optLong("total"))} · deleted things go to the server's Trash (~/.local/share/Trash). Hold an item to select several.",
-            color = N.sub, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 30.dp, vertical = 6.dp))
+        Note("${size(dd.optLong("free"))} free of ${size(dd.optLong("total"))} · deleted things go to the server's Trash (~/.local/share/Trash). Hold an item to select several.", 13.sp, 6.dp)
         Group { SwitchRow("Show hidden files", null, showHidden) { showHidden = it } }
         Spacer(Modifier.height(60.dp))
     }

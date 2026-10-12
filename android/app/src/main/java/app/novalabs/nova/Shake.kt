@@ -105,8 +105,7 @@ private fun onShake(app: AppState) {
             ShakeSettings()
             Spacer(Modifier.height(10.dp))
         }
-        Text("What went wrong, or what would you like to see? Your report is saved on your own server (Nova keeps nothing anywhere else). If you'd like the developers to see it, open it as a GitHub issue too.",
-            color = N.sub, fontSize = 14.sp, modifier = Modifier.padding(horizontal = 30.dp, vertical = 6.dp))
+        Note("What went wrong, or what would you like to see? Your report is saved on your own server (Nova keeps nothing anywhere else). If you'd like the developers to see it, open it as a GitHub issue too.", 14.sp, 6.dp)
         Group { Box(Modifier.padding(14.dp)) { OneTextField(text, { text = it.take(4000) }, "What happened? What did you expect?", Modifier.fillMaxWidth().heightIn(min = 160.dp), singleLine = false) } }
         SectionLabel("Included")
         Text(details, color = N.sub, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 30.dp))

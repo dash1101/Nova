@@ -257,8 +257,7 @@ class DashPrefs(ctx: android.content.Context, profile: String) {
                 SliderRow("Until", to.toFloat(), 0f..23f, "%02d:00".format(to), steps = 22, onChange = { to = it.toInt() }) { prefs.dimTo = to }
             }
         }
-        Text("The screen stays on and the layout shifts slightly every minute to protect the display. For a wall tablet, pair it as View only and use Android's screen pinning to keep it in Nova.",
-            color = N.sub, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 30.dp, vertical = 8.dp))
+        Note("The screen stays on and the layout shifts slightly every minute to protect the display. For a wall tablet, pair it as View only and use Android's screen pinning to keep it in Nova.", 13.sp, 8.dp)
         LinksCard(listOf("Reset to the default tiles" to { save(DEFAULT_DASH) }))
     }
 }

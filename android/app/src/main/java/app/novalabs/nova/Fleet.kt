@@ -110,8 +110,7 @@ private class ServerLive(val id: String) { var overview by mutableStateOf<JSONOb
         }
     }
     Page("Servers", app::back) {
-        Text("Every server paired with this ${DeviceForm.noun}, live. Tap one to switch to it — each has its own keys in this ${DeviceForm.noun}'s secure chip, and instant alerts cover all of them.",
-            color = N.sub, fontSize = 14.sp, modifier = Modifier.padding(horizontal = 30.dp, vertical = 6.dp))
+        Note("Every server paired with this ${DeviceForm.noun}, live. Tap one to switch to it — each has its own keys in this ${DeviceForm.noun}'s secure chip, and instant alerts cover all of them.", 14.sp, 6.dp)
         Group {
             ids.forEachIndexed { i, id -> if (i > 0) RowDivider()
                 val p = Pairing(ctx, id); val active = id == app.pairing.profile; val l = live[id]

@@ -692,13 +692,14 @@ export async function archive(ctx) {
   draw(); load();
 }
 // Browser notifications (this browser only, while a Nova tab is open — in the background is fine)
+export const bLevel = () => prefs.browserNotifyLevel || (prefs.browserNotifyAll ? "info" : "warning");
 export function browserNotifyHtml() {
   if (!("Notification" in window)) return sec("This browser") + group(row("Browser notifications", { sub: "This browser can't show notifications" }));
   const perm = Notification.permission, on = !!prefs.browserNotify && perm === "granted";
   const sub = perm === "denied" ? "Blocked — allow notifications for this site in the browser's site settings, then turn this on"
     : on ? "On — while a Nova tab is open, even in the background" : "Pop up new alerts on this computer while a Nova tab is open";
   return sec("This browser") + group(switchRow("Browser notifications", sub, on, "bnotify", { blue: on })
-    + (on ? switchRow("Include everything", prefs.browserNotifyAll ? "Every new event, logins and USB too" : "Only warnings and critical alerts", !!prefs.browserNotifyAll, "bnotifyall", { blue: false }) : ""));
+    + (on ? row("Which alerts", { sub: { info: "Everything — logins and USB too", warning: "Warnings and critical", critical: "Critical only" }[bLevel()], blue: true, click: "blevel" }) : ""));
 }
 export async function toggleBrowserNotify() {
   if (!("Notification" in window)) return;
@@ -720,7 +721,7 @@ export async function notify(ctx) {
         ${sec("What counts")}${group(switchRow("Logins", "Someone signs in to the server", s.push_logins, "set:push_logins", { blue: false }) + switchRow("USB devices", "Plugged in or unplugged", s.push_usb, "set:push_usb", { blue: false }))}` : note("Loading…")}
       ${links([["Inbox", "go:inbox"]])}`, { title: "Notifications" });
   };
-  ctx.handlers({ bnotify: async () => { await toggleBrowserNotify(); draw(); }, bnotifyall: () => { prefs.browserNotifyAll = !prefs.browserNotifyAll; draw(); } });
+  ctx.handlers({ bnotify: async () => { await toggleBrowserNotify(); draw(); }, blevel: async () => { const v = await choose("Pop up on this computer", [["info", "Everything"], ["warning", "Warnings and critical"], ["critical", "Critical only"]], bLevel()); if (v) { prefs.browserNotifyLevel = v; draw(); } } });
   const save = async (k, v) => {
     if (!isAdmin()) return viewOnly();
     const before = S.cache["/api/v1/notify"]; S.cache["/api/v1/notify"] = { ...before, [k]: v }; draw();
@@ -1202,7 +1203,8 @@ export async function settings(ctx) {
     const upd = !u ? "Checking…" : !u.source ? `Version ${u.installed} · updates aren't set up yet (sudo nova-setup)` : u.running || u.state === "installing" ? "Installing a signed release — Nova restarts on its own"
       : u.state === "failed" ? `Last update failed: ${(u.error || "").slice(0, 80)}` : u.state === "available" ? `${u.available} is available · install it from the Nova app on an admin phone` : `Version ${u.installed} · up to date`;
     ctx.show(`${sec("Software update")}${group(row(u?.state === "available" ? `Server update to ${u.available}` : "Server", { sub: upd, blue: u?.state === "available", icon: "dns", tint: u?.state === "failed" ? "var(--red)" : "var(--blue)" })
-        + row("Nova web", { sub: "Always the version on your server — updates with it", icon: "computer" }))}
+        + row("Nova web", { sub: "Always the version on your server — updates with it", icon: "computer" })
+        + `<a class="row click" style="text-decoration:none;color:inherit" href="https://github.com/dash1101/Nova/releases/latest/download/nova-universal.apk" target="_blank" rel="noopener"><span class="ri" style="color:var(--green);background:color-mix(in srgb, var(--green) 16%, transparent)">${I("phone")}</span><div class="t"><b>Get the Android app</b><small class="blue">Download it on your phone (Android 9 or newer), then pair with <code>sudo nova add</code></small></div></a>`)}
       ${sec("Server")}${group(row("Name", { sub: serverName(), blue: true, icon: "edit", click: "go:server" }))}
       ${sec("This browser")}${group(
         expand("Signing key", "Made in this browser, can't be exported", "key", "Every request is signed by a key this browser created with Web Crypto as non-extractable — page scripts can use it, but nobody (not even Nova) can read it out. Each request carries a fresh time stamp and a one-time number, so a recorded request can't be replayed.")

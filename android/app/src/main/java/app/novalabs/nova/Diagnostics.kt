@@ -41,8 +41,7 @@ private val CYAN = Color(0xFF64D2FF)
         app.act { val t = app.api.post("/api/v1/diag/$kind", body); app.go(Route.Task(t.optString("id"))) }
     }
     Page("Diagnostics", app::back) {
-        Text("Tests run on the server. They're safe to run any time; the heavy ones (CPU, memory) slow other apps while they run.",
-            color = N.sub, fontSize = 14.sp, modifier = Modifier.padding(horizontal = 30.dp, vertical = 4.dp))
+        Note("Tests run on the server. They're safe to run any time; the heavy ones (CPU, memory) slow other apps while they run.", 14.sp, 4.dp)
 
         SectionHelp("Internet speed (server)", "net")
         Group {

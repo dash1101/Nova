@@ -49,9 +49,20 @@ object AppPrefs {
     var shakeLast by mutableStateOf("report"); private set                // what to go back to when shake is switched on again
     var shakeAction by mutableStateOf("report"); private set              // what a shake does: report | none | search | quick | lights | home | inbox
 
+    var lite by mutableStateOf("auto"); private set                        // lighter effects: auto | on | off
+    /** Worked out once at start: an older or low-memory phone, where the live blur and 60 fps animations cost too much. */
+    var slowDevice = false; private set
+
     fun init(ctx: Context) {
         if (::sp.isInitialized) return
         sp = ctx.getSharedPreferences("nova_prefs", Context.MODE_PRIVATE)
+        runCatching {
+            val am = ctx.getSystemService(android.app.ActivityManager::class.java)
+            val mem = android.app.ActivityManager.MemoryInfo().also { am.getMemoryInfo(it) }
+            slowDevice = am.isLowRamDevice || mem.totalMem < 3L * 1024 * 1024 * 1024 || android.os.Build.VERSION.SDK_INT < 29 ||
+                Runtime.getRuntime().availableProcessors() <= 4
+        }
+        lite = sp.getString("lite", "auto")!!
         theme = sp.getString("theme", "system")!!; style = sp.getString("style", "auto")!!; reduceMotion = sp.getBoolean("reduce_motion", false)
         appLock = sp.getBoolean("app_lock", false); hideInRecents = sp.getBoolean("hide_recents", false)
         homeHero = sp.getBoolean("home_hero", true); homeShortcuts = sp.getBoolean("home_shortcuts", true); homeStats = sp.getBoolean("home_stats", true)
@@ -70,7 +81,7 @@ object AppPrefs {
     }
     fun set(key: String, v: Any) {
         when (key) {
-            "theme" -> theme = v as String; "style" -> style = v as String; "reduce_motion" -> reduceMotion = v as Boolean; "app_lock" -> appLock = v as Boolean
+            "lite" -> lite = v as String; "theme" -> theme = v as String; "style" -> style = v as String; "reduce_motion" -> reduceMotion = v as Boolean; "app_lock" -> appLock = v as Boolean
             "hide_recents" -> hideInRecents = v as Boolean; "home_hero" -> homeHero = v as Boolean
             "home_shortcuts" -> homeShortcuts = v as Boolean; "home_stats" -> homeStats = v as Boolean
             "home_order" -> homeOrder = (v as String).split(",")
@@ -98,6 +109,9 @@ fun materialStyle(): Boolean = when (AppPrefs.style) { "material" -> true; "defa
 
 /** Honor both the app setting and Android's "remove animations". */
 fun reduceMotion(): Boolean = AppPrefs.reduceMotion
+
+/** Lighter effects: solid surfaces instead of live blur, fewer shadows, slower-ticking animations. */
+fun lite(): Boolean = AppPrefs.lite == "on" || (AppPrefs.lite == "auto" && AppPrefs.slowDevice)
 
 /** FLAG_SECURE: hides Nova's contents in the recent-apps view and blocks screenshots. */
 fun applySecureFlag(a: Activity) {
@@ -158,6 +172,9 @@ object AppLock {
         Group {
             SwitchRow("Reduce motion", "Simple fades instead of slides and bounces, and no back-gesture animation", AppPrefs.reduceMotion) { AppPrefs.set("reduce_motion", it) }
         }
+        SectionLabel("Lighter effects")
+        Segmented(listOf("Automatic", "On", "Off"), listOf("auto", "on", "off").indexOf(AppPrefs.lite).let { if (it < 0) 0 else it }) { AppPrefs.set("lite", listOf("auto", "on", "off")[it]) }
+        Note("No frosted-glass blur or soft shadows, and calmer animations — much smoother on older phones. Automatic turns it on for this phone ${if (AppPrefs.slowDevice) "(it's on now)" else "only if it's an older or low-memory one (it's off now)"}.", 13.sp, 4.dp)
         AppIconPicker(app)
         SectionLabel("Shake")
         ShakeSettings()

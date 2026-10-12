@@ -108,8 +108,7 @@ private val ACCENTS = listOf("", "#3e91ff", "#5e5ce6", "#bf5af2", "#ff2d55", "#f
                 }
             }
         }
-        Text("Shown at the top of Home and in the server switcher. The machine's hostname (${st?.optString("hostname") ?: "—"}) doesn't change.",
-            color = N.sub, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 30.dp, vertical = 4.dp))
+        Note("Shown at the top of Home and in the server switcher. The machine's hostname (${st?.optString("hostname") ?: "—"}) doesn't change.", 13.sp, 4.dp)
         SectionLabel("Accent color")
         Group {
             Row(Modifier.fillMaxWidth().padding(18.dp), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -124,8 +123,7 @@ private val ACCENTS = listOf("", "#3e91ff", "#5e5ce6", "#bf5af2", "#ff2d55", "#f
                 }
             }
         }
-        Text("Gives each server its own color, so you always know which one you're controlling. \"A\" is the default blue.",
-            color = N.sub, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 30.dp, vertical = 4.dp))
+        Note("Gives each server its own color, so you always know which one you're controlling. \"A\" is the default blue.", 13.sp, 4.dp)
         SectionLabel("Location")
         var locating by remember { mutableStateOf(false) }
         Group { Row1("Where the server is", locationText(st?.optJSONObject("location")), st?.optJSONObject("location")?.optString("source") == "set",
@@ -204,8 +202,7 @@ fun roleLabel(r: String) = if (r == "viewer") "View only" else "Admin"
                     Icons.Rounded.DeleteForever, N.red, onClick = { removeAll = false })
             }
         }
-        Text("Admins can do everything. View-only devices see the same screens but can't change anything — good for family members or a wall-mounted dashboard. Changes need your fingerprint.",
-            color = N.sub, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 30.dp, vertical = 8.dp))
+        Note("Admins can do everything. View-only devices see the same screens but can't change anything — good for family members or a wall-mounted dashboard. Changes need your fingerprint.", 13.sp, 8.dp)
     }
     menu?.let { d ->
         OneDialog({ menu = null }, d.optString("name"), buttons = listOf(DialogButton("Close") { menu = null })) {
@@ -280,8 +277,7 @@ fun roleLabel(r: String) = if (r == "viewer") "View only" else "Admin"
     val list = data.value?.optJSONArray("approvals")?.let { a -> (0 until a.length()).map { a.getJSONObject(it) } } ?: emptyList()
     val pending = list.filter { it.optString("state") == "pending" }
     Page("Approvals", app::back) {
-        Text("When a browser you've paired as an admin wants to do something risky, it waits here for your fingerprint.",
-            color = N.sub, fontSize = 14.sp, modifier = Modifier.padding(horizontal = 30.dp, vertical = 6.dp))
+        Note("When a browser you've paired as an admin wants to do something risky, it waits here for your fingerprint.", 14.sp, 6.dp)
         if (pending.isEmpty()) Group { Row1("Nothing waiting", "Requests show up here and as a notification", false, Icons.Rounded.CheckCircle, N.green) }
         else { SectionLabel("Waiting for you"); Group { pending.forEachIndexed { i, a -> if (i > 0) RowDivider()
             Column(Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 16.dp)) {

@@ -98,8 +98,7 @@ object AppIcon {
     var custom by remember { mutableStateOf(false) }
     Group { Row1("Your own colors", "Pick the background and the symbol's color — added to your home screen as a Nova icon", true, Icons.Rounded.Palette, onClick = { custom = true }) }
     if (custom) CustomIconDialog(app) { custom = false }
-    Text("Material You follows your wallpaper's colors. With themed icons on (Android 13+), every choice turns into your phone's themed style.",
-        color = N.sub, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 30.dp, vertical = 4.dp))
+    Note("Material You follows your wallpaper's colors. With themed icons on (Android 13+), every choice turns into your phone's themed style.", 13.sp, 4.dp)
     ask?.let { c -> OneDialog({ ask = null }, "Use the ${c.label} icon?",
         "Your home screen switches to it in a moment. If Nova was on your home screen, you may need to add it there again.",
         listOf(DialogButton("Cancel") { ask = null }, DialogButton("Change", N.blue) { ask = null; AppIcon.set(ctx, c.id); cur = c.id; app.toast("App icon changed") })) }

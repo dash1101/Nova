@@ -137,6 +137,7 @@ footer { padding-block: 40px 10px; border-top: 1px solid var(--line); display: f
   .top nav { display: none; }
   section { padding-block: 48px; }
 }
+.small { font-size: 14px; color: var(--muted, inherit); opacity: .8; }
 </style>
 </head>
 <body>
@@ -166,6 +167,7 @@ footer { padding-block: 40px 10px; border-top: 1px solid var(--line); display: f
         </div>
         <div class="cta">
           <a class="btn primary" href="#install">Install Nova</a>
+          <a class="btn ghost" href="https://github.com/dash1101/Nova/releases/latest/download/nova-universal.apk">Get the Android app</a>
           <a class="btn ghost" href="https://github.com/dash1101/Nova">View on GitHub</a>
         </div>
         <p class="note" style="margin-top:16px">Free and open source (AGPL-3.0). Your data stays on your server; there's no Nova account and no cloud service in the middle.</p>
@@ -221,7 +223,9 @@ footer { padding-block: 40px 10px; border-top: 1px solid var(--line); display: f
           <div class="cmd"><span class="prompt">$</span><code id="c-1">sudo apt install ./nova-server_*_all.deb</code><button class="copy" data-copy="c-1" type="button">Copy</button></div></div></div>
         <div class="line"><span class="n">2</span><div><p>Answer a few questions: your network, remote access (optional), where the server is, which tools to install.</p>
           <div class="cmd"><span class="prompt">$</span><code id="c-2">sudo nova setup</code><button class="copy" data-copy="c-2" type="button">Copy</button></div></div></div>
-        <div class="line"><span class="n">3</span><div><p>Install the Android app (the APK is in the same release), then pair it. You can also open Nova web in a browser and approve it with <code>sudo nova approve CODE</code>.</p>
+        <div class="line"><span class="n">3</span><div><p>Install the Android app on your phone (Android 9 or newer), then pair it. You can also open Nova web in a browser and approve it with <code>sudo nova approve CODE</code>.</p>
+          <p><a class="btn primary" href="https://github.com/dash1101/Nova/releases/latest/download/nova-universal.apk">Download the Android app</a> <a class="btn ghost" href="https://github.com/dash1101/Nova/releases/latest/download/nova-wear.apk">Wear OS app</a></p>
+          <p class="small">Your phone will ask to allow installs from your browser the first time. After that, Nova updates itself (Settings → Software update).</p>
           <div class="cmd"><span class="prompt">$</span><code id="c-3">sudo nova add</code><button class="copy" data-copy="c-3" type="button">Copy</button></div></div></div>
       </div>
     </section>

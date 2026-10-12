@@ -314,7 +314,8 @@ async function watchEvents() {
 const important = e => ["warning", "critical"].includes(e.level);
 function announce(list) {
   if (prefs.browserNotify && "Notification" in window && Notification.permission === "granted" && (document.hidden || !document.hasFocus())) {
-    list.filter(e => prefs.browserNotifyAll || important(e)).slice(-3).forEach(e => {
+    const min = { info: 0, warning: 1, critical: 2 }[V.bLevel()] ?? 1, lv = { info: 0, warning: 1, critical: 2 };
+    list.filter(e => (lv[e.level] ?? 0) >= min).slice(-3).forEach(e => {
       try { const n = new Notification(cleanTitle(e.title), { body: e.detail || "", tag: "nova-" + e.t, icon: "/web/icon.svg" }); n.onclick = () => { focus(); location.hash = "#/inbox"; n.close(); }; } catch {}
     });
   }

@@ -53,16 +53,17 @@ object Space {
     if (N.material)                      // Material You: solid tonal surfaces with a soft shadow, no glass
         return this.then(if (elevation > 0.dp && alpha > 0.01f) Modifier.shadow(elevation * 0.5f * alpha, shape) else Modifier).clip(shape)
             .background(N.nav.copy(alpha = alpha))
-    val base = this.then(if (elevation > 0.dp && alpha > 0.01f) Modifier.shadow(elevation * alpha, shape,
+    val light = lite()                    // older phones: no live blur and a smaller shadow (by far the costliest parts)
+    val base = this.then(if (elevation > 0.dp && alpha > 0.01f) Modifier.shadow((if (light) elevation / 3 else elevation) * alpha, shape,
         ambientColor = Color.Black.copy(alpha = 0.35f), spotColor = Color.Black.copy(alpha = 0.45f)) else Modifier).clip(shape)
-    val glass = if (state != null) base.hazeEffect(state, glassStyle()) { this.alpha = alpha }
+    val glass = if (state != null && !light) base.hazeEffect(state, glassStyle()) { this.alpha = alpha }
                 else base.background((if (N.dark) Color(0xFF26262B) else Color.White).copy(alpha = 0.86f * alpha))
     return if (alpha > 0.01f) glass.border(0.8.dp, edge(), shape) else glass
 }
 
 /** Glass card for content inside a page: translucent, highlighted edge, soft shadow. */
 @Composable fun Modifier.glassCard(shape: Shape, elevation: Dp = 6.dp): Modifier =
-    if (N.material) this.clip(shape).background(N.card) else this.shadow(elevation, shape, ambientColor = Color.Black.copy(alpha = 0.25f), spotColor = Color.Black.copy(alpha = 0.3f))
+    if (N.material) this.clip(shape).background(N.card) else this.shadow(if (lite()) 0.dp else elevation, shape, ambientColor = Color.Black.copy(alpha = 0.25f), spotColor = Color.Black.copy(alpha = 0.3f))
         .clip(shape)
         // Solid fill (a see-through one lets the shadow show as a gray box inside the card), lit
         // slightly from the top so it reads as a raised pane of glass.

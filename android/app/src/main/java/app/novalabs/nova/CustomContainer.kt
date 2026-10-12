@@ -46,9 +46,8 @@ private class VolRow(host: String = "", cont: String = "", ro: Boolean = false) 
         .put("env", JSONObject().apply { env.lines().map { it.trim() }.filter { '=' in it }.forEach { put(it.substringBefore('=').trim(), it.substringAfter('=')) } })
 
     Page("New container", app::back) {
-        Text("Run any image from Docker Hub or another registry. It gets its own folder in /opt, starts with the server, and shows up in Containers and Apps. " +
-            "For safety it can't be given full control of the server (no privileged mode, host network, devices or system folders).",
-            color = N.sub, fontSize = 14.sp, modifier = Modifier.padding(horizontal = 30.dp, vertical = 6.dp))
+        Note("Run any image from Docker Hub or another registry. It gets its own folder in /opt, starts with the server, and shows up in Containers and Apps. " +
+            "For safety it can't be given full control of the server (no privileged mode, host network, devices or system folders).", 14.sp, 6.dp)
         SectionLabel("Container")
         Group { Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             OneTextField(name, { name = it.lowercase().filter { c -> c.isLetterOrDigit() || c in "-_" }.take(40) }, "Name, e.g. my-web", Modifier.fillMaxWidth())

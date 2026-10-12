@@ -158,8 +158,7 @@ fun sectionOn(id: String) = when (id) { "hero" -> AppPrefs.homeHero; "shortcuts"
                 }
             }
         }
-        Text("The name, status line and alerts always stay at the top. Hold the shortcut bar on Home to change its buttons.",
-            color = N.sub, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 30.dp, vertical = 4.dp))
+        Note("The name, status line and alerts always stay at the top. Hold the shortcut bar on Home to change its buttons.", 13.sp, 4.dp)
         LinksCard(listOf("Choose shortcuts" to { app.go(Route.EditShortcuts) },
             "Reset Home" to { AppPrefs.set("home_order", HOME_SECTIONS.joinToString(",")); HOME_SECTIONS.forEach { AppPrefs.set(sectionKey(it), true) } }))
     }
@@ -176,7 +175,7 @@ val NAV_TABS = listOf(
     Shortcut("favorites", Icons.Rounded.Star, "Favorites", Route.Favorites),
 ) + SHORTCUTS.filter { it.id in listOf("apps", "status", "containers", "storage", "inbox", "quick", "lighting", "terminal") }
 val DEFAULT_TABS = listOf("store", "home", "menu")
-const val MAX_TABS = 5
+const val MAX_TABS = 12
 
 fun navTabs(app: AppState): List<Shortcut> =
     AppPrefs.navTabs.mapNotNull { id -> NAV_TABS.firstOrNull { it.id == id } }.filter { it.feature == null || app.has(it.feature) }

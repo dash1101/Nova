@@ -78,11 +78,9 @@ private val SESSIONS = listOf("1h" to "1 hour", "24h" to "1 day", "168h" to "1 w
         when {
             err != null -> Text(err!!, color = N.sub, modifier = Modifier.padding(30.dp))
             st == null -> Text("Checking…", color = N.sub, modifier = Modifier.padding(30.dp))
-            outsideNova -> Text("Its login was set up in Cloudflare, outside Nova, so Nova doesn't change it. Edit it in Zero Trust → Access → Applications.",
-                color = N.sub, fontSize = 14.sp, modifier = Modifier.padding(horizontal = 30.dp, vertical = 8.dp))
-            isShare -> Text(if (mode == "public") "Anyone with a share link can open what you've shared there — nothing else; Immich's own password and expiry protect each link. You can also put a Cloudflare login in front (below)."
-                            else "Share links here also need a Cloudflare login first: ${if (mode == "guests") "yours, or a guest's emailed code" else "yours"} — then Immich's own password, if the link has one.",
-                color = N.sub, fontSize = 14.sp, modifier = Modifier.padding(horizontal = 30.dp, vertical = 8.dp))
+            outsideNova -> Note("Its login was set up in Cloudflare, outside Nova, so Nova doesn't change it. Edit it in Zero Trust → Access → Applications.", 14.sp, 8.dp)
+            isShare -> Note(if (mode == "public") "Anyone with a share link can open what you've shared there — nothing else; Immich's own password and expiry protect each link. You can also put a Cloudflare login in front (below)."
+                            else "Share links here also need a Cloudflare login first: ${if (mode == "guests") "yours, or a guest's emailed code" else "yours"} — then Immich's own password, if the link has one.", 14.sp, 8.dp)
             mode == "offline" -> Group { Row1("Off the internet", "A change didn't finish, so Nova took it offline instead of leaving it open. Pick who can open it to put it back.", false, Icons.Rounded.CloudOff, N.amber) }
             else -> {}
         }
@@ -117,8 +115,7 @@ private val SESSIONS = listOf("1h" to "1 hour", "24h" to "1 day", "168h" to "1 w
                 Box(Modifier.weight(1f)) { PillButton("Undo", color = N.text) { guests = savedGuests; session = rec?.optString("session")?.ifEmpty { null } ?: "24h" } }
                 Box(Modifier.weight(1f)) { PillButton(if (working != null) "Saving…" else "Save changes", enabled = working == null) { change("guests") } }
             }
-            Text("Guests open the address, type their email, and Cloudflare sends them a code. They can only open this app — not Nova.",
-                color = N.sub, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 30.dp, vertical = 6.dp))
+            Note("Guests open the address, type their email, and Cloudflare sends them a code. They can only open this app — not Nova.", 13.sp, 6.dp)
         }
         if (appId.isNotEmpty() && !isShare) ShareLinks(app, appId, host)
         if (rec != null && app.isAdmin) {
@@ -179,8 +176,7 @@ private val SESSIONS = listOf("1h" to "1 hour", "24h" to "1 day", "168h" to "1 w
     val extOk = wanted.isNotEmpty() && ext?.trimEnd('/') == wanted
     val ready = v.optBoolean("running") && v.optBoolean("online") && extOk
     SectionLabel("Share links")
-    Text("Keep $name behind the login and still send albums to anyone: a small share proxy serves only what you share, at its own address. Your library, login page and everything else stay private.",
-        color = N.sub, fontSize = 14.sp, modifier = Modifier.padding(horizontal = 30.dp, vertical = 6.dp))
+    Note("Keep $name behind the login and still send albums to anyone: a small share proxy serves only what you share, at its own address. Your library, login page and everything else stay private.", 14.sp, 6.dp)
     Group {
         @Composable fun Step(ok: Boolean, title: String, sub: String) = Row1(title, sub, false, if (ok) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked, if (ok) N.green else N.sub)
         Step(v.optBoolean("running"), "Share proxy", if (v.optBoolean("running")) "Running on the server" else if (v.optBoolean("installed")) "Installed, not answering yet" else "Not installed yet"); RowDivider()
@@ -200,8 +196,7 @@ private val SESSIONS = listOf("1h" to "1 hour", "24h" to "1 day", "168h" to "1 w
                     r.optString("task").ifEmpty { null }?.let { app.go(Route.Task(it)) }     // the install's own progress page
                 } finally { AccessBusy.work.remove("share:$appId") } } }
         } }
-        Text("Nova installs the share proxy and opens this address on your tunnel for share links only. If the address already points at the proxy, Nova just uses it.",
-            color = N.sub, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 30.dp, vertical = 4.dp))
+        Note("Nova installs the share proxy and opens this address on your tunnel for share links only. If the address already points at the proxy, Nova just uses it.", 13.sp, 4.dp)
     } else if (!extOk && wanted.isNotEmpty()) {
         Group {
             Row1("Copy $wanted", "Then paste it into ${v.optString("setting_name")}", true, Icons.Rounded.ContentCopy, onClick = {
@@ -213,6 +208,5 @@ private val SESSIONS = listOf("1h" to "1 hour", "24h" to "1 day", "168h" to "1 w
         }
     } else if (ready) Text("All set: share a photo or album in $name and its link opens at $wanted for anyone.",
         color = N.green, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 30.dp, vertical = 4.dp))
-    if (v.optString("share_host").isNotEmpty()) Text("Tip: when you share in $name you can add a password (people type it to see the album), an expiry date, and a custom link — like ${wanted.ifEmpty { "https://share.example.com" }}/s/family-trip. They all work at the share address.",
-        color = N.sub, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 30.dp, vertical = 4.dp))
+    if (v.optString("share_host").isNotEmpty()) Note("Tip: when you share in $name you can add a password (people type it to see the album), an expiry date, and a custom link — like ${wanted.ifEmpty { "https://share.example.com" }}/s/family-trip. They all work at the share address.", 13.sp, 4.dp)
 }

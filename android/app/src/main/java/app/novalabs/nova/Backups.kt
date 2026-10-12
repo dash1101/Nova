@@ -81,8 +81,7 @@ private fun lastText(j: JSONObject): Pair<String, String> {
                 Row1("Back up now", "Runs your script (it also runs nightly)", false, Icons.Rounded.PlayArrow, N.green, enabled = app.isAdmin,
                     onClick = { app.act("Backup started") { app.api.post("/api/v1/actions/backup") } })
             }
-            Text("This one is a script on the server (${legacy.optString("script")}), so Nova shows it but doesn't edit it. Backups you add below run alongside it.",
-                color = N.sub, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 30.dp, vertical = 4.dp))
+            Note("This one is a script on the server (${legacy.optString("script")}), so Nova shows it but doesn't edit it. Backups you add below run alongside it.", 13.sp, 4.dp)
         }
         SectionLabel(if (legacy != null) "Nova backups" else "Your backups")
         Group {

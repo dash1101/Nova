@@ -123,9 +123,8 @@ object InboxArchive {
     }
     Page("Archive", app::back, listOf(TopAction(Icons.Rounded.IosShare, "Export") { export() },
             TopAction(Icons.Rounded.DeleteForever, "Erase this ${DeviceForm.noun}'s copy") { clear = true })) {
-        Text(if (serverOk) "Everything archived from the Inbox or too old for it, kept on ${serverName(app)} for every device. This ${DeviceForm.noun}'s own copy fills in when it's offline."
-             else "Can't reach the server's archive right now — showing this ${DeviceForm.noun}'s own copy.",
-            color = N.sub, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 30.dp, vertical = 4.dp))
+        Note(if (serverOk) "Everything archived from the Inbox or too old for it, kept on ${serverName(app)} for every device. This ${DeviceForm.noun}'s own copy fills in when it's offline."
+             else "Can't reach the server's archive right now — showing this ${DeviceForm.noun}'s own copy.", 13.sp, 4.dp)
         Segmented(listOf("All", "Archived", "Issues", "Logins"), filter) { filter = it }
         if (shown.isEmpty()) Text(if (events.isEmpty()) "Nothing yet — events appear here as the phone receives them." else "Nothing matches.",
             color = N.sub, modifier = Modifier.padding(30.dp))

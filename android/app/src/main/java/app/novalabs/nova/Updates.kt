@@ -83,8 +83,7 @@ import org.json.JSONObject
                         Icons.Rounded.Download, N.green, enabled = pickedCs.isNotEmpty() && running == null && app.isAdmin, onClick = {
                             start("/api/v1/updates/containers", JSONObject().put("containers", JSONArray(pickedCs.toList())), "Update containers") }) }
             }
-            Text("Big apps (Immich, Nextcloud, Home Assistant…) sometimes change how they work between versions — check their release notes before a major update.",
-                color = N.sub, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 30.dp, vertical = 8.dp))
+            Note("Big apps (Immich, Nextcloud, Home Assistant…) sometimes change how they work between versions — check their release notes before a major update.", 13.sp, 8.dp)
         }
     }
     if (confirmDocker) OneDialog({ confirmDocker = false }, "This restarts Docker",

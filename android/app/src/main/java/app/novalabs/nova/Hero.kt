@@ -112,7 +112,8 @@ private fun ringGlow(look: FanLook, tMs: Double, reverse: Boolean): Color {
     LaunchedEffect(skewMs) {
         if (reduceMotion()) { t.doubleValue = (System.currentTimeMillis() + skewMs).toDouble(); return@LaunchedEffect }
         // ~30 fps is plenty for a slow light wave, and lets a 120 Hz screen (and the blur over it) rest in between
-        while (true) { withFrameNanos { t.doubleValue = (System.currentTimeMillis() + skewMs).toDouble() }; kotlinx.coroutines.delay(30) }
+        val gap = if (lite()) 66L else 30L                      // older phones: ~15 fps is still smooth for a slow wave
+        while (true) { withFrameNanos { t.doubleValue = (System.currentTimeMillis() + skewMs).toDouble() }; kotlinx.coroutines.delay(gap) }
     }
     return t
 }
