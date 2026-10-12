@@ -57,6 +57,7 @@ def _rotated_logs():
     out = []
     for root, dirs, files in os.walk("/var/log"):
         if root.count(os.sep) > 4: dirs[:] = []
+        dirs[:] = [d for d in dirs if d not in ("nova-api", "nova-alerts")]      # Nova's audit trail and alert history stay
         out += [os.path.join(root, f) for f in files if re.search(r"\.(\d+|\d+\.gz|gz|old)$", f)]
     return out
 
@@ -111,7 +112,7 @@ def scan():
         if os.path.isdir(d): left += sum(os.path.getsize(os.path.join(d, f)) for f in _nova_old(d))
     add("leftovers", "Old rotated logs and Nova's leftovers", "Archived log files (.gz, .1), old crash reports and app downloads Nova no longer needs.", left, True, len(logs))
     trash = sum(du(os.path.join(h, ".local/share/Trash")) for _, h in _people_homes())
-    if trash: add("trash", "Trash", "Files you deleted in Nova's file manager (or a desktop). They can't be restored afterwards.", trash, True)
+    if trash: add("trash", "Trash", "Files you deleted in Nova's file manager (or a desktop). They're gone for good afterwards.", trash, False)
     rc, so, _ = run(["apt-get", "-s", "autoremove"], 60)
     n = len(re.findall(r"^Remv ", so, re.M))
     if n: add("autoremove", "Packages nothing needs anymore", "Old kernels and libraries apt marks as no longer needed.", 0, False, n, unknown=True)

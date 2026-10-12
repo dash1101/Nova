@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.8-alpha (server)
+- **Let its phone app in, safer:** if making the key fails halfway (for example, your Cloudflare token doesn't have the new permission yet), the address goes offline instead of losing its route, and an older key keeps working. Pick who can open it again to bring it back.
+- **Free up:** the Trash is no longer ticked by default (those files are gone for good), and Nova's own audit and alert history are never removed.
+
 ## 0.6.7-alpha (server, Nova web, app and website)
 - **Free up** (Menu → Server, the Quick panel, or search): Nova measures what it can safely remove and you pick. That covers container images no app uses, Docker's build cache, downloaded package files, old system logs, rotated logs and Nova's leftovers, and your Trash, plus memory the system can let go of. Also offered, but unticked: the rollback copies Nova keeps of updated apps (often several GB), packages nothing needs and older backup snapshots. Your files, apps' data, containers and volumes are never touched.
 - **Status graphs:** point at one (or drag along it on a phone) to see the value at that moment, and tap one to open it large, live.

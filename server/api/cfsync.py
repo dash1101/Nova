@@ -330,7 +330,8 @@ def set_access(host, mode, guests=None, session=None, allow_public=False):
     elif mode != old:
         if mode == "guests": _owner_policies(acct)                      # anything that can fail is checked before the address goes offline
         # moving from one login to another (or out of "offline" after a failed try): off the tunnel meanwhile
-        if old not in ("public", "offline") and mode != "public": rec["parked_route"] = _route_off(acct, tun, host)
+        if old not in ("public", "offline") and mode != "public" and not rec.get("parked_route"):     # (already parked: keep the rule we have)
+            rec["parked_route"] = _route_off(acct, tun, host)
         try:
             _unprotect(acct, host, rec)
             _protect(acct, host, rec, mode, guests, session)
@@ -389,8 +390,9 @@ def app_key(host, rotate=False):
             raise ValueError("your Cloudflare API token can't make app keys yet — edit the token in Cloudflare and add the permission "
                              "Account · Access: Service Tokens · Edit, then try again")
         raise
-    pol = call("POST", f"/accounts/{acct}/access/policies", {"name": f"Nova app key · {host}", "decision": "non_identity",
-                                                             "include": [{"service_token": {"token_id": tk["id"]}}]})
+    try: pol = call("POST", f"/accounts/{acct}/access/policies", {"name": f"Nova app key · {host}", "decision": "non_identity",
+                                                                  "include": [{"service_token": {"token_id": tk["id"]}}]})
+    except ValueError: _drop_key(acct, {"id": tk["id"]}); raise
     rec["app_token"] = {"id": tk["id"], "policy_id": pol["id"], "client_id": tk["client_id"], "made": int(__import__("time").time())}
     mode = rec.get("mode") or "me"
     try:
@@ -400,18 +402,24 @@ def app_key(host, rotate=False):
             body = {k: v for k, v in app_now.items() if k in ("name", "type", "domain", "destinations", "session_duration", "app_launcher_visible")}
             call("PUT", f"/accounts/{acct}/access/apps/{rec['app_id']}", {**body, "policies": [{"id": x, "precedence": i + 1} for i, x in enumerate(pols)]})
         else:                                            # on Nova's shared login: move it to its own (off the tunnel in between, never open)
-            rec["parked_route"] = _route_off(acct, tun, host)
+            if not rec.get("parked_route"): rec["parked_route"] = _route_off(acct, tun, host)
             _unprotect(acct, host, rec); _protect(acct, host, rec, mode, rec.get("guests") or [], rec.get("session") or "24h")
             _route_on(acct, tun, rec.pop("parked_route", None))
-    except ValueError:
-        led[host] = rec; _save_ledger(led); raise
+    except ValueError as e:
+        new_tok = rec.pop("app_token", None)
+        if old: rec["app_token"] = old                   # the key that was there keeps working
+        if rec.get("parked_route"): rec["mode"] = "offline"   # off the internet (never open) until a retry or a mode change works
+        led[host] = rec; _save_ledger(led)
+        if new_tok: _drop_key(acct, new_tok)
+        if rec.get("parked_route"): raise ValueError(f"{e} — {host} is off the internet until this works (nothing was left open); try again")
+        raise
     if old: _drop_key(acct, old)
     led[host] = rec; _save_ledger(led)
     return {"ok": True, "host": host, "client_id": tk["client_id"], "client_secret": tk["client_secret"],
             "headers": {"CF-Access-Client-Id": tk["client_id"], "CF-Access-Client-Secret": tk["client_secret"]}}
 
 def _drop_key(acct, tok):
-    for path in (f"/accounts/{acct}/access/policies/{tok.get('policy_id')}", f"/accounts/{acct}/access/service_tokens/{tok.get('id')}"):
+    for path in ([f"/accounts/{acct}/access/policies/{tok['policy_id']}"] if tok.get("policy_id") else []) + [f"/accounts/{acct}/access/service_tokens/{tok.get('id')}"]:
         try: call("DELETE", path)
         except ValueError: pass                          # already gone
 
