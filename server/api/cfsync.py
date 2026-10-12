@@ -122,7 +122,7 @@ def status():
         out["nova_added"] = {h: ("protected" if r.get("protected_existing") else "added") for h, r in led.items()}   # only these can be taken off from Nova
         out["nova"] = {h: {"kind": r.get("kind") or ("protected" if r.get("protected_existing") else "existing" if r.get("existing") else "added"),
                            "mode": r.get("mode") or ("me" if r.get("access") else "public"), "guests": r.get("guests", []), "session": r.get("session"),
-                           "for_host": r.get("for_host"), "service": r.get("service")} for h, r in led.items()}
+                           "for_host": r.get("for_host"), "service": r.get("service"), "existing": bool(r.get("existing"))} for h, r in led.items()}
     except ValueError as e: out["error"] = str(e)
     return out
 
@@ -383,7 +383,8 @@ def remove(host, allow_public=False):
     if not rec: raise ValueError(f"Nova didn't put {host} on your tunnel, so it leaves it alone — change it in the Cloudflare dashboard")
     if rec.get("protected_existing") and rec.get("mode", "me") not in ("public",) and not allow_public:
         raise ValueError(f"{host} was yours before Nova protected it: taking Nova off only removes the login, so it would be open to anyone again. Confirm to do that")
-    if not rec.get("existing"): _undo(host, rec, acct, tun)          # (a share address that was already yours: just forgotten)
+    if rec.get("existing"): _unprotect(acct, host, rec)               # a share address that was already yours: only Nova's login comes off
+    else: _undo(host, rec, acct, tun)
     if rec.get("protected_existing") and rec.get("parked_route"): _route_on(acct, tun, rec["parked_route"])   # yours, as it was
     led.pop(host, None); _save_ledger(led)
     return {"ok": True}

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.3-alpha (app and server)
+- **Share address: your choice of who can open it.** It stays **Anyone with a link** by default (no Cloudflare login — the app's own password and expiry protect each link), or switch it to **Only people you add** (they get a one-time code by email first, then the link's password) or **Only you** — and back, any time. Tap the share address in Labs → Cloudflare.
+- Taking the share address out of Nova only removes a login Nova added; your own route and DNS record stay, so links keep working.
+
 ## 0.6.2-alpha (app and server)
 - **Fixed: Share links setup failed** (“takes 1 positional argument but 2 were given”) while downloading the share proxy.
 - **Fixed: the status light** showed in the app right away but only reached the fan at the next once-a-minute check (and turning it off waited the same way). It now applies the moment you switch it, and the Home picture shows the status color too.

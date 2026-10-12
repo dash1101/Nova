@@ -80,23 +80,30 @@ private val SESSIONS = listOf("1h" to "1 hour", "24h" to "1 day", "168h" to "1 w
             st == null -> Text("Checking…", color = N.sub, modifier = Modifier.padding(30.dp))
             outsideNova -> Text("Its login was set up in Cloudflare, outside Nova, so Nova doesn't change it. Edit it in Zero Trust → Access → Applications.",
                 color = N.sub, fontSize = 14.sp, modifier = Modifier.padding(horizontal = 30.dp, vertical = 8.dp))
-            isShare -> Text("Anyone with a share link can open what you've shared there — nothing else. To stop sharing publicly, take this address off below.",
+            isShare -> Text(if (mode == "public") "Anyone with a share link can open what you've shared there — nothing else; Immich's own password and expiry protect each link. You can also put a Cloudflare login in front (below)."
+                            else "Share links here also need a Cloudflare login first: ${if (mode == "guests") "yours, or a guest's emailed code" else "yours"} — then Immich's own password, if the link has one.",
                 color = N.sub, fontSize = 14.sp, modifier = Modifier.padding(horizontal = 30.dp, vertical = 8.dp))
             mode == "offline" -> Group { Row1("Off the internet", "A change didn't finish, so Nova took it offline instead of leaving it open. Pick who can open it to put it back.", false, Icons.Rounded.CloudOff, N.amber) }
             else -> {}
         }
-        if (st != null && err == null && !outsideNova && !isShare && (rec != null || onTunnel)) {
+        if (st != null && err == null && !outsideNova && (rec != null || onTunnel)) {
             SectionLabel("Who can open it")
             working?.let { WorkingRow(it); Spacer(Modifier.height(10.dp)) }
             Group {
                 @Composable fun Choice(k: String, title: String, sub: String, icon: androidx.compose.ui.graphics.vector.ImageVector) =
                     Row1(title, sub, false, icon, if (k == "public") N.amber else N.blue, enabled = app.isAdmin && working == null, onClick = { if (k != mode) ask = k }) { OneRadio(mode == k) }
+                if (isShare) {      // the share address: open is the usual choice (each link has its own password and expiry in the app)
+                    Choice("public", "Anyone with a link", "No Cloudflare login — the app's own password and expiry protect each link", Icons.Rounded.Public); RowDivider()
+                    Choice("guests", "Only people you add", "They sign in with a one-time code sent to their email, then open the link", Icons.Rounded.Group); RowDivider()
+                    Choice("me", "Only you", "Your Cloudflare login (handy for checking links before you send them)", Icons.Rounded.Lock)
+                } else {
                 Choice("me", "Only you", "Your Cloudflare login, the same as Nova", Icons.Rounded.Lock); RowDivider()
                 Choice("guests", "You and guests", "People you add by email sign in with a one-time code sent to them", Icons.Rounded.Group); RowDivider()
                 Choice("public", "Anyone", "No login — anyone with the address can open it", Icons.Rounded.Public)
+                }
             }
         }
-        if (mode == "guests" && !isShare) {
+        if (mode == "guests") {
             SectionLabel("Guests")
             Group {
                 if (guests.isEmpty()) Row1("No guests yet", "Add someone by their email address")
@@ -116,8 +123,11 @@ private val SESSIONS = listOf("1h" to "1 hour", "24h" to "1 day", "168h" to "1 w
         if (appId.isNotEmpty() && !isShare) ShareLinks(app, appId, host)
         if (rec != null && app.isAdmin) {
             SectionLabel("Take it off")
-            Group { Row1(if (rec.optString("kind") == "protected") "Take the login off" else "Take it off the internet",
-                if (rec.optString("kind") == "protected") "It was yours before — it goes back to being open to anyone" else "Nova removes what it added: route, DNS record and login",
+            val existing = rec.optBoolean("existing") || rec.optString("kind") == "existing"
+            Group { Row1(when { rec.optString("kind") == "protected" -> "Take the login off"; existing -> "Stop managing it in Nova"; else -> "Take it off the internet" },
+                when { rec.optString("kind") == "protected" -> "It was yours before — it goes back to being open to anyone"
+                       existing -> "Nova removes only a login it added; your route and DNS record stay as they are"
+                       else -> "Nova removes what it added: route, DNS record and login" },
                 false, Icons.Rounded.Delete, N.red, onClick = { remove = true }) }
         }
         Spacer(Modifier.height(40.dp))
@@ -129,7 +139,8 @@ private val SESSIONS = listOf("1h" to "1 hour", "24h" to "1 day", "168h" to "1 w
             "me" -> "Anyone opening $host signs in with your Cloudflare login first."
             "guests" -> "You, plus people you add by email. You can add them next — until then it's just you." +
                 if (mode == "me") " $host is offline for a few seconds while the login switches over." else ""
-            else -> "There will be no login at all: anyone who finds the address can open the app. Only do this if the app has its own login you trust."
+            else -> if (isShare) "No Cloudflare login: anyone with a share link can open what it shares (and only that) — set a password and expiry on the link in the app if you want one."
+                    else "There will be no login at all: anyone who finds the address can open the app. Only do this if the app has its own login you trust."
         }
         OneDialog({ ask = null }, t, d, listOf(DialogButton("Cancel") { ask = null }, DialogButton(if (to == "public") "Make it public" else "Change", if (to == "public") N.red else N.blue) {
             ask = null; change(to, if (to == "guests") guests else emptyList(), publicOk = to == "public") })) {
@@ -143,9 +154,11 @@ private val SESSIONS = listOf("1h" to "1 hour", "24h" to "1 day", "168h" to "1 w
         OneDialog({ addGuest = false }, "Add a guest", "Their email address. They'll get a one-time code there each time they sign in.",
             listOf(DialogButton("Cancel") { addGuest = false }, DialogButton("Add", N.blue, enabled = ok) { addGuest = false; val g = e.trim().lowercase(); if (g !in guests) guests = guests + g })) {
             OneTextField(e, { e = it.trim().take(120) }, "name@example.com", Modifier.fillMaxWidth().padding(horizontal = 22.dp)) } }
-    if (remove) { val prot = rec?.optString("kind") == "protected"
-        OneDialog({ remove = false }, if (prot) "Take the login off $host?" else "Take $host off?",
-            if (prot) "It goes back to how it was before Nova: open to anyone. The route and DNS record stay." else "Nova removes the route, the DNS record and the login it added. Nothing else in your Cloudflare account changes.",
+    if (remove) { val prot = rec?.optString("kind") == "protected"; val existing = rec?.optBoolean("existing") == true
+        OneDialog({ remove = false }, if (prot) "Take the login off $host?" else if (existing) "Stop managing $host in Nova?" else "Take $host off?",
+            if (prot) "It goes back to how it was before Nova: open to anyone. The route and DNS record stay."
+            else if (existing) "Nova removes the login it added (if any) and forgets it. Your route and DNS record stay as they are, so share links keep working."
+            else "Nova removes the route, the DNS record and the login it added. Nothing else in your Cloudflare account changes.",
             listOf(DialogButton("Cancel") { remove = false }, DialogButton(if (prot) "Make it public" else "Take it off", N.red) { remove = false
                 if (!AccessBusy.work.containsKey(host)) app.act { AccessBusy.work[host] = if (prot) "Taking the login off…" else "Taking it off the internet…"
                     try { app.stepUp(if (prot) "Take Nova's login off $host — it will be open to anyone" else "Take $host off your Cloudflare tunnel", "POST", "/api/v1/cloudflare/remove",

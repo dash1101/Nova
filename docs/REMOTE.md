@@ -77,3 +77,5 @@ if that address already points at the proxy's port, just uses it. Then set Immic
 *Administration → Settings → Server → External domain* to the share address (Nova links you there and
 checks it), and every share link Immich makes opens there for anyone, without your library, login page
 or API being reachable.
+
+The share address is open to anyone by default (each link has its own password and expiry in Immich). If you'd rather have a Cloudflare login in front of it too, tap it in Labs → Cloudflare and pick *Only people you add* (they get a one-time code by email) or *Only you*.
