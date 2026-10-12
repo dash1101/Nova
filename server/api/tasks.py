@@ -23,7 +23,7 @@ DIAG_KINDS = {"net-internet", "disk-speed", "cpu-stress", "mem-test"}
 BACKUP_KINDS = {"backup-run", "restore", "tools"}
 UPDATE_KINDS = {"updates-check", "apt-upgrade", "containers-update"}
 LABS_KINDS = {"images-prune"}
-INSTALL_KINDS = {"run-command", "store-install", "store-uninstall", "custom-install", "custom-uninstall", "program-install", "program-remove"}
+INSTALL_KINDS = {"run-command", "store-install", "store-uninstall", "custom-install", "custom-uninstall", "program-install", "program-remove", "share-setup"}
 KINDS = STORAGE_KINDS | DIAG_KINDS | BACKUP_KINDS | UPDATE_KINDS | INSTALL_KINDS | LABS_KINDS
 TITLES = {"format": "Set up a drive", "combine": "Combine drives", "raid": "Create a RAID array", "pool-remove": "Remove a pool",
           "pool-add": "Add a drive", "fstab-nofail": "Boot without missing drives", "fstab-add": "Keep a drive mounted",
@@ -35,7 +35,7 @@ GROUP = {**{k: "storage" for k in STORAGE_KINDS}, **{k: "diag" for k in DIAG_KIN
 
 
 # a finished task becomes an ordinary Inbox event (these kinds already send their own)
-ANNOUNCES_DONE = {"store-install", "custom-install", "backup-run", "restore", "updates-check"}
+ANNOUNCES_DONE = {"store-install", "custom-install", "share-setup", "backup-run", "restore", "updates-check"}
 ANNOUNCES_FAIL = {"backup-run"}
 
 
@@ -85,6 +85,9 @@ def check_spec(kind, spec):
         if kind.startswith("program-") and not re.fullmatch(installs.PKG_RE, str(spec.get("pkg", ""))): raise ValueError("bad package name")
         if kind == "custom-install": installs.custom_spec(spec)
         if kind == "custom-uninstall" and not re.fullmatch(installs.CUSTOM_NAME, str(spec.get("name", ""))): raise ValueError("bad name")
+        if kind == "share-setup":
+            if not re.fullmatch(r"[a-z0-9-]{1,40}", str(spec.get("companion", ""))) or not re.fullmatch(r"[0-9]{1,5}", str(spec.get("app_port", ""))): raise ValueError("bad share setup")
+            spec["name"] = str(spec.get("for_host") or spec.get("share_host"))[:253]
     if kind in ("backup-run", "restore"):
         if not re.fullmatch(r"[a-z0-9]{1,12}", str(spec.get("job", ""))): raise ValueError("bad backup id")
     return spec

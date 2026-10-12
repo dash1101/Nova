@@ -87,10 +87,15 @@ def store_install(spec, log, progress):
     if os.path.exists(f"{d}/docker-compose.yml"): raise ValueError(f"{d} already has a compose file that isn't from the store")
     for p in [t["port"]] + t.get("extra_ports", []):
         if not port_free(p): raise ValueError(f"port {p} is already in use")
+    subs = {"DATA": f"{d}/data", "PORT": str(t["port"]), "TZ": server_tz()}
+    for k, kind in (t.get("params") or {}).items():               # filled in by Nova (e.g. the share proxy's address), checked here
+        v = str((spec.get("params") or {}).get(k, "")).strip()
+        ok = re.fullmatch(r"https://[a-z0-9]([a-z0-9.-]{0,251}[a-z0-9])?", v) if kind == "https_url" else re.fullmatch(r"[0-9]{1,5}", v) and 0 < int(v) < 65536
+        if not ok: raise ValueError(f"{k.lower().replace('_', ' ')} is missing or not valid")
+        subs[k] = v
     log(f"Setting up {d}"); progress(3)
     os.makedirs(f"{d}/data", exist_ok=True)
     alphabet = string.ascii_letters + string.digits
-    subs = {"DATA": f"{d}/data", "PORT": str(t["port"]), "TZ": server_tz()}
     for i in range(1, 4): subs[f"SECRET{i}"] = "".join(secrets.choice(alphabet) for _ in range(32))
     compose = t["compose"]
     for k, v in subs.items(): compose = compose.replace("{" + k + "}", v)
@@ -312,7 +317,25 @@ def run_command(spec, log, progress):
     if rc != 0: raise RuntimeError(f"finished with exit code {rc}")
     progress(100, "Finished"); return {"ok": True, "exit": rc}
 
+def share_setup(spec, log, progress):
+    """An app's share links, in one go: its share companion (e.g. Immich's share proxy) installed with the
+    share address filled in, then that address opened on your Cloudflare tunnel for the share links only."""
+    import cfsync
+    t = catalog().get(str(spec.get("companion", ""))) or (_ for _ in ()).throw(ValueError("no such companion"))
+    host = str(spec.get("share_host", "")).strip().lower()
+    if not re.fullmatch(cfsync.HOST_RE, host): raise ValueError("a share address like share.example.com")
+    if os.path.exists(f"/opt/{t['id']}/.nova-store"): log(f"{t['name']} is already installed"); progress(60)
+    else:
+        log(f"Installing {t['name']}…")
+        store_install({"id": t["id"], "params": {"PUBLIC_URL": f"https://{host}", "IMMICH_PORT": str(spec.get("app_port", ""))}}, log,
+                      lambda p: progress(int(p * 0.6)))
+    log(f"Putting {host} on your Cloudflare tunnel, for share links only…"); progress(70)
+    r = cfsync.share(host, f"http://localhost:{t['port']}", str(spec.get("for_host", ""))[:253] or None)
+    changelog(f"Share links for {spec.get('for_host') or 'an app'} at https://{host} ({t['name']})")
+    progress(100); log("Done.")
+    return {"ok": True, "url": r["url"], "existing": r.get("existing", False)}
+
 OPS = {"run-command": run_command, "store-install": store_install, "store-uninstall": store_uninstall, "custom-install": custom_install, "custom-uninstall": custom_uninstall,
-       "program-install": program_install, "program-remove": program_remove}
+       "program-install": program_install, "program-remove": program_remove, "share-setup": share_setup}
 TITLES = {"run-command": "Run", "store-install": "Install", "store-uninstall": "Uninstall", "custom-install": "Add container", "custom-uninstall": "Remove container",
-          "program-install": "Install program", "program-remove": "Remove program"}
+          "program-install": "Install program", "program-remove": "Remove program", "share-setup": "Share links for"}

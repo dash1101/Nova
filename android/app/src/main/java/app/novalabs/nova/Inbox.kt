@@ -318,6 +318,7 @@ import java.util.*
             RowDivider()
             Row1("Appearance & privacy", "Theme, Home layout, app lock", true, Icons.Rounded.Palette, onClick = { app.go(Route.Appearance) })
             RowDivider()
+            Row1("Automation", "Crash-loop guard, weekly updates, old-image cleanup, Wake-on-LAN", true, Icons.Rounded.AutoMode, androidx.compose.ui.graphics.Color(0xFF30B0C7), onClick = { app.go(Route.Automation) }); RowDivider()
             Row1("Labs", "Experimental features you can try", true, Icons.Rounded.Science, androidx.compose.ui.graphics.Color(0xFFBF5AF2), onClick = { app.go(Route.Labs) })
             RowDivider()
             Row1("Features", "Switch off parts of Nova you don't use, like lighting control", true, Icons.Rounded.Tune, onClick = { app.go(Route.Features) })
@@ -515,26 +516,36 @@ private fun taskRoute(t: JSONObject): Route? {
 }
 
 /** Settings → Labs: experimental features, off until you turn them on (they're the server's settings). */
-@Composable fun LabsScreen(app: AppState) {
+@Composable fun LabsScreen(app: AppState) = LabsPage(app, stable = false)
+/** Settings → Automation: the Labs features that have had enough use (crash-loop guard, weekly updates, image cleanup, Wake-on-LAN). */
+@Composable fun AutomationScreen(app: AppState) = LabsPage(app, stable = true)
+
+@Composable private fun LabsPage(app: AppState, stable: Boolean) {
     val live = live(app, "/api/v1/labs")
     val l = live.value
-    Page("Labs", app::back) {
-        Text("Experimental features. They work, but haven't had as much use as the rest of Nova — so they're off until you turn them on.",
+    val stableKeys = l?.optJSONArray("stable").let { a -> (0 until (a?.length() ?: 0)).map { a!!.getString(it) }.toSet() }
+    Page(if (stable) "Automation" else "Labs", app::back) {
+        Text(if (stable) "Things the server can take care of by itself. Each is off until you turn it on."
+             else "Experimental features. They work, but haven't had as much use as the rest of Nova — so they're off until you turn them on.",
             color = N.sub, fontSize = 14.sp, modifier = Modifier.padding(horizontal = 30.dp, vertical = 6.dp))
         if (l == null) Text("Loading…", color = N.sub, modifier = Modifier.padding(30.dp))
         else Group {
             val about = l.optJSONObject("about") ?: JSONObject(); val on = l.optJSONObject("labs") ?: JSONObject()
-            about.keys().asSequence().toList().forEachIndexed { i, k -> val a = about.getJSONObject(k)
+            about.keys().asSequence().toList().filter { (it in stableKeys) == stable }.forEachIndexed { i, k -> val a = about.getJSONObject(k)
                 if (i > 0) RowDivider()
                 SwitchRow(a.optString("name"), a.optString("about"), on.optBoolean(k), app.isAdmin) { v -> app.act { live.value = app.api.post("/api/v1/labs", JSONObject().put(k, v)) } }
             }
         }
-        if (l?.optJSONObject("labs")?.optBoolean("cloudflare_sync") == true) LabsCloudflare(app)
         val on = l?.optJSONObject("labs") ?: JSONObject()
-        if (on.optBoolean("auto_updates")) LabsSchedule(app)
-        if (on.optBoolean("image_cleanup")) LabsImages(app)
-        if (on.optBoolean("wake_on_lan")) LabsWol(app)
-        if (on.optBoolean("openrgb")) LabsOpenRgb(app)
+        if (!stable) {
+            if (on.optBoolean("cloudflare_sync")) LabsCloudflare(app)
+            if (on.optBoolean("openrgb")) LabsOpenRgb(app)
+        } else {
+            if (on.optBoolean("auto_updates")) LabsSchedule(app)
+            if (on.optBoolean("image_cleanup")) LabsImages(app)
+            if (on.optBoolean("wake_on_lan")) LabsWol(app)
+        }
+        if (stable) LinksCard(listOf("Experimental features (Labs)" to { app.go(Route.Labs) }))
     }
 }
 
@@ -567,6 +578,15 @@ private fun taskRoute(t: JSONObject): Route? {
                 OneTextField(port, { port = it.filter(Char::isDigit).take(5) }, "Port (6742)", Modifier.fillMaxWidth(), mono = true)
             }
         } }
+}
+
+/** The app (if any) whose remote link is this address — so its page can offer share links. */
+fun appForHost(h: String, service: String = ""): String {
+    val apps = Cache["/api/v1/apps"]?.optJSONArray("apps").objs()
+    val port = Regex(":(\\d+)").find(service.substringAfter("://"))?.groupValues?.get(1)?.toIntOrNull()
+    return (apps.firstOrNull { android.net.Uri.parse(it.optString("remote_url")).host == h }       // its remote link is this address
+        ?: port?.let { p -> apps.firstOrNull { it.optInt("port") == p && service.contains("localhost") || it.optInt("port") == p && service.contains("127.0.0.1") } })  // or the route goes to its port
+        ?.optString("id").orEmpty()
 }
 
 /** How to make the Cloudflare API token (checked against Cloudflare's docs: listing zones needs Zone · Zone · Read too). */
@@ -608,13 +628,19 @@ val CF_STEPS = listOf(
                     Row1(h, when { h == s.optString("nova_host") -> "Nova itself"; kind == "added" -> "Added by Nova"; kind == "protected" -> "Yours — Nova added the login"
                                    h in prot -> "Yours · behind the login"; else -> "Yours · open to anyone (no login)" },
                         icon = Icons.Rounded.Public, iconTint = if (h in prot || h == s.optString("nova_host")) N.green else N.amber,
+                        onClick = if (h == s.optString("nova_host")) null else ({ app.go(Route.Access(h, appForHost(h, s.optJSONObject("services")?.optString(h).orEmpty()))) }),
                         // only what Nova did can be undone from here; everything else stays as you set it up
                         trailing = if (app.isAdmin && kind.isNotEmpty()) ({ IconButton({ undo = h to kind }) { Icon(Icons.Rounded.Delete, "Take it off", tint = N.sub) } }) else null) } }
             }
         }
     }
-    SectionLabel("Making the token")
-    Group { Column(Modifier.padding(horizontal = 22.dp, vertical = 14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    // once it's connected, the steps fold away behind a link
+    val connected = st?.optBoolean("token") == true && st?.optString("error").isNullOrEmpty()
+    var showSteps by remember { mutableStateOf(false) }
+    if (connected && !showSteps) Text("How to make a token", color = N.link, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
+        modifier = Modifier.padding(start = 30.dp, top = 6.dp).clickable { showSteps = true }.padding(vertical = 6.dp))
+    if (!connected || showSteps) SectionLabel("Making the token")
+    if (!connected || showSteps) Group { Column(Modifier.padding(horizontal = 22.dp, vertical = 14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         CF_STEPS.forEachIndexed { i, step -> Row { Text("${i + 1}.", color = N.blue, fontSize = 14.sp, fontWeight = FontWeight.Bold, modifier = Modifier.width(22.dp))
             Text(step, color = N.text, fontSize = 14.sp) } }
     } }

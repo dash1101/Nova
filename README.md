@@ -1,4 +1,4 @@
-# Nova  ·  0.6.0-alpha
+# Nova  ·  0.6.1-alpha
 
 **A secure remote control for your home server, from your Android phone.**
 Status and live graphs, containers (logs, shell, start/stop), a one-tap app store, drives,
@@ -42,9 +42,9 @@ network, and optionally from anywhere through Cloudflare Access, without a VPN.
 | **Files** | Browse, edit, upload and download files on the server as your normal account; deleting goes to the Trash |
 | **Server terminal** | A real terminal in the browser or app, as your normal account (approved on your phone) |
 | **Troubleshoot** | For a container that won't stay up: the last error, stop it for good, go back to the previous version, update again, recreate |
-| **Labs** | Opt-in extras: Cloudflare auto-setup (never touches what isn't Nova's; `sudo nova cloudflare undo` takes it all back), OpenRGB, crash-loop guard, weekly container updates with automatic rollback, old-image cleanup, Wake-on-LAN |
+| **Labs** | Opt-in extras: Cloudflare auto-setup (only you · you + guests · anyone per app, Immich share links; never touches what isn't Nova's; `sudo nova cloudflare undo` takes it all back), OpenRGB, crash-loop guard, weekly container updates with automatic rollback, old-image cleanup, Wake-on-LAN |
 | **Your look** | Two styles, light/dark, and 13 app icons (Material You, outline, black and white, glass, colors…) |
-| **Watch** | A Wear OS app and two tiles: health at a glance, recent events, approve or deny on your wrist, lights on/off ([docs/WEAR.md](docs/WEAR.md)) |
+| **Watch** | A Wear OS app, two tiles and a complication: health at a glance, recent events, approve or deny on your wrist, lights on/off ([docs/WEAR.md](docs/WEAR.md)) |
 | **Several servers** | Pair with as many machines as you like and switch between them, each with its own name and color |
 | **Users & roles** | Named users, each Admin or View only; invite phones by QR, approve browsers from your phone |
 | **Tablets & dashboard** | Tablet layout (rail + list/detail) and an always-on, customizable dashboard mode |

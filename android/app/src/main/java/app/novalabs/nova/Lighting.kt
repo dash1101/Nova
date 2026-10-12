@@ -295,6 +295,16 @@ private fun lookOf(f: JSONObject?): JSONObject = JSONObject().also { o ->
             val sl = f?.optBoolean("status_light") ?: false
             SwitchRow("Status light", "Turns amber for warnings and pulses red for critical alerts, then goes back to your color",
                 sl) { set(JSONObject().put("status_light", it)) }
+            val ls = app.lights?.optJSONArray("zones").objs()
+            if (sl && ls.size > 1) {                          // more than one light: which one shows the server's health
+                var pick by remember { mutableStateOf(false) }
+                val tgt = f?.optString("status_target")?.ifEmpty { null } ?: "main"
+                val label = when (tgt) { "all" -> "All lights"; "main" -> ls.first().optString("name").ifEmpty { "Main light" }; else -> ls.firstOrNull { it.optString("id") == tgt }?.optString("name") ?: "Main light" }
+                RowDivider(); Row1("Shown on", label, true, Icons.Rounded.Lightbulb, onClick = { pick = true })
+                if (pick) OneDialog({ pick = false }, "Which light shows the status?") {
+                    (listOf("main" to (ls.first().optString("name").ifEmpty { "Main light" })) + ls.drop(1).map { it.optString("id") to it.optString("name") } + listOf("all" to "All lights"))
+                        .forEach { (id, nm) -> DialogChoice(nm, null, tgt == id) { pick = false; set(JSONObject().put("status_target", id)) } } }
+            }
             RowDivider()
             val n = f?.optJSONArray("schedules")?.length() ?: 0
             Row1("Schedules", if (f?.optBoolean("schedules_paused") == true) "Paused" else if (n == 0) "Wake up gently, dim at sunset, off while you sleep…" else "$n schedule${if (n > 1) "s" else ""}",
@@ -462,6 +472,9 @@ private fun actionText(s: JSONObject, presets: List<JSONObject>): String =
     var endOffset by remember { mutableFloatStateOf((u0?.optInt("offset") ?: 0).toFloat()) }
     var picker by remember { mutableStateOf(false) }
     val sunKnown = f?.optJSONObject("sun") != null
+    // which light it's for (with more than one light): the main one, one of the others, or all of them
+    val lightsList = app.lights?.optJSONArray("zones").objs()
+    var light by remember { mutableStateOf(existing?.optString("light")?.ifEmpty { null } ?: "main") }
 
     fun save() {
         val all = JSONArray((f?.optJSONArray("schedules") ?: JSONArray()).toString())
@@ -473,7 +486,7 @@ private fun actionText(s: JSONObject, presets: List<JSONObject>): String =
         }
         val s = JSONObject().put("time", "%02d:%02d".format(hour, minute)).put("days", JSONArray(days.sorted())).put("enabled", true)
             .put("name", name.trim()).put("trigger", trig).put("offset", offset.toInt()).put("fade", fade).put("set", set)
-            .put("preset", if (action == 2) preset ?: "" else "").put("if_on", action == 1 && !turnOn)
+            .put("preset", if (action == 2) preset ?: "" else "").put("if_on", action == 1 && !turnOn).put("light", light)
         if (hasEnd) s.put("until", JSONObject().put("trigger", endTrig).put("time", "%02d:%02d".format(endHour, endMinute)).put("offset", endOffset.toInt()))
         if (index >= 0) { s.put("id", existing?.optString("id")); s.put("skip_next", existing?.optBoolean("skip_next") ?: false); all.put(index, s) } else all.put(s)
         app.changeFan(JSONObject().put("schedules", all)); app.back(); app.toast("Saved")
@@ -490,6 +503,12 @@ private fun actionText(s: JSONObject, presets: List<JSONObject>): String =
 
     Box(Modifier.fillMaxSize()) {
         Page(if (index >= 0) "Edit schedule" else "New schedule", app::back, bottom = 120.dp) {
+            if (lightsList.size > 1) {
+                SectionLabel("Which light")
+                Group { (listOf("main" to (lightsList.firstOrNull()?.optString("name")?.ifEmpty { null } ?: "Main light")) +
+                         lightsList.drop(1).map { it.optString("id") to it.optString("name") } + listOf("all" to "All lights")).forEachIndexed { i, (id, nm) ->
+                    if (i > 0) RowDivider(); Row1(nm, null, false, if (id == "all") Icons.Rounded.SelectAll else Icons.Rounded.Lightbulb, onClick = { light = id }) { OneRadio(light == id) } } }
+            }
             SectionLabel("Starts")
             TriggerPicker(trig, { trig = it }, hour, minute, { a, b -> hour = a; minute = b }, offset) { offset = (Math.round(it / 5) * 5).toFloat() }
             Row(Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 6.dp), horizontalArrangement = Arrangement.SpaceEvenly) {

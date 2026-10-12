@@ -133,6 +133,7 @@ def containers(spec, log=print, progress=lambda p, n="": None):
         log(f"Pulling the newest {c['image']}…")
         rc, so, se = run(["docker", "compose", "pull", c["service"]], timeout=1800, cwd=c["dir"])
         if rc != 0: log(f"{n}: pull failed: {se.strip()[-160:]}"); run(["docker", "rmi", keep], timeout=30); continue
+        before = [p for p in web_ports(n) if answers(p)]                # its web page answers now: check it still does after
         log(f"Restarting {n} on the new image…")
         rc, so, se = run(["docker", "compose", "up", "-d", c["service"]], timeout=600, cwd=c["dir"])
         rc2, newid, _ = run(["docker", "inspect", n, "--format", "{{.Image}}"], timeout=30)
@@ -146,6 +147,13 @@ def containers(spec, log=print, progress=lambda p, n="": None):
             run(["docker", "rmi", keep], timeout=30)
             rolled.append(n); notify_warn(f"{n}: update rolled back", "The new version wouldn't start, so Nova put the previous one back. Check its release notes for changes it needs.")
             continue
+        if before:                                                      # running isn't everything: is its page still there?
+            log(f"Checking that {n} answers again…"); end = time.time() + 120
+            while time.time() < end and not all(answers(p) for p in before): time.sleep(5)
+            if not all(answers(p) for p in before):
+                notify_warn(f"{n} updated, but its page isn't answering", f"It's running on the new version, but nothing answers on port {', '.join(map(str, before))} after 2 minutes. "
+                            "It may still be starting; if not, Containers → " + n + " → Troubleshoot → Go back to the previous version.")
+                log(f"{n} is running but its page doesn't answer yet (you've been told)")
         # keep the version it replaced, so Troubleshoot → "Go back to the previous version" works later
         rc0, old_prev, _ = run(["docker", "image", "inspect", f"{base}:previous", "--format", "{{.Id}}"], timeout=30)
         run(["docker", "tag", keep, f"{base}:previous"], timeout=30); run(["docker", "rmi", keep], timeout=30)
@@ -184,6 +192,30 @@ def settled(name, log, wait=40):
             if time.time() - up_since > 12: return True
         time.sleep(2)
     return st[0] == "running"
+
+def web_ports(name):
+    """The TCP ports a container publishes on the server (where its web page usually is)."""
+    rc, so, _ = run(["docker", "inspect", name, "--format", "{{json .NetworkSettings.Ports}}"], timeout=20)
+    try: ports = json.loads(so) or {}
+    except Exception: return []
+    out = []
+    for k, binds in ports.items():
+        if k.endswith("/tcp") and binds:
+            for b in binds:
+                if str(b.get("HostPort", "")).isdigit() and int(b["HostPort"]) not in out: out.append(int(b["HostPort"]))
+    return out[:3]
+
+def answers(port, timeout=4):
+    """Does something answer HTTP on this port (any status counts — a login page is an answer)?"""
+    import urllib.request, urllib.error, ssl
+    for scheme in ("http", "https"):
+        try:
+            urllib.request.urlopen(urllib.request.Request(f"{scheme}://127.0.0.1:{port}/", headers={"User-Agent": "Nova"}), timeout=timeout,
+                                   context=ssl._create_unverified_context() if scheme == "https" else None)
+            return True
+        except urllib.error.HTTPError: return True
+        except Exception: continue
+    return False
 
 def notify_warn(title, detail):
     t = next((p for p in ("/usr/sbin/nova-alert", "/usr/local/bin/nova-alert") if os.path.exists(p)), None)

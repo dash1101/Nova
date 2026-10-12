@@ -510,3 +510,4 @@ html.material .alertcard { border-radius: 16px; background: var(--card); backdro
 .mapps .appic.img { background-size: 70%; background-position: center; background-repeat: no-repeat; }
 .upnote { display: flex; align-items: center; gap: 10px; margin: 6px var(--gutter); padding: 6px 6px 6px 14px; border-radius: 20px; }
 .upnote svg { width: 20px; height: 20px; }
+.linkbtn { border: 0; background: none; font: inherit; color: var(--link, var(--blue)); font-size: 14px; font-weight: 600; padding: 6px 8px; border-radius: 12px; cursor: pointer; display: block; }

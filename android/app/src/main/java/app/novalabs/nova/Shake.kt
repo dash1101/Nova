@@ -69,7 +69,7 @@ private val SENSES = listOf("low" to "Hard shake", "normal" to "Normal", "high" 
     }
     if (on) {
         Text("How hard to shake", color = N.sub, fontSize = 13.sp, modifier = Modifier.padding(start = 30.dp, top = 12.dp))
-        Segmented(SENSES.map { it.second }, SENSES.indexOfFirst { it.first == AppPrefs.shakeSense }.coerceAtLeast(1)) { AppPrefs.set("shake_sense", SENSES[it].first) }
+        Segmented(SENSES.map { it.second }, SENSES.indexOfFirst { it.first == AppPrefs.shakeSense }.let { if (it < 0) 1 else it }) { AppPrefs.set("shake_sense", SENSES[it].first) }
     }
     if (pick) OneDialog({ pick = false }, "When you shake your ${DeviceForm.noun}") {
         SHAKE_ACTIONS.forEach { (k, l) -> DialogChoice(l, null, AppPrefs.shakeAction == k) {

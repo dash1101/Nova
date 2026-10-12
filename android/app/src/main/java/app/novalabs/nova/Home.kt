@@ -34,13 +34,13 @@ import org.json.JSONObject
 
     val top: @Composable () -> Unit = {
         // Title row
-        Row(Modifier.fillMaxWidth().statusBarsPadding().padding(start = Space.gutter + 8.dp, end = 8.dp, top = 28.dp),
+        Row(Modifier.fillMaxWidth().statusBarsPadding().padding(start = Space.gutter + 8.dp, end = 8.dp, top = if (LocalCompactHeight.current) 8.dp else 28.dp),
             verticalAlignment = Alignment.CenterVertically) {
             var switcher by remember { mutableStateOf(false) }
             Box(Modifier.weight(1f)) {
                 Row(Modifier.clip(androidx.compose.foundation.shape.RoundedCornerShape(16.dp)).clickable { switcher = true },
                     verticalAlignment = Alignment.CenterVertically) {
-                    Text(serverName(app), fontSize = 32.sp, fontWeight = FontWeight.Bold, color = N.text, maxLines = 1,
+                    Text(serverName(app), fontSize = if (LocalCompactHeight.current) 24.sp else 32.sp, fontWeight = FontWeight.Bold, color = N.text, maxLines = 1,
                         overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
                     Icon(Icons.Rounded.KeyboardArrowDown, "Switch server", tint = N.sub)
                 }
@@ -136,8 +136,9 @@ import org.json.JSONObject
         }
         Spacer(Modifier.height(118.dp))
     } else Row(Modifier.fillMaxSize()) {                       // tablet: server on the left, numbers on the right
-        Column(Modifier.weight(1f).verticalScroll(routeScroll())) { top(); if (AppPrefs.homeHero) hero(440.dp); Spacer(Modifier.height(30.dp)) }
-        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).statusBarsPadding().padding(top = 36.dp, end = 8.dp)) {
+        val compact = LocalCompactHeight.current                // a phone on its side: the server picture fits the height
+        Column(Modifier.weight(1f).verticalScroll(routeScroll())) { top(); if (AppPrefs.homeHero) hero(if (compact) 230.dp else 440.dp); Spacer(Modifier.height(if (compact) 12.dp else 30.dp)) }
+        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).statusBarsPadding().padding(top = if (compact) 12.dp else 36.dp, end = 8.dp)) {
             AppPrefs.homeOrder.filter { it != "hero" && sectionOn(it) }.forEach { id ->
                 if (id == "shortcuts") pills() else HomeStats(app); Spacer(Modifier.height(Space.gap)) }
             Spacer(Modifier.height(30.dp))
@@ -166,9 +167,11 @@ import org.json.JSONObject
             if (app.has("lighting")) Quad("Lighting", app.fan?.let { if (it.optBoolean("on")) "${it.optString("effect").replaceFirstChar { c -> c.uppercase() }} · ${it.optInt("brightness")}%" else "Off" } ?: "—",
                 Icons.Rounded.Lightbulb, androidx.compose.ui.graphics.Color(0xFFFFB020)) to { app.go(Route.Lighting) }
             else Quad("Status", "Live graphs", Icons.Rounded.MonitorHeart, androidx.compose.ui.graphics.Color(0xFF3ECF6E)) to { app.go(Route.Status) },
-            Quad("Inbox", if (app.unread > 0) "${app.unread} new" else "All caught up", Icons.Rounded.Notifications, androidx.compose.ui.graphics.Color(0xFFFF5A5A)) to { app.go(Route.Inbox) })
+            Quad("Inbox", if (app.unread > 0) "${app.unread} new" else "All caught up", Icons.Rounded.Notifications, androidx.compose.ui.graphics.Color(0xFFFF5A5A)) to { app.go(Route.Inbox) }) +
+            // your favorites join the live tiles (Edit favorites below to add, remove or reorder them)
+            AppPrefs.favorites.mapNotNull { f -> PLACES.firstOrNull { it.first == f } }.map { (t, _, ir) -> Quad(t, "Favorite", ir.first, N.amber) to { app.go(ir.second) } }
         Column(Modifier.padding(horizontal = Space.gutter, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            tiles.chunked(2).forEach { row -> Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            tiles.chunked(if (LocalWide.current) 4 else 2).forEach { row -> Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 row.forEach { (q, go) -> Column(Modifier.weight(1f).glassCard(androidx.compose.foundation.shape.RoundedCornerShape(24.dp)).clickable { go() }.padding(16.dp)) {
                     Icon(q.icon, null, tint = q.color, modifier = Modifier.size(24.dp)); Spacer(Modifier.height(10.dp))
                     Text(q.title, color = N.text, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
@@ -191,7 +194,9 @@ import org.json.JSONObject
             Cell("All apps", { app.go(Route.Apps) }) { Glyph(Icons.Rounded.Apps, N.sub) }
             if (app.isAdmin) Cell("Add", { app.go(Route.Apps) }) { Glyph(Icons.Rounded.Add, N.blue) }
         }
-        FavoritesGroup(app)
+        Text(if (AppPrefs.favorites.isEmpty()) "☆  Add favorites — any screen, as a tile here" else "Edit favorites", color = N.link, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.padding(start = Space.gutter + 10.dp, top = 2.dp, bottom = 4.dp).clip(androidx.compose.foundation.shape.RoundedCornerShape(12.dp))
+                .clickable { app.go(Route.EditFavorites) }.padding(horizontal = 8.dp, vertical = 6.dp))
         SectionLabel("Server")
         Group {
             Row1("Status", "Live graphs, storage, backups", true, Icons.Rounded.MonitorHeart, androidx.compose.ui.graphics.Color(0xFF3ECF6E), onClick = { app.go(Route.Status) })

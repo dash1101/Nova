@@ -749,19 +749,23 @@ export async function features(ctx) {
 }
 
 // ── Labs: experimental features (off until you turn them on) ─────────────────────────────
-export async function labs(ctx) {
+export const automation = ctx => labs(ctx, true);       // Settings → Automation: the Labs features that have had enough use
+export async function labs(ctx, stable = false) {
+  const title = stable ? "Automation" : "Labs";
   const draw = () => {
     const l = S.cache["/api/v1/labs"];
-    ctx.show(`${note("Experimental features. They work, but haven't had as much use as the rest of Nova — so they're off until you turn them on.")}
-      ${l ? group(Object.entries(l.about).map(([k, a]) => switchRow(a.name, a.about, !!l.labs[k], isAdmin() ? "lab:" + k : "", { blue: !!l.labs[k] })).join("")) : note("Loading…")}
-      ${l && Object.values(l.labs).some(Boolean) ? sec("Set up") : ""}
+    const mine = ([k]) => (l.stable || []).includes(k) === stable;
+    ctx.show(`${note(stable ? "Things the server can take care of by itself. Each is off until you turn it on." : "Experimental features. They work, but haven't had as much use as the rest of Nova — so they're off until you turn them on.")}
+      ${l ? group(Object.entries(l.about).filter(mine).map(([k, a]) => switchRow(a.name, a.about, !!l.labs[k], isAdmin() ? "lab:" + k : "", { blue: !!l.labs[k] })).join("")) : note("Loading…")}
+      ${l && Object.entries(l.labs).filter(mine).some(([, v]) => v) ? sec("Set up") : ""}
       ${l ? group([
-        l.labs.cloudflare_sync ? row("Cloudflare", { sub: "API token, and the addresses Nova has set up", blue: true, icon: "cloud", click: "go:cloudflare" }) : "",
-        l.labs.auto_updates ? row("Weekly updates", { sub: sched ? `${DAYS[sched.day]}s at ${hh(sched.hour)}${sched.last ? " · last ran " + new Date(sched.last * 1000).toLocaleDateString() : ""}` : "…", blue: true, icon: "update", click: isAdmin() ? "sched" : "" }) : "",
-        l.labs.image_cleanup ? row("Old images", { sub: "See what's taking space, and clean it up", blue: true, icon: "disk", click: "go:labs-images" }) : "",
-        l.labs.wake_on_lan ? row("Wake-on-LAN", { sub: "Turn on other computers on your network", blue: true, icon: "power", click: "go:wol" }) : "",
-        l.labs.openrgb ? row("OpenRGB", { sub: "Where it runs, and the devices it has", blue: true, icon: "bulb", click: "go:openrgb" }) : "",
-      ].join("")) : ""}`, { title: "Labs" });
+        !stable && l.labs.cloudflare_sync ? row("Cloudflare", { sub: "API token, the addresses Nova has set up, and who can open them", blue: true, icon: "cloud", click: "go:cloudflare" }) : "",
+        stable && l.labs.auto_updates ? row("Weekly updates", { sub: sched ? `${DAYS[sched.day]}s at ${hh(sched.hour)}${sched.last ? " · last ran " + new Date(sched.last * 1000).toLocaleDateString() : ""}` : "…", blue: true, icon: "update", click: isAdmin() ? "sched" : "" }) : "",
+        stable && l.labs.image_cleanup ? row("Old images", { sub: "See what's taking space, and clean it up", blue: true, icon: "disk", click: "go:labs-images" }) : "",
+        stable && l.labs.wake_on_lan ? row("Wake-on-LAN", { sub: "Turn on other computers on your network", blue: true, icon: "power", click: "go:wol" }) : "",
+        !stable && l.labs.openrgb ? row("OpenRGB", { sub: "Where it runs, and the devices it has", blue: true, icon: "bulb", click: "go:openrgb" }) : "",
+      ].join("")) : ""}
+      ${stable ? group(row("Experimental features (Labs)", { icon: "science", blue: true, click: "go:labs" })) : ""}`, { title });
   };
   ctx.handlers({
     lab: async k => { try { const l = S.cache["/api/v1/labs"]; S.cache["/api/v1/labs"] = await post("/api/v1/labs", { [k]: !l.labs[k] }); } catch (e) { toast(e.message); } draw(); if (k === "auto_updates") loadSched(); },
@@ -850,6 +854,87 @@ export async function openrgb(ctx) {
   draw(); await load();
 }
 
+// Who can open an address: only you · you + guests · anyone — and (Immich) public share links on their own address
+const SESSIONS = [["1h", "1 hour"], ["24h", "1 day"], ["168h", "1 week"], ["720h", "30 days"]];
+export async function access(ctx) {
+  const host = decodeURIComponent(ctx.args[0] || ""), appId = decodeURIComponent(ctx.args[1] || "");
+  let st = null, err = null, share = null, guests = [], session = "24h", loaded = "";
+  const load = async () => {
+    try { st = await get("/api/v1/cloudflare"); err = null; } catch (e) { err = e.message; }
+    if (appId) { try { share = await get(`/api/v1/apps/${encodeURIComponent(appId)}/sharing?host=${encodeURIComponent(host)}`); } catch { share = null; } }
+    const rec = st?.nova?.[host];
+    if (rec && JSON.stringify(rec) !== loaded) { loaded = JSON.stringify(rec); guests = [...(rec.guests || [])]; session = rec.session || "24h"; }
+    if (ctx.alive()) draw();
+  };
+  const draw = () => {
+    if (err) return ctx.show(note(err), { title: "Who can open it" });
+    if (!st) return ctx.show(note("Checking…"), { title: "Who can open it" });
+    const rec = st.nova?.[host], prot = (st.protected || []).includes(host), onTunnel = (st.hostnames || []).includes(host);
+    const outside = !rec && prot, isShare = rec?.kind === "share", mode = rec?.mode || (prot ? "me" : "public");
+    const saved = rec?.guests || [], dirty = mode === "guests" && (JSON.stringify(saved) !== JSON.stringify(guests) || (rec?.session || "24h") !== session);
+    const choice = (k, t, sub, icon) => row(t, { sub, icon, tint: k === "public" ? "var(--amber)" : "var(--blue)", end: radio(mode === k), click: isAdmin() && k !== mode ? "mode:" + k : "" });
+    let sh = "";
+    if (share?.supported) {
+      const ok = share.wanted && (share.external_domain || "").replace(/\/$/, "") === share.wanted;
+      const step = (good, t, sub) => row(t, { sub, icon: good ? "check" : "okc", tint: good ? "var(--green)" : "var(--sub)" });
+      sh = sec("Share links") + note(`Keep ${esc(share.name)} behind the login and still send albums to anyone: a small share proxy serves only what you share, at its own address.`)
+        + group(step(share.running, "Share proxy", share.running ? "Running on the server" : share.installed ? "Installed, not answering yet" : "Not installed yet")
+          + step(share.online, "Share address", share.share_host ? `https://${esc(share.share_host)} — ${share.online ? "open to anyone, share links only" : "not reachable yet"}` : "Not set up yet")
+          + step(ok, `${esc(share.name)} uses it`, !share.wanted ? "After the steps above" : ok ? "Share links point at the share address" : share.external_domain == null ? `Couldn't check — is ${esc(share.name)} running?` : `Set ${esc(share.setting_name)} to ${esc(share.wanted)}`))
+        + (isAdmin() && (!share.share_host || !share.installed) ? group(`<div class="pad"><input class="field" id="shh" value="${esc(share.suggest || "")}" placeholder="share.example.com" autocomplete="off" spellcheck="false"></div>`
+            + row("Set it up", { sub: "Installs the share proxy and opens this address for share links only (approved on your phone)", blue: true, icon: "add", click: "share" }))
+          : share.wanted && !ok ? group(row(`Copy ${esc(share.wanted)}`, { sub: `Then paste it into ${esc(share.setting_name)}`, blue: true, icon: "copy", click: "copyext" })
+            + (share.setting_url ? `<a class="row press" href="${esc(share.setting_url)}" target="_blank" rel="noopener"><div class="t"><b>Open ${esc(share.name)}'s settings</b><small>Sign in as an admin, paste it and save</small></div></a>` : "")
+            + row("Check again", { icon: "refresh", blue: true, click: "recheck" })) : ok ? note(`All set: share links open at ${esc(share.wanted)} for anyone.`) : "");
+    }
+    ctx.show(`${group(`<a class="row press" href="https://${esc(host)}" target="_blank" rel="noopener"><div class="t"><b>${esc(host)}</b><small>${isShare ? "Share links" + (rec.for_host ? " for " + esc(rec.for_host) : "") : outside ? "Behind a login you set up in Cloudflare" : rec?.kind === "protected" ? "Yours — Nova manages its login" : rec ? "Put online by Nova" : onTunnel ? "Yours — open to anyone" : "Not on your tunnel"}</small></div></a>`)}
+      ${outside ? note("Its login was set up in Cloudflare, outside Nova, so Nova doesn't change it. Edit it in Zero Trust → Access → Applications.") : ""}
+      ${isShare ? note("Anyone with a share link can open what you've shared there — nothing else. To stop sharing publicly, take this address off below.") : ""}
+      ${mode === "offline" ? group(row("Off the internet", { sub: "A change didn't finish, so Nova took it offline instead of leaving it open. Pick who can open it to put it back.", icon: "warn", tint: "var(--amber)" })) : ""}
+      ${!outside && !isShare && (rec || onTunnel) ? sec("Who can open it") + group(choice("me", "Only you", "Your Cloudflare login, the same as Nova", "shield")
+          + choice("guests", "You and guests", "People you add by email sign in with a one-time code sent to them", "group") + choice("public", "Anyone", "No login — anyone with the address can open it", "cloud")) : ""}
+      ${mode === "guests" && !isShare ? sec("Guests") + group((guests.map(g => row(g, { icon: "phone", end: isAdmin() ? `<button class="rmbtn press" data-act="rmg:${esc(g)}" aria-label="Remove">${I("del")}</button>` : "" })).join("") || row("No guests yet", { sub: "Add someone by their email address" }))
+          + (isAdmin() ? row("Add a guest", { icon: "add", blue: true, click: "addg" }) : ""))
+        + note("Stays signed in for") + segmented(SESSIONS.map(x => x[1]), Math.max(0, SESSIONS.findIndex(x => x[0] === session)), "sess")
+        + (dirty ? group(row("Save changes", { sub: "Approved on your phone", blue: true, icon: "check", click: "saveg" }) + row("Undo", { icon: "back", click: "undog" })) : "")
+        + note("Guests open the address, type their email, and Cloudflare sends them a code. They can only open this app — not Nova.") : ""}
+      ${sh}
+      ${rec && isAdmin() ? sec("Take it off") + group(row(rec.kind === "protected" ? "Take the login off" : "Take it off the internet", { sub: rec.kind === "protected" ? "It was yours before — it goes back to being open to anyone" : "Nova removes what it added: route, DNS record and login", icon: "del", tint: "var(--red)", click: "rm" })) : ""}`, { title: "Who can open it" });
+    wireCommon(ctx.root, { onSeg: (k, i) => { if (k === "sess") { session = SESSIONS[i][0]; draw(); } } });
+  };
+  const change = async (mode, gs, pub) => {
+    try { await post("/api/v1/cloudflare/access", { host, mode, guests: gs, session, allow_public: !!pub }); toast("Saved"); loaded = ""; } catch (e) { toast(e.message); } load();
+  };
+  ctx.handlers({
+    mode: async k => {
+      const t = { me: "Only you?", guests: "You and guests?", public: `Open ${host} to anyone?` }[k];
+      const d = { me: `Anyone opening ${host} signs in with your Cloudflare login first.`, guests: "You, plus people you add by email. You can add them next — until then it's just you.",
+                  public: "There will be no login at all: anyone who finds the address can open the app. Only do this if the app has its own login you trust." }[k];
+      const cur = st.nova?.[host]?.mode || ((st.protected || []).includes(host) ? "me" : "public");
+      const warn = k !== "public" && (cur === "public" || cur === "offline") ? " Heads-up: an app's own phone app (Immich, Jellyfin, Home Assistant…) can't get past a web login by itself — add a Cloudflare Access service token in its settings first (Immich: Settings → Advanced → Custom proxy headers). Links you've already shared at this address stop working for others; for Immich, set up Share links first." : "";
+      if (!(await confirm(t, d + warn, k === "public" ? "Make it public" : "Change"))) return;
+      change(k, k === "guests" ? guests : [], k === "public");
+    },
+    addg: async () => { let v = "";
+      const p = dialog("Add a guest", "Their email address. They'll get a one-time code there each time they sign in.", [{ label: "Cancel", value: null }, { label: "Add", color: "var(--blue)", value: "add" }], `<div class="pad"><input class="field" id="gm" type="email" placeholder="name@example.com" autocomplete="off"></div>`);
+      $("#gm").oninput = e => v = e.target.value.trim().toLowerCase(); $("#gm").focus();
+      if ((await p) !== "add") return;
+      if (!/^[^@\s]+@[^@\s]+\.[a-z]{2,}$/i.test(v)) return toast("That isn't an email address");
+      if (!guests.includes(v)) guests.push(v); draw(); },
+    rmg: g => { guests = guests.filter(x => x !== g); draw(); },
+    saveg: () => change("guests", guests),
+    undog: () => { const rec = st.nova?.[host]; guests = [...(rec?.guests || [])]; session = rec?.session || "24h"; draw(); },
+    share: async () => { const h = ($("#shh")?.value || "").trim().toLowerCase(); if (!h.includes(".")) return toast("An address like share.example.com");
+      try { const r = await post(`/api/v1/apps/${encodeURIComponent(appId)}/sharing`, { share_host: h, for_host: host }); if (r?.task) ctx.go("task/" + r.task); } catch (e) { toast(e.message); } },
+    copyext: async () => { try { await navigator.clipboard.writeText(share.wanted); toast("Copied"); } catch { toast(share.wanted); } },
+    recheck: () => { share = null; load(); },
+    rm: async () => { const prot = st.nova?.[host]?.kind === "protected";
+      if (!(await confirm(prot ? `Take the login off ${host}?` : `Take ${host} off?`, prot ? "It goes back to how it was before Nova: open to anyone." : "Nova removes the route, the DNS record and the login it added. Nothing else in your Cloudflare account changes.", prot ? "Make it public" : "Take it off"))) return;
+      try { await post("/api/v1/cloudflare/remove", { host, allow_public: prot }); toast("Done"); ctx.go("cloudflare"); } catch (e) { toast(e.message); } },
+  });
+  draw(); await load();
+}
+
 export async function cloudflare(ctx) {
   let st = null, err = null;
   const load = async () => { try { st = await get("/api/v1/cloudflare"); err = null; } catch (e) { err = e.message; } if (ctx.alive()) draw(); };
@@ -869,7 +954,10 @@ export async function cloudflare(ctx) {
       </ol>
       <p class="note">Your tunnel has to be one you run with a token (set up in the Cloudflare dashboard).</p>
       ${st.token && !st.error ? sec("On your tunnel") + group(((st.hostnames || []).map(h => { const kind = (st.nova_added || {})[h], prot = (st.protected || []).includes(h);
-          return row(h, { sub: h === nova ? "Nova itself" : kind === "added" ? "Added by Nova" : kind === "protected" ? "Yours — Nova added the login" : prot ? "Yours · behind the login" : "Yours · open to anyone (no login)",
+          const svcPort = +((st.services || {})[h] || "").replace(/^[a-z]+:\/\/(localhost|127\.0\.0\.1):(\d+).*$/, "$2") || 0;
+          const aid = (S.cache["/api/v1/apps"]?.apps || []).find(a => { try { return new URL(a.remote_url).host === h; } catch { return false; } })?.id
+            || (svcPort && (S.cache["/api/v1/apps"]?.apps || []).find(a => a.port === svcPort)?.id) || "";
+          return row(h, { click: h === nova ? "" : `go:access/${encodeURIComponent(h)}/${encodeURIComponent(aid)}`, sub: h === nova ? "Nova itself" : kind === "added" ? "Added by Nova" : kind === "protected" ? "Yours — Nova added the login" : prot ? "Yours · behind the login" : "Yours · open to anyone (no login)",
           icon: h === nova ? "dns" : "cloud", tint: prot || h === nova ? "var(--green)" : "var(--amber)",
           // only what Nova did can be undone here; everything else stays as you set it up
           end: kind && isAdmin() ? `<button class="rmbtn press" data-act="unpub:${esc(h)}" aria-label="Take it off" title="Take it off">${I("del")}</button>` : "" }); }).join("")) || row("Nothing yet", { sub: "Apps → hold an app → From anywhere…" })) : ""}

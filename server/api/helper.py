@@ -496,6 +496,7 @@ if verb == "discord-test" and not args:
 if verb == "store-list" and not args:
     res = []
     for t in catalog().values():
+        if t.get("companion"): continue                                 # set up from the app it belongs to (Who can open it → Share links)
         inst = os.path.exists(f"/opt/{t['id']}/.nova-store")
         state = ""
         if inst:
@@ -522,13 +523,22 @@ if verb.startswith("cf-") and len(args) <= 1:
         if verb == "cf-token" and args: cfsync.save_token(args[0]); out({"ok": True, **cfsync.status()})
         if verb in ("cf-plan", "cf-apply") and args:
             a = json.loads(args[0]); fn = cfsync.plan if verb == "cf-plan" else cfsync.apply
-            r = fn(a.get("host", ""), a.get("service", ""), bool(a.get("no_tls_verify")))
+            r = fn(a.get("host", ""), a.get("service", ""), bool(a.get("no_tls_verify"))) if verb == "cf-plan" else \
+                fn(a.get("host", ""), a.get("service", ""), bool(a.get("no_tls_verify")), a.get("mode") or "me", a.get("guests"), a.get("session") or "24h", bool(a.get("allow_public")))
             if verb == "cf-apply": changelog(f"Cloudflare: published {r['host']} → {a.get('service')} behind Access (from the Nova app)")
             out(r)
         if verb == "cf-remove" and args:
             a = json.loads(args[0]) if args[0].startswith("{") else {"host": args[0]}
             r = cfsync.remove(a.get("host", ""), bool(a.get("allow_public"))); changelog(f"Cloudflare: took {a.get('host')} off (from the Nova app)"); out(r)
-        if verb == "cf-protect" and args: r = cfsync.protect(args[0]); changelog(f"Cloudflare: put the existing {r['host']} behind the Access login (from the Nova app)"); out(r)
+        if verb == "cf-protect" and args:
+            a = json.loads(args[0]) if args[0].startswith("{") else {"host": args[0]}
+            r = cfsync.protect(a.get("host", ""), a.get("mode", "me"), a.get("guests"), a.get("session")); changelog(f"Cloudflare: put the existing {r['host']} behind a login ({r['mode']}) (from the Nova app)"); out(r)
+        if verb == "cf-access" and args:
+            a = json.loads(args[0])
+            r = cfsync.set_access(a.get("host", ""), a.get("mode", ""), a.get("guests"), a.get("session") or None, bool(a.get("allow_public")))
+            changelog(f"Cloudflare: {r['host']} — who can open it: {r['mode']}" + (f" ({len(r['guests'])} guests)" if r["mode"] == "guests" else "") + " (from the Nova app)"); out(r)
+        if verb == "cf-share-info":                                      # just the record (no Cloudflare calls): what's set up for share links
+            out({"hosts": {h: {k: r.get(k) for k in ("kind", "for_host", "service", "mode", "existing")} for h, r in cfsync.ledger().items()}})
         if verb == "cf-undo-all": r = cfsync.undo_all(bool(args and args[0] == "public")); changelog(f"Cloudflare: undid Nova's changes: {r}"); out({"done": r})
         fail("bad request", 2)
     except ValueError as e: fail(str(e))

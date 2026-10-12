@@ -1,6 +1,10 @@
 package app.novalabs.nova
 
 import kotlinx.coroutines.launch
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.ui.zIndex
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.ui.layout.layout
 import androidx.compose.foundation.border
 import androidx.compose.ui.draw.drawWithContent
@@ -201,8 +205,11 @@ fun levelColor(level: String, t: NovaColors) = when (level) {
 
 /** Fades scrolled content out under the status bar. */
 /** The same soft fade at the bottom edge, so content slides out of sight under the navigation pill. */
+/** A phone on its side: little height, so titles, padding and fades shrink and the status bar hides. */
+val LocalCompactHeight = staticCompositionLocalOf { false }
+
 @Composable fun BottomScrim(modifier: Modifier = Modifier) {
-    Box(modifier.fillMaxWidth().windowInsetsBottomHeight(WindowInsets.navigationBars.add(WindowInsets(bottom = 56.dp)))
+    Box(modifier.fillMaxWidth().windowInsetsBottomHeight(WindowInsets.navigationBars.add(WindowInsets(bottom = if (LocalCompactHeight.current) 16.dp else 56.dp)))
         .background(Brush.verticalGradient(listOf(Color.Transparent, N.bg.copy(alpha = 0.85f), N.bg))))
 }
 
@@ -422,7 +429,7 @@ class PillBead(val x: androidx.compose.animation.core.Animatable<Float, androidx
         LaunchedEffect(idx, apps.size) { if (idx >= 0) with(density) { sc.animateScrollTo(((52.dp * idx) - maxWidth / 2 + 26.dp).roundToPx().coerceIn(0, sc.maxValue)) } }
         Box(contentAlignment = Alignment.Center) {
             Row(Modifier.widthIn(max = maxWidth).fadeEdges(sc, true, 40.dp).horizontalScroll(sc), verticalAlignment = Alignment.CenterVertically) {
-                apps.forEach { s -> PillApp(s, s.id == selected, onApp, false, highlight = !beadMarks, onHold = onHold) }
+                apps.forEach { s -> key(s.id) { PillApp(s, s.id == selected, onApp, false, highlight = !beadMarks, onHold = onHold) } }
             }
             // small arrows on the faded edges: there's more this way
             // (on a small disc of the pill's own color, so it never sits on top of a half-faded icon)
@@ -434,16 +441,44 @@ class PillBead(val x: androidx.compose.animation.core.Animatable<Float, androidx
         }
         return
     }
-    apps.forEach { s -> PillApp(s, s.id == selected, onApp, vertical, highlight = false, onHold = onHold) }
+    apps.forEach { s -> key(s.id) { PillApp(s, s.id == selected, onApp, vertical, highlight = false, onHold = onHold) } }
 }
 
 @Composable private fun PillApp(s: AppSessions.Session, on: Boolean, onApp: (String) -> Unit, vertical: Boolean, highlight: Boolean, onHold: ((String) -> Unit)? = null) {
     run {
         // a cell of the pill's size, with a true circle centered in it: the touch target and, when you're in it, the highlight
-        Box(Modifier.size(if (vertical) 64.dp else 52.dp, 56.dp), contentAlignment = Alignment.Center) {
+        // hold and let go: the app's menu; hold and slide: move it along the dock (one place per cell you slide).
+        // The hold itself comes from the tap handler (so a hold never also opens the app); the slide is only
+        // taken over while holding, so an ordinary swipe still scrolls the dock.
+        var drag by remember { mutableFloatStateOf(0f) }; var dragging by remember { mutableStateOf(false) }; var moved by remember { mutableStateOf(false) }
+        val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
+        val cell = with(androidx.compose.ui.platform.LocalDensity.current) { (if (vertical) 64.dp else 52.dp).toPx() }
+        Box(Modifier.size(if (vertical) 64.dp else 52.dp, 56.dp).zIndex(if (dragging) 1f else 0f)
+            .graphicsLayer { if (vertical) translationY = drag else translationX = drag; val k = if (dragging) 1.12f else 1f; scaleX = k; scaleY = k }
+            .then(if (onHold == null) Modifier else Modifier.pointerInput(s.id) {
+                awaitEachGesture {
+                    awaitFirstDown(requireUnconsumed = false)
+                    while (true) {
+                        val ev = awaitPointerEvent(androidx.compose.ui.input.pointer.PointerEventPass.Initial)
+                        val ch = ev.changes.firstOrNull() ?: break
+                        if (!ch.pressed) break
+                        if (dragging) {
+                            val d = ch.position - ch.previousPosition
+                            drag += if (vertical) d.y else d.x; ch.consume()
+                            val dir = if (drag > cell * 0.6f) 1 else if (drag < -cell * 0.6f) -1 else 0
+                            if (dir != 0 && AppSessions.canMove(s.id, dir)) {
+                                AppSessions.move(s.id, dir); drag -= dir * cell; moved = true
+                                haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
+                            }
+                        }
+                    }
+                    if (dragging && !moved) onHold(s.id)                // held and let go without sliding: the menu
+                    dragging = false; moved = false; drag = 0f
+                }
+            }), contentAlignment = Alignment.Center) {
         Box(Modifier.size(48.dp).clip(CircleShape)
-            .background(if (highlight && on && !N.material) (if (N.dark) Color.White.copy(alpha = 0.14f) else Color.Black.copy(alpha = 0.07f)) else Color.Transparent)
-            .bouncy(onLongClick = onHold?.let { h -> { h(s.id) } }) { onApp(s.id) }, contentAlignment = Alignment.Center) {
+            .background(if ((highlight && on && !N.material) || dragging) (if (N.dark) Color.White.copy(alpha = 0.14f) else Color.Black.copy(alpha = 0.07f)) else Color.Transparent)
+            .bouncy(onLongClick = onHold?.let { { dragging = true; moved = false; haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress) } }) { onApp(s.id) }, contentAlignment = Alignment.Center) {
             val ring = on && N.material
             // Material: a round ring around the icon (centered in the cell), not a squircle hugging it
             Box(Modifier.size(46.dp).then(if (ring) Modifier.border(2.dp, N.blue, CircleShape) else Modifier), contentAlignment = Alignment.Center) {

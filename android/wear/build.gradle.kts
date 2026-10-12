@@ -19,8 +19,8 @@ android {
         applicationId = "app.novalabs.nova"
         minSdk = 30                       // Wear OS 3+
         targetSdk = 36
-        versionCode = 38
-        versionName = "0.6.0-alpha"
+        versionCode = 39
+        versionName = "0.6.1-alpha"
     }
 
     signingConfigs {
@@ -61,5 +61,6 @@ dependencies {
     implementation("androidx.concurrent:concurrent-futures-ktx:1.3.0")
     implementation("com.google.guava:guava:33.4.8-android")
     implementation("androidx.wear:wear-input:1.2.0")
+    implementation("androidx.wear.watchface:watchface-complications-data-source-ktx:1.2.1")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-guava:1.10.2")
 }

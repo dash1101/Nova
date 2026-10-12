@@ -296,8 +296,9 @@ fun openApp(app: AppState, a: JSONObject) {
             listOf(DialogButton("Cancel") { auto = null }, DialogButton("Protect it", N.blue) { auto = null
                 app.act { val r = app.stepUp("Put your existing ${p.optString("host")} behind your Cloudflare login", "POST", "/api/v1/cloudflare/protect",
                         JSONObject().put("host", p.optString("host")).put("app", id))
-                    app.toast("${p.optString("host")} now asks for your login"); Cache.put("/api/v1/apps", app.api.get("/api/v1/apps")); link = r.optString("url"); tick++ } })) {
-            Text("Heads-up: an app's own phone app (Immich, Jellyfin, Home Assistant…) can't get past a web login by itself — it needs a Cloudflare Access service token added in its settings (Immich: Settings → Advanced → Custom proxy headers).",
+                    app.toast("${p.optString("host")} now asks for your login"); Cache.put("/api/v1/apps", app.api.get("/api/v1/apps")); link = r.optString("url"); tick++
+                    onDone(); app.go(Route.Access(p.optString("host"), id)) } })) {
+            Text("Heads-up: an app's own phone app (Immich, Jellyfin, Home Assistant…) can't get past a web login by itself — it needs a Cloudflare Access service token added in its settings (Immich: Settings → Advanced → Custom proxy headers). Next you can add guests, or public share links (Immich).",
                 color = N.amber, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 26.dp)) }
         return }
     if (auto == "plan") { val p = plan ?: return
@@ -322,6 +323,8 @@ fun openApp(app: AppState, a: JSONObject) {
     OneDialog(onDone, "${a.optString("name")} from anywhere", null, listOfNotNull(
         DialogButton("Close") { onDone() },
         if (g?.optString("remote_url")?.isNotEmpty() == true) DialogButton("Check again") { tick++ } else null,
+        if (labsCf && g?.optString("remote_url")?.isNotEmpty() == true) DialogButton("Who can open it", N.blue) {
+            val h = android.net.Uri.parse(g?.optString("remote_url")).host.orEmpty(); onDone(); if (h.isNotEmpty()) app.go(Route.Access(h, id)) } else null,
         if (labsCf && g?.optString("remote_url").isNullOrEmpty() && g?.optString("service")?.isNotEmpty() == true && !editing)
             DialogButton("Set it up for me", N.blue) { autoHost = g?.optString("suggested").orEmpty(); auto = "host" } else null,
         if (editing) DialogButton("Save and check", N.blue, enabled = link.startsWith("https://")) {
@@ -459,6 +462,11 @@ object WebPick { var launch: ((android.content.Intent) -> Unit)? = null; var cb:
                     // downloads (a photo, an export) go to the phone's Downloads, with the page's login cookies
                     setDownloadListener { u, ua, cd, mime, _ ->
                         if (!u.startsWith("http")) { app.toast("This app saves files in a way Nova can't follow yet — open it in your browser for that"); return@setDownloadListener }
+                        // Android 9 needs the storage permission to save into Downloads (10+ doesn't)
+                        if (android.os.Build.VERSION.SDK_INT < 29 && ctx.checkSelfPermission(android.Manifest.permission.WRITE_EXTERNAL_STORAGE) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                            app.activity.requestPermissions(arrayOf(android.Manifest.permission.WRITE_EXTERNAL_STORAGE), 41)
+                            app.toast("Allow storage, then tap download again"); return@setDownloadListener
+                        }
                         runCatching {
                             val name = android.webkit.URLUtil.guessFileName(u, cd, mime)
                             val req = android.app.DownloadManager.Request(android.net.Uri.parse(u)).setMimeType(mime)

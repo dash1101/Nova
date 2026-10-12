@@ -39,7 +39,7 @@ try:                       # optional module: fan/case lighting (modules/fan-gig
 except ImportError:
     nova_rgb = None
 
-API_VERSION = "0.6.0-alpha"
+API_VERSION = "0.6.1-alpha"
 CONFIG = "/etc/nova-api/config.json"
 DATA = "/var/lib/nova-api"
 DEVICES = f"{DATA}/devices.json"
@@ -55,6 +55,16 @@ LABS = {"cloudflare_sync": {"name": "Cloudflare auto-setup", "about": "Put an ap
         "image_cleanup": {"name": "Clean up old images", "about": "See the container images nothing uses anymore (old versions left behind by updates) and remove them to free up space. The versions Nova keeps to roll back to stay."},
         "wake_on_lan": {"name": "Wake-on-LAN", "about": "Turn on other computers on your network from Nova: the server sends them a wake-up packet."},
         "openrgb": {"name": "OpenRGB", "about": "Run your lights through OpenRGB, so Nova's effects work on any RGB device it supports (motherboards, RAM, GPUs, fans, strips). Nova stops talking to the motherboard's lighting controller directly. Needs OpenRGB with its SDK server on."}}
+# Labs features that have had enough use: shown in Settings → Automation instead of Labs (same switches)
+LABS_STABLE = ["crash_guard", "auto_updates", "image_cleanup", "wake_on_lan"]
+
+# Apps with a safe way to share publicly while the app itself stays behind your login (Who can open it → Share links)
+COMPANIONS = {"immich-server": {"id": "immich-public-proxy", "name": "Immich", "port": 3002, "check": "/api/server/config", "field": "externalDomain",
+                                "setting": "/admin/system-settings?isOpen=server", "setting_name": "Administration → Settings → Server → External domain"}}
+def companion_for(app):
+    img = str(app.get("image", "")).split("@")[0].rsplit(":", 1)[0]
+    return next((c for k, c in COMPANIONS.items() if img.endswith("/" + k) or img == k), None)
+
 # Settings → Features: parts of Nova you can switch off (another program does it, or you don't want it).
 # Turning one off here never turns on anything the server's own config (config.json) switched off.
 FEATURES = {"lighting": {"name": "Nova controls the lights", "about": "Off: Nova leaves the RGB controller alone — use this if the board maker's software or OpenRGB runs the lights."},
@@ -476,6 +486,11 @@ def describe_action(a):
     if p == ["cloudflare", "remove"]: return (f"Take Nova's login off {a.get('data', {}).get('host', '?')} — it will be open to anyone" if a.get('data', {}).get('allow_public') is True
                                               else f"Take {a.get('data', {}).get('host', '?')} off your Cloudflare tunnel")
     if p == ["cloudflare", "protect"]: return f"Put your existing {a.get('data', {}).get('host', '?')} behind your Cloudflare Access login"
+    if p == ["cloudflare", "access"]:
+        d = a.get("data", {}); m = d.get("mode")
+        return {"me": f"Only you can open {d.get('host', '?')}", "guests": f"You and {len(d.get('guests') or [])} guest(s) can open {d.get('host', '?')}",
+                "public": f"Make {d.get('host', '?')} open to anyone"}.get(m, f"Change who can open {d.get('host', '?')}")
+    if len(p) == 3 and p[0] == "apps" and p[2] == "sharing": return f"Turn on public share links at {a.get('data', {}).get('share_host', '?')}"
     if p == ["cloudflare", "token"]: return "Save a Cloudflare API token on the server"
     if p == ["apps", "command"]: return f"Save the command app “{a.get('data', {}).get('name', '?')}”: {str(a.get('data', {}).get('command', ''))[:80]}"
     if p[:1] == ["apps"] and p[-1:] == ["run"]: return "Run a command app"
@@ -578,7 +593,8 @@ def needs_stepup(method, parts):
     if parts == ["containers", "custom"]: return True                      # new container: fingerprint
     if parts == ["terminal"]: return True                                   # server terminal: fingerprint
     if parts == ["apps", "command"]: return True                           # what a command app runs: fingerprint
-    if parts in (["cloudflare", "token"], ["cloudflare", "publish"], ["cloudflare", "remove"], ["cloudflare", "protect"]): return True     # changes your Cloudflare account
+    if parts in (["cloudflare", "token"], ["cloudflare", "publish"], ["cloudflare", "remove"], ["cloudflare", "protect"], ["cloudflare", "access"]): return True
+    if method == "POST" and len(parts) == 3 and parts[0] == "apps" and parts[2] == "sharing": return True     # changes your Cloudflare account
     if parts[:1] == ["containers"] and parts[-1:] == ["remove-custom"]: return True
     if parts == ["features"]: return True                                 # switching parts of Nova on/off: fingerprint
     if parts == ["plugins"]: return True                                  # turning a plugin on runs its tools as you: fingerprint
@@ -1412,7 +1428,7 @@ class Handler(BaseHTTPRequestHandler):
             return (200, {"ok": True}) if nodes.remove(parts[1]) else (404, {"error": "no such server"})
         # ── Labs: experimental features, off until you turn them on ──
         if method == "GET" and parts == ["labs"]:
-            return 200, {"labs": {k: bool(load_json(SETTINGS, {}).get("labs", {}).get(k)) for k in LABS}, "about": LABS}
+            return 200, {"labs": {k: bool(load_json(SETTINGS, {}).get("labs", {}).get(k)) for k in LABS}, "about": LABS, "stable": LABS_STABLE}
         if method == "POST" and parts == ["labs"]:
             if role_of(dev) != "admin": return 403, {"error": "admins only"}
             with lock:
@@ -1431,7 +1447,7 @@ class Handler(BaseHTTPRequestHandler):
                             except Exception: pass
                         nova_rgb.apply(st2, nova_rgb.status_override(st2))
                 except Exception as e: print(f"openrgb switch: {e}", file=sys.stderr, flush=True)
-            return 200, {"labs": {k: bool(lb.get(k)) for k in LABS}, "about": LABS}
+            return 200, {"labs": {k: bool(lb.get(k)) for k in LABS}, "about": LABS, "stable": LABS_STABLE}
         if parts[:1] == ["labs"] and len(parts) > 1:
             lb = load_json(SETTINGS, {}).get("labs", {})
             if role_of(dev) != "admin" and not (parts[1] == "wol" and (method == "GET" or parts[-1:] == ["wake"])): return 403, {"error": "admins only"}
@@ -1496,7 +1512,9 @@ class Handler(BaseHTTPRequestHandler):
             if method == "GET" and parts == ["cloudflare"]: rc, res = helper("cf-status", timeout=60); return (200 if rc == 0 else 400), res
             if method == "POST" and parts == ["cloudflare", "token"]: rc, res = helper("cf-token", str(data.get("token", ""))[:200], timeout=60); return (200 if rc == 0 else 400), res
             if method == "POST" and parts[1:] in (["plan"], ["publish"]):
-                spec = json.dumps({"host": str(data.get("host", ""))[:253], "service": str(data.get("service", ""))[:200], "no_tls_verify": bool(data.get("no_tls_verify"))})
+                spec = json.dumps({"host": str(data.get("host", ""))[:253], "service": str(data.get("service", ""))[:200], "no_tls_verify": bool(data.get("no_tls_verify")),
+                                   "mode": str(data.get("mode") or "me"), "guests": [str(g)[:254] for g in (data.get("guests") or [])][:60],
+                                   "session": str(data.get("session") or "24h")[:8], "allow_public": data.get("allow_public") is True})
                 rc, res = helper("cf-plan" if parts[1] == "plan" else "cf-apply", spec, timeout=120)
                 if rc == 0 and parts[1] == "publish" and data.get("app"):
                     cfg = load_json(APPS, {"overrides": {}, "custom": []}); aid = str(data["app"])
@@ -1504,10 +1522,15 @@ class Handler(BaseHTTPRequestHandler):
                     else: cfg.setdefault("overrides", {}).setdefault(aid, {})["remote_url"] = res["url"]
                     save_json(APPS, cfg)
                 return (200 if rc == 0 else 400), res
+            if method == "POST" and parts == ["cloudflare", "access"]:      # who can open an address: only you · you + guests · anyone
+                spec = {"host": str(data.get("host", ""))[:253], "mode": str(data.get("mode", "")), "allow_public": data.get("allow_public") is True,
+                        "guests": [str(g)[:254] for g in (data.get("guests") or [])][:60], "session": str(data.get("session") or "")[:8]}
+                rc, res = helper("cf-access", json.dumps(spec), timeout=180); return (200 if rc == 0 else 400), res
             if method == "POST" and parts == ["cloudflare", "remove"]:
                 rc, res = helper("cf-remove", json.dumps({"host": str(data.get("host", ""))[:253], "allow_public": data.get("allow_public") is True}), timeout=120); return (200 if rc == 0 else 400), res
             if method == "POST" and parts == ["cloudflare", "protect"]:      # an address you already have, open to anyone → behind the login
-                rc, res = helper("cf-protect", str(data.get("host", ""))[:253], timeout=120)
+                rc, res = helper("cf-protect", json.dumps({"host": str(data.get("host", ""))[:253], "mode": str(data.get("mode") or "me"),
+                                 "guests": [str(g)[:254] for g in (data.get("guests") or [])][:60], "session": str(data.get("session") or "24h")[:8]}), timeout=180)
                 if rc == 0 and data.get("app"):
                     cfg = load_json(APPS, {"overrides": {}, "custom": []}); aid = str(data["app"])
                     if aid.startswith("custom-"): cfg["custom"] = [dict(c, remote_url=res["url"]) if c["id"] == aid else c for c in cfg.get("custom", [])]
@@ -1540,6 +1563,39 @@ class Handler(BaseHTTPRequestHandler):
             if role_of(dev) != "admin": return 403, {"error": "admins only"}
             if not re.fullmatch(r"custom-[0-9a-f]{8}", parts[1]) and not plugins.command(parts[1]): return 404, {"error": "no such command app"}
             rc, res = helper("task-start", "run-command", json.dumps({"id": parts[1]})); return (202 if rc == 0 else 400), ({"task": res.get("id"), **res} if rc == 0 else res)
+        if len(parts) == 3 and parts[0] == "apps" and parts[2] == "sharing" and re.fullmatch(r"[A-Za-z0-9_.-]{1,64}", parts[1]):
+            # Share links (Immich and friends): the app stays behind your login; a small companion serves only what you share
+            if role_of(dev) != "admin" or dev.get("type") in ("watch", "wear"): return 403, {"error": "admins only"}
+            a = next((x for x in app_list() if x["id"] == parts[1]), None)
+            if not a: return 404, {"error": "no such app"}
+            c = companion_for(a)
+            if not c: return 200, {"supported": False}
+            if method == "POST":
+                if not load_json(SETTINGS, {}).get("labs", {}).get("cloudflare_sync"): return 403, {"error": "turn on Cloudflare auto-setup in Settings → Labs first"}
+                sh = str(data.get("share_host", "")).strip().lower()[:253]
+                fh = re.sub(r"^https?://", "", a.get("remote_url") or "").split("/")[0] or str(data.get("for_host", ""))[:253]
+                if fh and not re.fullmatch(r"[a-z0-9.-]{3,253}", fh.lower()): raise ValueError("bad address")
+                rc, res = helper("task-start", "share-setup", json.dumps({"companion": c["id"], "share_host": sh, "app_port": a.get("port") or 0, "for_host": fh}))
+                return (202 if rc == 0 else 400), ({"task": res.get("id"), **res} if rc == 0 else res)
+            rc, info = helper("cf-share-info", timeout=20)
+            mine = [h for h, r in (info.get("hosts") or {}).items() if r.get("kind") == "share" and r.get("service") == f"http://localhost:{c['port']}"]
+            share_host = mine[0] if mine else ""
+            def get(url, t=5):
+                try:
+                    with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "Nova"}), timeout=t) as r: return r.status, r.read(200_000)
+                except urllib.error.HTTPError as e: return e.code, b""
+                except Exception: return 0, b""
+            installed = os.path.exists(f"/opt/{c['id']}/.nova-store")
+            local = installed and get(f"http://127.0.0.1:{c['port']}/share/healthcheck")[0] == 200
+            online = bool(share_host) and get(f"https://{share_host}/share/healthcheck", 8)[0] == 200
+            st, body = get(f"http://127.0.0.1:{a.get('port')}{c['check']}")
+            try: ext = json.loads(body).get(c["field"], "") if st == 200 else None
+            except Exception: ext = None
+            app_host = re.sub(r"^https?://", "", a.get("remote_url") or "").split("/")[0] or (q.get("host", "")[:253] if re.fullmatch(r"[a-z0-9.-]{3,253}", q.get("host", "")) else "")
+            suggest = share_host or ("share." + app_host.split(".", 1)[1] if app_host.count(".") >= 2 else "")
+            return 200, {"supported": True, "name": c["name"], "companion": c["id"], "installed": installed, "running": local, "share_host": share_host,
+                         "online": online, "external_domain": ext, "wanted": f"https://{share_host}" if share_host else "", "suggest": suggest,
+                         "setting_name": c["setting_name"], "setting_url": f"https://{app_host}{c['setting']}" if app_host else ""}
         if method == "GET" and len(parts) == 3 and parts[0] == "apps" and parts[2] == "remote" and re.fullmatch(r"[A-Za-z0-9_.-]{1,64}", parts[1]):
             if role_of(dev) != "admin" or dev.get("type") == "watch": return 403, {"error": "admins only"}
             return app_remote(parts[1])

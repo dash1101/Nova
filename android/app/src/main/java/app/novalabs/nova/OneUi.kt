@@ -99,10 +99,11 @@ data class TopAction(val icon: ImageVector, val label: String, val onClick: () -
       Box(Modifier.fillMaxSize().hazeSource(haze)) {
         GlowLayer()
         Column(Modifier.fillMaxSize().verticalScroll(scroll)) {
+            val compact = LocalCompactHeight.current
             Row(Modifier.fillMaxWidth().statusBarsPadding()
-                .padding(start = 68.dp, end = 12.dp + 52.dp * actions.size, top = 18.dp, bottom = 10.dp)
+                .padding(start = 68.dp, end = 12.dp + 52.dp * actions.size, top = if (compact) 8.dp else 18.dp, bottom = if (compact) 4.dp else 10.dp)
                 .heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
-                if (N.material) Text(title, fontSize = 32.sp, fontWeight = FontWeight.Normal, color = N.text, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                if (N.material && !compact) Text(title, fontSize = 32.sp, fontWeight = FontWeight.Normal, color = N.text, maxLines = 2, overflow = TextOverflow.Ellipsis,
                     lineHeight = 38.sp, modifier = Modifier.padding(top = 14.dp))          // M3 large top app bar
                 else Text(title, fontSize = 24.sp, fontWeight = FontWeight.Bold, color = N.text, maxLines = 2, overflow = TextOverflow.Ellipsis)
             }
@@ -121,8 +122,9 @@ data class TopAction(val icon: ImageVector, val label: String, val onClick: () -
     val isTab = app.stack.size == 1 && navTabs(app).any { it.route == app.top }
     if (!isTab) { Page(title, app::back, content = content); return }
     Column(Modifier.fillMaxSize().verticalScroll(routeScroll())) {
-        Text(title, fontSize = 32.sp, fontWeight = FontWeight.Bold, color = N.text,
-            modifier = Modifier.statusBarsPadding().padding(start = Space.gutter + 8.dp, top = 28.dp, bottom = 12.dp))
+        val compact = LocalCompactHeight.current
+        Text(title, fontSize = if (compact) 24.sp else 32.sp, fontWeight = FontWeight.Bold, color = N.text,
+            modifier = Modifier.statusBarsPadding().padding(start = Space.gutter + 8.dp, top = if (compact) 10.dp else 28.dp, bottom = if (compact) 6.dp else 12.dp))
         content()
         Spacer(Modifier.height(40.dp + LocalNavPad.current))
     }

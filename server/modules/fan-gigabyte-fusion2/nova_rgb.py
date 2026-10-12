@@ -12,7 +12,7 @@ shutdown (the ARGB header keeps standby power, so without it the fan stays lit o
 `python3 nova_rgb.py animate` as a service: draws software effects (wave) frame by frame in direct mode,
 because the controller's own wave doesn't render on this board's ARGB header.
 """
-import colorsys, json, math, os, sys, time, uuid
+import colorsys, json, math, os, re, sys, time, uuid
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import fusion2
 import openrgb
@@ -20,7 +20,7 @@ import openrgb
 STATE = "/var/lib/nova-rgb/state.json"
 APPLIED = "/var/lib/nova-rgb/applied.json"     # what's physically on the fan right now
 STATUS = "/var/lib/nova-alerts/www/status.json"
-DEFAULT = {"on": True, "effect": "static", "color": "#005aff", "color2": "#bf5af2", "brightness": 50,
+DEFAULT = {"status_target": "main", "on": True, "effect": "static", "color": "#005aff", "color2": "#bf5af2", "brightness": 50,
            "speed": 50, "speed_v": 2, "rainbow": True, "led_count": 12, "status_light": False, "schedules": [],
            "palette": [], "presets": [], "schedules_paused": False, "location": None,
            # the main light (the fields above are its look) and any extra ones, each with its own look
@@ -37,7 +37,7 @@ RGB_EFFECTS = ["static", "pulse", "blink", "cycle"]        # a plain 12 V RGB he
 ZONE_LOOK = ("on", "effect", "color", "color2", "brightness", "speed", "rainbow", "palette")
 EFFECT_NAMES = ["static", "pulse", "blink", "cycle", "wave", "random", "gradient",
                 "comet", "scanner", "twinkle", "fire", "breathe"]
-SETTABLE = ("on", "effect", "color", "color2", "brightness", "speed", "rainbow", "led_count", "palette")
+SETTABLE = ("on", "effect", "color", "color2", "brightness", "speed", "rainbow", "led_count", "palette", "status_target")
 
 # Drawn frame by frame by `animate` (direct mode) from the clock, so the app can show them in sync;
 # the rest run on the controller.
@@ -80,6 +80,18 @@ def _hex(c):
         raise ValueError("colors must be #rrggbb")
     return c.lower()
 
+def _light_ref(v):
+    """A schedule's light: "main", "all", or one light's id."""
+    v = str(v or "main")
+    if not (v in ("main", "all") or re.fullmatch(r"[0-9a-f]{8}", v)): raise ValueError("schedule light: main, all or a light")
+    return v
+
+def holders(st, ref):
+    """The dicts holding the look of the light(s) a schedule or the status light points at (the main light's look is st itself)."""
+    if ref == "all": return [("main", st)] + [(z["id"], z) for z in st.get("zones", [])]
+    if ref in ("main", None, ""): return [("main", st)]
+    return [(z["id"], z) for z in st.get("zones", []) if z["id"] == ref]
+
 def validate(patch, allow_schedules=True):
     """Allowlist + range checks on everything the app may set."""
     out = {}
@@ -102,6 +114,10 @@ def validate(patch, allow_schedules=True):
             if not 1 <= v <= 120: raise ValueError("led_count 1-120")
             out[k] = v
         elif k in ("rainbow", "status_light", "schedules_paused"): out[k] = bool(v)
+        elif k == "status_target":                       # which light shows the server's health: main, one light's id, or all
+            v = str(v)
+            if not (v in ("main", "all") or re.fullmatch(r"[0-9a-f]{8}", v)): raise ValueError("status light: main, all or a light")
+            out[k] = v
         elif k == "palette":
             if not isinstance(v, list) or len(v) > 8: raise ValueError("palette: up to 8 colors")
             out[k] = [_hex(c) for c in v]
@@ -143,7 +159,8 @@ def validate(patch, allow_schedules=True):
                             "days": days or list(range(7)), "enabled": bool(s.get("enabled", True)),
                             "name": "".join(c for c in str(s.get("name", "")) if c.isprintable())[:30], "set": sset,
                             "preset": preset, "trigger": trig, "offset": off, "fade": fade, "until": until or None,
-                            "skip_next": bool(s.get("skip_next", False)), "if_on": bool(s.get("if_on", False))})
+                            "skip_next": bool(s.get("skip_next", False)), "if_on": bool(s.get("if_on", False)),
+                            "light": _light_ref(s.get("light", "main"))})
             out[k] = sch
         elif k not in ("effects", "speed_v", "status_override", "period_ms", "sun", "running", "name", "shape", "target", "zones", "targets"):   # setup fields change through /lights
             raise ValueError(f"unknown setting {k}")
@@ -278,7 +295,8 @@ def apply(st, override=None):
     looks = []
     for z in all_zones(st):
         eff = dict(z)
-        if z["id"] == "main" and override: eff.update({"palette": [], **override})   # the status light is its own color, never your palette
+        tgt = st.get("status_target", "main")
+        if override and (tgt == "all" or z["id"] == tgt): eff.update({"palette": [], **override})   # the status light is its own color, never your palette
         looks.append(eff)
     o = orgb()
     if o:                                  # OpenRGB owns the hardware: Nova only talks to it
@@ -583,41 +601,47 @@ def tick():
             if not s.get("enabled", True) or now.tm_wday not in s.get("days", range(7)): continue
             target = dict(presets.get(s.get("preset"), {})) or dict(s.get("set", {}))
             start = _minute(s.get("trigger", "time"), s.get("time", "00:00"), s.get("offset", 0), st)
-            if start == minute and not target == {}:
-                if s.get("skip_next"): s["skip_next"] = False; changed = True; continue
-                if s.get("if_on") and not st.get("on", True): continue      # "only if the light is on"
-                r = running.setdefault(s["id"], {})
-                if s.get("until"): r["restore"] = {k: st.get(k) for k in LOOK}
-                fade = int(s.get("fade", 0))
-                if fade > 0 and st.get("on", True):
-                    # Fade: effect/color switch now if they change, brightness glides; turning off fades to 0 first.
-                    r["fade"] = {"t0": now_t, "dur": fade * 60, "b0": st.get("brightness", 50), "c0": st.get("color"),
-                                 "b1": 0 if target.get("on") is False else target.get("brightness", st.get("brightness", 50)),
-                                 "c1": target.get("color", st.get("color")), "off": target.get("on") is False}
-                    st.update({k: v for k, v in target.items() if k not in ("brightness", "color", "on")}); st["on"] = True
-                else:
-                    if fade > 0 and target.get("on", True):          # fading in from off: start dark, glide up
-                        r["fade"] = {"t0": now_t, "dur": fade * 60, "b0": 1, "c0": target.get("color", st.get("color")),
-                                     "b1": target.get("brightness", st.get("brightness", 50)), "c1": target.get("color", st.get("color")), "off": False}
-                        st.update(target); st["brightness"] = 1; st["on"] = True
-                    else: st.update(target)
-                changed = True
-            u = s.get("until")
-            if u and s["id"] in running:
-                end = _minute(u.get("trigger", "time"), u.get("time", "07:00"), u.get("offset", 0), st)
-                if end == minute and "restore" in running[s["id"]]:
-                    st.update({k: v for k, v in running[s["id"]]["restore"].items() if v is not None})
-                    running.pop(s["id"], None); changed = True
+            fired = False
+            for hid, h in holders(st, s.get("light", "main")):            # the light(s) it's for, each on its own
+                key = s["id"] if hid == "main" else f"{s['id']}:{hid}"
+                if start == minute and not target == {}:
+                    if s.get("skip_next"): fired = True; continue
+                    if s.get("if_on") and not h.get("on", True): continue      # "only if the light is on"
+                    r = running.setdefault(key, {"holder": hid})
+                    if s.get("until"): r["restore"] = {k: h.get(k) for k in LOOK}
+                    fade = int(s.get("fade", 0))
+                    if fade > 0 and h.get("on", True):
+                        # Fade: effect/color switch now if they change, brightness glides; turning off fades to 0 first.
+                        r["fade"] = {"t0": now_t, "dur": fade * 60, "b0": h.get("brightness", 50), "c0": h.get("color"),
+                                     "b1": 0 if target.get("on") is False else target.get("brightness", h.get("brightness", 50)),
+                                     "c1": target.get("color", h.get("color")), "off": target.get("on") is False}
+                        h.update({k: v for k, v in target.items() if k not in ("brightness", "color", "on")}); h["on"] = True
+                    else:
+                        if fade > 0 and target.get("on", True):          # fading in from off: start dark, glide up
+                            r["fade"] = {"t0": now_t, "dur": fade * 60, "b0": 1, "c0": target.get("color", h.get("color")),
+                                         "b1": target.get("brightness", h.get("brightness", 50)), "c1": target.get("color", h.get("color")), "off": False}
+                            h.update(target); h["brightness"] = 1; h["on"] = True
+                        else: h.update(target)
+                    changed = True
+                u = s.get("until")
+                if u and key in running:
+                    end = _minute(u.get("trigger", "time"), u.get("time", "07:00"), u.get("offset", 0), st)
+                    if end == minute and "restore" in running[key]:
+                        h.update({k: v for k, v in running[key]["restore"].items() if v is not None})
+                        running.pop(key, None); changed = True
+            if fired and start == minute: s["skip_next"] = False; changed = True
     for sid, r in list(running.items()):           # fades in progress (stepped once a minute)
         f = r.get("fade")
         if not f: continue
+        h = next((x for _, x in holders(st, r.get("holder", "main"))), None)
+        if h is None: running.pop(sid, None); continue                    # that light was removed
         k = min(1.0, (now_t - f["t0"]) / max(1, f["dur"]))
-        st["brightness"] = round(f["b0"] + (f["b1"] - f["b0"]) * k)
-        if f.get("c0") and f.get("c1"): st["color"] = _lerp_hex(f["c0"], f["c1"], k)
+        h["brightness"] = round(f["b0"] + (f["b1"] - f["b0"]) * k)
+        if f.get("c0") and f.get("c1"): h["color"] = _lerp_hex(f["c0"], f["c1"], k)
         if k >= 1:
             r.pop("fade", None)
-            if f.get("off"): st["on"] = False; st["brightness"] = f["b0"]      # off at the end, brightness kept for next time
-            if not r: running.pop(sid, None)
+            if f.get("off"): h["on"] = False; h["brightness"] = f["b0"]      # off at the end, brightness kept for next time
+            if set(r) <= {"holder"}: running.pop(sid, None)
         changed = True
     if changed: save(st)
     ov = status_override(st)

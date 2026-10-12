@@ -6,7 +6,7 @@ import { I, row, group, sec, note, sw, radio, switchRow, links, expand, slider, 
          toast, dialog, confirm, choose, ask, wireCommon, reorderable, onHold, spark, swipeable, colorPicker } from "./ui.js";
 import { animate } from "./hero.js";
 import * as ST from "./storage.js";
-import { favoritesHtml } from "./start.js";
+import { favoriteTiles, favoritesLink } from "./start.js";
 
 // ── catalogs (same ids as the app, so the two read alike) ───────────────────────
 export const SHORTCUTS = [
@@ -177,11 +177,10 @@ export async function menu(ctx) {
     ctx.show(`<button class="searchbox glass" data-act="search" style="width:calc(100% - 2*var(--gutter));text-align:left">${I("search")}<span class="muted" style="font-size:17px">Search Nova</span></button>
       <div class="mtiles">${tile("box", "var(--blue)", "Containers", cs ? `${cs.running}/${cs.total} up` : "—", "go:containers")}${tile("disk", "#3ecf6e", "Storage", disk ? `${disk.name} ${Math.round(disk.pct)}%` : "—", "go:hardware")}
         ${has("lighting") ? tile("bulb", "#ffb020", "Lighting", f ? (f.on !== false ? `${cap(f.effect)} · ${f.brightness}%` : "Off") : "—", "go:lighting") : tile("status", "#3ecf6e", "Status", "Live graphs", "go:status")}
-        ${tile("bell", "#ff5a5a", "Inbox", S.unread ? `${S.unread} new` : "All caught up", "go:inbox")}</div>
+        ${tile("bell", "#ff5a5a", "Inbox", S.unread ? `${S.unread} new` : "All caught up", "go:inbox")}${favoriteTiles(tile)}</div>${favoritesLink()}
       ${sec("Apps")}<div class="mapps">${isAdmin() && has("files") ? cell("Files", glyph("folder", "#3e91ff"), "go:files") : ""}${isAdmin() ? cell("Terminal", glyph("term", "#3ecf6e"), "go:term") : ""}
         ${apps.map(a => { const h = ST.appHref(a); return a.kind === "command" ? cell(a.name, glyph("term", "#8e8e93"), "go:apps") : cell(a.name, `<span class="appic" data-ic="${esc(a.id)}">${esc((a.name || "?")[0])}</span>`, "go:apps", h); }).join("")}
         ${cell("All apps", glyph("apps", "var(--sub)"), "go:apps")}</div>
-      ${favoritesHtml()}
       ${sec("Server")}${group(row("Status", { sub: "Live graphs, storage, backups", blue: true, icon: "status", tint: "#3ecf6e", click: "go:status" })
         + row("Storage & hardware", { sub: "Drives, pools, set up drives", blue: true, icon: "disk", tint: "#3ecf6e", click: "go:hardware" })
         + row("Backups", { sub: "What's backed up, restore files", blue: true, icon: "backup", click: "go:backups" })
@@ -881,7 +880,7 @@ export async function lighting(ctx) {
     const chips = S.lights ? `<div class="chips litchips" style="padding:0 var(--gutter);margin-bottom:6px">${zs.map(x => chip(x.name, "lit:" + x.id, x.id === litCur)).join("")}
         ${isAdmin() ? `<button class="chip press" data-act="go:lights" aria-label="Your lights">${I("tune")} Your lights</button>` : ""}</div>` : "";
     ctx.show(`${chips}${main && shape === "fan" ? `<canvas class="fanhero" id="fh"></canvas>` : ""}
-      ${!main ? note(`Presets, schedules and the status light are for ${esc(mainName)} for now.`) : ""}
+      ${!main ? note(`Presets are for ${esc(mainName)}; a schedule or the status light can be for any light (choose in Schedules / Status light).`) : ""}
       ${main && f.status_override ? `<p class="note" style="color:var(--amber);font-size:14px">Showing server status right now — your setting comes back when it's resolved.</p>` : ""}
       ${!isAdmin() ? note("View-only access — an admin can change the lighting.") : ""}
       ${group(switchRow(main && shape === "fan" && zs.length < 2 ? "Fan light" : esc(f.name || mainName), lit ? "On" : "Off", lit, isAdmin() ? "set:on" : "", { dis: !isAdmin() }))}
@@ -1038,13 +1037,17 @@ export async function schedule(ctx) {
   const v = { name: ex?.name || "", trig: ex?.trigger || "time", time: ex?.time || "22:00", offset: ex?.offset || 0, days: new Set(ex?.days || [0, 1, 2, 3, 4, 5, 6]),
     action: ex?.preset ? 2 : ("on" in s0 && !s0.on) ? 0 : 1, preset: ex?.preset || presets[0]?.id || null, bright: s0.brightness ?? 30, color: s0.color || null, effect: s0.effect || null,
     changeBright: !ex || "brightness" in s0, turnOn: !ex?.if_on,
-    fade: ex?.fade || 0, hasEnd: !!ex?.until, endTrig: ex?.until?.trigger || "time", endTime: ex?.until?.time || "07:00", endOffset: ex?.until?.offset || 0 };
+    fade: ex?.fade || 0, hasEnd: !!ex?.until, endTrig: ex?.until?.trigger || "time", endTime: ex?.until?.time || "07:00", endOffset: ex?.until?.offset || 0,
+    light: ex?.light || "main" };
   const sunKnown = !!S.fan?.sun;
+  const zones = S.lights?.zones || [];                                // with more than one light: which one it's for
   const trigHtml = (pre, trig, time, off) => `${segmented(["Time", "Sunrise", "Sunset"], ["time", "sunrise", "sunset"].indexOf(trig), pre + "trig")}
     ${trig === "time" ? `<div class="timepick"><input type="time" id="${pre}tm" value="${esc(time)}" required></div>`
       : group(slider("Offset", pre + "off", off, -120, 120, off === 0 ? `At ${trig}` : off < 0 ? `${-off} min before` : `${off} min after`) + (sunKnown ? "" : `<p class="note" style="color:var(--amber);margin:0 22px 12px">Set the server's location in Schedules first.</p>`))}`;
   const draw = () => {
-    ctx.show(`${sec("Starts")}${trigHtml("s", v.trig, v.time, v.offset)}
+    const lightPick = zones.length > 1 ? sec("Which light") + group([["main", zones[0]?.name || "Main light"], ...zones.slice(1).map(z => [z.id, z.name]), ["all", "All lights"]]
+      .map(([id, nm]) => row(nm, { icon: "bulb", end: radio(v.light === id), click: "lt:" + id })).join("")) : "";
+    ctx.show(`${lightPick}${sec("Starts")}${trigHtml("s", v.trig, v.time, v.offset)}
       <div class="days">${DAYS.map((d, i) => `<button class="${v.days.has(i) ? "on" : ""}" data-act="day:${i}">${d}</button>`).join("")}</div>
       ${sec("Does")}${segmented(["Turn off", "Set the light", "A preset"], v.action, "action")}
       ${v.action === 1 ? group(switchRow("Change the brightness", v.changeBright ? `To ${v.bright}%` : "No change", v.changeBright, "cb") + (v.changeBright ? slider("Brightness", "b", v.bright, 0, 100, v.bright + "%") : ""))
@@ -1073,6 +1076,7 @@ export async function schedule(ctx) {
   const write = async all => { try { await changeFan({ schedules: all }); ctx.back(); toast("Saved"); } catch (e) { toast(e.message); } };
   ctx.handlers({
     day: i => { i = +i; v.days.has(i) ? v.days.delete(i) : v.days.add(i); draw(); },
+    lt: id => { v.light = id; draw(); },
     col: (_, h) => { v.color = !h || h === "none" || v.color === h ? null : h; draw(); },
     pick: async () => { const c = await colorPicker(v.color || "#3e91ff"); if (c) { v.color = c; draw(); } },
     eff: k => { v.effect = k || null; draw(); }, cb: () => { v.changeBright = !v.changeBright; draw(); }, ton: () => { v.turnOn = !v.turnOn; draw(); }, pre: id => { v.preset = id; draw(); }, fade: m => { v.fade = +m; draw(); }, end: () => { v.hasEnd = !v.hasEnd; draw(); },
@@ -1081,7 +1085,7 @@ export async function schedule(ctx) {
       const all = structuredClone(S.fan?.schedules || []);
       const set = v.action === 0 ? { on: false } : v.action === 1 ? { ...(v.turnOn ? { on: true } : {}), ...(v.changeBright ? { brightness: v.bright } : {}), ...(v.color ? { color: v.color } : {}), ...(v.effect ? { effect: v.effect } : {}) } : {};
       const s = { time: v.time, days: [...v.days].sort(), enabled: true, name: v.name.trim(), trigger: v.trig, offset: v.offset, fade: v.fade, set, preset: v.action === 2 ? v.preset : "",
-        if_on: v.action === 1 && !v.turnOn, ...(v.hasEnd ? { until: { trigger: v.endTrig, time: v.endTime, offset: v.endOffset } } : {}), ...(ex?.id ? { id: ex.id, skip_next: !!ex.skip_next } : {}) };
+        if_on: v.action === 1 && !v.turnOn, light: v.light, ...(v.hasEnd ? { until: { trigger: v.endTrig, time: v.endTime, offset: v.endOffset } } : {}), ...(ex?.id ? { id: ex.id, skip_next: !!ex.skip_next } : {}) };
       if (index >= 0) all[index] = s; else all.push(s); await write(all);
     },
   });
@@ -1209,7 +1213,7 @@ export async function settings(ctx) {
       ${group(row("Notifications", { icon: "bell", click: "go:notify" }) + row("Appearance", { sub: "Theme, Home layout, shortcuts, bottom bar", blue: true, icon: "palette", click: "go:appearance" })
         + row("Setup guide", { sub: "Install Nova on a server, remote access, browsers", blue: true, icon: "book", click: "go:guide" }))}
       ${group(row("Remove this browser", { sub: "Erases its key", icon: "del", tint: "var(--red)", click: "forget" }))}
-      ${sec("Labs")}${group(row("Labs", { sub: "Experimental features you can try", blue: true, icon: "science", tint: "#bf5af2", click: "go:labs" })
+      ${sec("Labs")}${group(row("Automation", { sub: "Crash-loop guard, weekly updates, old-image cleanup, Wake-on-LAN", blue: true, icon: "sync", tint: "#30b0c7", click: "go:automation" }) + row("Labs", { sub: "Experimental features you can try", blue: true, icon: "science", tint: "#bf5af2", click: "go:labs" })
         + row("Features", { sub: "Switch off parts of Nova you don't use, like lighting control", blue: true, icon: "tune", click: "go:features" })
         + row("Plugins", { sub: "Add-ons that bring more apps and tools", blue: true, icon: "widgets", click: "go:plugins" }))}
       ${links([["About Nova", "go:about"]])}`, { title: "Settings" });

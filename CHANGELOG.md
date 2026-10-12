@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.6.1-alpha (app, server and watch)
+- **Who can open it** (Labs → Cloudflare → tap an address, or an app's *Open it from anywhere*): **Only you**, **You and guests** (add people by email — they sign in with a one-time code and can open only that app; choose how long they stay signed in), or **Anyone**. Change it any time; every change asks for your fingerprint, and switching logins never leaves the address open in between (if something fails it goes offline, never public).
+- **Share links for Immich:** keep Immich behind the login and still send albums to family — Nova installs a read-only share proxy and puts it on a share address (or uses yours if it already points there), then shows exactly which Immich setting to change and checks it. Works the same from the web.
+- **Your own icon colors:** Settings → App icon → *Your own colors* — pick the background and symbol color and add that Nova icon to your home screen.
+- **Phone in landscape:** the status bar steps aside, titles and padding shrink, the server picture fits, Menu shows its tiles four across.
+- **Dock:** hold and slide an app to move it (hold and let go still opens its menu).
+- **Favorites are Menu tiles** now, right after the live ones.
+- **Settings → Automation:** the crash-loop guard, weekly updates, old-image cleanup and Wake-on-LAN graduate from Labs (same switches). Labs keeps the experimental ones.
+- **Lighting:** a schedule can be for any light (or all of them), and the status light can show on whichever light you pick.
+- **After a container update,** Nova also checks that its web page answers again, and tells you if it doesn't within 2 minutes.
+- **Watch:** a *Nova status* complication for your watch face (status word or a CPU ring).
+- **Android 9:** downloads in web apps work (Nova asks for storage access the first time).
+- Fixed: picking *Hard shake* showed *Normal*. Cloudflare token steps fold away once you're connected.
+
 ## 0.6.0-alpha (app, server and watch)
 - **Cloudflare, safely:** Nova keeps a record of exactly what it adds for each address, and only ever removes those parts — your own routes, DNS records and Access settings are never touched. Every other tunnel rule stays, in order; a setup that fails halfway is rolled back.
 - **Address already in use?** *Set it up for me* never overwrites it: it offers a free name nearby (like `photos-nova.example.com`), or — for an address already on your tunnel but open to anyone — **Protect it**, which puts just the Cloudflare login in front of it (route and DNS record stay). It warns that the app's own phone app then needs an Access service token.

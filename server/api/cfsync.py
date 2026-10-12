@@ -109,6 +109,7 @@ def status():
         except ValueError: call("GET", f"/accounts/{acct}/tokens/verify")   # …or one made under Manage Account
         cfg = call("GET", f"/accounts/{acct}/cfd_tunnel/{tun}/configurations") or {}
         out["hostnames"] = [r["hostname"] for r in (cfg.get("config") or {}).get("ingress", []) if r.get("hostname")]
+        out["services"] = {r["hostname"]: r.get("service", "") for r in (cfg.get("config") or {}).get("ingress", []) if r.get("hostname")}
         a = access_app(acct); out["access_app"] = a.get("name"); out["protected"] = _domains(a)
         # addresses an older Nova published (before the record): their DNS record says "Added by Nova" — note them once
         led = ledger(); new = False
@@ -119,6 +120,9 @@ def status():
             if rec: led[h] = {**rec, "service": next((r.get("service") for r in (cfg.get("config") or {}).get("ingress", []) if r.get("hostname") == h), None), "legacy": True}; new = True
         if new: _save_ledger(led)
         out["nova_added"] = {h: ("protected" if r.get("protected_existing") else "added") for h, r in led.items()}   # only these can be taken off from Nova
+        out["nova"] = {h: {"kind": r.get("kind") or ("protected" if r.get("protected_existing") else "existing" if r.get("existing") else "added"),
+                           "mode": r.get("mode") or ("me" if r.get("access") else "public"), "guests": r.get("guests", []), "session": r.get("session"),
+                           "for_host": r.get("for_host"), "service": r.get("service")} for h, r in led.items()}
     except ValueError as e: out["error"] = str(e)
     return out
 
@@ -162,24 +166,12 @@ def plan(host, service, no_tls_verify=False):
                       f"Add a DNS record: {host} → your tunnel",
                       f"Send {host} to {service} on the server" + (" (without checking its certificate)" if no_tls_verify else "")]}
 
-def protect(host):
-    """An address you already have on this tunnel, open to anyone: put it behind Nova's Access login.
-    Only the Access application changes — your route and DNS record stay exactly as they are."""
-    host = str(host).strip().lower()
-    if not re.fullmatch(HOST_RE, host) or host == _nova_host(): raise ValueError("bad address")
-    acct, tun = tunnel(); zid, _ = zone_for(host)
-    cfg = (call("GET", f"/accounts/{acct}/cfd_tunnel/{tun}/configurations") or {}).get("config") or {}
-    route = next((r for r in cfg.get("ingress") or [] if r.get("hostname") == host), None)
-    if not route: raise ValueError(f"{host} isn't on your tunnel")
-    if not any(r.get("type") == "CNAME" and r.get("content", "") == f"{tun}.cfargotunnel.com" for r in call("GET", f"/zones/{zid}/dns_records?name={host}") or []):
-        raise ValueError(f"{host}'s DNS record doesn't point at this tunnel — Nova leaves it alone")
-    a = access_app(acct); doms = _domains(a)
-    if host in doms: raise ValueError(f"{host} is already behind the login")
-    call("PUT", f"/accounts/{acct}/access/apps/{a['id']}", _access_body(a, doms + [host]))
-    led = ledger(); led[host] = {"service": route.get("service"), "zone": zid, "added": int(__import__("time").time()),
-                                 "access": True, "dns_id": None, "route": False, "protected_existing": True}
-    _save_ledger(led)
-    return {"ok": True, "host": host, "url": f"https://{host}"}
+def protect(host, mode="me", guests=None, session=None):
+    """An address you already have on this tunnel, open to anyone: put a login in front of it (yours, or
+    yours + guests). Only Access changes — your route and DNS record stay exactly as they are."""
+    if mode not in ("me", "guests"): raise ValueError("protect with: me or guests")
+    r = set_access(host, mode, guests, session)
+    return {**r, "url": f"https://{r['host']}"}
 
 def _access_body(a, doms):
     body = {k: v for k, v in a.items() if k not in ("id", "aud", "created_at", "updated_at", "policies", "self_hosted_domains", "domain", "destinations", "uid")}
@@ -193,16 +185,86 @@ def _with_rule(ingress, rule):
     if ingress and not ingress[-1].get("hostname") and not ingress[-1].get("path"): return ingress[:-1] + [rule, ingress[-1]]
     return ingress + [rule, {"service": "http_status:404"}]
 
-def apply(host, service, no_tls_verify=False):
+MODES = ("me", "guests", "public")       # who can open an address: your login · your login + guests · anyone
+# (a record can also say "offline": a change failed halfway, so its route is parked off the tunnel until the next try)
+SESSIONS = ("1h", "24h", "168h", "720h")
+EMAIL_RE = r"[^@\s<>\"']{1,64}@[A-Za-z0-9.-]{1,190}\.[A-Za-z]{2,24}"
+
+def _guests(gs):
+    out = []
+    for g in gs or []:
+        g = str(g).strip().lower()
+        if not re.fullmatch(EMAIL_RE, g): raise ValueError(f"“{g[:60]}” isn't an email address")
+        if g not in out: out.append(g)
+    if len(out) > 50: raise ValueError("50 guests at most")
+    return out
+
+def _owner_policies(acct):
+    """The allow rules on Nova's own login (your email, …), to reuse on an app's own login."""
+    a = access_app(acct)
+    ps = [p for p in a.get("policies") or [] if p.get("decision") == "allow" and p.get("id")]
+    if not ps: raise ValueError("Nova's Access application has no Allow policy to reuse — add one in Cloudflare (Access → Applications → your Nova app)")
+    if any(not p.get("reusable", True) for p in ps):
+        raise ValueError("Nova's Access login uses older, non-reusable policies — in Cloudflare, convert them to reusable policies first")
+    return [p["id"] for p in ps]
+
+def _guest_policy(acct, host, guests, pid=None):
+    body = {"name": f"Nova guests · {host}", "decision": "allow", "include": [{"email": {"email": g}} for g in guests]}
+    if pid: call("PUT", f"/accounts/{acct}/access/policies/{pid}", body); return pid
+    return call("POST", f"/accounts/{acct}/access/policies", body)["id"]
+
+def _own_app(acct, host, guests, session, app_id=None, pid=None):
+    """An Access application just for this address: your own login rules, plus a guest list Nova keeps."""
+    pid = _guest_policy(acct, host, guests or ["nobody@invalid.example"], pid)   # (an empty include would let no one in anyway)
+    owner = _owner_policies(acct)
+    keep = []
+    if app_id:   # an edit: keep every policy you added yourself (a service token for the app's phone app, say)
+        cur = next((a for a in call("GET", f"/accounts/{acct}/access/apps") or [] if a.get("id") == app_id), None) or {}
+        keep = [p["id"] for p in cur.get("policies") or [] if p.get("id") and p["id"] != pid and p["id"] not in owner]
+    pols = [{"id": x, "precedence": i + 1} for i, x in enumerate(owner + keep)] + [{"id": pid, "precedence": len(owner) + len(keep) + 1}]
+    body = {"name": f"{host} (Nova)", "type": "self_hosted", "domain": host, "destinations": [{"type": "public", "uri": host}],
+            "session_duration": session if session in SESSIONS else "24h", "app_launcher_visible": False, "policies": pols}
+    if app_id: call("PUT", f"/accounts/{acct}/access/apps/{app_id}", body); return app_id, pid
+    return call("POST", f"/accounts/{acct}/access/apps", body)["id"], pid
+
+def _protect(acct, host, rec, mode, guests, session):
+    """Put the protection for `mode` in place (nothing for public), recording what was made."""
+    if mode == "me":
+        a = access_app(acct); doms = _domains(a)
+        if host not in doms: call("PUT", f"/accounts/{acct}/access/apps/{a['id']}", _access_body(a, doms + [host])); rec["access"] = True
+    elif mode == "guests":
+        rec["app_id"], rec["policy_id"] = _own_app(acct, host, guests, session)
+        rec["guests"], rec["session"] = guests, session
+    rec["mode"] = mode
+
+def _unprotect(acct, host, rec):
+    """Take away exactly the protection Nova put on (its own app and guest list, or its entry on Nova's login)."""
+    if rec.get("app_id"):
+        try: call("DELETE", f"/accounts/{acct}/access/apps/{rec['app_id']}")
+        except ValueError as e:
+            if "not found" not in str(e).lower(): raise
+        rec.pop("app_id", None)
+    if rec.get("policy_id"):
+        try: call("DELETE", f"/accounts/{acct}/access/policies/{rec['policy_id']}")
+        except ValueError: pass                                        # an orphaned, empty guest list is harmless
+        rec.pop("policy_id", None)
+    if rec.get("access"):
+        a = access_app(acct); doms = _domains(a)
+        if host in doms and len(doms) > 1: call("PUT", f"/accounts/{acct}/access/apps/{a['id']}", _access_body(a, [d for d in doms if d != host]))
+        rec["access"] = False
+
+def apply(host, service, no_tls_verify=False, mode="me", guests=None, session="24h", allow_public=False, kind=None, for_host=None):
+    if mode not in MODES: raise ValueError("who can open it: me, guests or public")
+    if mode == "public" and not allow_public: raise ValueError("making an address public needs your confirmation")
+    guests = _guests(guests)
     p = plan(host, service, no_tls_verify); host = p["host"]
     if p.get("conflict"): raise ValueError(f"{host} is in use: {p['why']}")
     acct, tun = tunnel(); zid, _ = zone_for(host)
-    rec = {"service": service, "zone": zid, "added": int(__import__("time").time()), "access": False, "dns_id": None, "route": False}
+    rec = {"service": service, "zone": zid, "added": int(__import__("time").time()), "access": False, "dns_id": None, "route": False, "mode": mode}
+    if kind: rec.update(kind=kind, for_host=for_host)
     try:
-        # 1. protect first
-        a = access_app(acct); doms = _domains(a)
-        if host not in doms:
-            call("PUT", f"/accounts/{acct}/access/apps/{a['id']}", _access_body(a, doms + [host])); rec["access"] = True
+        # 1. protect first (a public address has nothing to protect)
+        _protect(acct, host, rec, mode, guests, session)
         # 2. name
         r = call("POST", f"/zones/{zid}/dns_records", {"type": "CNAME", "name": host, "content": f"{tun}.cfargotunnel.com", "proxied": True,
                                                        "comment": "Added by Nova"})
@@ -219,6 +281,80 @@ def apply(host, service, no_tls_verify=False):
     led = ledger(); led[host] = rec; _save_ledger(led)
     return {"ok": True, "host": host, "url": f"https://{host}"}
 
+def _route_off(acct, tun, host):
+    cur = (call("GET", f"/accounts/{acct}/cfd_tunnel/{tun}/configurations") or {}).get("config") or {}
+    rule = next((r for r in cur.get("ingress") or [] if r.get("hostname") == host), None)
+    if rule: call("PUT", f"/accounts/{acct}/cfd_tunnel/{tun}/configurations", {"config": {**cur, "ingress": [r for r in cur["ingress"] if r.get("hostname") != host]}})
+    return rule
+
+def _route_on(acct, tun, rule):
+    if not rule: return
+    cur = (call("GET", f"/accounts/{acct}/cfd_tunnel/{tun}/configurations") or {}).get("config") or {}
+    if any(r.get("hostname") == rule["hostname"] for r in cur.get("ingress") or []): return
+    call("PUT", f"/accounts/{acct}/cfd_tunnel/{tun}/configurations", {"config": {**cur, "ingress": _with_rule(cur.get("ingress"), rule)}})
+
+def _existing_open(host, acct, tun):
+    """Your own address on this tunnel, open to anyone (not Nova's): a record Nova can start from."""
+    zid, _ = zone_for(host)
+    cfg = (call("GET", f"/accounts/{acct}/cfd_tunnel/{tun}/configurations") or {}).get("config") or {}
+    route = next((r for r in cfg.get("ingress") or [] if r.get("hostname") == host), None)
+    if not route: raise ValueError(f"{host} isn't on your tunnel")
+    if not any(r.get("type") == "CNAME" and r.get("content", "") == f"{tun}.cfargotunnel.com" for r in call("GET", f"/zones/{zid}/dns_records?name={host}") or []):
+        raise ValueError(f"{host}'s DNS record doesn't point at this tunnel — Nova leaves it alone")
+    if host in _domains(access_app(acct)): raise ValueError(f"{host} is already behind your login (set up outside Nova) — change it in Cloudflare")
+    return {"service": route.get("service"), "zone": zid, "added": int(__import__("time").time()), "access": False, "dns_id": None,
+            "route": False, "protected_existing": True, "mode": "public"}
+
+def set_access(host, mode, guests=None, session=None, allow_public=False):
+    """Change who can open an address Nova manages (or your own open one): only you, you + guests, or anyone.
+    Moving between two kinds of login takes the address off the tunnel for the few seconds it takes,
+    so it's never reachable without a login in between; if anything fails it stays off (safe) and says so."""
+    host = str(host).strip().lower()
+    if not re.fullmatch(HOST_RE, host) or host == _nova_host(): raise ValueError("bad address")
+    if mode not in MODES: raise ValueError("who can open it: me, guests or public")
+    acct, tun = tunnel(); led = ledger()
+    rec = led.get(host) or _legacy(host, acct, tun) or _existing_open(host, acct, tun)
+    old = rec.get("mode") or ("me" if rec.get("access") else "public")
+    if old == "offline" and mode == "public" and not allow_public: raise ValueError(f"anyone could open {host} — confirm to make it public")
+    guests = _guests(guests if guests is not None else rec.get("guests"))
+    session = session if session in SESSIONS else rec.get("session") or "24h"
+    if mode == "public" and old != "public" and not allow_public: raise ValueError(f"anyone could open {host} — confirm to make it public")
+    if mode == old == "guests":                                          # just the list or the session length
+        rec["app_id"], rec["policy_id"] = _own_app(acct, host, guests, session, rec.get("app_id"), rec.get("policy_id"))
+        rec["guests"], rec["session"] = guests, session
+    elif mode != old:
+        if mode == "guests": _owner_policies(acct)                      # anything that can fail is checked before the address goes offline
+        # moving from one login to another (or out of "offline" after a failed try): off the tunnel meanwhile
+        if old not in ("public", "offline") and mode != "public": rec["parked_route"] = _route_off(acct, tun, host)
+        try:
+            _unprotect(acct, host, rec)
+            _protect(acct, host, rec, mode, guests, session)
+        except ValueError as e:
+            if rec.get("parked_route"): rec["mode"] = "offline"
+            led[host] = rec; _save_ledger(led)                           # remember what's there now, whatever happened
+            if rec.get("parked_route"): raise ValueError(f"{e} — {host} is off the internet until this works (nothing was left open); try again")
+            raise
+        _route_on(acct, tun, rec.pop("parked_route", None))
+    rec["mode"] = mode
+    if mode != "guests": rec.pop("guests", None)
+    led[host] = rec; _save_ledger(led)
+    return {"ok": True, "host": host, "mode": mode, "guests": rec.get("guests", []), "session": rec.get("session")}
+
+def share(share_host, service, for_host):
+    """The public address for an app's share links (e.g. Immich's share proxy). Uses your own existing route
+    to the same place if there is one (and records it, changing nothing); otherwise adds it, open to anyone."""
+    share_host = str(share_host).strip().lower()
+    p = plan(share_host, service)
+    led = ledger()
+    if p.get("conflict"):
+        c = p["conflict"]
+        if c["route"] and c["route_service"] == service and c["dns_to_tunnel"] and not c["protected"]:
+            led[share_host] = {"service": service, "existing": True, "kind": "share", "for_host": for_host, "mode": "public",
+                               "access": False, "route": False, "dns_id": None, "added": int(__import__("time").time())}
+            _save_ledger(led); return {"ok": True, "host": share_host, "url": f"https://{share_host}", "existing": True}
+        raise ValueError(f"{share_host} is in use: {p['why']}" + (f" — try {p['suggest']}" if p.get("suggest") else ""))
+    return apply(share_host, service, mode="public", allow_public=True, kind="share", for_host=for_host)
+
 def _undo(host, rec, acct, tun):
     """Remove exactly the parts recorded in `rec`, in the safe order (route, name, then protection)."""
     if rec.get("route"):
@@ -230,9 +366,7 @@ def _undo(host, rec, acct, tun):
         try: r = call("GET", f"/zones/{zid}/dns_records/{rec['dns_id']}")
         except ValueError: r = None                                # already gone
         if r and r.get("type") == "CNAME" and r.get("content", "").endswith(".cfargotunnel.com"): call("DELETE", f"/zones/{zid}/dns_records/{rec['dns_id']}")
-    if rec.get("access"):
-        a = access_app(acct); doms = _domains(a)
-        if host in doms and len(doms) > 1: call("PUT", f"/accounts/{acct}/access/apps/{a['id']}", _access_body(a, [d for d in doms if d != host]))
+    _unprotect(acct, host, rec)
 
 def _legacy(host, acct, tun):
     """An address published by an older Nova (before the record): its DNS record carries "Added by Nova"."""
@@ -247,9 +381,10 @@ def remove(host, allow_public=False):
     acct, tun = tunnel(); led = ledger()
     rec = led.get(host) or _legacy(host, acct, tun)
     if not rec: raise ValueError(f"Nova didn't put {host} on your tunnel, so it leaves it alone — change it in the Cloudflare dashboard")
-    if rec.get("protected_existing") and not allow_public:
+    if rec.get("protected_existing") and rec.get("mode", "me") not in ("public",) and not allow_public:
         raise ValueError(f"{host} was yours before Nova protected it: taking Nova off only removes the login, so it would be open to anyone again. Confirm to do that")
-    _undo(host, rec, acct, tun)
+    if not rec.get("existing"): _undo(host, rec, acct, tun)          # (a share address that was already yours: just forgotten)
+    if rec.get("protected_existing") and rec.get("parked_route"): _route_on(acct, tun, rec["parked_route"])   # yours, as it was
     led.pop(host, None); _save_ledger(led)
     return {"ok": True}
 

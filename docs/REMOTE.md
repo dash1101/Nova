@@ -57,3 +57,23 @@ for me**. Nova shows what it will change and asks for your fingerprint first.
 - **Undo everything** (for example before uninstalling): `sudo nova cloudflare undo`. It lists what
   it will remove and asks. Addresses that were yours before keep their login unless you add
   `--unprotect`.
+
+## Who can open an address
+
+Labs → Cloudflare → tap an address (or an app's *Open it from anywhere* → **Who can open it**):
+
+- **Only you** — your Cloudflare login, the same as Nova.
+- **You and guests** — add people by email; they sign in with a one-time code Cloudflare emails them, and can open only that app. Pick how long they stay signed in (1 hour to 30 days). Nova gives the address its own Access application that reuses your login rule plus a guest list Nova keeps (reusable Access policies — the token's *Access: Apps and Policies · Edit* covers them).
+- **Anyone** — no login (asks you to confirm).
+
+Switching between *Only you* and *You and guests* takes the address off the tunnel for the few seconds the switch takes, so it's never reachable without a login in between. If anything fails it stays off (safe) and the page says so; picking again puts it back.
+
+## Share links (Immich)
+
+Keep Immich behind the login and still send albums to anyone: **Share links** installs
+[immich-public-proxy](https://github.com/alangrainger/immich-public-proxy) (read-only; it serves only
+what you've shared) and opens a share address (like `share.example.com`) on your tunnel for it — or,
+if that address already points at the proxy's port, just uses it. Then set Immich's
+*Administration → Settings → Server → External domain* to the share address (Nova links you there and
+checks it), and every share link Immich makes opens there for anyone, without your library, login page
+or API being reachable.

@@ -6,6 +6,11 @@ import android.content.pm.PackageManager
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
@@ -90,9 +95,61 @@ object AppIcon {
             }
         }
     }
+    var custom by remember { mutableStateOf(false) }
+    Group { Row1("Your own colors", "Pick the background and the symbol's color — added to your home screen as a Nova icon", true, Icons.Rounded.Palette, onClick = { custom = true }) }
+    if (custom) CustomIconDialog(app) { custom = false }
     Text("Material You follows your wallpaper's colors. With themed icons on (Android 13+), every choice turns into your phone's themed style.",
         color = N.sub, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 30.dp, vertical = 4.dp))
     ask?.let { c -> OneDialog({ ask = null }, "Use the ${c.label} icon?",
         "Your home screen switches to it in a moment. If Nova was on your home screen, you may need to add it there again.",
         listOf(DialogButton("Cancel") { ask = null }, DialogButton("Change", N.blue) { ask = null; AppIcon.set(ctx, c.id); cur = c.id; app.toast("App icon changed") })) }
+}
+
+/** Nova's symbol in your colors, as an adaptive icon bitmap (the launcher masks it into its own shape). */
+fun customIconBitmap(ctx: Context, bg: Int, fg: Int, px: Int = 432): android.graphics.Bitmap {
+    val bmp = android.graphics.Bitmap.createBitmap(px, px, android.graphics.Bitmap.Config.ARGB_8888)
+    val c = android.graphics.Canvas(bmp); c.drawColor(bg)
+    ctx.getDrawable(R.drawable.ic_launcher_monochrome)!!.mutate().apply { setBounds(0, 0, px, px); setTint(fg) }.draw(c)
+    return bmp
+}
+
+private val ICON_SWATCHES = listOf(0xFF0A0A0C, 0xFF1C2541, 0xFF0B3D91, 0xFF2F80ED, 0xFF00A86B, 0xFF6FCF97, 0xFFFFB340, 0xFFFF6B35,
+    0xFFE63946, 0xFFFF4FA3, 0xFF9B5DE5, 0xFFF2F2F7, 0xFFFFFFFF).map { it.toInt() }
+
+/** Settings → App icon → Your own colors: background + symbol color, previewed, then pinned to the home screen. */
+@Composable fun CustomIconDialog(app: AppState, onDone: () -> Unit) {
+    val ctx = LocalContext.current
+    val sp = remember { ctx.getSharedPreferences("nova_icon", Context.MODE_PRIVATE) }
+    var bg by remember { mutableIntStateOf(sp.getInt("bg", 0xFF1C2541.toInt())) }
+    var fg by remember { mutableIntStateOf(sp.getInt("fg", 0xFFFFFFFF.toInt())) }
+    val preview = remember(bg, fg) { customIconBitmap(ctx, bg, fg, 216).asImageBitmap() }
+    @Composable fun Swatches(label: String, cur: Int, pick: (Int) -> Unit) {
+        Text(label, color = N.sub, fontSize = 13.sp, modifier = Modifier.padding(start = 22.dp, top = 8.dp, bottom = 6.dp))
+        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 18.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            ICON_SWATCHES.forEach { c ->
+                Box(Modifier.size(34.dp).clip(androidx.compose.foundation.shape.CircleShape).background(androidx.compose.ui.graphics.Color(c))
+                    .border(if (c == cur) 3.dp else 1.dp, if (c == cur) N.blue else N.divider, androidx.compose.foundation.shape.CircleShape).clickable { pick(c) })
+            }
+        }
+        var hex by remember(cur) { mutableStateOf("#%06X".format(cur and 0xFFFFFF)) }
+        OneTextField(hex, { v -> hex = v.take(7); Regex("#?([0-9a-fA-F]{6})").matchEntire(v.trim())?.let { pick(0xFF000000.toInt() or it.groupValues[1].toInt(16)) } },
+            "#RRGGBB", Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 6.dp), mono = true)
+    }
+    OneDialog(onDone, "Your own colors", "Android only lets an app switch between icons it ships with, so this adds a Nova icon in your colors to your home screen (you can remove the old one).",
+        listOf(DialogButton("Cancel", onClick = onDone), DialogButton("Add to home screen", N.blue) {
+            sp.edit().putInt("bg", bg).putInt("fg", fg).apply()
+            val ok = androidx.core.content.pm.ShortcutManagerCompat.isRequestPinShortcutSupported(ctx) &&
+                androidx.core.content.pm.ShortcutManagerCompat.requestPinShortcut(ctx, androidx.core.content.pm.ShortcutInfoCompat.Builder(ctx, "nova-custom-${bg}-${fg}")
+                    .setShortLabel("Nova").setIcon(androidx.core.graphics.drawable.IconCompat.createWithAdaptiveBitmap(customIconBitmap(ctx, bg, fg)))
+                    .setIntent(android.content.Intent(android.content.Intent.ACTION_MAIN).setComponent(android.content.ComponentName(ctx.packageName, ctx.packageName + ".OpenNova"))).build(), null)
+            app.toast(if (ok) "Confirm on the next screen to add it" else "Your home screen app doesn't allow adding icons")
+            onDone() })) {
+        Column {
+            Box(Modifier.fillMaxWidth().padding(vertical = 8.dp), contentAlignment = Alignment.Center) {
+                Image(preview, "Preview", Modifier.size(84.dp).clip(RoundedCornerShape(26.dp)))
+            }
+            Swatches("Background", bg) { bg = it }
+            Swatches("Symbol", fg) { fg = it }
+        }
+    }
 }

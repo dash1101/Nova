@@ -64,11 +64,13 @@ val PLACES: List<Triple<String, String, Pair<ImageVector, Route>>> = listOf(
     Triple("Setup guide", "help install how to", Icons.Rounded.Help to Route.SetupGuide),
     Triple("About", "version license", Icons.Rounded.Info to Route.About),
     Triple("Labs", "labs experimental beta features try new", Icons.Rounded.Science to Route.Labs),
+    Triple("Automation", "automation automatic crash guard weekly updates cleanup wake on lan", Icons.Rounded.AutoMode to Route.Automation),
+    Triple("Who can open it", "cloudflare guests share links public login access immich family album", Icons.Rounded.Group to Route.Labs),
     Triple("Cloudflare auto-setup", "cloudflare tunnel domain dns access remote from anywhere public address publish app labs", Icons.Rounded.Cloud to Route.Labs),
-    Triple("Crash-loop guard", "crash loop restart restarting container keeps crashing stop guard labs", Icons.Rounded.Shield to Route.Labs),
-    Triple("Weekly container updates", "automatic updates weekly schedule containers images auto update labs", Icons.Rounded.Update to Route.Labs),
-    Triple("Clean up old images", "docker images prune free space disk cleanup old versions labs", Icons.Rounded.CleaningServices to Route.Labs),
-    Triple("Wake-on-LAN", "wake on lan wol turn on computer pc magic packet labs", Icons.Rounded.PowerSettingsNew to Route.Labs),
+    Triple("Crash-loop guard", "crash loop restart restarting container keeps crashing stop guard automation", Icons.Rounded.Shield to Route.Automation),
+    Triple("Weekly container updates", "automatic updates weekly schedule containers images auto update automation", Icons.Rounded.Update to Route.Automation),
+    Triple("Clean up old images", "docker images prune free space disk cleanup old versions automation", Icons.Rounded.CleaningServices to Route.Automation),
+    Triple("Wake-on-LAN", "wake on lan wol turn on computer pc magic packet automation", Icons.Rounded.PowerSettingsNew to Route.Automation),
     Triple("App icon", "app icon launcher icon home screen outline glass black white material you color", Icons.Rounded.Palette to Route.Appearance),
     Triple("Server terminal", "terminal shell bash console command line root sudo", Icons.Rounded.Terminal to Route.Ssh),
     Triple("Approve a browser or watch", "approve browser watch wear code pair computer", Icons.Rounded.Watch to Route.Devices),
@@ -207,7 +209,7 @@ fun searchNova(app: AppState, q0: String, data: Map<String, org.json.JSONObject?
 
 @Composable fun EditFavoritesScreen(app: AppState) {
     Page("Favorites", app::back) {
-        Text("Starred screens appear at the top of Menu, in this order.", color = N.sub, fontSize = 14.sp, modifier = Modifier.padding(horizontal = 30.dp, vertical = 6.dp))
+        Text("Starred screens are tiles in Menu, after the live ones, in this order.", color = N.sub, fontSize = 14.sp, modifier = Modifier.padding(horizontal = 30.dp, vertical = 6.dp))
         Group {
             PLACES.forEachIndexed { i, (t, _, ir) ->
                 if (i > 0) RowDivider()

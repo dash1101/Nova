@@ -1,0 +1,13 @@
+{
+ "id": "immich-public-proxy",
+ "name": "Immich share links",
+ "category": "Photos",
+ "icon": "immich",
+ "port": 3002,
+ "path": "/share/healthcheck",
+ "image": "alangrainger/immich-public-proxy:latest",
+ "companion": "immich",
+ "description": "Lets anyone open the albums and photos you share from Immich, at their own address, while Immich itself stays behind your login. Read-only; it only passes through what you've shared.",
+ "params": {"PUBLIC_URL": "https_url", "IMMICH_PORT": "port"},
+ "compose": "services:\n  immich-public-proxy:\n    image: alangrainger/immich-public-proxy:latest\n    container_name: immich-public-proxy\n    restart: unless-stopped\n    ports:\n      - \"{PORT}:3000\"\n    read_only: true\n    cap_drop:\n      - ALL\n    security_opt:\n      - no-new-privileges\n    extra_hosts:\n      - \"host.docker.internal:host-gateway\"\n    environment:\n      PUBLIC_BASE_URL: {PUBLIC_URL}\n      IMMICH_URL: http://host.docker.internal:{IMMICH_PORT}\n    healthcheck:\n      test: curl -sf -m 4 http://localhost:3000/share/healthcheck -o /dev/null || exit 1\n      start_period: 10s\n      timeout: 5s\n"
+}
