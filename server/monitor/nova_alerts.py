@@ -23,6 +23,7 @@ sensible default for any Debian machine: mounts come from /etc/fstab, services f
 
 Commands:  nova_alerts.py                  one check pass (the timer runs this every minute)
            nova_alerts.py dismiss <key>    hide an alert you've dealt with (drive:<serial> = removed on purpose)
+           nova_alerts.py undismiss <key>  stop ignoring it (it's active again)
            nova_alerts.py forget-drive <serial|name>
            nova_alerts.py test             send a test alert
 """
@@ -187,6 +188,7 @@ class Monitor:
         self.st.setdefault("outbox", [])       # unsent pushes
         self.st.setdefault("counters", {})     # misc (consecutive failures, SMART baselines…)
         self.st.setdefault("dismissed", {})    # key -> time: dismissed in the app, re-armed once it clears
+        self.st.setdefault("ignored", {})      # key -> {level,title,detail,since}: what a dismissed alert still says (Inbox → Ignored)
         self.seen = set()                      # condition keys observed this run
         self.seen_dismissed = set()
         self.pushes = []
@@ -204,7 +206,10 @@ class Monitor:
         if not active:
             return
         if key in self.st["dismissed"]:          # you said you'd dealt with it: quiet until it clears
-            self.seen_dismissed.add(key); return
+            self.seen_dismissed.add(key)
+            ig = self.st["ignored"].setdefault(key, {"since": self.st["dismissed"][key]})
+            ig.update(level=level, title=title, detail=detail)
+            return
         self.seen.add(key)
         c = conds.get(key)
         if c is None:
@@ -688,6 +693,11 @@ class Monitor:
                         "since": human_age(now() - c["since"]), "detail": c.get("detail", "")}
                        for k, c in sorted(self.st["conditions"].items(), key=lambda kc: (-LEVELS[kc[1]["level"]], kc[1]["since"]))]
                       or [{"level": "ok", "title": "🟢 Nothing active", "since": "", "detail": ""}],
+            # still going on, but you said to ignore it until it clears (the Inbox shows these folded away)
+            "ignored": [{"level": c.get("level", "warning"), "title": f"{ICONS.get(c.get('level'), '•')} {c.get('title', k)}", "key": k,
+                         "since": human_age(now() - c.get("since", now())), "detail": c.get("detail", ""),
+                         "ignored": human_age(now() - self.st["dismissed"].get(k, now()))}
+                        for k, c in sorted(self.st["ignored"].items(), key=lambda kc: -LEVELS.get(kc[1].get("level"), 0)) if k in self.st["dismissed"]],
             "recent": [{"title": f"{ICONS.get(r['level'], '•')} {r['title']}", "time": r["time"],
                         "level": r["level"], "detail": r.get("detail", "")} for r in self.st["recent"][:30]],
             "metrics": self.metrics,
@@ -721,6 +731,8 @@ class Monitor:
                              "svc:", "ctr:", "web:", "backup:", "sys:"])
         for k in list(self.st["dismissed"]):       # cleared since you dismissed it → alert again next time
             if k not in self.seen_dismissed: self.st["dismissed"].pop(k, None)
+        for k in list(self.st["ignored"]):
+            if k not in self.st["dismissed"]: self.st["ignored"].pop(k, None)
         # keep metrics that are only refreshed occasionally (e.g. websites every 5 min)
         self.metrics = {**self.st.get("last_metrics", {}), **self.metrics}
         for retired in ("photo_backup",):        # metrics that no longer exist
@@ -750,7 +762,7 @@ def main():
     if os.geteuid() != 0:
         print("run as root", file=sys.stderr); sys.exit(1)
     os.makedirs(os.path.dirname(STATE_FILE), exist_ok=True)
-    command = len(sys.argv) > 1 and sys.argv[1] in ("forget-drive", "dismiss", "delete-event", "restore-event", "test")
+    command = len(sys.argv) > 1 and sys.argv[1] in ("forget-drive", "dismiss", "undismiss", "delete-event", "restore-event", "test")
     with open(LOCK_FILE, "w") as lf:
         if command:                      # a command must not silently do nothing: wait for a running pass
             end = time.time() + 120
@@ -809,10 +821,24 @@ def main():
                 for d in ("drives", "smart", "smart_baseline"): m.st["counters"].get(d, {}).pop(serial, None)
             else:
                 m.st["dismissed"][key] = now()
+                if c: m.st["ignored"][key] = {k: c.get(k) for k in ("level", "title", "detail", "since")}
             if c: m._record("info", f"Dismissed: {c['title']}", "From the Nova app. It will alert again if it comes back after clearing." if not key.startswith("drive:") else "From the Nova app: removed on purpose.", "condition")
             m.first_run = False; m.metrics = m.st.get("last_metrics", {}); m.write_status()
             write_json_atomic(STATE_FILE, m.st, 0o600)
             print(json.dumps({"ok": True, "dismissed": key, "found": bool(c)}))
+            return
+        if len(sys.argv) > 2 and sys.argv[1] == "undismiss":
+            # Stop ignoring: it's an active alert again right away (no second notification for it)
+            key = sys.argv[2]
+            if not re.fullmatch(r"[a-z]+:[\w./:@+-]{1,200}", key): print("bad key", file=sys.stderr); sys.exit(2)
+            m = Monitor(); was = m.st["dismissed"].pop(key, None); ig = m.st["ignored"].pop(key, None)
+            if ig and ig.get("title"):
+                m.st["conditions"][key] = {"level": ig.get("level") or "warning", "title": ig["title"], "detail": ig.get("detail", ""),
+                                           "since": ig.get("since") or now(), "last_push": now()}
+                m._record("info", f"Not ignored anymore: {ig['title']}", "From the Nova app.", "condition")
+            m.first_run = False; m.metrics = m.st.get("last_metrics", {}); m.write_status()
+            write_json_atomic(STATE_FILE, m.st, 0o600)
+            print(json.dumps({"ok": True, "undismissed": key, "found": was is not None}))
             return
         if len(sys.argv) > 2 and sys.argv[1] == "forget-drive":
             # A drive you removed on purpose: stop reporting it as missing.

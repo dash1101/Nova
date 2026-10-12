@@ -11,13 +11,23 @@
   --body: "Figtree", system-ui, -apple-system, "Segoe UI", sans-serif;
   --mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
   --measure: 64ch;
+  /* the phone picture: Nova's own light theme here, its dark theme below */
+  --p-frame: #e9e6f2; --p-frame-line: #d6d1e6; --p-bg: #f4f3f8; --p-glow: #e2dbf7; --p-glow2: #dce6fa; --p-ink: #111015; --p-sub: #6d6d73;
+  --p-card: #ffffff; --p-card-ink: #111015; --p-chip-ink: #2a2733; --p-icon: #cfc8e3; --p-case1: #f2f1f6; --p-case2: #dedce6; --p-case-line: #cfccd9;
+  --p-hub: #f7f6fa; --p-hub2: #e4e2ea; --p-hub3: #ecebf1; --p-bar: #e7e5ee; --p-pill: rgba(255,255,255,.92); --p-pill-on: rgba(0,0,0,.07); --p-shadow: rgba(70, 40, 160, .28);
 }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
   --bg: #0d0b14; --surface: #17141f; --ink: #efeaff; --muted: #a49eb8; --line: #2a2538;
-  --accent: #c9b8ff; --accent-soft: #2a2145; --led: #3ecf6e; --code-bg: #07060b; --code-ink: #e9e4ff; color-scheme: dark } }
+  --accent: #c9b8ff; --accent-soft: #2a2145; --led: #3ecf6e; --code-bg: #07060b; --code-ink: #e9e4ff; color-scheme: dark;
+  --p-frame: #050409; --p-frame-line: #2b2640; --p-bg: #000; --p-glow: #2e2560; --p-glow2: #1a2550; --p-ink: #f2efff; --p-sub: #b9b3cf;
+  --p-card: #1e1d23; --p-card-ink: #fff; --p-chip-ink: #e6e2f3; --p-icon: #4b4560; --p-case1: #1d1b22; --p-case2: #121116; --p-case-line: #2f2c38;
+  --p-hub: #2a2830; --p-hub2: #141318; --p-hub3: #1c1b21; --p-bar: #2f2c38; --p-pill: rgba(40,38,48,.92); --p-pill-on: rgba(255,255,255,.12); --p-shadow: rgba(70, 40, 160, .55); } }
 :root[data-theme="dark"] {
   --bg: #0d0b14; --surface: #17141f; --ink: #efeaff; --muted: #a49eb8; --line: #2a2538;
-  --accent: #c9b8ff; --accent-soft: #2a2145; --led: #3ecf6e; --code-bg: #07060b; --code-ink: #e9e4ff; color-scheme: dark }
+  --accent: #c9b8ff; --accent-soft: #2a2145; --led: #3ecf6e; --code-bg: #07060b; --code-ink: #e9e4ff; color-scheme: dark;
+  --p-frame: #050409; --p-frame-line: #2b2640; --p-bg: #000; --p-glow: #2e2560; --p-glow2: #1a2550; --p-ink: #f2efff; --p-sub: #b9b3cf;
+  --p-card: #1e1d23; --p-card-ink: #fff; --p-chip-ink: #e6e2f3; --p-icon: #4b4560; --p-case1: #1d1b22; --p-case2: #121116; --p-case-line: #2f2c38;
+  --p-hub: #2a2830; --p-hub2: #141318; --p-hub3: #1c1b21; --p-bar: #2f2c38; --p-pill: rgba(40,38,48,.92); --p-pill-on: rgba(255,255,255,.12); --p-shadow: rgba(70, 40, 160, .55); }
 
 * { box-sizing: border-box; }
 body { background: var(--bg); color: var(--ink); font: 400 1.0625rem/1.6 var(--body); padding-inline: 20px; padding-block: 0 48px; }
@@ -57,29 +67,32 @@ code, .mono { font-family: var(--mono); font-size: .92em; }
 .note { font-size: .9rem; color: var(--muted); }
 
 /* the phone, drawn in Nova's own UI */
-.phone { justify-self: center; width: min(320px, 100%); aspect-ratio: 9 / 19; border-radius: 44px; padding: 12px; background: #050409;
-  box-shadow: 0 30px 80px -30px rgba(70, 40, 160, .55), inset 0 0 0 1.5px #2b2640; }
-.screen { height: 100%; border-radius: 34px; overflow: hidden; color: #f2efff; font-family: var(--body);
-  background: radial-gradient(120% 60% at 85% 10%, #2e2560 0%, transparent 60%), radial-gradient(90% 50% at 0% 40%, #1a2550 0%, transparent 60%), #000;
+.phone { justify-self: center; width: min(320px, 100%); aspect-ratio: 9 / 19; border-radius: 44px; padding: 12px; background: var(--p-frame);
+  box-shadow: 0 30px 80px -30px var(--p-shadow), inset 0 0 0 1.5px var(--p-frame-line); }
+.screen { height: 100%; border-radius: 34px; overflow: hidden; color: var(--p-ink); font-family: var(--body);
+  background: radial-gradient(120% 60% at 85% 10%, var(--p-glow) 0%, transparent 60%), radial-gradient(90% 50% at 0% 40%, var(--p-glow2) 0%, transparent 60%), var(--p-bg);
   padding: 26px 16px 16px; display: flex; flex-direction: column; gap: 12px; }
 .screen .sb { display: flex; justify-content: space-between; font-size: .7rem; opacity: .8; }
 .screen .t { font: 800 1.45rem/1.1 var(--display); }
-.screen .ok { font-size: .78rem; color: #b9b3cf; display: flex; align-items: center; gap: 6px; }
+.screen .ok { font-size: .78rem; color: var(--p-sub); display: flex; align-items: center; gap: 6px; }
 .screen .ok i { width: 9px; height: 9px; border-radius: 50%; background: #3ecf6e; }
-.case { align-self: center; width: 46%; aspect-ratio: 3 / 4; border-radius: 12px; background: linear-gradient(#1d1b22, #121116); box-shadow: inset 0 0 0 1px #2f2c38; display: grid; place-items: center; padding: 10px; gap: 6px; }
+.case { align-self: center; width: 46%; aspect-ratio: 3 / 4; border-radius: 12px; background: linear-gradient(var(--p-case1), var(--p-case2)); box-shadow: inset 0 0 0 1px var(--p-case-line); display: grid; place-items: center; padding: 10px; gap: 6px; }
 .fan { width: 72%; aspect-ratio: 1; border-radius: 50%; background: conic-gradient(from 0deg, #3e91ff, #7c5cff, #bf5af2, #3e91ff); padding: 4px; animation: spin 6s linear infinite; }
-.fan::after { content: ""; display: block; width: 100%; height: 100%; border-radius: 50%; background: radial-gradient(circle, #2a2830 18%, #141318 19% 60%, #1c1b21 61%); }
+.fan::after { content: ""; display: block; width: 100%; height: 100%; border-radius: 50%; background: radial-gradient(circle, var(--p-hub) 18%, var(--p-hub2) 19% 60%, var(--p-hub3) 61%); }
 .leds { display: flex; gap: 5px; } .leds b { width: 5px; height: 5px; border-radius: 50%; background: #3ecf6e; opacity: .9; }
 .leds b:nth-child(3) { animation: blink 1.6s steps(2) infinite; }
-.chips { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; background: #1e1d23; border-radius: 18px; padding: 10px 6px; font-size: .62rem; text-align: center; color: #e6e2f3; }
-.chips span::before { content: ""; display: block; width: 16px; height: 16px; margin: 0 auto 4px; border-radius: 5px; background: #4b4560; }
+.chips { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; background: var(--p-card); border-radius: 18px; padding: 10px 6px; font-size: .62rem; text-align: center; color: var(--p-chip-ink); }
+.chips span::before { content: ""; display: block; width: 16px; height: 16px; margin: 0 auto 4px; border-radius: 5px; background: var(--p-icon); }
 .tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.tile { background: #1e1d23; border-radius: 16px; padding: 10px 12px; font-size: .65rem; color: #a6a1b9; }
-.tile b { display: block; font: 700 1.15rem/1.2 var(--display); color: #fff; font-variant-numeric: tabular-nums; }
-.bar { height: 4px; border-radius: 2px; background: #2f2c38; margin-top: 6px; overflow: hidden; } .bar i { display: block; height: 100%; border-radius: 2px; }
-.pill { margin-top: auto; align-self: center; display: flex; gap: 6px; background: rgba(40,38,48,.92); border-radius: 30px; padding: 5px; }
-.pill span { width: 46px; height: 32px; border-radius: 16px; } .pill span.on { background: rgba(255,255,255,.12); }
+.tile { background: var(--p-card); border-radius: 16px; padding: 10px 12px; font-size: .65rem; color: var(--p-sub); }
+.tile b { display: block; font: 700 1.15rem/1.2 var(--display); color: var(--p-card-ink); font-variant-numeric: tabular-nums; }
+.bar { height: 4px; border-radius: 2px; background: var(--p-bar); margin-top: 6px; overflow: hidden; } .bar i { display: block; height: 100%; border-radius: 2px; }
+.pill { margin-top: auto; align-self: center; display: flex; gap: 6px; background: var(--p-pill); border-radius: 30px; padding: 5px; box-shadow: 0 4px 14px -6px rgba(0,0,0,.25); }
+.pill span { width: 46px; height: 32px; border-radius: 16px; } .pill span.on { background: var(--p-pill-on); }
 @keyframes spin { to { transform: rotate(360deg); } }
+/* switching light ↔ dark: a soft crossfade of the whole page (or, without View Transitions, the colors ease over) */
+::view-transition-old(root), ::view-transition-new(root) { animation-duration: .45s; animation-timing-function: ease; }
+html.theming, html.theming * { transition: background-color .45s ease, color .45s ease, border-color .45s ease, box-shadow .45s ease, fill .45s ease !important; }
 @keyframes blink { 50% { opacity: .25; } }
 @media (prefers-reduced-motion: reduce) { .fan, .leds b { animation: none; } }
 
@@ -97,6 +110,7 @@ section { padding-block: 64px; border-top: 1px solid var(--line); }
 .step { background: var(--surface); border: 1px solid var(--line); border-radius: 18px; padding: 20px; display: grid; gap: 8px; align-content: start; counter-increment: s; }
 .step::before { content: counter(s); font: 800 1.6rem/1 var(--display); color: var(--accent); }
 .step p { font-size: .97rem; color: var(--muted); }
+.faqh { font-size: 1.05rem; margin: 26px 0 6px; color: var(--muted); font-family: var(--body); font-weight: 600; letter-spacing: .02em; }
 .sig { margin-top: 26px; overflow-x: auto; background: var(--code-bg); color: var(--code-ink); border-radius: 14px; padding: 18px 20px; font: 500 .9rem/1.7 var(--mono); }
 .sig .k { color: #8f86b3; }
 
@@ -204,7 +218,7 @@ footer { padding-block: 40px 10px; border-top: 1px solid var(--line); display: f
         <div class="step"><h3>Least privilege on the server</h3><p>The API runs unprivileged in a systemd sandbox. The only root code is a helper with a fixed list of commands.</p></div>
       </div>
       <div class="sig" aria-label="What each request signs"><span class="k">signed message =</span> METHOD ␤ PATH ␤ TIME_MS ␤ NONCE ␤ sha256(BODY)<br><span class="k">key =</span> EC P-256 in the Android Keystore (StrongBox when the phone has one), never exportable</div>
-      <p class="note" style="margin-top:14px">Every release is checked with a 142-point security test, and update packages are signed. Remote access goes through Cloudflare Access, so nothing is open to the internet.</p>
+      <p class="note" style="margin-top:14px">Every release is checked with an automated security test of more than 400 checks, and update packages are signed. Remote access goes through Cloudflare Access, so nothing is open to the internet.</p>
     </section>
 
     <section id="install">
@@ -245,6 +259,20 @@ sudo nova backup now      <span># back up right away</span></pre>
 
     <section id="faq">
       <div class="sec-head"><p class="eyebrow">Questions</p><h2>Good to know</h2></div>
+      <h3 class="faqh">Safety and privacy</h3>
+      <details><summary>Can Nova read or send away my data?</summary><p>No. Nova runs on your own server and the app only ever talks to that server. There's no Nova account, no Nova cloud and no analytics or tracking of any kind. Your files, photos and settings never pass through anyone else. The code is open source, so anyone can check this for themselves.</p></details>
+      <details><summary>What does Nova connect to on the internet?</summary><p>Only the services you'd expect, and never with your data. GitHub, to check for and download signed Nova updates. Your system's package mirrors and container registries (Docker Hub, GitHub's registry and others), when you install or update programs and apps. Cloudflare and Tailscale, only if you set them up for remote access. Discord, only if you add a webhook for alerts. Docker Hub's search, when you search the app store. A speed-test server, when you run a speed test. A public icon set, for app icons. DuckDuckGo, for search suggestions on the Start page as you type (you can turn them off).</p></details>
+      <details><summary>Is it safe to install on my server?</summary><p>Nova's API runs as its own unprivileged user in a systemd sandbox. The only part with root rights is a small helper that can run a fixed list of commands, and each one checks its input. Your containers, files and SSH settings are left alone unless you ask Nova to change them, and the risky changes also need your fingerprint.</p></details>
+      <details><summary>What can someone do with a stolen phone or browser?</summary><p>Very little. The phone's key only works after the phone is unlocked, and anything risky needs your fingerprint too. A browser can never do anything risky by itself: it asks an admin phone first. Remove a lost device with <code>sudo nova remove NAME</code> and its key stops working instantly.</p></details>
+      <details><summary>How is Nova tested?</summary><p>Every release goes through an automated security test of more than 400 checks against a real server: forged and replayed requests, stolen keys, path tricks, oversized requests, brute force, and more. Releases are signed, and the server only installs updates whose signature checks out.</p></details>
+      <h3 class="faqh">Undoing things</h3>
+      <details><summary>How do I uninstall Nova completely?</summary><p><code>sudo apt remove nova-server</code> stops Nova and removes it. Your containers, apps and data stay exactly as they are. <code>sudo apt purge nova-server</code> also deletes Nova's settings and the list of paired devices. If Nova put apps on your Cloudflare account, run <code>sudo nova cloudflare undo</code> first. It lists what it added and asks before taking anything off.</p></details>
+      <details><summary>Can I undo what Nova changed on Cloudflare?</summary><p>Yes. Nova keeps a record of exactly what it added, and only ever removes those things. <code>sudo nova cloudflare list</code> shows them and <code>sudo nova cloudflare undo</code> takes them off. An address you had before Nova protected it keeps its login unless you say otherwise.</p></details>
+      <details><summary>An update broke a container. Can I go back?</summary><p>Yes. When Nova updates a container it keeps the version it replaced. If the new one won't start, Nova puts the old one back by itself. Any time later, open Containers → the container → Troubleshoot → Go back to the previous version.</p></details>
+      <details><summary>I ignored an alert or archived something by mistake.</summary><p>Ignored alerts that are still going on stay in the Inbox under "Ignored", with a "Stop ignoring" button. Archived events are kept on the server, and you can move them back from Inbox → Archive.</p></details>
+      <details><summary>Can I go back to an older Nova version?</summary><p>Yes. Download that version's <code>.deb</code> from the releases page and install it with <code>sudo apt install ./nova-server_VERSION_all.deb</code> (apt asks you to confirm going back). Your settings and paired devices stay on the server.</p></details>
+      <h3 class="faqh">Using it</h3>
+      <details><summary>Can I control several servers from one place?</summary><p>Yes. Add your other servers under Servers in Nova web, then pick one to control it from the same page. Each server checks your browser itself, so the first time you approve your browser on that server, once.</p></details>
       <details><summary>Do I need to open ports on my router?</summary><p>No. At home the app talks to the server directly. For access from anywhere, Nova uses a Cloudflare Tunnel with Cloudflare Access in front, or Tailscale if you already use it.</p></details>
       <details><summary>Is there an iPhone app?</summary><p>Not yet. iPhone users can use Nova web in Safari. Risky actions are approved on an Android phone, a watch paired with it, or with <code>sudo nova approve</code> on the server.</p></details>
       <details><summary>What happens if I lose my phone?</summary><p>Run <code>sudo nova remove NAME</code> on the server, or remove it from another phone. Its keys can never be used again.</p></details>
@@ -262,9 +290,16 @@ sudo nova backup now      <span># back up right away</span></pre>
   const root = document.documentElement, btn = document.getElementById("theme"), label = btn.querySelector("span");
   const sys = () => matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
   const cur = () => root.dataset.theme || sys();
-  const paint = () => { label.textContent = cur() === "dark" ? "Light" : "Dark"; };
+  const MOON = "M12 3a9 9 0 1 0 9 9 7 7 0 0 1-9-9z", SUN = "M12 7a5 5 0 1 0 0 10 5 5 0 0 0 0-10zM11 1h2v3h-2zM11 20h2v3h-2zM1 11h3v2H1zM20 11h3v2h-3zM4.2 2.8l2.1 2.1-1.4 1.4-2.1-2.1zM17.7 18.1l2.1 2.1-1.4 1.4-2.1-2.1zM18.1 6.3l2.1-2.1 1.4 1.4-2.1 2.1zM2.8 19.8l2.1-2.1 1.4 1.4-2.1 2.1z";
+  const paint = () => { const d = cur() === "dark"; label.textContent = d ? "Light" : "Dark"; btn.querySelector("path").setAttribute("d", d ? SUN : MOON); };
   try { const t = localStorage.getItem("nova-site-theme"); if (t === "dark" || t === "light") root.dataset.theme = t; } catch {}
-  btn.addEventListener("click", () => { const t = cur() === "dark" ? "light" : "dark"; root.dataset.theme = t; try { localStorage.setItem("nova-site-theme", t); } catch {} paint(); });
+  const set = t => { root.dataset.theme = t; try { localStorage.setItem("nova-site-theme", t); } catch {} paint(); };
+  btn.addEventListener("click", () => {
+    const t = cur() === "dark" ? "light" : "dark";
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches) return set(t);
+    if (document.startViewTransition) return document.startViewTransition(() => set(t));
+    root.classList.add("theming"); set(t); setTimeout(() => root.classList.remove("theming"), 500);
+  });
   matchMedia("(prefers-color-scheme: dark)").addEventListener("change", paint); paint();
 })();
 

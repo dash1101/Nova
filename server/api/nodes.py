@@ -4,18 +4,25 @@ Several servers under one Nova web.
 This server (the "head") keeps a read-only window on other Nova servers ("nodes") on the home
 network or your tailnet. It pairs with each node as a `head` device: a key, made here, that the
 node only lets read its overview, live numbers and events — it can't change anything, see your
-devices or approve requests. The head shows all of them together; to manage a node you open that
-node's own Nova web (its own keys, its own approvals), so nothing is ever relayed.
+devices or approve requests. The head shows all of them together.
+
+Controlling a node from here ("relay"): the browser pairs its own key with the node (approved on the
+node's phone or with `sudo nova approve` there) and signs every request for the node itself. This
+server only carries those bytes to the node's saved address (certificate pinned) and adds a short
+statement, signed with its head key, saying where the browser really is (home network, tailnet or
+remote) — so the node applies its normal rules and limits to the browser, not to this server. The
+head key never authorizes anything on its own; the node checks the browser's signature as always.
 
   probe(host)               the node's name, Nova version and certificate fingerprint (to compare
                             with the "Certificate" line that `sudo nova add` shows on that node)
   pair(host, code, pin)     pair with a one-time code from `sudo nova add` on the node
   status()                  every node with its latest overview (polled in the background)
   remove(id)                unpair (the node forgets this head too, if it can be reached)
+  relay(id, …)              carry one browser-signed request to a node (see above)
 
 Node records (with their private keys) live in /var/lib/nova-api/nodes.json, readable by nova-api only.
 """
-import base64, hashlib, http.client, ipaddress, json, os, secrets, socket, ssl, threading, time
+import base64, hashlib, http.client, ipaddress, json, os, re, secrets, socket, ssl, threading, time
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 
@@ -137,7 +144,58 @@ def _public(n):
             "ok": bool(live.get("ok")), "error": live.get("error", ""), "seen": live.get("t", 0),
             "level": st.get("level", ""), "headline": st.get("headline", ""), "containers": o.get("containers") or {},
             "cpu": now.get("cpu"), "mem": now.get("mem"), "temp": now.get("temp"), "uptime_s": now.get("uptime_s") or srv.get("uptime_s"),
-            "api": n.get("api", "")}
+            "api": (live.get("who") or {}).get("api") or n.get("api", ""), "relay": bool((live.get("who") or {}).get("relay"))}
+
+def statement(method, path, rnonce, inner_nonce, via, ip, ts):
+    """What the head signs about a relayed request (the node checks it with the head device's key)."""
+    return "\n".join(["nova-relay", method, path, rnonce, inner_nonce, via, ip, ts]).encode()
+
+RELAY_MAX = 4 * 1024 * 1024
+RELAY_PATH = re.compile(r"/api/v1/[A-Za-z0-9._~\-/]*(\?[A-Za-z0-9._~\-=&%+,:]*)?")
+_INNER = {"X-Nova-Device": r"[A-Za-z0-9_-]{1,64}", "X-Nova-Time": r"\d{10,16}", "X-Nova-Nonce": r"[A-Za-z0-9_-]{16,64}",
+          "X-Nova-Signature": r"[A-Za-z0-9+/]{20,200}={0,2}"}
+_UNSIGNED = re.compile(r"/api/v1/browser/request(/[A-Za-z0-9_-]{8,64})?")      # asking to be added, and waiting for the answer
+
+def relay(nid, method, path, hdrs, body, via, ip):
+    """One request a browser signed for node `nid`, carried there. Returns (status, json) from the node."""
+    n = next((x for x in _load()["nodes"] if x["id"] == nid), None)
+    if not n: raise LookupError("no such server")
+    if method not in ("GET", "POST", "DELETE"): raise ValueError("method: GET, POST or DELETE")
+    if not isinstance(path, str) or len(path) > 2048 or not RELAY_PATH.fullmatch(path) or ".." in path or "//" in path:
+        raise ValueError("that isn't a Nova API path")
+    p0 = path.split("?", 1)[0]
+    if p0 in ("/api/v1/pair", "/api/v1/crash"): raise ValueError("that can't be done through another server")
+    if not isinstance(hdrs, dict) or set(hdrs) - set(_INNER): raise ValueError("only the four X-Nova signature headers")
+    inner = {}
+    for k, pat in _INNER.items():
+        v = hdrs.get(k)
+        if v is None: continue
+        if not isinstance(v, str) or not re.fullmatch(pat, v): raise ValueError(f"bad {k}")
+        inner[k] = v
+    unsigned = (method == "POST" and p0 == "/api/v1/browser/request") or (method == "GET" and _UNSIGNED.fullmatch(p0) and p0 != "/api/v1/browser/request")
+    if len(inner) != 4 and not (unsigned and not inner): raise ValueError("sign the request for that server")
+    if not isinstance(body, str): raise ValueError("body: a string")
+    raw = body.encode("utf-8")
+    if len(raw) > 64 * 1024: raise ValueError("body too large")
+    if method == "GET" and raw: raise ValueError("a GET has no body")
+    if via not in ("lan", "tailnet", "remote"): raise ValueError("bad origin")
+    key = serialization.load_pem_private_key(n["key"].encode(), None)
+    ts, rn = str(int(time.time() * 1000)), secrets.token_urlsafe(18)
+    sig = base64.b64encode(key.sign(statement(method, path, rn, inner.get("X-Nova-Nonce", ""), via, ip, ts), ec.ECDSA(hashes.SHA256()))).decode()
+    h = {"Content-Type": "application/json", **inner, "X-Nova-Relay-Head": n["device_id"], "X-Nova-Relay-Via": via, "X-Nova-Relay-IP": ip,
+         "X-Nova-Relay-Time": ts, "X-Nova-Relay-Nonce": rn, "X-Nova-Relay-Sig": sig}
+    try:
+        c, _ = _conn(n["host"], n["pin"], timeout=200)
+        c.request(method, path, body=raw if method != "GET" else None, headers=h)
+        r = c.getresponse(); data = r.read(RELAY_MAX + 1); ctype = r.getheader("Content-Type", ""); c.close()
+    except ValueError: raise
+    except (OSError, http.client.HTTPException):
+        raise ConnectionError(f"can't reach {n['name']} right now")
+    if len(data) > RELAY_MAX: raise ValueError("that server's answer is too big to pass along")
+    if not ctype.startswith("application/json"): return r.status, {"error": "not_relayable", "message": "Open that server's own Nova web for this."}
+    try: j = json.loads(data or b"{}")
+    except ValueError: j = {}
+    return r.status, j
 
 def status():
     return [_public(n) for n in _load()["nodes"]]
@@ -150,7 +208,11 @@ def _poll_one(n):
         if s1 == 401: raise ValueError("this server forgot Nova web here — remove it and add it again")
         if s1 != 200: raise ValueError(f"answered {s1}")
         s2, st = _call(n, "GET", "/api/v1/stats?since=9e12")
-        _live[n["id"]] = {"t": time.time(), "ok": True, "overview": o, "now": (st or {}).get("now") if s2 == 200 else None}
+        prev = _live.get(n["id"], {}); who = prev.get("who")
+        if not who or time.time() - prev.get("who_t", 0) > 600:       # its Nova version (can it be controlled from here?)
+            s3, w = _call(n, "GET", "/api/v1/whoami"); who = w if s3 == 200 else (who or {})
+            prev = {**prev, "who_t": time.time()}
+        _live[n["id"]] = {"t": time.time(), "ok": True, "overview": o, "now": (st or {}).get("now") if s2 == 200 else None, "who": who, "who_t": prev.get("who_t", 0)}
     except Exception as e:
         prev = _live.get(n["id"], {})
         _live[n["id"]] = {**prev, "ok": False, "error": str(e) if isinstance(e, ValueError) else "can't reach it"}

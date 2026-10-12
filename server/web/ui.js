@@ -1,5 +1,5 @@
 // Nova web — UI kit: icons, One UI components, dialogs, toast, reorder lists, live graphs.
-import { $, $$, esc, sleep, prefs } from "./core.js";
+import { S, $, $$, esc, sleep, prefs } from "./core.js";
 
 // ── icons (Material Symbols Rounded, 24px) ────────────────────────────────────────
 const P = {
@@ -160,8 +160,8 @@ export function ask(title, placeholder, value = "", ok = "Save") {
 export async function waitApproval(id, get, code) {
   let stop = false;
   const until = Date.now() + 600000;
-  const box = sheet(`<h2>Approve on your phone</h2><p>Nova sent this to your admin phone. Open the notification (or Nova → Menu → Users &amp; devices → Approvals) and confirm with your fingerprint.</p>
-    ${code ? `<p>…or on the server:</p>${copyCmd("sudo nova approve " + code)}` : ""}<p class="muted" id="apleft" style="text-align:center"></p>
+  const box = sheet(`<h2>Approve on your phone</h2><p>Nova sent this to ${S.target ? `${esc(S.target.name)}'s` : "your"} admin phone. Open the notification (or Nova → Menu → Users &amp; devices → Approvals) and confirm with your fingerprint.</p>
+    ${code ? `<p>…or on ${S.target ? esc(S.target.name) : "the server"}:</p>${copyCmd("sudo nova approve " + code)}` : ""}<p class="muted" id="apleft" style="text-align:center"></p>
     <div class="center" style="padding:14px"><div class="spinner" style="margin:auto"></div></div>${acts([{ label: "Stop waiting" }])}`, () => { stop = true; });
   $("[data-b]", box).onclick = () => { stop = true; closeSheet(); };
   const tick = setInterval(() => { const el = $("#apleft"), s = Math.max(0, Math.round((until - Date.now()) / 1000)); if (el) el.textContent = `Expires in ${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; if (stop || !el) clearInterval(tick); }, 1000);

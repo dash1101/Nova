@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.6.6-alpha (server, Nova web, app and website)
+- **Nova web: control your other servers from here.** Under Servers, pick a server and choose **Control from here**: Nova looks and works the same, only it's that server you see and change, with a **Controlling …** bar and a **Switch back** button always on screen. The first time, approve this browser on that server, once (on its phone, or `sudo nova approve CODE` there). That server checks your browser itself and asks its own phones for anything risky; this server only passes the requests along. Files, the terminal and speed tests open on that server's own Nova web. Both servers need Nova 0.6.6.
+- **Home shows all your servers** in a row of small cards with their health and live numbers. Tap one to switch to it. You can move or hide the row in Edit Home.
+- **Inbox → Ignored:** alerts you ignored that are still going on now sit in a folded **Ignored** section, with **Stop ignoring** to make one an active alert again. On the phone and the web.
+- **Questions** (About, the setup guide or search): is it safe, what Nova connects to, and how to undo or uninstall everything. The same answers are on the website.
+- **Website:** switching between light and dark fades smoothly, and the phone picture switches between Nova's light and dark looks too. The FAQ has more answers about safety and undoing things.
+- **Nova web:** the Home button has a home icon again.
+- **Security:** the pentest has grown to cover the new parts: controlling another server (forged, replayed and tampered requests, path tricks, lockouts), who-can-open and share-link addresses, lights, OpenRGB, Stop ignoring and large requests. A bad share-link address is now refused straight away.
+
 ## 0.6.5-alpha (app, watch, server and website)
 - **App:** everything from 0.6.3 and 0.6.4 comes to the phone too —
   - **Lighter effects** (Appearance → Lighter effects: Automatic · On · Off): no live glass blur, smaller shadows, the server picture and live graphs at half the frame rate. Automatic turns it on for older or low-memory phones.

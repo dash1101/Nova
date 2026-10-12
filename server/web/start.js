@@ -20,7 +20,7 @@ export const PLACES = [
   ["Quick panel", "shortcuts tiles restart shut down power free ram", "widgets", "quick"], ["Dashboard mode", "always on tablet wall display", "dash", "dashboard"],
   ["Users & devices", "devices phones browsers users roles remove", "group", "devices"], ["Settings", "software update connection this browser", "gear", "settings"],
   ["Appearance", "theme dark light material you style reduce motion home layout navigation pill tabs start page open on start", "palette", "appearance"],
-  ["Server", "name accent color location sunrise", "dns", "server"], ["Setup guide", "help install how to", "info", "guide"], ["About", "version license", "info", "about"],
+  ["Server", "name accent color location sunrise", "dns", "server"], ["Setup guide", "help install how to", "info", "guide"], ["About", "version license", "info", "about"], ["Questions", "faq safe safety privacy data uninstall remove undo revert rollback trust", "info", "faq"],
 ];
 const SOURCES = ["/api/v1/containers", "/api/v1/apps", "/api/v1/storage", "/api/v1/backups"];
 export const loadSearchData = () => Promise.all(SOURCES.map(p => S.cache[p] ? null : get(p).catch(() => null)));

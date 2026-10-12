@@ -54,7 +54,7 @@ sealed class Route {
     data object Ssh : Route(); data object SshTerm : Route()
     data object Servers : Route(); data object ServerSettings : Route(); data object Dashboard : Route(); data object Approvals : Route()
     data object Appearance : Route(); data object SetupGuide : Route(); data object EditShortcuts : Route(); data object EditHome : Route(); data object EditTabs : Route(); data object Archive : Route()
-    data object Settings : Route(); data object Devices : Route(); data object About : Route()
+    data object Settings : Route(); data object Devices : Route(); data object About : Route(); data object Faq : Route()
     data class StorageWizard(val goal: String? = null, val drives: List<String> = emptyList(), val pool: String? = null) : Route()
     data class Pool(val id: String) : Route(); data class Task(val id: String, val then: String? = null) : Route()
     data object Backups : Route(); data class Backup(val id: String) : Route()
@@ -597,6 +597,7 @@ private fun Modifier.paneTouch(app: AppState, left: Boolean) = pointerInput(left
         Route.Settings -> SettingsScreen(app)
         Route.Devices -> DevicesScreen(app)
         Route.About -> AboutScreen(app)
+        Route.Faq -> FaqScreen(app)
     }
 }
 

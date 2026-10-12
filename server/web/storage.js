@@ -1,6 +1,6 @@
 // Nova web — storage map, drive setup wizard, pools, background tasks, backups, diagnostics.
 // Mirrors the app's Storage.kt / Backups.kt / Diagnostics.kt.
-import { S, $, $$, esc, get, post, del, bytes, isAdmin, signedFetch } from "./core.js";
+import { S, $, $$, esc, get, post, del, bytes, isAdmin, signedFetch, serverHost } from "./core.js";
 import { I, row, group, sec, note, radio, switchRow, segmented, bar, usageColor, toast, dialog, confirm, wireCommon, sheet, closeSheet, copyCmd } from "./ui.js";
 
 const enc = encodeURIComponent;
@@ -480,6 +480,7 @@ const iconCache = {};
 export async function appIconUrl(id) { return appIcon(id); }
 export function appHrefFor(a) { return appHref(a); }
 async function appIcon(id) {
+  if (S.target) return null;               // icons are pictures: not carried from another server (first letter instead)
   if (id in iconCache) return iconCache[id];
   try { const r = await signedFetch("GET", `/api/v1/apps/${enc(id)}/icon`); iconCache[id] = r.ok ? URL.createObjectURL(await r.blob()) : null; }
   catch { iconCache[id] = null; }
@@ -492,7 +493,7 @@ export const appHref = a => {
   if (remote) return a.remote_url || null;
   if (a.url) return a.url;
   if (!a.port) return null;
-  const host = a.host_ip || location.hostname;
+  const host = a.host_ip || serverHost();
   return `${a.scheme || "http"}://${host.includes(":") ? `[${host}]` : host}:${a.port}${a.path || "/"}`;
 };
 export async function apps(ctx) {

@@ -1,6 +1,6 @@
 // Nova web — entry: router (with back stack, scroll memory and slide transitions), the app shell
 // (the frosted nav pill: along the bottom on phones, down the left on wide screens), pairing, start-up.
-import { S, $, $$, esc, sleep, kv, pemOf, get, post, prefs, has, refresh, onApproval, ApiError, webForm, levelColor, cleanTitle } from "./core.js";
+import { S, $, $$, esc, sleep, kv, pemOf, get, post, prefs, has, refresh, onApproval, ApiError, webForm, levelColor, cleanTitle, switchServer, savedTarget, loadNodes } from "./core.js";
 import { I, logo, toast, waitApproval, closeSheet, copyCmd } from "./ui.js";
 import * as V from "./views.js";
 import * as ST from "./storage.js";
@@ -44,7 +44,7 @@ const ROUTES = {
   home: V.home, menu: V.menu, status: V.status, containers: V.containers, store: V.store, inbox: V.inbox, notify: V.notify,
   quick: V.quick, "edit-quick": V.editQuick, lighting: V.lighting, lights: V.lights, schedules: V.schedules, schedule: V.schedule, hardware: V.hardware,
   devices: V.devices, settings: V.settings, server: V.serverSettings, appearance: V.appearance, "edit-home": V.editHome,
-  "edit-shortcuts": V.editShortcuts, "edit-tabs": V.editTabs, about: V.about, guide: V.guide, terminal: V.terminal,
+  "edit-shortcuts": V.editShortcuts, "edit-tabs": V.editTabs, about: V.about, guide: V.guide, faq: V.faq, terminal: V.terminal,
   dashboard: V.dashboard, "edit-dash": V.editDash, archive: V.archive,
   apps: ST.apps, updates: ST.updates, search: SR.search, start: SR.start, "start-edit": SR.startEdit, favorites: SR.favorites, servers: SV.servers, "container-new": ST.containerNew, term: V.hostTerminal, files: FM.files, labs: ST.labs, automation: ST.automation, features: ST.features, plugins: ST.plugins, "labs-images": ST.labsImages, wol: ST.wol, openrgb: ST.openrgb, access: ST.access, cloudflare: ST.cloudflare, setup: ST.setup, pool: ST.pool, task: ST.task, backups: ST.backups, backup: ST.backup, "backup-edit": ST.backupEdit, restore: ST.restore, diag: ST.diag,
 };
@@ -107,8 +107,24 @@ addEventListener("click", async e => {
 function ensureShell() {
   if ($("#shell")) return;
   $("#app").innerHTML = `<div class="shell" id="shell"><main class="main" id="main"></main></div>
-    <div class="scrim"></div><div class="scrim-bottom"></div><div class="topbar" id="topbar"></div><nav class="nav frost" id="nav" hidden></nav>`;
+    <div class="scrim"></div><div class="scrim-bottom"></div><div class="topbar" id="topbar"></div><nav class="nav frost" id="nav" hidden></nav>
+    <div class="ctlbar frost" id="ctlbar" hidden></div>`;
   addEventListener("scroll", fade, { passive: true });
+}
+/** "Controlling <server>" — always on screen while this web controls another server, with the way back. */
+function drawCtl() {
+  const b = $("#ctlbar"); if (!b) return;
+  b.hidden = !S.target;
+  if (S.target) { b.innerHTML = `${I("dns")}<span>Controlling <b>${esc(S.target.name)}</b></span><button id="ctlback" title="Back to ${esc(S.homeName || "this server")}">Switch back</button>`;
+    $("#ctlback").onclick = () => SV.control(""); }
+}
+addEventListener("nova:server", () => { alertSince = null; alertQueue = []; drawCtl(); const n = $("#nav"); if (n) n.dataset.ids = ""; tab("home"); });
+// Screens that stream or move files aren't carried through to another server (its own Nova web has them)
+const NOT_RELAYED = ["term", "terminal", "files", "diag"];
+function notRelayed(ctx) {
+  const t = S.target, href = S.me && S.me.via === "remote" ? t.remote_url : t.lan_url;
+  ctx.show(`<p class="note">This part of Nova (files, the terminal, speed tests) isn't carried from one server to another. Open ${esc(t.name)}'s own Nova web for it${href ? "" : " — it's on that server's home network address"}.</p>
+    ${href ? `<a class="btn block" href="${esc(href)}" target="_blank" rel="noopener">${I("open")} Open ${esc(t.name)}'s Nova web</a>` : ""}`, { title: t.name });
 }
 function fade() { const f = Math.max(0, Math.min(1, scrollY / 36)); $$("#topbar .bgc").forEach(b => b.style.setProperty("--fade", f)); }
 function drawNav(route) {
@@ -147,7 +163,7 @@ function drawNav(route) {
 // ── render a route ───────────────────────────────────────────────────────────────
 let lastRendered = null;
 function render(dir = 0) {
-  const my = ++seq, [r, ...args] = parse(), view = ROUTES[r] || V.home;
+  const my = ++seq, [r, ...args] = parse(), view = S.target && NOT_RELAYED.includes(r) ? notRelayed : ROUTES[r] || V.home;
   current?.leave(); closeSheet();
   if (V.navTabs().some(t => t.route === r) && depth === 0) rootRoute = r;
   let shown, firstShow = new Promise(res => shown = res);
@@ -288,7 +304,10 @@ async function start() {
     if (e.code === 403) { $("#app").innerHTML = `<div class="pair"><h1>Nova</h1><p class="lead">${esc(e.message)}</p></div>`; return; }
   }
   await refresh().catch(() => {});
-  ensureShell();
+  const was = savedTarget();               // still controlling another server in this tab (after a reload)
+  if (was?.id) { try { await switchServer(was); if (S.targetLost) throw new Error(); } catch { await switchServer(null).catch(() => {}); } }
+  loadNodes().catch(() => {});
+  ensureShell(); drawCtl();
   // "Open on start" (Appearance → Start page): where a fresh visit lands
   if (!location.hash || location.hash === "#" || location.hash === "#/") { const r = prefs.startRoute; if (r && r !== "home") history.replaceState({ k: newKey(), d: 0 }, "", "#/" + r); }
   render(0);

@@ -11,8 +11,10 @@ import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -84,7 +86,7 @@ fun activeAlerts(app: AppState): List<JSONObject> =
     app.overview?.optJSONObject("status")?.optJSONArray("active")?.let { a -> (0 until a.length()).map { a.getJSONObject(it) } }
         ?.filter { it.optString("level") != "ok" } ?: emptyList()
 
-private fun cleanAlertTitle(t: String) = t.replace(Regex("^[^\\p{L}\\p{N}]+\\s*"), "")
+private fun cleanAlertTitle(t: String) = t.replace(Regex("^[^\\p{L}\\p{N}/~]+\\s*"), "")     // the status emoji goes; a path like "/ is 90% full" stays
 
 /** Dismiss on the server ("ignore until it clears"; drives: "removed on purpose"), then refresh. */
 fun dismissAlert(app: AppState, a: JSONObject, done: () -> Unit = {}) {
@@ -133,6 +135,38 @@ fun dismissAlert(app: AppState, a: JSONObject, done: () -> Unit = {}) {
                 if (key.startsWith("drive:")) "Stop reporting this drive as missing" else "No more alerts for this until it's fixed and comes back", false) {
                 menu = null; dismissAlert(app, a) }
             if (key.startsWith("drive:") || key.startsWith("smart:") || key.startsWith("temp:")) DialogChoice("Storage & hardware", null, false) { menu = null; app.go(Route.Hardware) }
+        }
+    }
+}
+
+/** Inbox → "Ignored · N": issues still going on that you said to ignore until they clear. Folded away until you open it. */
+@Composable fun IgnoredList(app: AppState) {
+    val ign = app.overview?.optJSONObject("status")?.optJSONArray("ignored") ?: return
+    if (ign.length() == 0) return
+    var open by rememberSaveable { mutableStateOf(false) }
+    val turn by androidx.compose.animation.core.animateFloatAsState(if (open) 180f else 0f, label = "chev")
+    Spacer(Modifier.height(10.dp))
+    Group {
+        Row1("Ignored · ${ign.length()}", "Still going on — quiet until ${if (ign.length() == 1) "it clears" else "they clear"}", false,
+            Icons.Rounded.VisibilityOff, N.sub, onClick = { open = !open }) {
+            Icon(Icons.Rounded.ExpandMore, if (open) "Fold" else "Show", tint = N.sub, modifier = Modifier.graphicsLayer { rotationZ = turn })
+        }
+        androidx.compose.animation.AnimatedVisibility(open,
+            enter = if (reduceMotion()) androidx.compose.animation.fadeIn() else androidx.compose.animation.expandVertically() + androidx.compose.animation.fadeIn(),
+            exit = if (reduceMotion()) androidx.compose.animation.fadeOut() else androidx.compose.animation.shrinkVertically() + androidx.compose.animation.fadeOut()) {
+            Column {
+                for (i in 0 until ign.length()) {
+                    val a = ign.getJSONObject(i); val key = a.optString("key")
+                    RowDivider()
+                    Row1(cleanAlertTitle(a.optString("title")), listOf(a.optString("detail"), a.optString("since").takeIf { it.isNotEmpty() }?.let { "since $it" },
+                        a.optString("ignored").takeIf { it.isNotEmpty() }?.let { "ignored $it" }).filterNotNull().filter { it.isNotEmpty() }.joinToString(" · "),
+                        false, Icons.Rounded.Warning, levelColor(a.optString("level"), N)) {
+                        Box(Modifier.clip(androidx.compose.foundation.shape.RoundedCornerShape(16.dp)).background(N.pill).bouncy(app.isAdmin, onClick = {
+                            app.act("It's an active alert again") { try { app.api.post("/api/v1/alerts/undismiss", JSONObject().put("key", key)) } finally { app.refresh() } }
+                        }).padding(horizontal = 12.dp, vertical = 7.dp)) { Text("Stop ignoring", color = if (app.isAdmin) N.blue else N.sub, fontSize = 13.sp, fontWeight = FontWeight.Bold) }
+                    }
+                }
+            }
         }
     }
 }

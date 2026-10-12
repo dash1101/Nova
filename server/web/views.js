@@ -1,22 +1,23 @@
 // Nova web — every screen of the app. Each view renders with ctx.show(html, options, handlers);
 // buttons carry data-act="name" or data-act="name:arg" and land in `handlers` (or the router's).
-import { S, $, $$, esc, get, post, del, api, sleep, prefs, waitTask, runningTask, levelColor, pct, rate, bytes, isAdmin, has, cleanTitle, cap,
+import { S, $, $$, esc, get, post, del, api, loadNodes, serverHost, sleep, prefs, waitTask, runningTask, levelColor, pct, rate, bytes, isAdmin, has, cleanTitle, cap,
          serverName, uptime, hm, refresh, changeFan, waitJob, kv, archiveMerge, archiveAll, archiveClear, archiveUnmark } from "./core.js";
 import { I, row, group, sec, note, sw, radio, switchRow, links, expand, slider, segmented, bar, usageColor,
          toast, dialog, confirm, choose, ask, wireCommon, reorderable, onHold, spark, swipeable, colorPicker } from "./ui.js";
 import { animate } from "./hero.js";
 import * as ST from "./storage.js";
+import * as SV from "./servers.js";
 import { favoriteTiles, favoritesLink } from "./start.js";
 
 // ── catalogs (same ids as the app, so the two read alike) ───────────────────────
 export const SHORTCUTS = [
-  ["inbox", "bell", "Inbox", "inbox"], ["apps", "apps", "Apps", "apps"], ["servers", "dns", "Servers", "servers"], ["files", "folder", "Files", "files"], ["start", "home", "Start page", "start", null, "Start"], ["search", "search", "Search", "search"], ["quick", "widgets", "Quick panel", "quick", null, "Quick"], ["containers", "box", "Containers", "containers"],
+  ["inbox", "bell", "Inbox", "inbox"], ["apps", "apps", "Apps", "apps"], ["servers", "dns", "Servers", "servers"], ["files", "folder", "Files", "files"], ["start", "open", "Start page", "start", null, "Start"], ["search", "search", "Search", "search"], ["quick", "widgets", "Quick panel", "quick", null, "Quick"], ["containers", "box", "Containers", "containers"],
   ["storage", "disk", "Storage", "hardware"], ["status", "status", "Status", "status"], ["lighting", "bulb", "Lighting", "lighting", "lighting"],
   ["terminal", "term", "Terminal", "terminal", "ssh"], ["store", "store", "Store", "store", "store"], ["dashboard", "dash", "Dashboard", "dashboard"],
   ["schedules", "clock", "Schedules", "schedules", "lighting"], ["devices", "group", "Devices", "devices"], ["settings", "gear", "Settings", "settings"],
 ].map(([id, icon, label, route, feature, short]) => ({ id, icon, label, route, feature, short: short || label }));
 const sc = id => SHORTCUTS.find(s => s.id === id);
-export const NAV_TABS = [{ id: "home", icon: "dns", label: "Home", route: "home" }, { id: "store", icon: "store", label: "Store", route: "store", feature: "store" },
+export const NAV_TABS = [{ id: "home", icon: "home", label: "Home", route: "home" }, { id: "store", icon: "store", label: "Store", route: "store", feature: "store" },
   { id: "menu", icon: "list", label: "Menu", route: "menu" }, ...["start", "apps", "files", "servers", "search", "status", "containers", "storage", "inbox", "quick", "lighting"].map(sc)];
 export const navTabs = () => {
   const t = prefs.navTabs.map(id => NAV_TABS.find(x => x.id === id)).filter(x => x && (!x.feature || has(x.feature)));
@@ -31,7 +32,13 @@ const QUICK = [
   ["storage", "Storage", "disk", "Drives and temperatures"], ["store", "App store", "store", "Install apps"],
 ].map(([id, label, icon, hint]) => ({ id, label, icon, hint }));
 const quickDef = id => id.startsWith("restart:") ? { id, label: "Restart " + id.slice(8), icon: "restart", hint: "Approved on your phone" } : QUICK.find(q => q.id === id);
-const HOME_SECTIONS = [["hero", "Server picture", "dns", "homeHero"], ["shortcuts", "Shortcuts", "apps", "homeShortcuts"], ["stats", "At a glance", "speed", "homeStats"]];
+const HOME_SECTIONS = [["hero", "Server picture", "dns", "homeHero"], ["servers", "Your servers", "dns", "homeServers"], ["shortcuts", "Shortcuts", "apps", "homeShortcuts"], ["stats", "At a glance", "speed", "homeStats"]];
+/** Home's sections in your order (a section added in a newer Nova goes in after the server picture). */
+function homeOrder() {
+  const o = prefs.homeOrder.filter(id => HOME_SECTIONS.some(s => s[0] === id));
+  for (const [id] of HOME_SECTIONS) if (!o.includes(id)) o.splice(id === "servers" ? Math.min(1, o.length) : o.length, 0, id);
+  return o;
+}
 const DASH_TILES = [["clock", "Clock", "clock", 1], ["health", "Health", "okc", 1], ["cpu", "CPU graph", "cpu", 1], ["mem", "Memory graph", "mem", 1], ["temp", "Temperature graph", "temp", 1],
   ["net", "Network graph", "net", 1], ["storage", "Storage", "disk", 2], ["containers", "Containers", "box", 1], ["backup", "Backups", "backup", 1], ["fan", "Fan light", "bulb", 2],
   ["alerts", "Recent alerts", "bell", 2], ["uptime", "Uptime", "clock", 1]];
@@ -79,6 +86,20 @@ function attentionHtml() {
       end: a.key ? `<button class="xbtn" data-act="ignore:${esc(a.key)}" aria-label="Ignore">${I("remc")}</button>` : "" })}</div></div>`; }).join(""))
     + note("Swipe (or tap ×) to ignore an alert you've dealt with — it comes back if the problem returns after clearing.");
 }
+/** Inbox → "Ignored · N": issues still going on that you said to ignore until they clear. Folded away by default. */
+let ignoredOpen = false;
+function ignoredHtml() {
+  const l = S.overview?.status?.ignored || []; if (!l.length) return "";
+  return `<div class="expand ign${ignoredOpen ? " open" : ""}" style="margin-top:14px">${group(`<div class="row click" data-act="ignfold"><span class="ri" style="color:var(--sub);background:color-mix(in srgb, var(--sub) 16%, transparent)">${I("eye")}</span>
+      <div class="t"><b>Ignored · ${l.length}</b><small>Still going on — quiet until ${l.length === 1 ? "it clears" : "they clear"}</small></div><span class="chev muted">${I("down")}</span></div>
+    <div class="xb">${l.map(a => row(cleanTitle(a.title), { sub: [a.detail, a.since && "since " + a.since, a.ignored && "ignored " + a.ignored].filter(Boolean).join(" · "), icon: "warn", tint: levelColor(a.level),
+      end: `<button class="pillbtn press" data-act="unignore:${esc(a.key)}">Stop ignoring</button>` })).join("")}</div>`)}</div>`;
+}
+async function undismissAlert(key, redraw) {
+  if (!isAdmin()) return viewOnly();
+  try { await post("/api/v1/alerts/undismiss", { key }); toast("It's an active alert again"); } catch (e) { toast(e.message); }
+  await refresh(); redraw?.();
+}
 async function dismissAlert(key, redraw) {
   if (!key) return toast("Update the server to dismiss alerts from here");
   if (!isAdmin()) return viewOnly();
@@ -114,6 +135,19 @@ function tasksChip() {
   if (!tk.length) return "";
   return `<span class="sep"></span><span class="taskchip" data-act="go:inbox" title="${esc(tk.map(t => t.title).join(", "))}">${I("sync")}${tk.length === 1 ? `${esc(tk[0].title)} · ${Math.round(tk[0].pct || 0)}%` : `${tk.length} in progress`}</span>`;
 }
+/** Home → your servers: this one and every other Nova server added under Servers, side by side (only when there are others). */
+function serverStrip() {
+  const list = S.nodes; if (!list?.length) return "";
+  const pc = v => v == null ? "—" : Math.round(v) + "%";
+  const o = S.overview || {}, n = liveNow() || {};
+  // the one you're looking at comes first (live numbers); then this server (when you're controlling another) and the rest
+  const cur = { id: S.target?.id || "", name: serverName(), level: o.status?.level, headline: o.status?.headline, ok: !S.error, cpu: n.cpu, mem: n.mem, containers: o.containers };
+  const tile = (x, on) => { const col = x.ok === false ? "var(--sub)" : levelColor(x.level || "ok"), c = x.containers || {};
+    return `<button class="srvchip glass press${on ? " on" : ""}" data-act="${on ? "go:servers" : "srv:" + esc(x.id || "here")}" title="${esc(x.ok === false ? x.error || "Can't reach it" : x.headline || x.name)}">
+      <span class="dot" style="background:${col}"></span><b>${esc(x.name)}</b>
+      <small>${x.ok === false ? "Offline" : x.cpu === undefined ? "This server" : `CPU ${pc(x.cpu)} · RAM ${pc(x.mem)}${c.total != null ? ` · ${c.running}/${c.total}` : ""}`}</small></button>`; };
+  return `<div class="srvstrip" id="srvstrip">${tile(cur, true)}${S.target ? tile({ id: "", name: S.homeName || "This server", level: "ok" }, false) : ""}${list.filter(x => x.id !== S.target?.id).map(x => tile(x, false)).join("")}</div>`;
+}
 export async function home(ctx) {
   const statCard = (icon, label, value, sub, frac, color) => `<div class="stat glass press" data-act="go:status"><div class="lbl" style="color:${color}">${I(icon)}<span class="muted">${esc(label)}</span></div>
     <div class="val">${esc(value)}</div><div class="sub">${esc(sub)}</div><div style="margin-top:10px">${frac != null ? bar(frac, color) : ""}</div></div>`;
@@ -139,8 +173,8 @@ export async function home(ctx) {
         <button class="circle" data-act="search" aria-label="Search (press /)">${I("search")}</button><button class="circle" data-act="refresh" aria-label="Refresh">${I("refresh")}</button><button class="circle" data-act="more" aria-label="More">${I("more")}</button></div>
       <div class="statusline" data-act="go:status"><span style="color:${S.error || S.reconnecting ? "var(--sub)" : levelColor(lvl)};display:flex">${I(icon)}</span>${esc(head)}${cs ? `<span class="sep"></span>${cs.running}/${cs.total} running` : ""}${tasksChip()}</div>
       <div style="height:14px"></div>${topBanner()}${S.serverUpdate && localStorage.getItem("nova.dismissedUpdate") !== S.serverUpdate ? `<div class="upnote glass"><span style="color:var(--blue);display:flex">${I("update")}</span><b data-act="go:updates" style="flex:1;cursor:pointer">Nova ${esc(S.serverUpdate)} is ready to install</b><button class="xbtn" data-act="upx" aria-label="Not now">${I("close")}</button></div>` : ""}`;
-    const order = prefs.homeOrder.filter(id => prefs[HOME_SECTIONS.find(s => s[0] === id)?.[3]]);
-    const block = id => id === "hero" ? `<canvas class="hero" id="hero" data-act="${has("lighting") ? "go:lighting" : ""}"></canvas>` : id === "shortcuts" ? pills() : stats();
+    const order = homeOrder().filter(id => prefs[HOME_SECTIONS.find(s => s[0] === id)?.[3]] && (id !== "servers" || serverStrip()));
+    const block = id => id === "hero" ? `<canvas class="hero" id="hero" data-act="${has("lighting") ? "go:lighting" : ""}"></canvas>` : id === "shortcuts" ? pills() : id === "servers" ? serverStrip() : stats();
     const wide = innerWidth >= 1100;
     ctx.show(wide
       ? `<div class="home-wide"><div>${top}${prefs.homeHero ? block("hero") : ""}</div><div>${order.filter(x => x !== "hero").map(id => `<div class="block">${block(id)}</div>`).join("")}</div></div>`
@@ -153,6 +187,7 @@ export async function home(ctx) {
     post("/api/v1/server/update/check", { quiet: true }).then(u => { if (u?.state === "available") { S.serverUpdate = String(u.available || "").replace("~", "-"); if (ctx.alive()) draw(); } }).catch(() => {}); }
   ctx.handlers({
     upx: () => { try { localStorage.setItem("nova.dismissedUpdate", S.serverUpdate); } catch {} draw(); },
+    srv: async id => { if (await SV.control(id === "here" ? "" : id) === false) ctx.go("servers"); },
     refresh: async () => { await refresh(); await fetchNow(); draw(); toast("Up to date"); },
     disconnected: async () => { if (await showDisconnected()) draw(); },
     more: async () => {
@@ -161,7 +196,8 @@ export async function home(ctx) {
     },
   });
   draw();
-  ctx.every(15000, async () => { await refresh(); if ((S.overview?.status?.metrics?.data_backup || "").includes("running")) await get("/api/v1/backup").catch(() => {}); draw(); }, true);
+  ctx.every(15000, async () => { await refresh(); if ((S.overview?.status?.metrics?.data_backup || "").includes("running")) await get("/api/v1/backup").catch(() => {});
+    if (prefs.homeServers) await loadNodes().catch(() => {}); draw(); }, true);
   ctx.every(3000, async () => { await fetchNow(); const s = $("#hstats"); if (s) s.outerHTML = stats(); }, true);
 }
 
@@ -178,15 +214,15 @@ export async function menu(ctx) {
       <div class="mtiles">${tile("box", "var(--blue)", "Containers", cs ? `${cs.running}/${cs.total} up` : "—", "go:containers")}${tile("disk", "#3ecf6e", "Storage", disk ? `${disk.name} ${Math.round(disk.pct)}%` : "—", "go:hardware")}
         ${has("lighting") ? tile("bulb", "#ffb020", "Lighting", f ? (f.on !== false ? `${cap(f.effect)} · ${f.brightness}%` : "Off") : "—", "go:lighting") : tile("status", "#3ecf6e", "Status", "Live graphs", "go:status")}
         ${tile("bell", "#ff5a5a", "Inbox", S.unread ? `${S.unread} new` : "All caught up", "go:inbox")}${favoriteTiles(tile)}</div>${favoritesLink()}
-      ${sec("Apps")}<div class="mapps">${isAdmin() && has("files") ? cell("Files", glyph("folder", "#3e91ff"), "go:files") : ""}${isAdmin() ? cell("Terminal", glyph("term", "#3ecf6e"), "go:term") : ""}
+      ${sec("Apps")}<div class="mapps">${isAdmin() && has("files") ? cell("Files", glyph("folder", "#3e91ff"), "go:files") : ""}${isAdmin() && has("terminal") ? cell("Terminal", glyph("term", "#3ecf6e"), "go:term") : ""}
         ${apps.map(a => { const h = ST.appHref(a); return a.kind === "command" ? cell(a.name, glyph("term", "#8e8e93"), "go:apps") : cell(a.name, `<span class="appic" data-ic="${esc(a.id)}">${esc((a.name || "?")[0])}</span>`, "go:apps", h); }).join("")}
         ${cell("All apps", glyph("apps", "var(--sub)"), "go:apps")}</div>
       ${sec("Server")}${group(row("Status", { sub: "Live graphs, storage, backups", blue: true, icon: "status", tint: "#3ecf6e", click: "go:status" })
         + row("Storage & hardware", { sub: "Drives, pools, set up drives", blue: true, icon: "disk", tint: "#3ecf6e", click: "go:hardware" })
         + row("Backups", { sub: "What's backed up, restore files", blue: true, icon: "backup", click: "go:backups" })
         + row("Updates", { sub: "Packages, containers and Nova", blue: true, icon: "update", tint: "#3ecf6e", click: "go:updates" })
-        + row("Diagnostics", { sub: "Speed, stress and network tests", blue: true, icon: "speed", tint: "#64d2ff", click: "go:diag" })
-        + row("Servers", { sub: (S.cache["/api/v1/nodes"]?.nodes || []).length ? `${S.cache["/api/v1/nodes"].nodes.length + 1} servers, at a glance` : "Your other Nova servers in one place — add one with +", blue: true, icon: "dns", click: "go:servers" }))}
+        + (has("diag") ? row("Diagnostics", { sub: "Speed, stress and network tests", blue: true, icon: "speed", tint: "#64d2ff", click: "go:diag" }) : "")
+        + row("Servers", { sub: (S.nodes || []).length ? `${S.nodes.length + 1} servers — switch between them here` : "Your other Nova servers in one place — add one with +", blue: true, icon: "dns", click: "go:servers" }))}
       ${sec("Apps & tools")}${group((has("store") ? row("App store", { sub: "Containers and programs", blue: true, icon: "store", tint: "#bf5af2", click: navTabs().some(t => t.route === "store") ? "tab:store" : "go:store" }) : "")
         + row("Containers", { sub: cs ? `${cs.running} of ${cs.total} running` : null, blue: true, icon: "box", click: "go:containers" })
         + (has("lighting") ? row("Lighting", { sub: "Effects, colors, schedules, your lights", blue: true, icon: "bulb", tint: "#ffb020", click: "go:lighting" }) : "")
@@ -197,6 +233,7 @@ export async function menu(ctx) {
       ${sec("You and this browser")}${group(row("Users & devices", { sub: "Who can reach this server", blue: true, icon: "group", click: "go:devices" })
         + row("Appearance", { sub: "Look, theme, home layout", blue: true, icon: "palette", click: "go:appearance" })
         + row("Settings", { sub: "Labs, features, plugins", icon: "gear", tint: "var(--sub)", click: "go:settings" })
+        + row("Questions", { sub: "Is it safe, what it connects to, how to undo things", icon: "info", tint: "var(--sub)", click: "go:faq" })
         + row("About Nova", { sub: "Nova web", icon: "info", tint: "var(--sub)", click: "go:about" }))}`,
       { title: "Menu", root: true, tabroot: true });
     $$("[data-ic]", ctx.root).forEach(async el => { const u = await ST.appIconUrl(el.dataset.ic); if (u && el.isConnected) { el.classList.add("img"); el.style.backgroundImage = `url(${u})`; el.textContent = ""; } });
@@ -499,7 +536,7 @@ async function storeItem(ctx, id) {
   const draw = () => {
     const a = (S.cache["/api/v1/store"]?.items || []).find(x => x.id === id);
     if (!a) return ctx.show(note("Loading…"), { title: "App" });
-    const url = `http://${location.hostname}:${a.port}${a.path || "/"}`, busy = task?.state === "running";
+    const url = `http://${serverHost()}:${a.port}${a.path || "/"}`, busy = task?.state === "running";
     ctx.show(`<div class="center" style="padding:18px 0"><span class="appicon" style="width:96px;height:96px;border-radius:30px;margin:0 auto 12px;background:${CAT_COLORS[a.category] || "var(--blue)"}"><b style="font-size:44px;color:#fff">${esc((a.name || "?")[0])}</b></span>
         <div class="muted" style="font-weight:600">${esc(a.category)}</div><div class="muted">${busy ? esc(task.title) : a.installed ? "Installed · " + esc(a.state || "") : "Not installed"}</div></div>
       ${busy ? `<div class="taskbar glass"><div class="tb-top"><b>${esc(task.step || "Working…")}</b><span>${Math.round(task.pct || 0)}%</span></div>${bar((task.pct || 0) / 100)}${task.note ? `<small class="muted">${esc(task.note)}</small>` : ""}<small class="muted">You can leave this page — it keeps going, and the Inbox shows its progress.</small></div>` : ""}
@@ -567,7 +604,7 @@ export async function inbox(ctx) {
         <button class="pillbtn press" data-act="selnone">Clear</button><button class="btn" style="height:40px;padding:0 18px;font-size:15px" data-act="archsel">${I("down")} Archive <span id="selnum">${picked.size || 1}</span></button></div>` : "";
     const nudge = "Notification" in window && Notification.permission === "default" && !prefs.browserNotify && !prefs.browserNotifyNudged
       ? `<div class="nudge glass fadeok">${I("bell")}<span>Get new alerts as browser notifications on this computer?</span><button class="pillbtn press" data-act="bnotify">Turn on</button><button class="pillbtn press" data-act="bnudgeno">Not now</button></div>` : "";
-    ctx.show(`${nudge}<div id="live">${liveHtml()}</div>${attentionHtml()}${segmented(["All", "Issues", "Critical", "Logins"], filter, "f")}
+    ctx.show(`${nudge}<div id="live">${liveHtml()}</div>${attentionHtml()}${ignoredHtml()}${segmented(["All", "Issues", "Critical", "Logins"], filter, "f")}
       ${ev.length ? `<p class="note" style="margin-top:6px">${mouse ? "Tick events to archive several at once, or use the archive button on a row. Keys: <b>x</b> select · <b>Ctrl+A</b> all · <b>e</b> archive · <b>Shift</b>-click a range." : "Swipe left to archive"} — archived events are kept on the server (Inbox → Archive), for every device.</p>` : ""}
       ${bar}
       ${Object.entries(days).map(([d, l]) => `<div class="sechead dayhead">${sec(d)}${mouse || picked.size ? `<button class="pillbtn press dayall" data-act="pickday:${esc(encodeURIComponent(d))}">${l.every(e => picked.has(String(e.t))) ? "Unselect day" : "Select day"}</button>` : ""}</div>` + group(l.map(e => { const k = String(e.t), on = picked.has(k);
@@ -612,6 +649,8 @@ export async function inbox(ctx) {
   ctx.handlers({
     livehide: id => hideLive(id),
     alert: (...a) => alertMenu(keyOf(a), draw), ignore: (...a) => dismissAlert(keyOf(a), draw), del: t => remove([+t]),
+    ignfold: () => { ignoredOpen = !ignoredOpen; $(".expand.ign", ctx.root)?.classList.toggle("open", ignoredOpen); },
+    unignore: (...a) => undismissAlert(keyOf(a), draw),
     pick: (k, el) => toggle(k, lastClickShift), selall: () => { shown().forEach(e => picked.add(String(e.t))); updateSel(); }, selnone: () => { picked.clear(); updateSel(); },
     pickday: d => { d = decodeURIComponent(d); const l = shown().filter(e => dayOf(e) === d).map(e => String(e.t)), all = l.every(k => picked.has(k));
       l.forEach(k => all ? picked.delete(k) : picked.add(k)); draw(); },
@@ -1274,7 +1313,7 @@ export async function appearance(ctx) {
       ${group(switchRow("Reduce motion", "Simple fades instead of slides and bounces", prefs.reduceMotion, "motion", { blue: false }))}
       ${sec("Lighter effects")}${segmented(["Automatic", "On", "Off"], ["auto", "on", "off"].indexOf(prefs.lite || "auto"), "lite")}
       ${note("No frosted-glass blur or soft shadows — much smoother on older computers and phones. Automatic turns it on when this device looks slow.")}
-      ${sec("Home")}${group(row("Home layout", { sub: prefs.homeOrder.filter(id => prefs[HOME_SECTIONS.find(s => s[0] === id)[3]]).map(id => HOME_SECTIONS.find(s => s[0] === id)[1]).join(" · ") || "Just the header", blue: true, icon: "dash", click: "go:edit-home" })
+      ${sec("Home")}${group(row("Home layout", { sub: homeOrder().filter(id => prefs[HOME_SECTIONS.find(s => s[0] === id)[3]]).map(id => HOME_SECTIONS.find(s => s[0] === id)[1]).join(" · ") || "Just the header", blue: true, icon: "dash", click: "go:edit-home" })
         + row("Choose shortcuts", { sub: homeChips().map(s => s.label).join(", ") || "None", blue: true, icon: "tune", click: "go:edit-shortcuts" })
         + row("Start page", { sub: `Search, stats, apps and bookmarks · Nova opens on ${({ home: "Home", start: "the start page", status: "Status", apps: "Apps", inbox: "the Inbox", dashboard: "the dashboard" })[prefs.startRoute || "home"]}`, blue: true, icon: "home", click: "go:start-edit" })
         + row("Navigation pill", { sub: navTabs().map(s => s.label).join(", ") + " · along the bottom, or down the left on wide screens", blue: true, icon: "viewday", click: "go:edit-tabs" }))}
@@ -1291,13 +1330,13 @@ export async function appearance(ctx) {
 export async function editHome(ctx) {
   const draw = () => {
     ctx.show(`${sec("Top to bottom · hold and drag to reorder")}
-      <div class="group glass rl" id="rl">${prefs.homeOrder.map(id => { const [, l, ic, key] = HOME_SECTIONS.find(s => s[0] === id), on = prefs[key];
+      <div class="group glass rl" id="rl">${homeOrder().map(id => { const [, l, ic, key] = HOME_SECTIONS.find(s => s[0] === id), on = prefs[key];
         return `<div class="row" data-key="${id}"><span class="handle">${I("drag")}</span><span style="color:${on ? "var(--blue)" : "var(--sub)"};display:flex">${I(ic)}</span><div class="t"><b style="color:${on ? "var(--text)" : "var(--sub)"}">${l}</b></div><button data-noreorder data-act="tog:${key}">${sw(on)}</button></div>`; }).join("")}</div>
       ${note("The name, status line and alerts always stay at the top. Hold the shortcut bar on Home to change its buttons.")}
       ${links([["Choose shortcuts", "go:edit-shortcuts"], ["Reset Home", "reset"]])}`, { title: "Home layout" });
     reorderable($("#rl"), keys => { prefs.homeOrder = keys; draw(); });
   };
-  ctx.handlers({ tog: k => { prefs[k] = !prefs[k]; draw(); }, reset: () => { ["homeOrder", "homeHero", "homeShortcuts", "homeStats"].forEach(k => localStorage.removeItem("nova." + k)); draw(); } });
+  ctx.handlers({ tog: k => { prefs[k] = !prefs[k]; draw(); }, reset: () => { ["homeOrder", "homeHero", "homeServers", "homeShortcuts", "homeStats"].forEach(k => localStorage.removeItem("nova." + k)); draw(); } });
   draw();
 }
 function editList(ctx, { title, label, all, key, max, fixed, preview, resetLabel }) {
@@ -1330,7 +1369,32 @@ export async function about(ctx) {
     ${sec("Server")}${group(row("Name", { sub: s.name }) + row("Board", { sub: s.board }) + row("CPU", { sub: s.cpu }) + row("Memory", { sub: s.ram_gb ? s.ram_gb + " GB" : "" }) + row("Kernel", { sub: s.kernel }) + row("Up for", { sub: s.uptime_s ? uptime(s.uptime_s) : "" }))}
     ${sec("Security")}${group(row("Every request is signed", { sub: "By this browser's own key — it can't be copied out — time-stamped and single-use" }) + row("Risky actions need your phone", { sub: "Shells, stopping things, installs, unmounting, power — approved with your fingerprint" })
       + row("At home: encrypted", { sub: "HTTPS to the server's own certificate" }) + row("Outside home: Cloudflare Access", { sub: "Strangers are stopped before they reach the server" }))}
+    ${group(row("Questions", { sub: "Is it safe, what it connects to, how to undo things", blue: true, icon: "info", click: "go:faq" }))}
     ${sec("Project")}${group(`<a class="row click" href="https://github.com/dash1101/Nova" target="_blank" rel="noopener" style="color:inherit;text-decoration:none"><div class="t"><b>Nova by dash1101</b><small>Open source · AGPL-3.0 · github.com/dash1101/Nova</small></div></a>`)}`, { title: "About" });
+}
+/** Questions people ask before trusting Nova with their server — the same answers as the website's FAQ. */
+export const FAQ = [
+  ["Safety and privacy", [
+    ["Can Nova read or send away my data?", "No. Nova runs on your own server and the app only ever talks to that server. There's no Nova account, no Nova cloud and no analytics or tracking of any kind. Your files, photos and settings never pass through anyone else. The code is open source, so anyone can check this for themselves."],
+    ["What does Nova connect to on the internet?", "Only the services you'd expect, and never with your data. GitHub, to check for and download signed Nova updates. Your system's package mirrors and container registries (Docker Hub, GitHub's registry and others), when you install or update programs and apps. Cloudflare and Tailscale, only if you set them up for remote access. Discord, only if you add a webhook for alerts. Docker Hub's search, when you search the app store. A speed-test server, when you run a speed test. A public icon set, for app icons. DuckDuckGo, for search suggestions on the Start page as you type (you can turn them off)."],
+    ["Is it safe to have on my server?", "Nova's API runs as its own unprivileged user in a systemd sandbox. The only part with root rights is a small helper that can run a fixed list of commands, and each one checks its input. Your containers, files and SSH settings are left alone unless you ask Nova to change them, and the risky changes also need your fingerprint."],
+    ["What can someone do with a stolen phone or browser?", "Very little. The phone's key only works after the phone is unlocked, and anything risky needs your fingerprint too. A browser can never do anything risky by itself: it asks an admin phone first. Remove a lost device in Users & devices, or with sudo nova remove NAME, and its key stops working instantly."],
+    ["How is Nova tested?", "Every release goes through an automated security test of more than 400 checks against a real server: forged and replayed requests, stolen keys, path tricks, oversized requests, brute force, and more. Releases are signed, and the server only installs updates whose signature checks out."]]],
+  ["Undoing things", [
+    ["How do I uninstall Nova completely?", "sudo apt remove nova-server stops Nova and removes it. Your containers, apps and data stay exactly as they are. sudo apt purge nova-server also deletes Nova's settings and the list of paired devices. If Nova put apps on your Cloudflare account, run sudo nova cloudflare undo first: it lists what it added and asks before taking anything off."],
+    ["Can I undo what Nova changed on Cloudflare?", "Yes. Nova keeps a record of exactly what it added, and only ever removes those things. sudo nova cloudflare list shows them and sudo nova cloudflare undo takes them off. An address you had before Nova protected it keeps its login unless you say otherwise."],
+    ["An update broke a container. Can I go back?", "Yes. When Nova updates a container it keeps the version it replaced. If the new one won't start, Nova puts the old one back by itself. Any time later, open Containers → the container → Troubleshoot → Go back to the previous version."],
+    ["I ignored an alert or archived something by mistake.", "Ignored alerts that are still going on stay in the Inbox under “Ignored”, with a Stop ignoring button. Archived events are kept on the server, and you can move them back from Inbox → Archive."],
+    ["Can I go back to an older Nova version?", "Yes. Download that version's .deb from the releases page and install it with sudo apt install ./nova-server_VERSION_all.deb (apt asks you to confirm going back). Your settings and paired devices stay on the server."]]],
+  ["Using it", [
+    ["Can I control several servers from one place?", "Yes. Add your other servers under Servers, then pick one to control it from the same page. Each server checks your browser itself, so the first time you approve your browser on that server, once."],
+    ["Do I need to open ports on my router?", "No. At home the app talks to the server directly. For access from anywhere, Nova uses a Cloudflare Tunnel with Cloudflare Access in front, or Tailscale if you already use it."],
+    ["What happens if I lose my phone?", "Remove it in Users & devices from another phone, or run sudo nova remove NAME on the server. Its keys can never be used again."]]],
+];
+export async function faq(ctx) {
+  ctx.show(FAQ.map(([title, qs]) => sec(title) + group(qs.map(([q, a]) => expand(q, "", "", esc(a))).join(""))).join("")
+    + note("Something else? Ask on github.com/dash1101/Nova."), { title: "Questions" });
+  wireCommon(ctx.root);
 }
 export async function guide(ctx) {
   const step = (n, t, b, cmd) => group(`<div style="padding:20px"><div style="display:flex;align-items:center;gap:12px"><span style="width:30px;height:30px;border-radius:50%;background:var(--blue);color:#fff;display:grid;place-items:center;font-weight:700">${n}</span><b style="font-size:18px;font-weight:600">${t}</b></div><p class="muted" style="margin:8px 0 0;font-size:15px">${b}</p>${cmd ? `<div class="code-block">${esc(cmd)}</div>` : ""}</div>`);
@@ -1340,7 +1404,8 @@ export async function guide(ctx) {
     ${step(3, "Pair your phone", "On home Wi-Fi, show a pairing code on the server and scan it with the Nova app. The code works once and expires in 10 minutes.", "sudo nova add")}
     ${step(4, "Optional: use it away from home", "Without a VPN, put Nova behind Cloudflare Access (free) — docs/REMOTE.md walks you through it. For this web version away from home, add an Allow policy for your email to the same Access application.")}
     ${step(5, "Optional: other people, tablets, browsers", "In the app: Menu → Users & devices — invite phones as Admin or View only, and approve browsers (open https://&lt;server&gt;:8495, choose “Get a code”).")}
-    ${note("Security in a sentence: every request is signed by a key the device can't give away, and anything risky also needs your fingerprint on a phone.")}`, { title: "Setup guide" });
+    ${note("Security in a sentence: every request is signed by a key the device can't give away, and anything risky also needs your fingerprint on a phone.")}
+    ${group(row("Questions", { sub: "Is it safe, what it connects to, how to undo things", blue: true, icon: "info", click: "go:faq" }))}`, { title: "Setup guide" });
 }
 export async function terminal(ctx) {
   ctx.show(`<div class="center" style="padding:18px 0"><div style="width:96px;height:96px;border-radius:30px;background:#0b0b0d;margin:0 auto 12px;display:grid;place-items:center;color:#3ecf6e;font:700 34px ui-monospace,monospace">&gt;_</div>

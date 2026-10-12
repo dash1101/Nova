@@ -46,6 +46,9 @@ export const S = {
   lastNow: null,                 // last live numbers, so a redrawn page never shows "—"
   skew: 0,                       // server clock − ours (ms), so the fan picture lines up with the real fan
   unread: 0,
+  nodes: null,                   // the other Nova servers added here (always from this server)
+  homeName: "",                  // this server's name (kept while you control another)
+  target: null,                  // another Nova server you're controlling from here: {id, name, device, homeName}
 };
 export class ApiError extends Error {
   constructor(code, msg, offline = false, kind = "") { super(msg); this.code = code; this.offline = offline; this.kind = kind; }
@@ -60,18 +63,40 @@ function cloudflareSays(code) {
 let approvalHook = null;          // set by the UI: shows "approve on your phone"
 export function onApproval(fn) { approvalHook = fn; }
 
-/** A signed request; returns the raw Response (for streaming — e.g. the speed test). */
-export async function signedFetch(method, path, body) {
-  const bodyStr = body === undefined ? "" : JSON.stringify(body);
+async function signHeaders(method, path, bodyStr, device) {
   const ts = String(Date.now()), nonce = b64url(crypto.getRandomValues(new Uint8Array(18)));
   const digest = hex(await crypto.subtle.digest("SHA-256", enc(bodyStr)));
   const sig = await crypto.subtle.sign({ name: "ECDSA", hash: "SHA-256" }, S.keys.privateKey, enc(`${method}\n${path}\n${ts}\n${nonce}\n${digest}`));
+  return { "X-Nova-Device": device, "X-Nova-Time": ts, "X-Nova-Nonce": nonce, "X-Nova-Signature": b64(sig) };
+}
+
+/** A signed request; returns the raw Response (for streaming — e.g. the speed test). */
+export async function signedFetch(method, path, body, here = false) {
+  const bodyStr = body === undefined ? "" : JSON.stringify(body);
+  if (S.target && !here) return relayFetch(S.target, method, path, bodyStr);
   return fetch(path, { method, body: method === "GET" ? undefined : bodyStr, credentials: "same-origin", cache: "no-store",
-    headers: { "Content-Type": "application/json", "X-Nova-Device": S.device, "X-Nova-Time": ts, "X-Nova-Nonce": nonce, "X-Nova-Signature": b64(sig) } });
+    headers: { "Content-Type": "application/json", ...(await signHeaders(method, path, bodyStr, S.device)) } });
+}
+
+/** Controlling another Nova server from here: the request is signed by this browser for that server (its own
+ *  device id there), and this server only carries it over (nodes.py). Its answer comes back as a normal Response. */
+export async function relayFetch(t, method, path, bodyStr = "") {
+  const unsigned = /^\/api\/v1\/browser\/request(\/|$)/.test(path);
+  const inner = unsigned ? {} : await signHeaders(method, path, bodyStr, t.device);
+  const outerPath = `/api/v1/nodes/${t.id}/relay`, outer = JSON.stringify({ method, path, headers: inner, body: method === "GET" ? "" : bodyStr });
+  const r = await fetch(outerPath, { method: "POST", body: outer, credentials: "same-origin", cache: "no-store",
+    headers: { "Content-Type": "application/json", ...(await signHeaders("POST", outerPath, outer, S.device)) } });
+  if (r.status !== 200) return r;                              // about this server (signed out, can't reach that one…)
+  let j; try { j = await r.json(); } catch { return new Response("{}", { status: 502 }); }
+  let st = +j.status || 502, b = j.body ?? {};
+  if (st === 401 && !unsigned) { st = 403; b = { error: "not_paired_there", message: `${t.name} doesn't know this browser anymore — pick it under Servers to pair again` }; S.targetLost = true; }
+  if (st < 200 || st > 599 || st === 204) st = st === 204 ? 200 : 502;
+  return new Response(JSON.stringify(b), { status: st, headers: { "Content-Type": "application/json" } });
 }
 
 /** Signed request with a raw body (file uploads/saves) — the signature covers the bytes' SHA-256. */
 export async function signedRaw(method, path, bytes) {
+  if (S.target) throw new ApiError(400, `Not while you're controlling ${S.target.name} — open its own Nova web for files`);
   const buf = bytes instanceof Blob ? new Uint8Array(await bytes.arrayBuffer()) : bytes;
   const ts = String(Date.now()), nonce = b64url(crypto.getRandomValues(new Uint8Array(18)));
   const digest = hex(await crypto.subtle.digest("SHA-256", buf));
@@ -82,10 +107,10 @@ export async function signedRaw(method, path, bytes) {
   if (!r.ok) throw new ApiError(r.status, j.message || j.error || `HTTP ${r.status}`, false, j.error || "");
   return j;
 }
-export async function api(method, path, body) {
+export async function api(method, path, body, here = false) {
   let r;
   try {
-    r = await signedFetch(method, path, body);
+    r = await signedFetch(method, path, body, here);
   } catch (e) {
     S.lastAttempt = navigator.onLine === false ? "This device is offline" : `Nothing answered at ${location.host} (the server is off, or this network can't reach it)`;
     throw new ApiError(0, "Disconnected", true);
@@ -102,12 +127,15 @@ export async function api(method, path, body) {
   if (r.status === 401) throw new ApiError(401, "This browser isn't authorized anymore");
   if (!r.ok) throw new ApiError(r.status, j.message || j.error || `HTTP ${r.status}`, false, j.error || "");
   S.lastContact = Date.now();
-  if (method === "GET" && !path.startsWith("/api/v1/stats?")) S.cache[path] = j;      // not the per-second deltas
+  if (method === "GET" && !here && !path.startsWith("/api/v1/stats?")) S.cache[path] = j;      // not the per-second deltas
   return j;
 }
 export const get = p => api("GET", p);
 export const post = (p, b = {}) => api("POST", p, b);
 export const del = p => api("DELETE", p);
+/** This server itself, even while you control another one (the Servers list lives here). */
+export const hereApi = (m, p, b) => api(m, p, b, true);
+export async function loadNodes() { const r = await hereApi("GET", "/api/v1/nodes"); S.nodes = r.nodes || []; return S.nodes; }
 
 /** Background jobs (installs/updates): poll until done. */
 /** Background tasks (installs, backups, updates, drive setup…): follow one until it ends. */
@@ -130,7 +158,7 @@ export async function waitJob(job, onUpdate) {
 // ── preferences (this browser) — same choices as the app's Appearance screens ───
 const PREF_DEFAULTS = {
   theme: "system", style: "auto", reduceMotion: true,       // browsers start calm; turn motion on in Appearance
-  homeOrder: ["hero", "shortcuts", "stats"], homeHero: true, homeShortcuts: true, homeStats: true,
+  homeOrder: ["hero", "servers", "shortcuts", "stats"], homeHero: true, homeShortcuts: true, homeStats: true, homeServers: true,
   homeChips: ["inbox", "quick", "containers", "storage"],
   navTabs: ["store", "home", "menu"],
   quick: ["backup", "freeram", "fan", "dim", "status", "dashboard"],
@@ -161,8 +189,13 @@ export function webForm() {
   return "desktop";
 }
 export const isAdmin = () => S.me?.role !== "viewer";
-export const has = f => S.overview?.features?.[f] !== false;
-export const cleanTitle = t => String(t || "").replace(/^[^\p{L}\p{N}]+\s*/u, "");
+// Through another server, the things that stream or move files aren't carried (yet): its own Nova web does them
+const NOT_RELAYED = ["files", "terminal", "diag"];
+export const has = f => !(S.target && NOT_RELAYED.includes(f)) && S.overview?.features?.[f] !== false;
+export const relayed = () => !!S.target;
+/** The host name of the server you're looking at (apps on it open at its address, not this one's). */
+export const serverHost = () => { if (S.target) { try { return new URL(S.target.lan_url).hostname.replace(/^\[|\]$/g, ""); } catch {} } return location.hostname; };
+export const cleanTitle = t => String(t || "").replace(/^[^\p{L}\p{N}\/~]+\s*/u, "");     // the status emoji goes; a path like "/ is 90% full" stays
 export const cap = s => s ? s[0].toUpperCase() + s.slice(1) : "";
 export const serverName = () => { const s = S.overview?.server; return s?.display_name || (s?.name || "Nova").replace(/(^|-)\w/g, m => m.toUpperCase()); };
 export const uptime = s => `${Math.floor(s / 86400)}d ${Math.floor(s % 86400 / 3600)}h ${Math.floor(s % 3600 / 60)}m`;
@@ -192,6 +225,21 @@ export async function refresh() {
   }
 }
 
+/** Switch which server this web is controlling (null = this one). Everything shown is dropped and fetched again. */
+const saved = {};
+export async function switchServer(t) {
+  saved[S.target?.id || ""] = S.cache;
+  if (!S.target) S.homeName = serverName();
+  S.target = t || null; S.targetLost = false;
+  S.cache = saved[S.target?.id || ""] || {};
+  Object.assign(S, { overview: null, fan: null, lastNow: null, unread: 0, serverUpdate: null, updateAsked: false, error: null, reconnecting: false, failures: 0 });
+  document.documentElement.style.removeProperty("--blue");
+  try { sessionStorage.setItem("nova.target", t ? JSON.stringify(t) : ""); } catch {}
+  S.me = await get("/api/v1/whoami");
+  await refresh();
+}
+export function savedTarget() { try { return JSON.parse(sessionStorage.getItem("nova.target") || "null"); } catch { return null; } }
+
 // Optimistic lighting changes: the UI moves first, the server catches up.
 let fanInFlight = 0;
 export async function changeFan(patch) {
@@ -203,7 +251,7 @@ export async function changeFan(patch) {
 }
 
 // ── this browser's permanent history of server events (IndexedDB; survives the Inbox being cleared) ──
-const AKEY = () => "history:" + (S.device || "");
+const AKEY = () => "history:" + (S.target ? S.target.id + ":" + S.target.device : S.device || "");
 export async function archiveMerge(events, markArchived = false) {
   if (!events?.length) return;
   const h = (await kv(AKEY()).catch(() => null)) || { events: [], archived: [] };

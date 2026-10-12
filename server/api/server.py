@@ -39,7 +39,7 @@ try:                       # optional module: fan/case lighting (modules/fan-gig
 except ImportError:
     nova_rgb = None
 
-API_VERSION = "0.6.5-alpha"
+API_VERSION = "0.6.6-alpha"
 CONFIG = "/etc/nova-api/config.json"
 DATA = "/var/lib/nova-api"
 DEVICES = f"{DATA}/devices.json"
@@ -660,15 +660,45 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(data)
 
     def origin(self):
-        """('lan'|'local'|'remote'|None, client_ip)"""
+        """('lan'|'local'|'tailnet'|'remote'|None, client_ip) — worked out once per request."""
+        if getattr(self, "_org", None) is None: self._org = self._origin()
+        return self._org
+
+    def _origin(self):
+        self.relayed = False
         peer = ipaddress.ip_address(self.client_address[0])
-        if peer in LAN: return "lan", str(peer)
-        if TAILNET and peer in TAILNET: return "tailnet", str(peer)
-        if peer.is_loopback:
+        if peer in LAN: base = "lan", str(peer)
+        elif TAILNET and peer in TAILNET: base = "tailnet", str(peer)
+        elif peer.is_loopback:
             if self.headers.get("Cf-Ray"):            # came through the Cloudflare tunnel
                 return "remote", self.headers.get("Cf-Connecting-IP", "?")
-            return "local", str(peer)
-        return None, str(peer)
+            base = "local", str(peer)
+        else: return None, str(peer)
+        if self.headers.get("X-Nova-Relay-Head") is None: return base
+        # Another Nova server carrying a browser's request here (nodes.relay). It states where the browser
+        # really is; we believe it only from a head device of ours, freshly signed, for this very request.
+        # Then the browser is treated as being there (limits counted per browser, not against that server).
+        st = self._relay_statement()
+        if not st: return None, base[1]
+        self.relayed = True
+        return st
+
+    def _relay_statement(self):
+        h = self.headers
+        head, via, rip = h.get("X-Nova-Relay-Head", ""), h.get("X-Nova-Relay-Via", ""), h.get("X-Nova-Relay-IP", "")
+        ts, rn, sig = h.get("X-Nova-Relay-Time", ""), h.get("X-Nova-Relay-Nonce", ""), h.get("X-Nova-Relay-Sig", "")
+        dev = load_json(DEVICES, {}).get(head)
+        if not dev or dev.get("revoked") or dev.get("type") != "head" or via not in ("lan", "tailnet", "remote"): return None
+        try: ipaddress.ip_address(rip); ts_i = int(ts)
+        except ValueError: return None
+        if abs(time.time() * 1000 - ts_i) > CLOCK_SKEW_MS: return None
+        if not (16 <= len(rn) <= 64) or not rn.replace("-", "").replace("_", "").isalnum() or rn in nonces: return None
+        try:
+            serialization.load_pem_public_key(dev["public_key"].encode()).verify(
+                der_sig(base64.b64decode(sig)), nodes.statement(self.command, self.path, rn, h.get("X-Nova-Nonce", ""), via, rip, ts), ec.ECDSA(hashes.SHA256()))
+        except (InvalidSignature, ValueError, TypeError): return None
+        nonces[rn] = time.time() + 2 * CLOCK_SKEW_MS / 1000
+        return via, "relay:" + rip
 
     def throttled(self, ip):
         now = time.time()
@@ -687,7 +717,7 @@ class Handler(BaseHTTPRequestHandler):
         where, ip = self.origin()
         if where is None: self.fail(ip, 403, "not from LAN or Cloudflare"); return None
         if self.throttled(ip): self.send(429, {"error": "too many failed attempts"}); return None
-        if where == "remote" and not access_jwt_ok(self.headers.get("Cf-Access-Jwt-Assertion")):
+        if where == "remote" and not self.relayed and not access_jwt_ok(self.headers.get("Cf-Access-Jwt-Assertion")):
             self.fail(ip, 401, "missing/invalid Cloudflare Access token"); return None
         dev_id = self.headers.get("X-Nova-Device", "")
         ts, nonce = self.headers.get("X-Nova-Time", ""), self.headers.get("X-Nova-Nonce", "")
@@ -757,9 +787,16 @@ class Handler(BaseHTTPRequestHandler):
     def do_DELETE(self): self.route("DELETE")
 
     def route(self, method):
+        self._org = None; self.relayed = False                 # (one connection can carry several requests)
         body = self.read_body()
         if body is None: return self.send(413, {"error": "body too large"})
         path = self.path.split("?", 1)[0]
+        if self.headers.get("X-Nova-Relay-Head") is not None:
+            where, ip = self.origin()
+            if where is None: return self.fail(ip, 401, "bad relay statement")
+            # through another server: only the signed API and asking to be added — never pairing or the web files
+            if not path.startswith("/api/v1/") or path in ("/api/v1/pair", "/api/v1/crash", "/api/v1/ping"):
+                return self.send(403, {"error": "not through another server"})
 
         if method == "GET" and (path == "/" or path.startswith("/web/")):
             return self.static(path)
@@ -926,7 +963,12 @@ class Handler(BaseHTTPRequestHandler):
         except Exception as e:
             code, res = 500, {"error": "server error"}
             audit(device=dev["name"], path=path, result=500, error=repr(e)[:200])
-        if (method != "GET" or code >= 400) and not path.startswith("/api/v1/shell/"):
+        if re.fullmatch(r"/api/v1/nodes/[0-9a-f]{12}/relay", path):
+            # only which server and what was asked there — the body (maybe a password or token) stays out of the log
+            if str(data.get("method")) != "GET" or code >= 400 or (isinstance(res, dict) and int(res.get("status") or 0) >= 400):
+                audit(device=dev["name"], via=dev["via"], ip=dev["ip"], method="RELAY", path=path, node=path.split("/")[4],
+                      inner=f"{str(data.get('method', ''))[:8]} {str(data.get('path', ''))[:200]}", result=code, node_result=res.get("status") if isinstance(res, dict) else None)
+        elif (method != "GET" or code >= 400) and not path.startswith("/api/v1/shell/"):
             logged = {k: (str(v)[:200] if k != "report" else f"<{len(str(v))} bytes>") for k, v in data.items()}
             audit(device=dev["name"], via=dev["via"], ip=dev["ip"], method=method, path=path,
                   data=logged, result=code, stepup=dev.get("stepup_ok", False))
@@ -959,7 +1001,7 @@ class Handler(BaseHTTPRequestHandler):
         becomes a device when an admin phone approves the code (with fingerprint)."""
         where, ip = self.origin()
         if where is None: return self.send(403, {"error": "not from LAN or Cloudflare"})
-        if where == "remote" and not access_jwt_ok(self.headers.get("Cf-Access-Jwt-Assertion")):
+        if where == "remote" and not self.relayed and not access_jwt_ok(self.headers.get("Cf-Access-Jwt-Assertion")):
             return self.fail(ip, 401, "missing/invalid Cloudflare Access token")
         if self.throttled(ip): return self.send(429, {"error": "too many attempts"})
         now = time.time()
@@ -1067,7 +1109,7 @@ class Handler(BaseHTTPRequestHandler):
         # ── identity / device ──
         if method == "GET" and parts == ["whoami"]:
             return 200, {"device": dev["name"], "via": dev["via"], "paired": dev.get("created"), "id": dev["id"],
-                         "stepup": bool(dev.get("stepup_key")), "api": API_VERSION,
+                         "stepup": bool(dev.get("stepup_key")), "api": API_VERSION, "relay": True,
                          "role": role_of(dev), "user": dev.get("user", ""), "form": dev.get("form", "")}
         if method == "POST" and parts == ["device", "form"]:
             # What kind of device this is (phone, tablet or desktop) — only for showing the right icon and words.
@@ -1259,7 +1301,7 @@ class Handler(BaseHTTPRequestHandler):
                                     "accent": cfg.get("accent", ""), "board": board_name(), "cpu": cpu,
                                     "ram_gb": round(mem.get("MemTotal", 0) / 1048576), "kernel": os.uname().release,
                                     "uptime_s": int(float(open("/proc/uptime").read().split()[0])), "tailnet_host": TAILNET_HOST},
-                         "status": {k: st.get(k) for k in ("level", "headline", "status", "active_count", "active", "metrics", "updated_local")},
+                         "status": {k: st.get(k) for k in ("level", "headline", "status", "active_count", "active", "ignored", "metrics", "updated_local")},
                          "fan": fan, "containers": {"running": sum(1 for c in cl if c["state"] == "running"), "total": len(cl)},
                          "tasks": [{"title": t.get("title", ""), "pct": t.get("pct", 0)} for t in live_tasks() if t.get("state") == "running"],
                          # What this server has, so the app only shows what works here.
@@ -1431,6 +1473,18 @@ class Handler(BaseHTTPRequestHandler):
             if role_of(dev) != "admin": return 403, {"error": "admins only"}
             head = load_json(SETTINGS, {}).get("display_name") or os.uname().nodename
             return 200, nodes.pair(str(data.get("host", "")), str(data.get("code", "")), str(data.get("pin", "")), head)
+        if method == "POST" and len(parts) == 3 and parts[0] == "nodes" and parts[2] == "relay" and re.fullmatch(r"[0-9a-f]{12}", parts[1]):
+            # This browser controlling another Nova server: carry its request (signed by the browser for that
+            # server) there. That server checks the browser itself and asks its own phones for risky actions.
+            if dev.get("type") != "browser": return 403, {"error": "browsers only"}
+            if self.relayed: return 403, {"error": "one server at a time"}
+            via = "lan" if dev["via"] in ("lan", "local") else dev["via"]
+            try: rip = str(ipaddress.ip_address(dev["ip"]))
+            except ValueError: rip = "0.0.0.0"
+            try: st, j = nodes.relay(parts[1], str(data.get("method", "")), data.get("path"), data.get("headers") or {}, data.get("body", ""), via, rip)
+            except LookupError as e: return 404, {"error": str(e)}
+            except ConnectionError as e: return 502, {"error": "unreachable", "message": str(e)}
+            return 200, {"status": st, "body": j}
         if method == "DELETE" and len(parts) == 2 and parts[0] == "nodes" and re.fullmatch(r"[0-9a-f]{12}", parts[1]):
             if role_of(dev) != "admin": return 403, {"error": "admins only"}
             return (200, {"ok": True}) if nodes.remove(parts[1]) else (404, {"error": "no such server"})
@@ -1581,6 +1635,7 @@ class Handler(BaseHTTPRequestHandler):
             if method == "POST":
                 if not load_json(SETTINGS, {}).get("labs", {}).get("cloudflare_sync"): return 403, {"error": "turn on Cloudflare auto-setup in Settings → Labs first"}
                 sh = str(data.get("share_host", "")).strip().lower()[:253]
+                if not re.fullmatch(r"(?=.{4,253}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}", sh): raise ValueError("share address: like share.example.com")
                 fh = re.sub(r"^https?://", "", a.get("remote_url") or "").split("/")[0] or str(data.get("for_host", ""))[:253]
                 if fh and not re.fullmatch(r"[a-z0-9.-]{3,253}", fh.lower()): raise ValueError("bad address")
                 rc, res = helper("task-start", "share-setup", json.dumps({"companion": c["id"], "share_host": sh, "app_port": a.get("port") or 0, "for_host": fh}))
@@ -1828,6 +1883,8 @@ class Handler(BaseHTTPRequestHandler):
             return 200, res
         if method == "POST" and parts == ["alerts", "dismiss"]:
             rc, res = helper("alerts-dismiss", str(data.get("key", ""))[:220], timeout=160); return (200 if rc == 0 else 400), res
+        if method == "POST" and parts == ["alerts", "undismiss"]:       # stop ignoring: only makes alerts louder, so no phone needed
+            rc, res = helper("alerts-undismiss", str(data.get("key", ""))[:220], timeout=160); return (200 if rc == 0 else 400), res
         if method == "POST" and parts == ["events", "restore"]:
             ts = data.get("t"); arg = ",".join(f"{float(x):.6f}" for x in (ts if isinstance(ts, list) else [ts])[:200])
             rc, res = helper("events-restore", arg, timeout=160); return (200 if rc == 0 else 400), res

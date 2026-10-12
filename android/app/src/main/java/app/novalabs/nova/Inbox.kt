@@ -76,6 +76,7 @@ import java.util.*
             TopAction(Icons.Rounded.Settings, "Notification settings") { app.go(Route.NotifySettings) })) {
         LiveTasks(app)
         AttentionList(app)
+        IgnoredList(app)
         Segmented(listOf("All", "Issues", "Critical", "Logins"), filter) { filter = it }
         if (shown.isEmpty()) Text(if (data == null) "Loading…" else "Nothing here — all quiet.", color = N.sub, modifier = Modifier.padding(30.dp))
         if (shown.isNotEmpty()) Text(if (selecting) "Tap to add or remove · back to stop selecting" else "Swipe left to archive, or hold to select several — they move to the Archive (kept on the server, for every device).",
@@ -361,6 +362,7 @@ import java.util.*
             Row1("At home: encrypted, pinned", "HTTPS to the server's own certificate, checked on every connection", false); RowDivider()
             Row1("Outside home: Cloudflare Access", "Strangers are stopped before they reach the server", false)
         }
+        Group { Row1("Questions", "Is it safe, what it connects to, how to undo things", true, Icons.Rounded.Help, onClick = { app.go(Route.Faq) }) }
         SectionLabel("Project")
         val ctx = androidx.compose.ui.platform.LocalContext.current
         Group { Row1("Nova by dash1101", "Open source · AGPL-3.0 · github.com/dash1101/Nova", true, onClick = {

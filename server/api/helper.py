@@ -626,6 +626,12 @@ if verb == "alerts-dismiss" and len(args) == 1 and re.fullmatch(ALERT_KEY_RE, ar
     if rc != 0: fail((se or so).strip()[-200:] or "couldn't dismiss")
     changelog(f"Alert dismissed from the Nova app: {args[0]}")
     out(json.loads(so.strip().splitlines()[-1]))
+if verb == "alerts-undismiss" and len(args) == 1 and re.fullmatch(ALERT_KEY_RE, args[0]):
+    if not MONITOR: fail("monitoring isn't installed")
+    rc, so, se = run(["python3", MONITOR, "undismiss", args[0]], timeout=150)
+    if rc != 0: fail((se or so).strip()[-200:] or "couldn't do that")
+    changelog(f"Alert no longer ignored (Nova app): {args[0]}")
+    out(json.loads(so.strip().splitlines()[-1]))
 if verb == "events-delete" and len(args) == 1 and re.fullmatch(r"all|[\d.]+(,[\d.]+){0,199}", args[0]):
     if not MONITOR: fail("monitoring isn't installed")
     rc, so, se = run(["python3", MONITOR, "delete-event", args[0]], timeout=150)
