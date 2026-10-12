@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.4-alpha (server and Nova web)
+- **A drive that stops responding is now a critical alert** (“Drive not responding: Cold storage”), not just a string of “disk errors” events: Nova checks that each drive can actually be read, not only that it's mounted.
+- **Nova web: Lighter effects** (Appearance): no frosted-glass blur or soft shadows, quicker transitions — much smoother on older computers. *Automatic* turns it on by itself when the device looks slow (it measures the frame rate once).
+- **Nova web: long notes fold** to two lines with a small arrow to open them.
+- **Nova web: the navigation pill takes as many tabs as you like** (up to 12); when they don't fit it slides, with the edges fading, and the tab you're on scrolls into view.
+- The phone app's side of these comes with the next app release.
+
 ## 0.6.3-alpha (app and server)
 - **Share address: your choice of who can open it.** It stays **Anyone with a link** by default (no Cloudflare login — the app's own password and expiry protect each link), or switch it to **Only people you add** (they get a one-time code by email first, then the link's password) or **Only you** — and back, any time. Tap the share address in Labs → Cloudflare.
 - Taking the share address out of Nova only removes a login Nova added; your own route and DNS record stay, so links keep working.

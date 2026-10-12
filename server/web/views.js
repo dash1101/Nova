@@ -1270,11 +1270,14 @@ export async function appearance(ctx) {
         ["material", "Material You", "Google's Material 3 Expressive: tonal colors from the accent, bolder shapes, springy motion"]].map(([k, l, d]) => row(l, { sub: d, end: radio(st === k), click: "style:" + k })).join(""))}
       ${sec("Theme")}${group([["system", "Same as this device"], ["light", `${look} light`], ["dark", `${look} dark`]].map(([k, l]) => row(l, { end: radio(t === k), click: "theme:" + k })).join(""))}
       ${group(switchRow("Reduce motion", "Simple fades instead of slides and bounces", prefs.reduceMotion, "motion", { blue: false }))}
+      ${sec("Lighter effects")}${segmented(["Automatic", "On", "Off"], ["auto", "on", "off"].indexOf(prefs.lite || "auto"), "lite")}
+      ${note("No frosted-glass blur or soft shadows — much smoother on older computers and phones. Automatic turns it on when this device looks slow.")}
       ${sec("Home")}${group(row("Home layout", { sub: prefs.homeOrder.filter(id => prefs[HOME_SECTIONS.find(s => s[0] === id)[3]]).map(id => HOME_SECTIONS.find(s => s[0] === id)[1]).join(" · ") || "Just the header", blue: true, icon: "dash", click: "go:edit-home" })
         + row("Choose shortcuts", { sub: homeChips().map(s => s.label).join(", ") || "None", blue: true, icon: "tune", click: "go:edit-shortcuts" })
         + row("Start page", { sub: `Search, stats, apps and bookmarks · Nova opens on ${({ home: "Home", start: "the start page", status: "Status", apps: "Apps", inbox: "the Inbox", dashboard: "the dashboard" })[prefs.startRoute || "home"]}`, blue: true, icon: "home", click: "go:start-edit" })
         + row("Navigation pill", { sub: navTabs().map(s => s.label).join(", ") + " · along the bottom, or down the left on wide screens", blue: true, icon: "viewday", click: "go:edit-tabs" }))}
       ${note("These choices are saved in this browser. Each server also has its own name and accent color (Settings → Server).")}`, { title: "Appearance" });
+    wireCommon(ctx.root, { onSeg: (k, i) => { if (k === "lite") { prefs.lite = ["auto", "on", "off"][i]; ctx.applyTheme(); draw(); } } });
   };
   ctx.handlers({
     theme: k => { prefs.theme = k; ctx.applyTheme(); draw(); },
@@ -1315,7 +1318,7 @@ export const editShortcuts = ctx => editList(ctx, { title: "Home shortcuts", lab
   preview: () => { const l = homeChips(); return `<div style="padding:4px 0 6px">${l.length ? `<div class="pillbar glass${l.length >= 5 ? " five" : ""}">${l.map(s => `<button>${I(s.icon)}<span class="l">${esc(l.length >= 5 ? s.short : s.label)}</span></button>`).join("")}</div>` : note("No shortcuts — add some below.")}</div>`; } });
 export const editTabs = ctx => {
   if (!prefs.navTabs.includes("home")) prefs.navTabs = ["home", ...prefs.navTabs];
-  editList(ctx, { title: "Navigation pill", label: "Tabs · hold and drag to reorder", all: NAV_TABS, key: "navTabs", max: 5, fixed: "home", resetLabel: "Reset the navigation pill",
+  editList(ctx, { title: "Navigation pill", label: "Tabs · hold and drag to reorder", all: NAV_TABS, key: "navTabs", max: 12, fixed: "home", resetLabel: "Reset the navigation pill",
     preview: () => { const t = navTabs(), i = t.findIndex(x => x.id === "home"); return `<div style="display:flex;justify-content:center;padding:4px 0 6px"><div class="nav glass" style="position:static;transform:none"><div class="items"><span class="bead" style="transform:translateX(${i * 80}px)"></span>${t.map(x => `<button aria-label="${esc(x.label)}">${I(x.icon)}</button>`).join("")}</div></div></div>${note("On a wide screen or in landscape the same pill stands down the left edge. Back from any tab goes to Home. If you remove Menu, it's still in Home ⋮.")}`; } });
 };
 export async function about(ctx) {

@@ -513,3 +513,30 @@ html.material .alertcard { border-radius: 16px; background: var(--card); backdro
 .linkbtn { border: 0; background: none; font: inherit; color: var(--link, var(--blue)); font-size: 14px; font-weight: 600; padding: 6px 8px; border-radius: 12px; cursor: pointer; display: block; }
 .spin { width: 22px; height: 22px; border-radius: 50%; border: 3px solid color-mix(in srgb, var(--blue) 25%, transparent); border-top-color: var(--blue); animation: nova-spin .9s linear infinite; flex: none; margin-right: 14px; }
 @keyframes nova-spin { to { transform: rotate(360deg); } }
+
+/* Lighter effects (older devices): solid surfaces instead of live blur, no soft shadows or glow, quicker transitions */
+html.lite .frost, html.lite .glass { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; background: var(--frost-solid, var(--card)) !important; }
+html.lite * { box-shadow: none !important; text-shadow: none !important; }
+html.lite .glow, html.lite #glow { display: none !important; }
+html.lite .enter-1, html.lite .enter--1 { animation-duration: .18s; }
+
+/* The pill with more tabs than fit: a sliding strip whose edges fade where there's more */
+.nav { max-width: calc(100vw - 28px); }
+.nav.vertical { max-width: none; max-height: calc(100vh - 28px); }
+.nav .nscroll { overflow: auto hidden; scrollbar-width: none; border-radius: 34px; overscroll-behavior: contain; }
+.nav.vertical .nscroll { overflow: hidden auto; }
+.nav .nscroll::-webkit-scrollbar { display: none; }
+.nav .nscroll.fs { -webkit-mask-image: linear-gradient(90deg, transparent, #000 44px); mask-image: linear-gradient(90deg, transparent, #000 44px); }
+.nav .nscroll.fe { -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 44px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 44px), transparent); }
+.nav .nscroll.fs.fe { -webkit-mask-image: linear-gradient(90deg, transparent, #000 44px, #000 calc(100% - 44px), transparent); mask-image: linear-gradient(90deg, transparent, #000 44px, #000 calc(100% - 44px), transparent); }
+.nav.vertical .nscroll.fs { -webkit-mask-image: linear-gradient(180deg, transparent, #000 44px); mask-image: linear-gradient(180deg, transparent, #000 44px); }
+.nav.vertical .nscroll.fe { -webkit-mask-image: linear-gradient(180deg, #000 calc(100% - 44px), transparent); mask-image: linear-gradient(180deg, #000 calc(100% - 44px), transparent); }
+.nav.vertical .nscroll.fs.fe { -webkit-mask-image: linear-gradient(180deg, transparent, #000 44px, #000 calc(100% - 44px), transparent); mask-image: linear-gradient(180deg, transparent, #000 44px, #000 calc(100% - 44px), transparent); }
+
+/* folded notes */
+.note.xnote { display: flex; align-items: flex-end; gap: 4px; }
+.note.xnote .xt { flex: 1; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.note.xnote.open .xt { display: block; }
+.note.xnote .xbtn { flex: none; width: 28px; height: 28px; border-radius: 50%; border: 0; background: none; color: var(--sub); display: grid; place-items: center; cursor: pointer; transition: transform .25s var(--ease); }
+.note.xnote .xbtn svg { width: 20px; height: 20px; }
+.note.xnote.open .xbtn { transform: rotate(180deg); }

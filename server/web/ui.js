@@ -91,7 +91,10 @@ export function row(title, { sub, blue, icon, tint = "var(--blue)", end = "", cl
 }
 export const group = inner => `<div class="group glass">${inner}</div>`;
 export const sec = t => `<div class="sec">${esc(t)}</div>`;
-export const note = t => `<p class="note">${esc(t)}</p>`;
+// Long notes (instructions, explanations) fold to two lines with a small arrow to open them — keeps pages tight
+export const note = t => String(t).length > 170
+  ? `<p class="note xnote"><span class="xt">${esc(t)}</span><button class="xbtn press" aria-label="Show more" aria-expanded="false">${I("down")}</button></p>`
+  : `<p class="note">${esc(t)}</p>`;
 export const sw = on => `<span class="sw${on ? " on" : ""}"></span>`;
 export const radio = on => `<span class="radio${on ? " on" : ""}"></span>`;
 export const switchRow = (title, sub, on, key, { blue, dis } = {}) => row(title, { sub, blue: blue ?? on, end: sw(on), click: key, dis });

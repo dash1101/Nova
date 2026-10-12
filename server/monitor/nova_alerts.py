@@ -164,6 +164,16 @@ def mount_name(mp, names):
 LEGACY_METRIC = {"/": "root"}            # older apps read root_used; everything else is in metrics["storage"]
 
 # ── state ─────────────────────────────────────────────────────────────────────
+def readable(path, timeout=8):
+    """True if the folder can be listed, False on an I/O error, None if it didn't answer in time (a stuck drive)."""
+    import threading
+    res = {}
+    def go():
+        try: os.listdir(path); res["ok"] = True
+        except OSError as e: res["ok"] = False if e.errno in (5, 117, 19, 6) else True    # EIO, EUCLEAN, ENODEV, ENXIO
+    t = threading.Thread(target=go, daemon=True); t.start(); t.join(timeout)
+    return res.get("ok", False if t.is_alive() else None)
+
 class Monitor:
     def __init__(self):
         cfg = load_json(CONFIG_FILE, {})
@@ -401,8 +411,17 @@ class Monitor:
             if mp in quiet: continue
             self.condition(f"mount:{mp}", mp not in mounted, "critical", f"Not mounted: {mp}",
                            f"{mount_name(mp, names)} isn't available — a drive dropped out or wasn't there at boot.")
+        # Mounted isn't the same as working: a drive that died stays "mounted" but can't be read.
+        dead = set()
+        for mp in req:
+            if mp in quiet or mp not in mounted: continue
+            ok = readable(mp)
+            if ok is False: dead.add(mp)
+            self.condition(f"dead:{mp}", ok is False, "critical", f"Drive not responding: {mount_name(mp, names)}",
+                           f"{mp} is mounted but can't be read (I/O errors) — the drive has likely failed or come loose. "
+                           "Don't write to it; check its cable and power, and copy off anything you still need.")
         for mp in spc:
-            if mp not in mounted: continue
+            if mp not in mounted or mp in dead: continue
             s = os.statvfs(mp)
             pct = 100 * (1 - s.f_bavail / s.f_blocks) if s.f_blocks else 0
             free_gb = s.f_bavail * s.f_frsize / 1e9

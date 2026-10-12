@@ -11,10 +11,24 @@ import * as FM from "./files.js";
 onApproval((id, code) => waitApproval(id, get, code));
 
 // ── theme ────────────────────────────────────────────────────────────────────────
+let measuredSlow = (() => { try { return sessionStorage.getItem("nova-slow") === "1"; } catch { return false; } })();
+function slowMachine() {
+  return measuredSlow || (navigator.hardwareConcurrency || 8) <= 2 || (navigator.deviceMemory || 8) <= 2;
+}
+// one quick look at the frame rate after start: if a second of frames averages under ~40 fps, go light
+(() => {
+  let n = 0, t0 = 0;
+  const tick = t => { if (!t0) t0 = t; n++; if (t - t0 < 1000) return requestAnimationFrame(tick);
+    if (n < 40 && document.visibilityState === "visible") { measuredSlow = true; try { sessionStorage.setItem("nova-slow", "1"); } catch {} if (prefs.lite !== "off") document.documentElement.classList.add("lite"); } };
+  setTimeout(() => requestAnimationFrame(tick), 1500);
+})();
 function applyTheme() {
   const t = prefs.theme, root = document.documentElement;
   if (t === "system") delete root.dataset.theme; else root.dataset.theme = t;
   root.classList.toggle("reduce", prefs.reduceMotion || matchMedia("(prefers-reduced-motion: reduce)").matches);
+  // Lighter effects: no frosted blur or soft shadows (the costly parts on older computers and phones).
+  // "auto" turns it on for slow machines — few cores or little memory, or a choppy first second (measured once).
+  root.classList.toggle("lite", prefs.lite === "on" || (prefs.lite !== "off" && slowMachine()));
   const dark = t === "dark" || (t === "system" && !matchMedia("(prefers-color-scheme: light)").matches);
   // Style: Material You on Android phones that aren't Samsung (or another One UI/iOS-like maker); the Default look elsewhere
   const autoMaterial = /Android/i.test(navigator.userAgent) && !/SamsungBrowser|SM-[A-Z0-9]|Xiaomi|Redmi|POCO|HUAWEI|HONOR|vivo|OPPO|realme/i.test(navigator.userAgent);
@@ -108,8 +122,14 @@ function drawNav(route) {
   if (nav.hidden) return;
   const was = nav.dataset.sel, ids = t.map(x => x.id).join();
   if (nav.dataset.ids !== ids) {
-    nav.innerHTML = `<div class="items"><span class="bead"></span>${t.map(x => `<button class="press" aria-label="${esc(x.label)}" data-act="tab:${x.route}"><span class="ind">${I(x.icon)}</span><small>${esc(x.label)}</small></button>`).join("")}</div>`;
+    // more tabs than fit: they slide, with the edges fading (like the apps in the phone app's dock)
+    nav.innerHTML = `<div class="nscroll"><div class="items"><span class="bead"></span>${t.map(x => `<button class="press" aria-label="${esc(x.label)}" data-act="tab:${x.route}"><span class="ind">${I(x.icon)}</span><small>${esc(x.label)}</small></button>`).join("")}</div></div>`;
     nav.dataset.ids = ids;
+    const sc = $(".nscroll", nav), edges = () => {
+      const v = nav.classList.contains("vertical"), pos = v ? sc.scrollTop : sc.scrollLeft, max = v ? sc.scrollHeight - sc.clientHeight : sc.scrollWidth - sc.clientWidth;
+      sc.classList.toggle("fs", pos > 2); sc.classList.toggle("fe", pos < max - 2);
+    };
+    sc.onscroll = edges; requestAnimationFrame(edges); addEventListener("resize", edges);
     let h; nav.onpointerdown = () => { h = setTimeout(() => { navigator.vibrate?.(10); go("edit-tabs"); }, 550); };
     nav.onpointerup = nav.onpointerleave = () => clearTimeout(h);
     nav.oncontextmenu = e => { e.preventDefault(); go("edit-tabs"); };
@@ -119,6 +139,9 @@ function drawNav(route) {
   bead.style.opacity = i < 0 ? "0" : "1";
   $$("button", nav).forEach((btn, k) => btn.classList.toggle("on", k === i));
   bead.style.transform = side ? `translateY(${Math.max(0, i) * 60}px)` : `translateX(${Math.max(0, i) * 80}px)`; nav.dataset.sel = i;
+  const on = $$("button", nav)[i];                       // the tab you're on scrolls into view
+  if (on) on.scrollIntoView({ block: "nearest", inline: "nearest", behavior: document.documentElement.classList.contains("reduce") ? "auto" : "smooth" });
+  $(".nscroll", nav)?.onscroll?.();
 }
 
 // ── render a route ───────────────────────────────────────────────────────────────
@@ -183,6 +206,10 @@ function render(dir = 0) {
 }
 
 // one click handler for everything: data-act="name" or "name:arg:arg"
+document.addEventListener("click", e => {           // a folded note: open or close it
+  const xb = e.target.closest?.(".xnote .xbtn");
+  if (xb) { const n = xb.closest(".xnote"), open = n.classList.toggle("open"); xb.setAttribute("aria-expanded", open); xb.setAttribute("aria-label", open ? "Show less" : "Show more"); e.stopPropagation(); return; }
+}, true);
 document.addEventListener("click", e => {
   const el = e.target.closest("[data-act]"); if (!el || !el.dataset.act || el.closest("[disabled]")) return;
   const [name, ...a] = el.dataset.act.split(":"), h = current?.handlers || {};
