@@ -203,6 +203,7 @@ import org.json.JSONObject
             RowDivider()
             Row1("Storage & hardware", "Drives, pools, set up drives", true, Icons.Rounded.Storage, androidx.compose.ui.graphics.Color(0xFF3ECF6E), onClick = { app.go(Route.Hardware) })
             RowDivider()
+            if (app.isAdmin) { Row1("Free up", "Old images, logs, caches, trash — and memory", true, Icons.Rounded.CleaningServices, N.amber, onClick = { app.go(Route.FreeUp) }); RowDivider() }
             Row1("Backups", "What's backed up, restore files", true, Icons.Rounded.Backup, onClick = { app.go(Route.Backups) })
             RowDivider()
             Row1("Updates", "Packages, containers and Nova", true, Icons.Rounded.Update, androidx.compose.ui.graphics.Color(0xFF3ECF6E), onClick = { app.go(Route.Updates) })

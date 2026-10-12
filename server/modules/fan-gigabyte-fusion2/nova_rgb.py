@@ -96,7 +96,9 @@ def validate(patch, allow_schedules=True):
     """Allowlist + range checks on everything the app may set."""
     out = {}
     for k, v in patch.items():
-        if k == "on": out[k] = bool(v)
+        if k in ("on", "rainbow", "status_light", "schedules_paused"):
+            if not isinstance(v, bool): raise ValueError(f"{k}: true or false")      # (never guess: {} or "no" would read as on/off)
+            out[k] = v
         elif k == "effect":
             if v not in EFFECT_NAMES: raise ValueError("unknown effect")
             out[k] = v
@@ -113,7 +115,6 @@ def validate(patch, allow_schedules=True):
             v = int(v)
             if not 1 <= v <= 120: raise ValueError("led_count 1-120")
             out[k] = v
-        elif k in ("rainbow", "status_light", "schedules_paused"): out[k] = bool(v)
         elif k == "status_target":                       # which light shows the server's health: main, one light's id, or all
             v = str(v)
             if not (v in ("main", "all") or re.fullmatch(r"[0-9a-f]{8}", v)): raise ValueError("status light: main, all or a light")
@@ -489,6 +490,40 @@ def intro(st, seconds=2.6, fps=30):
             f.set_direct([_scaled(c, target * k * k) for c in wave_frame(look, time.time())], order, hdr)
             time.sleep(1 / fps)
 
+def goodbye(f, zones, fade=1.2, pulse=4.5, fps=40):
+    """Shutdown, on the addressable lights: from what they show now, ease into white, then breathe slowly
+    while the light dies away, ending fully dark (about six seconds; shutdown allows fifteen)."""
+    by_hdr = {}
+    for z in zones:
+        if z.get("on", True) is False: continue
+        by_hdr.setdefault(TARGETS[z["target"]]["header"], z)                # one look per header
+    if not by_hdr: return
+    hdrs = tuple(by_hdr); order = f.direct_setup(hdrs)
+    orders = order if isinstance(order, dict) else {hdrs[0]: order}
+    t0 = time.time(); start = {}
+    for h, z in by_hdr.items():
+        n = max(1, int(z.get("led_count", 12)))
+        try: cols = frame(z, t0)
+        except Exception: cols = [hex_rgb(z.get("color") or "#ffffff")] * n
+        start[h] = [_scaled(c, z.get("brightness", 50)) for c in (cols * n)[:n]]
+    white = {h: max(30, min(100, int(z.get("brightness", 50)))) for h, z in by_hdr.items()}
+    ease = lambda x: x * x * (3 - 2 * x)
+    while (el := time.time() - t0) < fade + pulse:
+        for h in hdrs:
+            w = round(255 * white[h] / 100)
+            if el < fade:                                                  # 1) everything eases into white
+                k = ease(el / fade)
+                cols = [tuple(round(c[i] + (w - c[i]) * k) for i in range(3)) for c in start[h]]
+            else:                                                          # 2) slow breaths, each one dimmer, down to nothing
+                x = (el - fade) / pulse
+                env = (1 - x) ** 1.6
+                breath = 0.55 + 0.45 * math.cos(2 * math.pi * (el - fade) / 1.5)
+                v = round(w * env * breath)
+                cols = [(v, v, v)] * len(start[h])
+            f.set_direct(cols, orders[h], h)
+        time.sleep(1 / fps)
+    for h in hdrs: f.set_direct([(0, 0, 0)] * len(start[h]), orders[h], h)
+
 def off():
     """Shutdown: every LED dark (the setting itself is kept for the next boot)."""
     if hands_off(): return
@@ -499,8 +534,11 @@ def off():
         tmp = APPLIED + ".tmp"
         with open(tmp, "w") as fh: json.dump({"t": time.time(), "override": None, "anim": None, "off": True}, fh)
         os.replace(tmp, APPLIED); return
-    hdrs = {TARGETS[z["target"]]["header"] for z in all_zones(load()) if z["target"] in TARGETS}
+    zones = [z for z in all_zones(load()) if z["target"] in TARGETS]
+    hdrs = {TARGETS[z["target"]]["header"] for z in zones}
     with fusion2.Fusion2() as f:
+        try: goodbye(f, [z for z in zones if TARGETS[z["target"]]["header"] in fusion2.ARGB])
+        except Exception as e: print("goodbye:", e, flush=True)          # never let the farewell stop the lights going off
         for h in hdrs & set(fusion2.ARGB):
             try: f.set_direct([(0, 0, 0)] * 32, None, h)
             except Exception: pass

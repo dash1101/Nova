@@ -331,15 +331,15 @@ body.side #toast { bottom: 24px; }
    Tonal surfaces tinted by the accent instead of glass, segmented lists, large titles, M3 switches,
    connected button groups, pill buttons that tighten when pressed, centered dialogs, labeled nav. */
 html.material.m-dark {
-  --bg: color-mix(in srgb, var(--blue) 7%, #111316); --card: color-mix(in srgb, var(--blue) 11%, #1d1f24);
-  --pill: color-mix(in srgb, var(--blue) 15%, #25272c); --nav: color-mix(in srgb, var(--blue) 14%, #212328);
-  --navSel: color-mix(in srgb, var(--blue) 38%, #2b2e35); --text: #e3e2e9; --sub: #c4c6d0; --divider: var(--bg);
+  --bg: color-mix(in srgb, var(--blue) calc(7% * var(--tintk, 1)), #111316); --card: color-mix(in srgb, var(--blue) calc(11% * var(--tintk, 1)), #1d1f24);
+  --pill: color-mix(in srgb, var(--blue) calc(15% * var(--tintk, 1)), #25272c); --nav: color-mix(in srgb, var(--blue) calc(14% * var(--tintk, 1)), #212328);
+  --navSel: color-mix(in srgb, var(--blue) calc(38% * var(--tintk, 1)), #2b2e35); --text: #e3e2e9; --sub: #c4c6d0; --divider: var(--bg);
   --frost: var(--nav); --frost-solid: var(--nav); --card-top: var(--card); --inv: #e3e2e9; --onInv: #2f3036;
 }
 html.material.m-light {
-  --bg: color-mix(in srgb, var(--blue) 6%, #f4f5fa); --card: color-mix(in srgb, var(--blue) 2%, #fdfdff);
-  --pill: color-mix(in srgb, var(--blue) 9%, #eceef4); --nav: color-mix(in srgb, var(--blue) 8%, #eef0f5);
-  --navSel: color-mix(in srgb, var(--blue) 24%, #e1e4ee); --text: #1a1c20; --sub: #44474f; --divider: var(--bg);
+  --bg: color-mix(in srgb, var(--blue) calc(6% * var(--tintk, 1)), #f4f5fa); --card: color-mix(in srgb, var(--blue) calc(2% * var(--tintk, 1)), #fdfdff);
+  --pill: color-mix(in srgb, var(--blue) calc(9% * var(--tintk, 1)), #eceef4); --nav: color-mix(in srgb, var(--blue) calc(8% * var(--tintk, 1)), #eef0f5);
+  --navSel: color-mix(in srgb, var(--blue) calc(24% * var(--tintk, 1)), #e1e4ee); --text: #1a1c20; --sub: #44474f; --divider: var(--bg);
   --frost: var(--nav); --frost-solid: var(--nav); --card-top: var(--card); --inv: #2f3036; --onInv: #f1f0f7;
 }
 html.material { font-family: "Google Sans", "Roboto Flex", Roboto, system-ui, sans-serif; --spring: cubic-bezier(.3,1.5,.55,1); }
@@ -563,3 +563,18 @@ html.lite .enter-1, html.lite .enter--1 { animation-duration: .18s; }
 .ctlbar button { flex: none; border: 0; height: 26px; padding: 0 10px; border-radius: 13px; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; color: var(--blue);
   background: color-mix(in srgb, var(--blue) 14%, transparent); }
 body.side .ctlbar, body:not(:has(#nav:not([hidden]))) .ctlbar { bottom: calc(env(safe-area-inset-bottom, 0px) + 18px); }
+/* a graph's value under the pointer */
+.gtip { position: absolute; transform: translate(-50%, -100%); pointer-events: none; z-index: 3; display: flex; flex-direction: column; align-items: center;
+  background: var(--card); color: var(--text); border-radius: 12px; padding: 5px 10px; box-shadow: 0 6px 18px -6px rgba(0,0,0,.4); font-size: 13px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.gtip small { color: var(--sub); font-size: 11.5px; }
+.card.glass:has(canvas) { position: relative; cursor: zoom-in; }
+.bigchart { width: 100%; height: min(52vh, 380px); display: block; margin-top: 8px; }
+
+/* your own wallpaper (Appearance → Colors): blurred and dimmed behind everything, in place of the glow */
+#wall { position: fixed; inset: calc(-1 * var(--wblur, 16px) * 2); z-index: -2; background: center / cover no-repeat; filter: blur(var(--wblur, 16px)); pointer-events: none; }
+#wall i { position: absolute; inset: 0; background: var(--bg); opacity: var(--wdim, .35); }
+html.has-wall body { background: transparent; }
+html.has-wall body::before { display: none; }
+html.has-wall { background: var(--bg); }
+html.material.has-wall .glass { background: color-mix(in srgb, var(--card) 86%, transparent); }
+.range-row { padding: 12px 22px 16px; } .range-row .h { display: flex; justify-content: space-between; color: var(--sub); font-size: 14px; margin-bottom: 8px; }

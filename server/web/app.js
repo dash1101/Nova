@@ -35,7 +35,24 @@ function applyTheme() {
   const material = prefs.style === "material" || (prefs.style !== "default" && autoMaterial);
   root.classList.toggle("material", material); root.classList.toggle("m-dark", material && dark); root.classList.toggle("m-light", material && !dark);
   $('meta[name="theme-color"]')?.setAttribute("content", dark ? "#000000" : "#f4f3f8");
+  // Your own colors (Appearance → Colors): an accent for this device, how strongly it tints, and a wallpaper
+  root.style.setProperty("--tintk", String(Math.max(0, Math.min(100, prefs.tint ?? 50)) / 50));
+  if (/^#[0-9a-f]{6}$/i.test(prefs.accentLocal || "")) root.style.setProperty("--blue", prefs.accentLocal);
+  wallpaper();
 }
+let wallUrl = null;
+async function wallpaper() {
+  const root = document.documentElement;
+  let w = document.getElementById("wall");
+  const data = await kv("wallpaper").catch(() => null);
+  root.classList.toggle("has-wall", !!data);
+  if (!data) { w?.remove(); if (wallUrl) { URL.revokeObjectURL(wallUrl); wallUrl = null; } return; }
+  if (!w) { w = document.createElement("div"); w.id = "wall"; w.innerHTML = "<i></i>"; document.body.prepend(w); }
+  if (!wallUrl || w.dataset.v !== String(data.size)) { if (wallUrl) URL.revokeObjectURL(wallUrl); wallUrl = URL.createObjectURL(data); w.dataset.v = String(data.size); }
+  w.style.backgroundImage = `url("${wallUrl}")`;
+  w.style.setProperty("--wblur", (prefs.wallBlur ?? 16) + "px"); w.style.setProperty("--wdim", String((prefs.wallDim ?? 35) / 100));
+}
+export { applyTheme };
 applyTheme();
 matchMedia("(prefers-color-scheme: light)").addEventListener?.("change", applyTheme);
 
@@ -46,7 +63,7 @@ const ROUTES = {
   devices: V.devices, settings: V.settings, server: V.serverSettings, appearance: V.appearance, "edit-home": V.editHome,
   "edit-shortcuts": V.editShortcuts, "edit-tabs": V.editTabs, about: V.about, guide: V.guide, faq: V.faq, terminal: V.terminal,
   dashboard: V.dashboard, "edit-dash": V.editDash, archive: V.archive,
-  apps: ST.apps, updates: ST.updates, search: SR.search, start: SR.start, "start-edit": SR.startEdit, favorites: SR.favorites, servers: SV.servers, "container-new": ST.containerNew, term: V.hostTerminal, files: FM.files, labs: ST.labs, automation: ST.automation, features: ST.features, plugins: ST.plugins, "labs-images": ST.labsImages, wol: ST.wol, openrgb: ST.openrgb, access: ST.access, cloudflare: ST.cloudflare, setup: ST.setup, pool: ST.pool, task: ST.task, backups: ST.backups, backup: ST.backup, "backup-edit": ST.backupEdit, restore: ST.restore, diag: ST.diag,
+  apps: ST.apps, updates: ST.updates, search: SR.search, start: SR.start, "start-edit": SR.startEdit, favorites: SR.favorites, servers: SV.servers, "container-new": ST.containerNew, term: V.hostTerminal, files: FM.files, labs: ST.labs, freeup: ST.freeup, automation: ST.automation, features: ST.features, plugins: ST.plugins, "labs-images": ST.labsImages, wol: ST.wol, openrgb: ST.openrgb, access: ST.access, cloudflare: ST.cloudflare, setup: ST.setup, pool: ST.pool, task: ST.task, backups: ST.backups, backup: ST.backup, "backup-edit": ST.backupEdit, restore: ST.restore, diag: ST.diag,
 };
 // Wide screens and phones in landscape: the bottom bar's pill stands on its end down the left edge.
 const SIDE = matchMedia("(min-width: 900px), (orientation: landscape) and (max-height: 540px)");

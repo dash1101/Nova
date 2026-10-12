@@ -362,9 +362,11 @@ import java.util.*
             Row1("At home: encrypted, pinned", "HTTPS to the server's own certificate, checked on every connection", false); RowDivider()
             Row1("Outside home: Cloudflare Access", "Strangers are stopped before they reach the server", false)
         }
-        Group { Row1("Questions", "Is it safe, what it connects to, how to undo things", true, Icons.Rounded.Help, onClick = { app.go(Route.Faq) }) }
-        SectionLabel("Project")
         val ctx = androidx.compose.ui.platform.LocalContext.current
+        Group { Row1("Questions", "Is it safe, what it connects to, how to undo things", true, Icons.Rounded.Help, onClick = { app.go(Route.Faq) }); RowDivider()
+            Row1("Request a feature", "Tell us what Nova should do — on GitHub", true, Icons.Rounded.Lightbulb, onClick = {
+                runCatching { ctx.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://github.com/dash1101/Nova/issues/new?template=feature_request.yml"))) } }) }
+        SectionLabel("Project")
         Group { Row1("Nova by dash1101", "Open source · AGPL-3.0 · github.com/dash1101/Nova", true, onClick = {
             runCatching { ctx.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://github.com/dash1101/Nova"))) } }) }
     }

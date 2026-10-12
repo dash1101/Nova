@@ -14,6 +14,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.ui.text.drawText
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.compose.ui.geometry.Offset
@@ -81,7 +85,10 @@ private fun LiveStats.load(j: JSONObject) {
  * the whole line glides left by one step instead of jumping. [window] = how many steps are visible.
  */
 @Composable fun Sparkline(values: List<Float>, color: Color, modifier: Modifier = Modifier, max: Float? = null,
-                          tick: Int = 0, window: Int = 0, added: Int = 1) {
+                          tick: Int = 0, window: Int = 0, added: Int = 1, times: List<Long>? = null, fmt: ((Float) -> String)? = null, scrub: Boolean = false) {
+    var hx by remember { mutableStateOf<Float?>(null) }          // where the finger is (scrub = true): read the value there
+    val measurer = androidx.compose.ui.text.rememberTextMeasurer()
+    val tipBg = N.card; val tipInk = N.text; val tipSub = N.sub
     // The glide is timed from the composition that brought the new values (not from an effect that
     // starts a frame later), so the newest point never flashes at the edge and snaps back.
     val t0 = remember(tick) { System.nanoTime() }
@@ -90,7 +97,18 @@ private fun LiveStats.load(j: JSONObject) {
     if (window > 0 && !reduceMotion()) LaunchedEffect(Unit) { while (true) { androidx.compose.runtime.withFrameNanos { frameNow = System.nanoTime() }; kotlinx.coroutines.delay(if (lite()) 66 else 30) } }      // ~30 fps glide
     val peak = if (max != null) max else ((values.maxOrNull() ?: 1f) * 1.15f).coerceAtLeast(1f)
     val top by androidx.compose.animation.core.animateFloatAsState(peak, label = "scale")
-    Canvas(modifier.clipToBounds()) {
+    val touch = if (!scrub) Modifier else Modifier.pointerInput(Unit) {
+        awaitEachGesture {
+            val down = awaitFirstDown(); hx = down.position.x; down.consume()
+            while (true) {
+                val e = awaitPointerEvent(); val c = e.changes.firstOrNull() ?: break
+                if (!c.pressed) break
+                hx = c.position.x; c.consume()
+            }
+            hx = null
+        }
+    }
+    Canvas(modifier.clipToBounds().then(touch)) {
         if (values.size < 2) return@Canvas
         val steps = if (window > 0) window else values.size - 1
         val dx = size.width / steps
@@ -107,6 +125,19 @@ private fun LiveStats.load(j: JSONObject) {
         drawPath(line, color, style = Stroke(width = 2.2.dp.toPx(), cap = StrokeCap.Round, join = androidx.compose.ui.graphics.StrokeJoin.Round))
         drawCircle(color.copy(alpha = 0.25f), 7.dp.toPx(), Offset(xs.last(), ys.last()))
         drawCircle(color, 3.5.dp.toPx(), Offset(xs.last(), ys.last()))
+        hx?.let { fx ->                                            // the point under the finger: a line, a dot and its value + time
+            val k = xs.indices.minByOrNull { kotlin.math.abs(xs[it] - fx) } ?: return@let
+            drawLine(color.copy(alpha = 0.55f), Offset(xs[k], 0f), Offset(xs[k], size.height), 1.dp.toPx(),
+                pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(6f, 6f)))
+            drawCircle(tipBg, 7.dp.toPx(), Offset(xs[k], ys[k])); drawCircle(color, 5.dp.toPx(), Offset(xs[k], ys[k]))
+            val v = values[first + k]; val t = times?.getOrNull(first + k)
+            val label = (fmt?.invoke(v) ?: "%.1f".format(v)) + (t?.let { "  " + java.text.DateFormat.getTimeInstance(java.text.DateFormat.MEDIUM).format(java.util.Date(it * 1000)) } ?: "")
+            val lay = measurer.measure(label, androidx.compose.ui.text.TextStyle(color = tipInk, fontSize = 13.sp, fontWeight = FontWeight.SemiBold))
+            val pad = 8.dp.toPx(); val w = lay.size.width + pad * 2; val h = lay.size.height + pad
+            val left = (xs[k] - w / 2).coerceIn(0f, size.width - w)
+            drawRoundRect(tipBg, Offset(left, 4.dp.toPx()), androidx.compose.ui.geometry.Size(w, h), androidx.compose.ui.geometry.CornerRadius(h / 2))
+            drawText(lay, topLeft = Offset(left + pad, 4.dp.toPx() + pad / 2))
+        }
     }
 }
 
@@ -129,8 +160,22 @@ private fun smoothPath(xs: List<Float>, ys: List<Float>): Path {
 }
 
 @Composable private fun MetricCard(title: String, value: String, sub: String, color: Color, values: List<Float>, max: Float?, modifier: Modifier,
-                                   tick: Int = 0, window: Int = 0, added: Int = 1) {
-    Column(modifier.glassCard(RoundedCornerShape(24.dp)).padding(16.dp)) {
+                                   tick: Int = 0, window: Int = 0, added: Int = 1, times: List<Long>? = null, fmt: ((Float) -> String)? = null, live: Boolean = true) {
+    var big by remember { mutableStateOf(false) }
+    if (big) androidx.compose.ui.window.Dialog({ big = false }, androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)) {
+        Column(Modifier.fillMaxWidth().padding(16.dp).clip(RoundedCornerShape(28.dp)).background(N.card).padding(20.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(title, color = N.text, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                    Text("${if (live) "Live · last 2 minutes" else "Last hour"} — drag along the line to see the value at that time", color = N.sub, fontSize = 13.sp)
+                }
+                androidx.compose.material3.IconButton({ big = false }) { Icon(Icons.Rounded.Close, "Close", tint = N.sub) }
+            }
+            Text(value, color = N.text, fontSize = 30.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp))
+            Sparkline(values, color, Modifier.fillMaxWidth().height(320.dp).padding(top = 8.dp), max, tick, window, added, times, fmt, scrub = true)
+        }
+    }
+    Column(modifier.glassCard(RoundedCornerShape(24.dp)).bouncy(onClick = { big = true }).padding(16.dp)) {
         Text(title, color = N.sub, fontSize = 13.sp)
         Text(value, color = N.text, fontSize = 24.sp, fontWeight = FontWeight.Bold)
         Text(sub, color = N.sub, fontSize = 12.sp, maxLines = 1)
@@ -164,6 +209,8 @@ private fun uptime(s: Long) = "${s / 86400}d ${s % 86400 / 3600}h ${s % 3600 / 6
     val live = !hourView && ls.recent.size >= 2
     val pts = if (live) ls.recent else ls.history
     fun series(k: String) = pts.map { it.optDouble(k, 0.0).toFloat().let { v -> if (v.isNaN()) 0f else v } }
+    val times = pts.map { it.optLong("t") }
+    val pctF: (Float) -> String = { "%.0f%%".format(it) }
     val tick = if (live) ls.tick else 0
     val window = if (live) 120 else 0
     val backupRunning = m?.optString("data_backup")?.contains("running") == true
@@ -189,15 +236,15 @@ private fun uptime(s: Long) = "${s / 86400}d ${s % 86400 / 3600}h ${s % 3600 / 6
         Column(Modifier.padding(horizontal = Space.gutter), verticalArrangement = Arrangement.spacedBy(Space.gap)) {
             Row(horizontalArrangement = Arrangement.spacedBy(Space.gap)) {
                 MetricCard("CPU", now?.let { "%.0f%%".format(it.optDouble("cpu")) } ?: "—", now?.let { "load ${it.optDouble("load")} · ${it.optInt("cores")} cores" } ?: "",
-                    N.blue, series("cpu"), 100f, Modifier.weight(1f), tick, window, ls.added)
+                    N.blue, series("cpu"), 100f, Modifier.weight(1f), tick, window, ls.added, times, pctF, live)
                 MetricCard("Memory", now?.let { "%.0f%%".format(it.optDouble("mem")) } ?: "—", now?.let { "${it.optDouble("mem_used_gb")} of ${it.optDouble("mem_total_gb")} GB" } ?: "",
-                    Color(0xFFBF5AF2), series("mem"), 100f, Modifier.weight(1f), tick, window, ls.added)
+                    Color(0xFFBF5AF2), series("mem"), 100f, Modifier.weight(1f), tick, window, ls.added, times, pctF, live)
             }
             Row(horizontalArrangement = Arrangement.spacedBy(Space.gap)) {
                 MetricCard("CPU temperature", now?.optDouble("temp")?.takeIf { !it.isNaN() }?.let { "%.0f°C".format(it) } ?: m?.optString("cpu_temp") ?: "—",
-                    now?.optDouble("nvme_temp")?.takeIf { !it.isNaN() }?.let { "NVMe %.0f°C".format(it) } ?: "", N.amber, series("temp"), null, Modifier.weight(1f), tick, window, ls.added)
+                    now?.optDouble("nvme_temp")?.takeIf { !it.isNaN() }?.let { "NVMe %.0f°C".format(it) } ?: "", N.amber, series("temp"), null, Modifier.weight(1f), tick, window, ls.added, times, { "%.0f°C".format(it) }, live)
                 MetricCard("Network", now?.let { "↓ ${rate(it.optDouble("rx"))}" } ?: "—", now?.let { "↑ ${rate(it.optDouble("tx"))}" } ?: "",
-                    N.green, series("rx").zip(series("tx")) { a, b -> a + b }, null, Modifier.weight(1f), tick, window, ls.added)
+                    N.green, series("rx").zip(series("tx")) { a, b -> a + b }, null, Modifier.weight(1f), tick, window, ls.added, times, { rate(it.toDouble()) }, live)
             }
             if (pts.size < 3 || (!hourView && !live)) Text(if (hourView) "Graphs fill in over the next few minutes." else "Connecting to the live feed…", color = N.sub, fontSize = 13.sp, modifier = Modifier.padding(start = 8.dp))
         }

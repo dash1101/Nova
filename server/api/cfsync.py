@@ -122,7 +122,8 @@ def status():
         out["nova_added"] = {h: ("protected" if r.get("protected_existing") else "added") for h, r in led.items()}   # only these can be taken off from Nova
         out["nova"] = {h: {"kind": r.get("kind") or ("protected" if r.get("protected_existing") else "existing" if r.get("existing") else "added"),
                            "mode": r.get("mode") or ("me" if r.get("access") else "public"), "guests": r.get("guests", []), "session": r.get("session"),
-                           "for_host": r.get("for_host"), "service": r.get("service"), "existing": bool(r.get("existing"))} for h, r in led.items()}
+                           "for_host": r.get("for_host"), "service": r.get("service"), "existing": bool(r.get("existing")),
+                           "app_key": bool(r.get("app_token")), "app_key_made": (r.get("app_token") or {}).get("made")} for h, r in led.items()}
     except ValueError as e: out["error"] = str(e)
     return out
 
@@ -213,14 +214,15 @@ def _guest_policy(acct, host, guests, pid=None):
     if pid: call("PUT", f"/accounts/{acct}/access/policies/{pid}", body); return pid
     return call("POST", f"/accounts/{acct}/access/policies", body)["id"]
 
-def _own_app(acct, host, guests, session, app_id=None, pid=None):
-    """An Access application just for this address: your own login rules, plus a guest list Nova keeps."""
+def _own_app(acct, host, guests, session, app_id=None, pid=None, extra=()):
+    """An Access application just for this address: your own login rules, plus a guest list Nova keeps
+    (and `extra` policies, like the key for the app's own phone app)."""
     pid = _guest_policy(acct, host, guests or ["nobody@invalid.example"], pid)   # (an empty include would let no one in anyway)
     owner = _owner_policies(acct)
-    keep = []
+    keep = [x for x in extra if x]
     if app_id:   # an edit: keep every policy you added yourself (a service token for the app's phone app, say)
         cur = next((a for a in call("GET", f"/accounts/{acct}/access/apps") or [] if a.get("id") == app_id), None) or {}
-        keep = [p["id"] for p in cur.get("policies") or [] if p.get("id") and p["id"] != pid and p["id"] not in owner]
+        keep = list(dict.fromkeys(keep + [p["id"] for p in cur.get("policies") or [] if p.get("id") and p["id"] != pid and p["id"] not in owner]))
     pols = [{"id": x, "precedence": i + 1} for i, x in enumerate(owner + keep)] + [{"id": pid, "precedence": len(owner) + len(keep) + 1}]
     body = {"name": f"{host} (Nova)", "type": "self_hosted", "domain": host, "destinations": [{"type": "public", "uri": host}],
             "session_duration": session if session in SESSIONS else "24h", "app_launcher_visible": False, "policies": pols}
@@ -229,11 +231,14 @@ def _own_app(acct, host, guests, session, app_id=None, pid=None):
 
 def _protect(acct, host, rec, mode, guests, session):
     """Put the protection for `mode` in place (nothing for public), recording what was made."""
-    if mode == "me":
+    tok = [(rec.get("app_token") or {}).get("policy_id")]
+    if mode == "me" and rec.get("app_token"):          # only you, plus the app's own key: its own login, with no guests
+        rec["app_id"], rec["policy_id"] = _own_app(acct, host, [], session or rec.get("session"), extra=tok)
+    elif mode == "me":
         a = access_app(acct); doms = _domains(a)
         if host not in doms: call("PUT", f"/accounts/{acct}/access/apps/{a['id']}", _access_body(a, doms + [host])); rec["access"] = True
     elif mode == "guests":
-        rec["app_id"], rec["policy_id"] = _own_app(acct, host, guests, session)
+        rec["app_id"], rec["policy_id"] = _own_app(acct, host, guests, session, extra=tok)
         rec["guests"], rec["session"] = guests, session
     rec["mode"] = mode
 
@@ -368,6 +373,64 @@ def _undo(host, rec, acct, tun):
         if r and r.get("type") == "CNAME" and r.get("content", "").endswith(".cfargotunnel.com"): call("DELETE", f"/zones/{zid}/dns_records/{rec['dns_id']}")
     _unprotect(acct, host, rec)
 
+def app_key(host, rotate=False):
+    """A key for the app's own phone app (Immich, Home Assistant…): those apps can't do the browser login, but they
+    can send two extra headers. Nova makes a Cloudflare service token that opens only this address, and gives you
+    the two headers once. A new key replaces the old one. Only for an address behind your login."""
+    host = str(host).strip().lower()
+    if not re.fullmatch(HOST_RE, host) or host == _nova_host(): raise ValueError("bad address")
+    acct, tun = tunnel(); led = ledger(); rec = led.get(host)
+    if not rec or rec.get("mode", "me" if rec.get("access") else "public") not in ("me", "guests"):
+        raise ValueError(f"{host} has to be behind your login (Only you, or You and guests) for an app key")
+    old = rec.get("app_token")
+    try: tk = call("POST", f"/accounts/{acct}/access/service_tokens", {"name": f"Nova app key · {host}", "duration": "8760h"})
+    except ValueError as e:
+        if re.search(r"auth|permission|forbidden|10000|9109", str(e), re.I):
+            raise ValueError("your Cloudflare API token can't make app keys yet — edit the token in Cloudflare and add the permission "
+                             "Account · Access: Service Tokens · Edit, then try again")
+        raise
+    pol = call("POST", f"/accounts/{acct}/access/policies", {"name": f"Nova app key · {host}", "decision": "non_identity",
+                                                             "include": [{"service_token": {"token_id": tk["id"]}}]})
+    rec["app_token"] = {"id": tk["id"], "policy_id": pol["id"], "client_id": tk["client_id"], "made": int(__import__("time").time())}
+    mode = rec.get("mode") or "me"
+    try:
+        if rec.get("app_id"):                            # it has its own login already: add the key to it (and drop an older key)
+            app_now = next((a for a in call("GET", f"/accounts/{acct}/access/apps") or [] if a.get("id") == rec["app_id"]), None) or {}
+            pols = [p["id"] for p in app_now.get("policies") or [] if p.get("id") and p["id"] != (old or {}).get("policy_id")] + [pol["id"]]
+            body = {k: v for k, v in app_now.items() if k in ("name", "type", "domain", "destinations", "session_duration", "app_launcher_visible")}
+            call("PUT", f"/accounts/{acct}/access/apps/{rec['app_id']}", {**body, "policies": [{"id": x, "precedence": i + 1} for i, x in enumerate(pols)]})
+        else:                                            # on Nova's shared login: move it to its own (off the tunnel in between, never open)
+            rec["parked_route"] = _route_off(acct, tun, host)
+            _unprotect(acct, host, rec); _protect(acct, host, rec, mode, rec.get("guests") or [], rec.get("session") or "24h")
+            _route_on(acct, tun, rec.pop("parked_route", None))
+    except ValueError:
+        led[host] = rec; _save_ledger(led); raise
+    if old: _drop_key(acct, old)
+    led[host] = rec; _save_ledger(led)
+    return {"ok": True, "host": host, "client_id": tk["client_id"], "client_secret": tk["client_secret"],
+            "headers": {"CF-Access-Client-Id": tk["client_id"], "CF-Access-Client-Secret": tk["client_secret"]}}
+
+def _drop_key(acct, tok):
+    for path in (f"/accounts/{acct}/access/policies/{tok.get('policy_id')}", f"/accounts/{acct}/access/service_tokens/{tok.get('id')}"):
+        try: call("DELETE", path)
+        except ValueError: pass                          # already gone
+
+def app_key_remove(host):
+    host = str(host).strip().lower()
+    if not re.fullmatch(HOST_RE, host): raise ValueError("bad address")
+    acct, _ = tunnel(); led = ledger(); rec = led.get(host) or {}
+    tok = rec.pop("app_token", None)
+    if not tok: return {"ok": True}
+    if rec.get("app_id"):                                # take it off the address's login first
+        a = next((x for x in call("GET", f"/accounts/{acct}/access/apps") or [] if x.get("id") == rec["app_id"]), None)
+        if a:
+            pols = [p["id"] for p in a.get("policies") or [] if p.get("id") and p["id"] != tok.get("policy_id")]
+            body = {k: v for k, v in a.items() if k in ("name", "type", "domain", "destinations", "session_duration", "app_launcher_visible")}
+            call("PUT", f"/accounts/{acct}/access/apps/{rec['app_id']}", {**body, "policies": [{"id": x, "precedence": i + 1} for i, x in enumerate(pols)]})
+    _drop_key(acct, tok)
+    led[host] = rec; _save_ledger(led)
+    return {"ok": True}
+
 def _legacy(host, acct, tun):
     """An address published by an older Nova (before the record): its DNS record carries "Added by Nova"."""
     zid, _ = zone_for(host)
@@ -383,6 +446,7 @@ def remove(host, allow_public=False):
     if not rec: raise ValueError(f"Nova didn't put {host} on your tunnel, so it leaves it alone — change it in the Cloudflare dashboard")
     if rec.get("protected_existing") and rec.get("mode", "me") not in ("public",) and not allow_public:
         raise ValueError(f"{host} was yours before Nova protected it: taking Nova off only removes the login, so it would be open to anyone again. Confirm to do that")
+    if rec.get("app_token"): _drop_key(acct, rec.pop("app_token"))      # the app key goes with the address
     if rec.get("existing"): _unprotect(acct, host, rec)               # a share address that was already yours: only Nova's login comes off
     else: _undo(host, rec, acct, tun)
     if rec.get("protected_existing") and rec.get("parked_route"): _route_on(acct, tun, rec["parked_route"])   # yours, as it was

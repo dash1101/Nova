@@ -7,6 +7,11 @@ import android.hardware.biometrics.BiometricPrompt
 import android.os.CancellationSignal
 import android.view.WindowManager
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.Icon
@@ -50,6 +55,11 @@ object AppPrefs {
     var shakeAction by mutableStateOf("report"); private set              // what a shake does: report | none | search | quick | lights | home | inbox
 
     var lite by mutableStateOf("auto"); private set                        // lighter effects: auto | on | off
+    var accent by mutableStateOf(""); private set                          // this phone's own accent (#rrggbb), "" = the server's / the wallpaper's
+    var tint by mutableStateOf(50); private set                            // Material You: how strongly the accent tints surfaces (0–100)
+    var wallV by mutableStateOf(0L); private set                           // your own wallpaper (files/wallpaper.jpg): when it was set, 0 = none
+    var wallBlur by mutableStateOf(16); private set                        // its blur (0–40)
+    var wallDim by mutableStateOf(35); private set                         // and how much it's dimmed (0–90 %)
     /** Worked out once at start: an older or low-memory phone, where the live blur and 60 fps animations cost too much. */
     var slowDevice = false; private set
 
@@ -63,6 +73,8 @@ object AppPrefs {
                 Runtime.getRuntime().availableProcessors() <= 4
         }
         lite = sp.getString("lite", "auto")!!
+        accent = sp.getString("accent", "")!!; tint = sp.getString("tint", "50")!!.toIntOrNull() ?: 50
+        wallV = sp.getString("wall_v", "0")!!.toLongOrNull() ?: 0L; wallBlur = sp.getString("wall_blur", "16")!!.toIntOrNull() ?: 16; wallDim = sp.getString("wall_dim", "35")!!.toIntOrNull() ?: 35
         theme = sp.getString("theme", "system")!!; style = sp.getString("style", "auto")!!; reduceMotion = sp.getBoolean("reduce_motion", false)
         appLock = sp.getBoolean("app_lock", false); hideInRecents = sp.getBoolean("hide_recents", false)
         homeHero = sp.getBoolean("home_hero", true); homeShortcuts = sp.getBoolean("home_shortcuts", true); homeStats = sp.getBoolean("home_stats", true)
@@ -81,6 +93,8 @@ object AppPrefs {
     }
     fun set(key: String, v: Any) {
         when (key) {
+            "accent" -> accent = v as String; "tint" -> tint = (v as Number).toInt(); "wall_v" -> wallV = (v as Number).toLong()
+            "wall_blur" -> wallBlur = (v as Number).toInt(); "wall_dim" -> wallDim = (v as Number).toInt()
             "lite" -> lite = v as String; "theme" -> theme = v as String; "style" -> style = v as String; "reduce_motion" -> reduceMotion = v as Boolean; "app_lock" -> appLock = v as Boolean
             "hide_recents" -> hideInRecents = v as Boolean; "home_hero" -> homeHero = v as Boolean
             "home_shortcuts" -> homeShortcuts = v as Boolean; "home_stats" -> homeStats = v as Boolean
@@ -172,6 +186,7 @@ object AppLock {
         Group {
             SwitchRow("Reduce motion", "Simple fades instead of slides and bounces, and no back-gesture animation", AppPrefs.reduceMotion) { AppPrefs.set("reduce_motion", it) }
         }
+        ColorsAndWallpaper()
         SectionLabel("Lighter effects")
         Segmented(listOf("Automatic", "On", "Off"), listOf("auto", "on", "off").indexOf(AppPrefs.lite).let { if (it < 0) 0 else it }) { AppPrefs.set("lite", listOf("auto", "on", "off")[it]) }
         Note("No frosted-glass blur or soft shadows, and calmer animations — much smoother on older phones. Automatic turns it on for this phone ${if (AppPrefs.slowDevice) "(it's on now)" else "only if it's an older or low-memory one (it's off now)"}.", 13.sp, 4.dp)
@@ -209,4 +224,60 @@ object AppLock {
                 AppPrefs.set("hide_recents", it); applySecureFlag(app.activity) }
         }
     }
+}
+
+
+private val MY_ACCENTS = listOf("#3e91ff", "#5e5ce6", "#bf5af2", "#ff2d55", "#ff9500", "#34c759", "#00c7be")
+
+/** Appearance → Colors (your own accent, how strongly it tints) and Wallpaper (a picture, blurred and dimmed). */
+@Composable private fun ColorsAndWallpaper() {
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    var picking by remember { mutableStateOf(false) }
+    val pick = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.GetContent()) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        runCatching {             // shrink it (longest side 2048 px) and keep a private copy in the app
+            val src = ctx.contentResolver.openInputStream(uri)!!.use { android.graphics.BitmapFactory.decodeStream(it) }
+            val k = minOf(1f, 2048f / maxOf(src.width, src.height))
+            val b = android.graphics.Bitmap.createScaledBitmap(src, (src.width * k).toInt(), (src.height * k).toInt(), true)
+            java.io.File(ctx.filesDir, "wallpaper.jpg").outputStream().use { b.compress(android.graphics.Bitmap.CompressFormat.JPEG, 86, it) }
+            AppPrefs.set("wall_v", System.currentTimeMillis())
+        }.onFailure { android.widget.Toast.makeText(ctx, "That picture couldn't be opened", android.widget.Toast.LENGTH_SHORT).show() }
+    }
+    SectionLabel("Colors")
+    Group {
+        val cur = AppPrefs.accent
+        Row1("Accent color", if (cur.isEmpty()) (if (materialStyle()) "From your wallpaper" else "The server's color") + " — tap to pick your own" else "This ${DeviceForm.noun}'s own color",
+            cur.isNotEmpty(), onClick = { picking = true }) {
+            Box(Modifier.size(32.dp).clip(androidx.compose.foundation.shape.CircleShape).background(cur.takeIf { it.isNotEmpty() }?.let { Color(android.graphics.Color.parseColor(it)) } ?: N.blue))
+        }
+        Row(Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 10.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+            MY_ACCENTS.forEach { h ->
+                val on = cur.equals(h, true)
+                Box(Modifier.size(36.dp).clip(androidx.compose.foundation.shape.CircleShape).background(Color(android.graphics.Color.parseColor(h)))
+                    .then(if (on) Modifier.border(3.dp, N.text, androidx.compose.foundation.shape.CircleShape) else Modifier)
+                    .clickable { AppPrefs.set("accent", if (on) "" else h) })
+            }
+        }
+        if (cur.isNotEmpty()) { RowDivider(); Row1(if (materialStyle()) "Use the wallpaper's colors" else "Use the server's color", null, true, Icons.Rounded.Refresh, onClick = { AppPrefs.set("accent", "") }) }
+        RowDivider()
+        Column(Modifier.padding(horizontal = 22.dp, vertical = 12.dp)) {
+            Row { Text("Color strength${if (materialStyle()) "" else " (Material You)"}", color = N.sub, fontSize = 14.sp, modifier = Modifier.weight(1f)); Text("${AppPrefs.tint}%", color = N.sub, fontSize = 14.sp) }
+            OneSlider(AppPrefs.tint.toFloat(), { AppPrefs.set("tint", it.toInt()) }, 0f..100f)
+        }
+    }
+    SectionLabel("Wallpaper")
+    Group {
+        if (AppPrefs.wallV > 0L) {
+            Column(Modifier.padding(horizontal = 22.dp, vertical = 12.dp)) {
+                Row { Text("Blur", color = N.sub, fontSize = 14.sp, modifier = Modifier.weight(1f)); Text("${AppPrefs.wallBlur}", color = N.sub, fontSize = 14.sp) }
+                OneSlider(AppPrefs.wallBlur.toFloat(), { AppPrefs.set("wall_blur", it.toInt()) }, 0f..40f)
+                Row { Text("Dim", color = N.sub, fontSize = 14.sp, modifier = Modifier.weight(1f)); Text("${AppPrefs.wallDim}%", color = N.sub, fontSize = 14.sp) }
+                OneSlider(AppPrefs.wallDim.toFloat(), { AppPrefs.set("wall_dim", it.toInt()) }, 0f..90f)
+            }
+            RowDivider()
+            Row1("Change the picture", null, true, Icons.Rounded.Image, onClick = { pick.launch("image/*") }); RowDivider()
+            Row1("Remove the wallpaper", null, false, Icons.Rounded.Delete, N.red, onClick = { java.io.File(ctx.filesDir, "wallpaper.jpg").delete(); AppPrefs.set("wall_v", 0L) })
+        } else Row1("Choose a picture", "Behind every screen, blurred and dimmed as you like. Kept on this ${DeviceForm.noun} only.", true, Icons.Rounded.Image, onClick = { pick.launch("image/*") })
+    }
+    if (picking) ColorPickerDialog(AppPrefs.accent.ifEmpty { "#3e91ff" }, { picking = false }) { AppPrefs.set("accent", it); picking = false }
 }

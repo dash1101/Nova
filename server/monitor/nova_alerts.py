@@ -165,6 +165,19 @@ def mount_name(mp, names):
 LEGACY_METRIC = {"/": "root"}            # older apps read root_used; everything else is in metrics["storage"]
 
 # ── state ─────────────────────────────────────────────────────────────────────
+def disk_of(mp):
+    """The disk behind a mount point and its port, like "sdc (ata3)" — so an alert says which drive to check."""
+    try:
+        src = next((l.split()[0] for l in open("/proc/mounts") if l.split()[1] == mp), "")
+        name = os.path.basename(os.path.realpath(src)) if src.startswith("/dev/") else ""
+        if not name: return ""
+        part = f"/sys/class/block/{name}"
+        disk = os.path.basename(os.path.dirname(os.path.realpath(part))) if os.path.exists(f"{part}/partition") else name
+        port = re.search(r"/(ata\d+|nvme\d+|usb\d+)/", os.path.realpath(f"/sys/block/{disk}/device"))
+        return disk + (f" ({port.group(1)})" if port else "")
+    except (OSError, StopIteration):
+        return ""
+
 def readable(path, timeout=8):
     """True if the folder can be listed, False on an I/O error, None if it didn't answer in time (a stuck drive)."""
     import threading
@@ -422,8 +435,9 @@ class Monitor:
             if mp in quiet or mp not in mounted: continue
             ok = readable(mp)
             if ok is False: dead.add(mp)
-            self.condition(f"dead:{mp}", ok is False, "critical", f"Drive not responding: {mount_name(mp, names)}",
-                           f"{mp} is mounted but can't be read (I/O errors) — the drive has likely failed or come loose. "
+            dk = disk_of(mp) if ok is False else ""
+            self.condition(f"dead:{mp}", ok is False, "critical", f"Drive not responding: {mount_name(mp, names)}" + (f" — {dk}" if dk else ""),
+                           f"{mp}{f' on {dk}' if dk else ''} is mounted but can't be read (I/O errors) — the drive has likely failed or come loose. "
                            "Don't write to it; check its cable and power, and copy off anything you still need.")
         for mp in spc:
             if mp not in mounted or mp in dead: continue

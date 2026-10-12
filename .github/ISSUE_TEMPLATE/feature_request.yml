@@ -1,0 +1,28 @@
+name: Request a feature
+description: Something Nova could do, or do better
+title: "Feature: "
+labels: ["feature request"]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What would you like Nova to do?
+      description: Describe it the way you'd use it. Screenshots or sketches are welcome.
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why would it help?
+      description: What are you trying to get done? What do you do today instead?
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where?
+      multiple: true
+      options: [Android app, Wear OS app, Nova web, Server, Website, Not sure]
+  - type: input
+    id: version
+    attributes:
+      label: Nova version (optional)
+      description: Settings → Software update, or `sudo nova status`

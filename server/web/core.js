@@ -207,7 +207,7 @@ export async function refresh() {
     const t0 = Date.now(); const o = await get("/api/v1/overview"); const t1 = Date.now(); S.overview = o;
     if (typeof o.time === "number" && t1 - t0 < 3000) S.skew = o.time * 1000 - (t0 + t1) / 2;
     if (o.fan && !fanInFlight) S.fan = { ...(S.fan || {}), ...o.fan };
-    const acc = o.server?.accent;
+    const acc = /^#[0-9a-f]{6}$/i.test(prefs.accentLocal || "") ? prefs.accentLocal : o.server?.accent;      // this device's own accent wins
     if (/^#[0-9a-f]{6}$/i.test(acc || "")) document.documentElement.style.setProperty("--blue", acc);
     else document.documentElement.style.removeProperty("--blue");
     S.error = null; S.reconnecting = false; S.failures = 0;

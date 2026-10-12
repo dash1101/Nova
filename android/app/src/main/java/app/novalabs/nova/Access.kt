@@ -117,6 +117,8 @@ private val SESSIONS = listOf("1h" to "1 hour", "24h" to "1 day", "168h" to "1 w
             }
             Note("Guests open the address, type their email, and Cloudflare sends them a code. They can only open this app — not Nova.", 13.sp, 6.dp)
         }
+        if (appId.isNotEmpty() && app.isAdmin) PublicFix(app, appId, host)
+        if (rec != null && !isShare && mode in listOf("me", "guests") && app.isAdmin) AppKey(app, host, rec) { round++ }
         if (appId.isNotEmpty() && !isShare) ShareLinks(app, appId, host)
         if (rec != null && app.isAdmin) {
             SectionLabel("Take it off")
@@ -142,7 +144,7 @@ private val SESSIONS = listOf("1h" to "1 hour", "24h" to "1 day", "168h" to "1 w
         OneDialog({ ask = null }, t, d, listOf(DialogButton("Cancel") { ask = null }, DialogButton(if (to == "public") "Make it public" else "Change", if (to == "public") N.red else N.blue) {
             ask = null; change(to, if (to == "guests") guests else emptyList(), publicOk = to == "public") })) {
             if (to != "public" && mode in listOf("public", "offline"))   // going behind a login: the app's own phone app needs a way in
-                Text("Heads-up: an app's own phone app (Immich, Jellyfin, Home Assistant…) can't get past a web login by itself — add a Cloudflare Access service token in its settings first (Immich: Settings → Advanced → Custom proxy headers). Links you've already shared at this address stop working for others; for Immich, set up Share links below first.",
+                Text("Heads-up: an app's own phone app (Immich, Jellyfin, Home Assistant…) can't get past a web login by itself — use “Let its phone app in” below to give it a key. Links you've already shared at this address stop working for others; for Immich, set up Share links below first.",
                     color = N.amber, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 26.dp))
         }
     }
@@ -209,4 +211,72 @@ private val SESSIONS = listOf("1h" to "1 hour", "24h" to "1 day", "168h" to "1 w
     } else if (ready) Text("All set: share a photo or album in $name and its link opens at $wanted for anyone.",
         color = N.green, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 30.dp, vertical = 4.dp))
     if (v.optString("share_host").isNotEmpty()) Note("Tip: when you share in $name you can add a password (people type it to see the album), an expiry date, and a custom link — like ${wanted.ifEmpty { "https://share.example.com" }}/s/family-trip. They all work at the share address.", 13.sp, 4.dp)
+}
+
+
+/** Some apps need one setting before they work at a public address (Home Assistant's proxy trust, Homepage's allowed hosts). */
+@Composable private fun PublicFix(app: AppState, appId: String, host: String) {
+    var fix by remember { mutableStateOf<JSONObject?>(null) }
+    var round by remember { mutableIntStateOf(0) }
+    var ask by remember { mutableStateOf(false) }
+    LaunchedEffect(round) { fix = runCatching { app.api.get("/api/v1/apps/${android.net.Uri.encode(appId)}/public-fix?host=${android.net.Uri.encode(host)}") }.getOrNull() }
+    val f = fix ?: return
+    if (!f.optBoolean("needed")) return
+    val name = f.optString("app")
+    SectionLabel("Make it work there")
+    Group {
+        Row1("$name needs one setting", f.optString("what"), false, Icons.Rounded.Warning, N.amber)
+        val will = f.optJSONArray("will")
+        Column(Modifier.padding(start = 22.dp, end = 22.dp, bottom = 14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            for (i in 0 until (will?.length() ?: 0)) Text("${i + 1}. ${will!!.getString(i)}", color = N.sub, fontSize = 14.sp)
+        }
+        if (f.optBoolean("auto")) { RowDivider(); Row1("Fix it", "Nova keeps a backup of the file", true, Icons.Rounded.Check, onClick = { ask = true }) }
+    }
+    Note("Undo any time: the backup sits next to the file (…nova-backup-DATE). Put it back and restart the app.", 13.sp, 6.dp)
+    if (ask) OneDialog({ ask = false }, "Change $name's setting?", "$name restarts after the change. A backup of the file is kept next to it.",
+        listOf(DialogButton("Cancel") { ask = false }, DialogButton("Fix it", N.blue) { ask = false
+            app.act { val r = app.stepUp("Change one setting in $name so it works at $host", "POST", "/api/v1/apps/${android.net.Uri.encode(appId)}/public-fix", JSONObject().put("host", host))
+                if (r.optBoolean("changed")) app.toast("$name is set up — give it a moment to restart"); round++ } }))
+}
+
+/** A key for the app's own phone app (Immich…): a Cloudflare service token it sends as two headers, shown once. */
+@Composable private fun AppKey(app: AppState, host: String, rec: JSONObject, changed: () -> Unit) {
+    val ctx = LocalContext.current
+    var ask by remember { mutableStateOf<String?>(null) }
+    var shown by remember { mutableStateOf<JSONObject?>(null) }
+    val has = rec.optBoolean("app_key")
+    SectionLabel("Its phone app")
+    Group {
+        if (has) {
+            val made = rec.optLong("app_key_made").takeIf { it > 0 }?.let { java.text.DateFormat.getDateInstance().format(java.util.Date(it * 1000)) } ?: ""
+            Row1("App key is set up", "Made $made — its phone app gets past the login with it", false, Icons.Rounded.Key, N.green); RowDivider()
+            Row1("Make a new key", "The old one stops working", true, Icons.Rounded.Refresh, onClick = { ask = "new" }); RowDivider()
+            Row1("Remove the key", null, false, Icons.Rounded.Delete, N.red, onClick = { ask = "remove" })
+        } else Row1("Let its phone app in", "Apps like Immich or Home Assistant can't do this web login. Nova makes a key just for this address that the app sends instead.",
+            true, Icons.Rounded.Key, onClick = { ask = "new" })
+    }
+    ask?.let { what ->
+        OneDialog({ ask = null }, if (what == "remove") "Remove the app key?" else if (has) "Make a new app key?" else "Let its phone app in?",
+            if (what == "remove") "The app's phone app can't get in anymore until you make a new one."
+            else (if (has) "The old key stops working. " else "") + "Nova makes a Cloudflare service token that opens only $host, and shows it to you once. You paste it into the app's settings as two headers.",
+            listOf(DialogButton("Cancel") { ask = null }, DialogButton(if (what == "remove") "Remove" else "Make a key", if (what == "remove") N.red else N.blue) { ask = null
+                app.act {
+                    if (what == "remove") { app.stepUp("Remove the app key for $host", "POST", "/api/v1/cloudflare/app-key/remove", JSONObject().put("host", host)); app.toast("Removed") }
+                    else shown = app.stepUp("Make a key that lets an app's own phone app open $host", "POST", "/api/v1/cloudflare/app-key", JSONObject().put("host", host))
+                    changed()
+                } }))
+    }
+    shown?.let { r ->
+        fun copy(label: String, v: String) { ctx.getSystemService(android.content.ClipboardManager::class.java)?.setPrimaryClip(android.content.ClipData.newPlainText(label, v)); app.toast("Copied") }
+        OneDialog({ shown = null }, "Its phone app's key", "In the app, add two custom headers (Immich: Settings → Advanced → Custom proxy headers). Then use https://$host as its server address. This is the only time Nova shows the secret.",
+            listOf(DialogButton("Done", N.blue) { shown = null })) {
+            Column(Modifier.padding(horizontal = 22.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("CF-Access-Client-Id", color = N.sub, fontSize = 13.sp)
+                Chip(r.optString("client_id"), mono = true) { copy("CF-Access-Client-Id", r.optString("client_id")) }
+                Text("CF-Access-Client-Secret", color = N.sub, fontSize = 13.sp)
+                Chip(r.optString("client_secret"), mono = true) { copy("CF-Access-Client-Secret", r.optString("client_secret")) }
+                Text("Tap one to copy it.", color = N.sub, fontSize = 12.sp)
+            }
+        }
+    }
 }

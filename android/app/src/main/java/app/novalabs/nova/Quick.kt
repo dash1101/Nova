@@ -37,6 +37,7 @@ data class QuickDef(val id: String, val label: String, val icon: ImageVector, va
 val QUICK_ACTIONS = listOf(
     QuickDef("backup", "Back up now", Icons.Rounded.Backup, "Start a backup now"),
     QuickDef("freeram", "Free RAM", Icons.Rounded.Memory, "Drop the disk cache"),
+    QuickDef("freeup", "Free up", Icons.Rounded.CleaningServices, "Space and memory, in one go"),
     QuickDef("fan", "Fan light", Icons.Rounded.Lightbulb, "On / off"),
     QuickDef("dim", "Dim fan", Icons.Rounded.BrightnessLow, "Brightness 5%"),
     QuickDef("bright", "Bright fan", Icons.Rounded.BrightnessHigh, "Brightness 60%"),
@@ -162,11 +163,12 @@ private fun settingsFor(id: String): Route? = when {
     }
 
     fun run(id: String) {
-        val opensScreen = id in listOf("terminal", "status", "dashboard", "containers", "lighting", "inbox", "storage", "store")
+        val opensScreen = id in listOf("terminal", "status", "dashboard", "containers", "lighting", "inbox", "storage", "store", "freeup")
         if (!app.isAdmin && !opensScreen) { app.toast("This ${DeviceForm.noun} has view-only access"); return }
         when (id) {
             "backup" -> if (!running) { busy = "backup"
                 app.act { try { app.api.post("/api/v1/actions/backup"); backupState.value = app.api.get("/api/v1/backup") } finally { busy = null } } }
+            "freeup" -> app.go(Route.FreeUp)
             "freeram" -> { busy = "freeram"; app.act { try { val r = app.api.post("/api/v1/actions/free-ram")
                 app.toast("Freed ${r.optInt("freed_mb")} MB · ${r.optInt("available_mb")} MB available") } finally { busy = null } } }
             "fan" -> app.changeFan(JSONObject().put("on", fan?.optBoolean("on") == false))

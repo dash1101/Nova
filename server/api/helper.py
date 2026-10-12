@@ -424,6 +424,11 @@ if verb == "backup-status" and not args:
         except OSError: pass
     out(st)
 
+if verb == "freeup-scan" and not args:                     # what Free up could remove, measured (freeup.py)
+    sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+    import freeup
+    out(freeup.scan())
+
 if verb == "free-ram" and not args:
     def mem(k):
         for l in open("/proc/meminfo"):
@@ -514,6 +519,18 @@ if verb == "custom-check" and len(args) == 1:
     if os.path.exists(d): fail(f"{d} already exists — pick another name")
     out({"ok": True, "compose": compose})
 
+if verb in ("app-fix-check", "app-fix-apply") and len(args) == 1:
+    # An app that needs one setting before it works at its public address (appfix.py): Home Assistant, Homepage
+    sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+    import appfix
+    try:
+        a = json.loads(args[0])
+        if verb == "app-fix-check": out(appfix.check(a.get("app", ""), a.get("host", "")))
+        r = appfix.apply(a.get("app", ""), a.get("host", ""))
+        if r.get("changed"): changelog(f"{r['app']}: changed one setting so it works at {a.get('host', '')[:253]} (backup kept next to the file; from the Nova app)")
+        out(r)
+    except (ValueError, OSError) as e: fail(str(e)[:300])
+
 if verb.startswith("cf-") and len(args) <= 1:
     # Labs · Cloudflare auto-setup (cfsync.py)
     sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
@@ -537,8 +554,16 @@ if verb.startswith("cf-") and len(args) <= 1:
             a = json.loads(args[0])
             r = cfsync.set_access(a.get("host", ""), a.get("mode", ""), a.get("guests"), a.get("session") or None, bool(a.get("allow_public")))
             changelog(f"Cloudflare: {r['host']} — who can open it: {r['mode']}" + (f" ({len(r['guests'])} guests)" if r["mode"] == "guests" else "") + " (from the Nova app)"); out(r)
+        if verb == "cf-app-key" and args:                                # a key for the app's own phone app (the secret is shown once, never logged)
+            a = json.loads(args[0])
+            r = cfsync.app_key(a.get("host", ""))
+            changelog(f"Cloudflare: made an app key (service token) for {r['host']} (from the Nova app)"); out(r)
+        if verb == "cf-app-key-remove" and args:
+            a = json.loads(args[0]); r = cfsync.app_key_remove(a.get("host", ""))
+            changelog(f"Cloudflare: removed the app key for {a.get('host', '')[:253]} (from the Nova app)"); out(r)
         if verb == "cf-share-info":                                      # just the record (no Cloudflare calls): what's set up for share links
-            out({"hosts": {h: {k: r.get(k) for k in ("kind", "for_host", "service", "mode", "existing")} for h, r in cfsync.ledger().items()}})
+            out({"hosts": {h: {**{k: r.get(k) for k in ("kind", "for_host", "service", "mode", "existing")}, "app_key": bool(r.get("app_token")),
+                               "app_key_made": (r.get("app_token") or {}).get("made")} for h, r in cfsync.ledger().items()}})
         if verb == "cf-undo-all": r = cfsync.undo_all(bool(args and args[0] == "public")); changelog(f"Cloudflare: undid Nova's changes: {r}"); out({"done": r})
         fail("bad request", 2)
     except ValueError as e: fail(str(e))

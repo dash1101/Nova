@@ -505,6 +505,7 @@ export async function apps(ctx) {
           `<button class="appcell press" data-act="go:${r}" style="border:0;background:none;font:inherit;color:var(--text);cursor:pointer"><span class="appic" style="background:color-mix(in srgb,${c} 18%,var(--card));color:${c}">${I(ic)}</span><span class="appname">${n}</span></button>`).join("")}</div>${sec("On your server")}` : "")
       + (S.cache["/api/v1/apps"] ? (list.length ? `<div class="appgrid">${list.map((a, i) => { const h = appHref(a);
           if (a.kind === "command") return `<button class="appcell press${a.hidden ? " dim" : ""}" data-act="runcmd:${i}" data-i="${i}" style="border:0;background:none;font:inherit;color:var(--text);cursor:pointer"><span class="appic" data-id="${esc(a.id)}" style="color:var(--green)">${I("term")}</span><span class="appname">${esc(a.name)}</span></button>`;
+          if (a.companion_of) return `<button class="appcell press${a.hidden ? " dim" : ""}" data-act="companion:${i}" data-i="${i}" style="border:0;background:none;font:inherit;color:var(--text);cursor:pointer"><span class="appic" data-id="${esc(a.id)}">${esc((a.name || "?")[0].toUpperCase())}</span><span class="appname">${esc(a.name)}</span></button>`;
           return `<a class="appcell${a.hidden ? " dim" : ""}" ${h ? `href="${esc(h)}" target="_blank" rel="noopener noreferrer"` : `data-act="noreach"`} data-i="${i}"><span class="appic" data-id="${esc(a.id)}">${esc((a.name || "?")[0].toUpperCase())}</span><span class="appname">${esc(a.name)}</span></a>`; }).join("")}${isAdmin() ? `<button class="appcell addapp press" data-act="add"><span class="appic">${I("add")}</span><span class="appname">Add</span></button>` : ""}</div>`
         : group(row("No web apps found", { sub: "Install one from the Store, or add a link with +", icon: "apps" }))) : note("Looking for apps…"))
       + (all.some(a => a.hidden) ? group(switchRow("Show hidden apps", null, showHidden, "hid")) : ""),
@@ -581,7 +582,11 @@ export async function apps(ctx) {
     const ok = await dialog("Here's what Nova will do", "", [{ label: "Cancel", value: null }, { label: "Do it", color: "var(--blue)", value: "go" }],
       `<div class="pad"><ol class="steps">${p.steps.map(x => `<li>${esc(x)}</li>`).join("")}</ol><p class="muted">In that order, so the app is never reachable without the login. Your phone confirms it.</p></div>`);
     if (ok !== "go") return;
-    try { const res = await post("/api/v1/cloudflare/publish", { host: p.host, service: g.service, no_tls_verify: tls, app: a.id }); if (res?.url) { toast(`${a.name} is at ${res.url}`); await get("/api/v1/apps"); draw(); remoteSetup({ ...a, remote_url: res.url }); } }
+    try { const res = await post("/api/v1/cloudflare/publish", { host: p.host, service: g.service, no_tls_verify: tls, app: a.id }); if (res?.url) { toast(`${a.name} is at ${res.url}`); await get("/api/v1/apps"); draw();
+      // some apps need one setting to work behind the new address (Home Assistant, Homepage): show that first
+      const fx = await get(`/api/v1/apps/${encodeURIComponent(a.id)}/public-fix?host=${encodeURIComponent(p.host)}`).catch(() => null);
+      if (fx?.needed) return ctx.go(`access/${encodeURIComponent(p.host)}/${encodeURIComponent(a.id)}`);
+      remoteSetup({ ...a, remote_url: res.url }); } }
     catch (e) { toast(e.message); }
   };
   // Open an app from anywhere: a public hostname on your Cloudflare tunnel, behind Cloudflare Access
@@ -611,7 +616,15 @@ export async function apps(ctx) {
   };
   ctx.handlers({ add: () => edit(null), hid: () => { showHidden = !showHidden; draw(); },
     runcmd: i => { const all = S.cache["/api/v1/apps"]?.apps || []; const list = all.filter(a => showHidden || !a.hidden); runCommand(list[+i]); },
-    noreach: () => toast("Away from home this app needs its own link — right-click it → From anywhere…") });
+    noreach: () => toast("Away from home this app needs its own link — right-click it → From anywhere…"),
+    companion: async i => {
+      // a share-link helper (Immich's share proxy): its own page is blank on purpose — it only opens share links
+      const all = S.cache["/api/v1/apps"]?.apps || [], a = all.filter(x => showHidden || !x.hidden)[+i]; if (!a) return;
+      const parent = all.find(x => x.name === a.companion_of || (x.id || "").startsWith(a.companion_of.toLowerCase()));
+      const v = await dialog(`${a.name}`, `This only opens share links — the ones you make in ${a.companion_of} (Share → Create link), like ${a.remote_url || "https://share.example.com"}/share/…  Its own page is empty on purpose.`,
+        [{ label: "Close", value: null }, ...(parent ? [{ label: `Open ${a.companion_of}`, color: "var(--blue)", value: "open" }] : [])]);
+      if (v === "open") { const h = appHref(parent); if (h) window.open(h, "_blank", "noopener"); }
+    } });
   draw(); ctx.every(30000, async () => { await get("/api/v1/apps"); draw(); }, true);
 }
 
@@ -806,6 +819,35 @@ export async function labsImages(ctx) {
   draw(); await load();
 }
 
+// Free up space (and memory): Nova measures what it can safely remove; you pick, it removes
+export async function freeup(ctx) {
+  let d = null, err = null, pick = null, ram = true;
+  const load = async () => { try { d = await get("/api/v1/freeup"); err = null; pick ??= new Set(d.items.filter(i => i.default && (i.size > 0 || i.count)).map(i => i.id)); } catch (e) { err = e.message; } if (ctx.alive()) draw(); };
+  const draw = () => {
+    if (err) return ctx.show(note(err), { title: "Free up" });
+    if (!d) return ctx.show(`<div class="center" style="padding:30px"><div class="spinner" style="margin:auto"></div><p class="muted">Measuring what can go…</p></div>`, { title: "Free up" });
+    const total = d.items.filter(i => pick.has(i.id)).reduce((a, i) => a + (i.size || 0), 0), m = d.memory;
+    const sizeOf = i => i.unknown ? `${i.count} ${i.id === "snapshots" ? "snapshot" : "package"}${i.count === 1 ? "" : "s"}` : i.size ? bytes(i.size) + (i.count ? ` · ${i.count}` : "") : "Nothing to remove";
+    ctx.show(`<div class="center" style="padding:10px 0 4px"><div style="font-size:30px;font-weight:700">${bytes(d.free)}</div><div class="muted">free on the system drive</div></div>
+      ${note("Nova measured what it can safely remove. Your files, your apps' data, containers and their volumes are never touched.")}
+      ${sec("Space")}${group(d.items.map(i => row(i.title, { sub: `${sizeOf(i)} — ${i.about}`, blue: pick.has(i.id), icon: i.default ? "disk" : "warn", tint: i.default ? "var(--blue)" : "var(--amber)",
+        end: tick(pick.has(i.id)), click: isAdmin() && (i.size || i.count) ? "pk:" + i.id : "", dis: !(i.size || i.count) })).join(""))}
+      ${note("Ticked ones are safe to remove any time. The amber ones are up to you: once they're gone, you can't roll back or restore from them.")}
+      ${sec("Memory")}${group(row("Free memory too", { sub: `${bytes(m.available)} of ${bytes(m.total)} available · ${bytes(m.cached)} is cache the system can let go of${m.swap_used > 2e8 ? ` · ${bytes(m.swap_used)} in swap` : ""}`, blue: ram, icon: "mem", end: tick(ram), click: isAdmin() ? "ram" : "" }))}
+      ${isAdmin() ? group(row(pick.size || ram ? `Free up${total ? " " + bytes(total) : ""}` : "Pick something first", { sub: "Approved on your phone", blue: true, icon: "del", tint: "var(--red)", click: pick.size || ram ? "go" : "", dis: !(pick.size || ram) })) : ""}`, { title: "Free up" });
+  };
+  ctx.handlers({
+    pk: id => { pick.has(id) ? pick.delete(id) : pick.add(id); draw(); },
+    ram: () => { ram = !ram; draw(); },
+    go: async () => {
+      const risky = d.items.filter(i => pick.has(i.id) && !i.default);
+      if (!(await confirm("Free up now?", risky.length ? `This also removes: ${risky.map(i => i.title.toLowerCase()).join(", ")}. That can't be undone.` : "Only things that are safe to remove.", "Free up"))) return;
+      try { const r = await post("/api/v1/freeup", { items: [...pick, ...(ram ? ["memory"] : [])] }); if (r?.task) ctx.go("task/" + r.task); } catch (e) { toast(e.message); }
+    },
+  });
+  draw(); await load();
+}
+
 // Labs → Wake-on-LAN
 export async function wol(ctx) {
   let d = null, err = null;
@@ -859,10 +901,11 @@ export async function openrgb(ctx) {
 const SESSIONS = [["1h", "1 hour"], ["24h", "1 day"], ["168h", "1 week"], ["720h", "30 days"]];
 export async function access(ctx) {
   const host = decodeURIComponent(ctx.args[0] || ""), appId = decodeURIComponent(ctx.args[1] || "");
-  let st = null, err = null, share = null, guests = [], session = "24h", loaded = "", busy = "";
+  let st = null, err = null, share = null, fix = null, guests = [], session = "24h", loaded = "", busy = "";
   const load = async () => {
     try { st = await get("/api/v1/cloudflare"); err = null; } catch (e) { err = e.message; }
     if (appId) { try { share = await get(`/api/v1/apps/${encodeURIComponent(appId)}/sharing?host=${encodeURIComponent(host)}`); } catch { share = null; } }
+    if (appId && isAdmin()) { try { fix = await get(`/api/v1/apps/${encodeURIComponent(appId)}/public-fix?host=${encodeURIComponent(host)}`); } catch { fix = null; } }
     const rec = st?.nova?.[host];
     if (rec && JSON.stringify(rec) !== loaded) { loaded = JSON.stringify(rec); guests = [...(rec.guests || [])]; session = rec.session || "24h"; }
     if (ctx.alive()) draw();
@@ -902,6 +945,14 @@ export async function access(ctx) {
         + note("Stays signed in for") + segmented(SESSIONS.map(x => x[1]), Math.max(0, SESSIONS.findIndex(x => x[0] === session)), "sess")
         + (dirty ? group(row(busy ? "Saving…" : "Save changes", { sub: "Approved on your phone", blue: true, icon: "check", click: busy ? "" : "saveg" }) + row("Undo", { icon: "back", click: "undog" })) : "")
         + note("Guests open the address, type their email, and Cloudflare sends them a code. They can only open this app — not Nova.") : ""}
+      ${fix?.needed ? sec("Make it work there") + group(row(`${esc(fix.app)} needs one setting`, { sub: fix.what, icon: "warn", tint: "var(--amber)" })
+          + `<div class="pad"><ol class="note" style="margin:0;padding-left:20px">${fix.will.map(w => `<li style="white-space:pre-wrap">${esc(w)}</li>`).join("")}</ol></div>`
+          + (fix.auto && isAdmin() ? row("Fix it", { sub: "Nova keeps a backup of the file (approved on your phone)", blue: true, icon: "check", click: busy ? "" : "fixit" }) : ""))
+        + note("Undo any time: the backup sits next to the file (…nova-backup-DATE). Put it back and restart the app.") : ""}
+      ${rec && !isShare && (mode === "me" || mode === "guests") && isAdmin() ? sec("Its phone app") + group(rec.app_key
+          ? row("App key is set up", { sub: `Made ${new Date(rec.app_key_made * 1000).toLocaleDateString()} — its phone app gets past the login with it`, icon: "key", tint: "var(--green)" })
+            + row("Make a new key", { sub: "The old one stops working", blue: true, icon: "refresh", click: busy ? "" : "appkey" }) + row("Remove the key", { icon: "del", tint: "var(--red)", click: busy ? "" : "rmkey" })
+          : row("Let its phone app in", { sub: "Apps like Immich or Home Assistant can't do this web login. Nova makes a key just for this address that the app sends instead.", blue: true, icon: "key", click: busy ? "" : "appkey" })) : ""}
       ${sh}
       ${rec && isAdmin() ? sec("Take it off") + group(row(rec.kind === "protected" ? "Take the login off" : rec.existing ? "Stop managing it in Nova" : "Take it off the internet", { sub: rec.kind === "protected" ? "It was yours before — it goes back to being open to anyone" : rec.existing ? "Nova removes only a login it added; your route and DNS record stay as they are" : "Nova removes what it added: route, DNS record and login", icon: "del", tint: "var(--red)", click: "rm" })) : ""}`, { title: "Who can open it" });
     wireCommon(ctx.root, { onSeg: (k, i) => { if (k === "sess") { session = SESSIONS[i][0]; draw(); } } });
@@ -918,7 +969,7 @@ export async function access(ctx) {
       const d = { me: `Anyone opening ${host} signs in with your Cloudflare login first.`, guests: "You, plus people you add by email. You can add them next — until then it's just you.",
                   public: "There will be no login at all: anyone who finds the address can open the app. Only do this if the app has its own login you trust." }[k];
       const cur = st.nova?.[host]?.mode || ((st.protected || []).includes(host) ? "me" : "public");
-      const warn = k !== "public" && (cur === "public" || cur === "offline") ? " Heads-up: an app's own phone app (Immich, Jellyfin, Home Assistant…) can't get past a web login by itself — add a Cloudflare Access service token in its settings first (Immich: Settings → Advanced → Custom proxy headers). Links you've already shared at this address stop working for others; for Immich, set up Share links first." : "";
+      const warn = k !== "public" && (cur === "public" || cur === "offline") ? " Heads-up: an app's own phone app (Immich, Jellyfin, Home Assistant…) can't get past a web login by itself — use “Let its phone app in” below to give it a key. Links you've already shared at this address stop working for others; for Immich, set up Share links first." : "";
       if (!(await confirm(t, d + warn, k === "public" ? "Make it public" : "Change"))) return;
       change(k, k === "guests" ? guests : [], k === "public");
     },
@@ -935,6 +986,31 @@ export async function access(ctx) {
       try { const r = await post(`/api/v1/apps/${encodeURIComponent(appId)}/sharing`, { share_host: h, for_host: host }); if (r?.task) ctx.go("task/" + r.task); } catch (e) { toast(e.message); } },
     copyext: async () => { try { await navigator.clipboard.writeText(share.wanted); toast("Copied"); } catch { toast(share.wanted); } },
     recheck: () => { share = null; load(); },
+    fixit: async () => {
+      if (!(await confirm(`Change ${fix.app}'s setting?`, `${fix.app} restarts after the change. A backup of the file is kept next to it.`, "Fix it", "var(--blue)"))) return;
+      busy = `Changing ${fix.app}…`; draw();
+      try { const r = await post(`/api/v1/apps/${encodeURIComponent(appId)}/public-fix`, { host }); if (r?.changed) toast(`${r.app} is set up — give it a moment to restart`); } catch (e) { toast(e.message); }
+      busy = ""; fix = null; load();
+    },
+    appkey: async () => {
+      const again = st.nova?.[host]?.app_key;
+      if (!(await confirm(again ? "Make a new app key?" : "Let its phone app in?", (again ? "The old key stops working. " : "") + `Nova makes a Cloudflare service token that opens only ${host}, and shows it to you once. You paste it into the app's settings as two headers.`, again ? "Make a new key" : "Make a key", "var(--blue)"))) return;
+      busy = "Making the key…"; draw();
+      let r; try { r = await post("/api/v1/cloudflare/app-key", { host }); } catch (e) { toast(e.message); }
+      busy = ""; loaded = ""; load();
+      if (!r?.client_id) return;
+      const line = (k, v) => `<p class="muted" style="margin:10px 0 4px">${k}</p>${copyCmd(v)}`;
+      dialog("Its phone app's key", "", [{ label: "Done", color: "var(--blue)", value: true }],
+        `<div class="pad"><p style="margin-top:0">In the app, add two <b>custom headers</b> (Immich: Settings → Advanced → Custom proxy headers; other apps: “custom headers” or “Cloudflare Access”):</p>
+          ${line("Name: CF-Access-Client-Id — value:", r.client_id)}${line("Name: CF-Access-Client-Secret — value:", r.client_secret)}
+          <p class="muted">Then use https://${esc(host)} as its server address. This is the only time Nova shows the secret — make a new key if you lose it.</p></div>`);
+    },
+    rmkey: async () => {
+      if (!(await confirm("Remove the app key?", "The app's phone app can't get in anymore until you make a new one.", "Remove"))) return;
+      busy = "Removing the key…"; draw();
+      try { await post("/api/v1/cloudflare/app-key/remove", { host }); toast("Removed"); } catch (e) { toast(e.message); }
+      busy = ""; loaded = ""; load();
+    },
     rm: async () => { const prot = st.nova?.[host]?.kind === "protected";
       if (!(await confirm(prot ? `Take the login off ${host}?` : `Take ${host} off?`, prot ? "It goes back to how it was before Nova: open to anyone." : "Nova removes the route, the DNS record and the login it added. Nothing else in your Cloudflare account changes.", prot ? "Make it public" : "Take it off"))) return;
       try { await post("/api/v1/cloudflare/remove", { host, allow_public: prot }); toast("Done"); ctx.go("cloudflare"); } catch (e) { toast(e.message); } },
@@ -955,7 +1031,7 @@ export async function cloudflare(ctx) {
       ${sec("Making the token")}<ol class="note cfsteps">
         <li>Go to <b>dash.cloudflare.com</b> → your profile icon (top right) → <b>My Profile</b> → <b>API Tokens</b>, and select <b>Create Token</b>.</li>
         <li>Next to “Create Custom Token”, select <b>Get started</b>. Name it something like Nova.</li>
-        <li>Under <b>Permissions</b>, add four rows: <b>Account · Cloudflare Tunnel · Edit</b> (newer dashboards may call it “Cloudflare One Connector: cloudflared”), <b>Account · Access: Apps and Policies · Edit</b>, <b>Zone · DNS · Edit</b> and <b>Zone · Zone · Read</b>.</li>
+        <li>Under <b>Permissions</b>, add five rows: <b>Account · Cloudflare Tunnel · Edit</b> (newer dashboards may call it “Cloudflare One Connector: cloudflared”), <b>Account · Access: Apps and Policies · Edit</b>, <b>Account · Access: Service Tokens · Edit</b> (for app keys), <b>Zone · DNS · Edit</b> and <b>Zone · Zone · Read</b>.</li>
         <li><b>Account Resources</b>: Include → your account. <b>Zone Resources</b>: Include → Specific zone → your domain.</li>
         <li>Select <b>Continue to summary</b> → <b>Create Token</b>, copy it (Cloudflare shows it only once) and paste it with <b>Add an API token</b>.</li>
       </ol>

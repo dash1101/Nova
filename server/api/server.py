@@ -39,7 +39,7 @@ try:                       # optional module: fan/case lighting (modules/fan-gig
 except ImportError:
     nova_rgb = None
 
-API_VERSION = "0.6.6-alpha"
+API_VERSION = "0.6.7-alpha"
 CONFIG = "/etc/nova-api/config.json"
 DATA = "/var/lib/nova-api"
 DEVICES = f"{DATA}/devices.json"
@@ -124,12 +124,24 @@ def app_list():
     if time.time() - _apps_cache["t"] > 30:
         rc, res = helper("apps-detect", timeout=60)
         if rc == 0: _apps_cache.update(t=time.time(), apps=res.get("apps", []))
+        if load_json(SETTINGS, {}).get("labs", {}).get("cloudflare_sync"):   # addresses Nova put on Cloudflare (just the record, no API calls)
+            rc2, res2 = helper("cf-share-info", timeout=20)
+            if rc2 == 0: _apps_cache["published"] = res2.get("hosts") or {}
     cfg = load_json(APPS, {"overrides": {}, "custom": []}); ov = cfg.get("overrides", {})
+    pub = {}                                     # local port → the public address Nova set up for it
+    for h, r in (_apps_cache.get("published") or {}).items():
+        m = re.fullmatch(r"https?://(?:localhost|127\.0\.0\.1):(\d+)/?", str(r.get("service") or ""))
+        if m and r.get("mode") != "offline": pub.setdefault(int(m.group(1)), h)
+    comp_ids = {c["id"]: k for k, c in COMPANIONS.items()}
     out = []
     for a in _apps_cache["apps"]:
         o = ov.get(a["id"], {})
-        out.append({**a, "name": o.get("name") or a["name"], "slug": o.get("icon") or a["slug"], "hidden": bool(o.get("hidden")),
-                    "url": o.get("url", ""), "remote_url": o.get("remote_url", "")})
+        rem = o.get("remote_url") or (f"https://{pub[a['port']]}" if a.get("port") in pub else "")
+        item = {**a, "name": o.get("name") or a["name"], "slug": o.get("icon") or a["slug"], "hidden": bool(o.get("hidden")),
+                "url": o.get("url", ""), "remote_url": rem}
+        if a["id"] in comp_ids:                  # a share-link helper (Immich's share proxy): it only opens share links
+            item["companion_of"] = COMPANIONS[comp_ids[a["id"]]]["name"]
+        out.append(item)
     off = set(load_json(SETTINGS, {}).get("plugins_off", []))
     for p in plugins.all_plugins():                      # Settings → Plugins: their apps and one-tap tools
         if p["id"] in off: continue
@@ -491,7 +503,11 @@ def describe_action(a):
         return {"me": f"Only you can open {d.get('host', '?')}", "guests": f"You and {len(d.get('guests') or [])} guest(s) can open {d.get('host', '?')}",
                 "public": f"Make {d.get('host', '?')} open to anyone"}.get(m, f"Change who can open {d.get('host', '?')}")
     if len(p) == 3 and p[0] == "apps" and p[2] == "sharing": return f"Turn on public share links at {a.get('data', {}).get('share_host', '?')}"
+    if len(p) == 3 and p[0] == "apps" and p[2] == "public-fix": return f"Change one setting in {p[1]} so it works at its public address (a backup is kept; it restarts)"
     if p == ["cloudflare", "token"]: return "Save a Cloudflare API token on the server"
+    if p == ["freeup"]: return "Free up space: remove " + ", ".join(str(x) for x in (a.get("data", {}).get("items") or []))[:200]
+    if p == ["cloudflare", "app-key"]: return f"Make a key that lets an app's own phone app open {a.get('data', {}).get('host', '?')} (it replaces an older key)"
+    if p == ["cloudflare", "app-key", "remove"]: return f"Remove the app key for {a.get('data', {}).get('host', '?')}"
     if p == ["apps", "command"]: return f"Save the command app “{a.get('data', {}).get('name', '?')}”: {str(a.get('data', {}).get('command', ''))[:80]}"
     if p[:1] == ["apps"] and p[-1:] == ["run"]: return "Run a command app"
     if p == ["containers", "custom"]: return f"Add your own container “{a.get('data', {}).get('spec', {}).get('name', '?')}” ({a.get('data', {}).get('spec', {}).get('image', '?')})"
@@ -593,8 +609,11 @@ def needs_stepup(method, parts):
     if parts == ["containers", "custom"]: return True                      # new container: fingerprint
     if parts == ["terminal"]: return True                                   # server terminal: fingerprint
     if parts == ["apps", "command"]: return True                           # what a command app runs: fingerprint
-    if parts in (["cloudflare", "token"], ["cloudflare", "publish"], ["cloudflare", "remove"], ["cloudflare", "protect"], ["cloudflare", "access"]): return True
+    if parts in (["cloudflare", "token"], ["cloudflare", "publish"], ["cloudflare", "remove"], ["cloudflare", "protect"], ["cloudflare", "access"],
+                 ["cloudflare", "app-key"], ["cloudflare", "app-key", "remove"]): return True
     if method == "POST" and len(parts) == 3 and parts[0] == "apps" and parts[2] == "sharing": return True     # changes your Cloudflare account
+    if method == "POST" and len(parts) == 3 and parts[0] == "apps" and parts[2] == "public-fix": return True  # edits one of your app's settings
+    if method == "POST" and parts == ["freeup"]: return True                                                  # removes things for good
     if parts[:1] == ["containers"] and parts[-1:] == ["remove-custom"]: return True
     if parts == ["features"]: return True                                 # switching parts of Nova on/off: fingerprint
     if parts == ["plugins"]: return True                                  # turning a plugin on runs its tools as you: fingerprint
@@ -1588,6 +1607,10 @@ class Handler(BaseHTTPRequestHandler):
                 spec = {"host": str(data.get("host", ""))[:253], "mode": str(data.get("mode", "")), "allow_public": data.get("allow_public") is True,
                         "guests": [str(g)[:254] for g in (data.get("guests") or [])][:60], "session": str(data.get("session") or "")[:8]}
                 rc, res = helper("cf-access", json.dumps(spec), timeout=180); return (200 if rc == 0 else 400), res
+            if method == "POST" and parts == ["cloudflare", "app-key"]:     # the app's own phone app (Immich…): a key it sends as two headers
+                rc, res = helper("cf-app-key", json.dumps({"host": str(data.get("host", ""))[:253]}), timeout=180); return (200 if rc == 0 else 400), res
+            if method == "POST" and parts == ["cloudflare", "app-key", "remove"]:
+                rc, res = helper("cf-app-key-remove", json.dumps({"host": str(data.get("host", ""))[:253]}), timeout=120); return (200 if rc == 0 else 400), res
             if method == "POST" and parts == ["cloudflare", "remove"]:
                 rc, res = helper("cf-remove", json.dumps({"host": str(data.get("host", ""))[:253], "allow_public": data.get("allow_public") is True}), timeout=120); return (200 if rc == 0 else 400), res
             if method == "POST" and parts == ["cloudflare", "protect"]:      # an address you already have, open to anyone → behind the login
@@ -1625,6 +1648,15 @@ class Handler(BaseHTTPRequestHandler):
             if role_of(dev) != "admin": return 403, {"error": "admins only"}
             if not re.fullmatch(r"custom-[0-9a-f]{8}", parts[1]) and not plugins.command(parts[1]): return 404, {"error": "no such command app"}
             rc, res = helper("task-start", "run-command", json.dumps({"id": parts[1]})); return (202 if rc == 0 else 400), ({"task": res.get("id"), **res} if rc == 0 else res)
+        if len(parts) == 3 and parts[0] == "apps" and parts[2] == "public-fix" and re.fullmatch(r"[A-Za-z0-9_.-]{1,64}", parts[1]):
+            # Does this app need a setting changed to work at its public address (and change it, with a backup)?
+            if role_of(dev) != "admin": return 403, {"error": "admins only"}
+            a = next((x for x in app_list() if x["id"] == parts[1]), None)
+            if not a or not a.get("container"): return 200, {"needed": False, "known": False}
+            host = (re.sub(r"^https?://", "", a.get("remote_url") or "").split("/")[0] or str(data.get("host") or q.get("host", ""))).lower()[:253]
+            if not host: return 200, {"needed": False, "known": False}
+            rc, res = helper("app-fix-check" if method == "GET" else "app-fix-apply", json.dumps({"app": a["container"], "host": host}), timeout=300)
+            return (200 if rc == 0 else 400), {**res, "host": host}
         if len(parts) == 3 and parts[0] == "apps" and parts[2] == "sharing" and re.fullmatch(r"[A-Za-z0-9_.-]{1,64}", parts[1]):
             # Share links (Immich and friends): the app stays behind your login; a small companion serves only what you share
             if role_of(dev) != "admin" or dev.get("type") in ("watch", "wear"): return 403, {"error": "admins only"}
@@ -1909,6 +1941,11 @@ class Handler(BaseHTTPRequestHandler):
             rc, res = helper("backup-status"); return 200, res
         if method == "POST" and parts == ["actions", "backup"]:
             rc, res = helper("backup-now"); return (200 if rc == 0 else 500), res
+        if parts == ["freeup"]:                                       # Free up space (and memory): measure, then remove what you pick
+            if role_of(dev) != "admin": return 403, {"error": "admins only"}
+            if method == "GET": rc, res = helper("freeup-scan", timeout=240); return (200 if rc == 0 else 400), res
+            items = [str(x)[:20] for x in (data.get("items") or [])][:12]
+            rc, res = helper("task-start", "freeup", json.dumps({"items": items})); return (202 if rc == 0 else 400), ({"task": res.get("id"), **res} if rc == 0 else res)
         if method == "POST" and parts == ["actions", "free-ram"]:
             rc, res = helper("free-ram"); return (200 if rc == 0 else 500), res
 

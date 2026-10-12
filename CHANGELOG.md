@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.6.7-alpha (server, Nova web, app and website)
+- **Free up** (Menu → Server, the Quick panel, or search): Nova measures what it can safely remove and you pick. That covers container images no app uses, Docker's build cache, downloaded package files, old system logs, rotated logs and Nova's leftovers, and your Trash, plus memory the system can let go of. Also offered, but unticked: the rollback copies Nova keeps of updated apps (often several GB), packages nothing needs and older backup snapshots. Your files, apps' data, containers and volumes are never touched.
+- **Status graphs:** point at one (or drag along it on a phone) to see the value at that moment, and tap one to open it large, live.
+- **Make an app public, and it works:** Home Assistant (“400: Bad Request”) and Homepage (“Host validation failed”) need one setting before they work at a public address. Nova now notices, shows exactly what it would change, and **Fix it** does it, with a backup of the file next to it.
+- **Let an app's own phone app in:** apps like Immich can't do Cloudflare's web login. **Let its phone app in** (Who can open it) makes a key that opens only that address. You paste it into the app as two headers (Immich: Settings → Advanced → Custom proxy headers). Make a new one or remove it any time. Your Cloudflare token needs the Access: Service Tokens · Edit permission for this.
+- **Share proxy:** it now shows its public address, and tapping it explains that it only opens share links instead of showing an empty page.
+- **Colors and wallpaper** (Appearance, web and app): your own accent color for this device (Material You builds its colors from it), a **Color strength** slider, and a **wallpaper** behind every page with **Blur** and **Dim** sliders.
+- **Shutting down:** the lights ease into white, then breathe slowly while they fade to dark.
+- **Request a feature** in About, Questions and on the website.
+- **Fixed:** in Nova web, the fan light's on/off and the status light switch turned the light off instead of toggling it. The server now also refuses anything but true/false for those switches.
+- **Fixed:** “Drive not responding” now names the drive, like “Media — sdc (ata3)”.
+- Security test: 465 checks.
+
 ## 0.6.6-alpha (server, Nova web, app and website)
 - **Nova web: control your other servers from here.** Under Servers, pick a server and choose **Control from here**: Nova looks and works the same, only it's that server you see and change, with a **Controlling …** bar and a **Switch back** button always on screen. The first time, approve this browser on that server, once (on its phone, or `sudo nova approve CODE` there). That server checks your browser itself and asks its own phones for anything risky; this server only passes the requests along. Files, the terminal and speed tests open on that server's own Nova web. Both servers need Nova 0.6.6.
 - **Home shows all your servers** in a row of small cards with their health and live numbers. Tap one to switch to it. You can move or hide the row in Edit Home.

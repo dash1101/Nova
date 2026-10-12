@@ -251,12 +251,12 @@ function smooth(c, X, Y) {
  * spark(canvas, values, colorVar, {max, window, tick}): [window] steps visible; when [tick] changes the
  * line glides one step left over ~1 s instead of jumping (like the app's status page).
  */
-export function spark(canvas, vals, color, { max = null, window = 0, tick = 0, added = 1 } = {}) {
+export function spark(canvas, vals, color, { max = null, window = 0, tick = 0, added = 1, times = null, fmt = null, scrub = "mouse" } = {}) {
   if (!canvas) return;
   let g = graphs.get(canvas);
-  if (!g) { g = { t0: 0, tick: null, top: null }; graphs.set(canvas, g); }
+  if (!g) { g = { t0: 0, tick: null, top: null, hx: null }; graphs.set(canvas, g); scrubbable(canvas, g, scrub); }
   if (g.tick !== tick) { g.tick = tick; g.t0 = performance.now(); g.added = Math.max(1, Math.min(5, added)); }
-  g.vals = vals; g.color = css(color); g.max = max; g.window = window;
+  g.vals = vals; g.color = css(color); g.max = max; g.window = window; g.times = times; g.fmt = fmt;
   if (g.running) return; g.running = true;
   const frame = now => {
     if (!canvas.isConnected) { g.running = false; return; }
@@ -281,12 +281,43 @@ export function spark(canvas, vals, color, { max = null, window = 0, tick = 0, a
       c.beginPath(); smooth(c, X, Y); c.lineWidth = 2.2; c.lineJoin = "round"; c.lineCap = "round"; c.strokeStyle = g.color; c.stroke();
       c.fillStyle = g.color + "40"; c.beginPath(); c.arc(X.at(-1), Y.at(-1), 7, 0, 7); c.fill();
       c.fillStyle = g.color; c.beginPath(); c.arc(X.at(-1), Y.at(-1), 3.5, 0, 7); c.fill();
+      g.X = X; g.Y = Y; g.first = first;
+      if (g.hx != null && X.length) {                                   // the point under the pointer: a line, a dot and its value
+        let k = 0; for (let i = 1; i < X.length; i++) if (Math.abs(X[i] - g.hx) < Math.abs(X[k] - g.hx)) k = i;
+        c.strokeStyle = g.color + "90"; c.lineWidth = 1; c.setLineDash([3, 3]); c.beginPath(); c.moveTo(X[k], 0); c.lineTo(X[k], h); c.stroke(); c.setLineDash([]);
+        c.fillStyle = g.color; c.beginPath(); c.arc(X[k], Y[k], 5, 0, 7); c.fill();
+        c.strokeStyle = getComputedStyle(canvas).getPropertyValue("--card") || "#000"; c.lineWidth = 2; c.stroke();
+        showTip(canvas, g, first + k, X[k], w);
+      }
     }
     requestAnimationFrame(frame);
   };
   requestAnimationFrame(frame);
 }
 export { css };
+
+// Point at a graph (or drag a finger along a large one) to read the value at that moment
+function scrubbable(canvas, g, mode) {
+  const at = e => { const r = canvas.getBoundingClientRect(); g.hx = e.clientX - r.left; };
+  const off = () => { g.hx = null; canvas.parentElement?.querySelector(".gtip")?.remove(); };
+  canvas.addEventListener("pointermove", e => { if (mode === "all" || e.pointerType === "mouse") at(e); });
+  canvas.addEventListener("pointerdown", e => { if (mode === "all") { at(e); canvas.setPointerCapture?.(e.pointerId); } });
+  canvas.addEventListener("pointerleave", e => { if (e.pointerType === "mouse") off(); });
+  canvas.addEventListener("pointerup", e => { if (mode === "all" && e.pointerType !== "mouse") setTimeout(off, 1500); });
+  if (mode === "all") canvas.style.touchAction = "none";
+}
+function showTip(canvas, g, i, x, w) {
+  const host = canvas.parentElement; if (!host) return;
+  let tip = host.querySelector(".gtip");
+  if (!tip) { tip = document.createElement("div"); tip.className = "gtip"; host.appendChild(tip); }
+  const v = g.vals[i], t = g.times?.[i];
+  const when = t ? new Date(t * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: g.window ? "2-digit" : undefined }) : "";
+  tip.innerHTML = `<b>${esc(g.fmt ? g.fmt(v) : String(Math.round(v * 10) / 10))}</b>${when ? `<small>${esc(when)}</small>` : ""}`;
+  const left = canvas.offsetLeft + Math.max(40, Math.min(w - 40, x));
+  const inside = canvas.clientHeight > 150;                          // a large graph: the label sits inside it, at the top
+  tip.style.left = left + "px"; tip.style.top = (inside ? canvas.offsetTop + 6 : canvas.offsetTop - 6) + "px";
+  tip.style.transform = inside ? "translate(-50%, 0)" : "";
+}
 
 /**
  * Swipe a row sideways to reveal an action (like the app): past 35 % of the width it arms (a buzz),

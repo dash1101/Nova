@@ -22,14 +22,14 @@ STORAGE_KINDS = {"format", "combine", "raid", "pool-remove", "pool-add", "fstab-
 DIAG_KINDS = {"net-internet", "disk-speed", "cpu-stress", "mem-test"}
 BACKUP_KINDS = {"backup-run", "restore", "tools"}
 UPDATE_KINDS = {"updates-check", "apt-upgrade", "containers-update"}
-LABS_KINDS = {"images-prune"}
+LABS_KINDS = {"images-prune", "freeup"}
 INSTALL_KINDS = {"run-command", "store-install", "store-uninstall", "custom-install", "custom-uninstall", "program-install", "program-remove", "share-setup"}
 KINDS = STORAGE_KINDS | DIAG_KINDS | BACKUP_KINDS | UPDATE_KINDS | INSTALL_KINDS | LABS_KINDS
 TITLES = {"format": "Set up a drive", "combine": "Combine drives", "raid": "Create a RAID array", "pool-remove": "Remove a pool",
           "pool-add": "Add a drive", "fstab-nofail": "Boot without missing drives", "fstab-add": "Keep a drive mounted",
           "net-internet": "Internet speed test", "disk-speed": "Drive speed test", "cpu-stress": "CPU stress test", "mem-test": "Memory test",
           "backup-run": "Backup", "restore": "Restore from backup", "tools": "Install tools",
-          "updates-check": "Check for updates", "apt-upgrade": "Update packages", "containers-update": "Update containers", "images-prune": "Clean up old images"}
+          "updates-check": "Check for updates", "apt-upgrade": "Update packages", "containers-update": "Update containers", "images-prune": "Clean up old images", "freeup": "Free up space"}
 GROUP = {**{k: "storage" for k in STORAGE_KINDS}, **{k: "diag" for k in DIAG_KINDS}, "restore": "storage", "tools": "storage",
          **{k: "updates" for k in UPDATE_KINDS | LABS_KINDS}, "program-install": "updates", "program-remove": "updates"}     # one apt at a time
 
@@ -88,6 +88,10 @@ def check_spec(kind, spec):
         if kind == "share-setup":
             if not re.fullmatch(r"[a-z0-9-]{1,40}", str(spec.get("companion", ""))) or not re.fullmatch(r"[0-9]{1,5}", str(spec.get("app_port", ""))): raise ValueError("bad share setup")
             spec["name"] = str(spec.get("for_host") or spec.get("share_host"))[:253]
+    if kind == "freeup":
+        import freeup
+        it = spec.get("items")
+        if not (isinstance(it, list) and it and all(isinstance(x, str) and x in freeup.ITEMS for x in it)): raise ValueError("pick what to remove")
     if kind in ("backup-run", "restore"):
         if not re.fullmatch(r"[a-z0-9]{1,12}", str(spec.get("job", ""))): raise ValueError("bad backup id")
     return spec
@@ -168,6 +172,10 @@ def execute(tid):
         elif kind == "images-prune":
             import labs
             res = labs.prune(spec, log, progress)
+        elif kind == "freeup":
+            import freeup
+            res = freeup.run_freeup(spec, log, progress)
+            changelog(f"Free up space: {', '.join(spec.get('items') or [])} — freed {res['freed'] / 1e9:.1f} GB (from the Nova app)")
         elif kind == "tools":
             import storage
             storage.ensure_tools(spec["tools"], log); res = {"installed": spec["tools"]}

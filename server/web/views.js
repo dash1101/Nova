@@ -3,7 +3,7 @@
 import { S, $, $$, esc, get, post, del, api, loadNodes, serverHost, sleep, prefs, waitTask, runningTask, levelColor, pct, rate, bytes, isAdmin, has, cleanTitle, cap,
          serverName, uptime, hm, refresh, changeFan, waitJob, kv, archiveMerge, archiveAll, archiveClear, archiveUnmark } from "./core.js";
 import { I, row, group, sec, note, sw, radio, switchRow, links, expand, slider, segmented, bar, usageColor,
-         toast, dialog, confirm, choose, ask, wireCommon, reorderable, onHold, spark, swipeable, colorPicker } from "./ui.js";
+         toast, dialog, confirm, choose, ask, sheet, closeSheet, wireCommon, reorderable, onHold, spark, swipeable, colorPicker } from "./ui.js";
 import { animate } from "./hero.js";
 import * as ST from "./storage.js";
 import * as SV from "./servers.js";
@@ -25,7 +25,7 @@ export const navTabs = () => {
 };
 const homeChips = () => prefs.homeChips.map(sc).filter(s => s && (!s.feature || has(s.feature)));
 const QUICK = [
-  ["backup", "Back up now", "backup", "Start a backup now"], ["freeram", "Free RAM", "mem", "Drop the disk cache"], ["fan", "Fan light", "bulb", "On / off"],
+  ["backup", "Back up now", "backup", "Start a backup now"], ["freeram", "Free RAM", "mem", "Drop the disk cache"], ["freeup", "Free up", "disk", "Space and memory, in one go"], ["fan", "Fan light", "bulb", "On / off"],
   ["dim", "Dim fan", "dim", "Brightness 5%"], ["bright", "Bright fan", "bright", "Brightness 60%"], ["status_light", "Status light", "traffic", "Fan shows server health"],
   ["discord", "Discord pings", "bell", "Pause / resume alerts"], ["status", "Server status", "status", "Live graphs and health"], ["dashboard", "Dashboard", "dash", "Always-on screen"],
   ["containers", "Containers", "box", "Open the list"], ["lighting", "Lighting", "palette", "Colors and effects"], ["inbox", "Inbox", "bell", "Alerts and logins"],
@@ -219,6 +219,7 @@ export async function menu(ctx) {
         ${cell("All apps", glyph("apps", "var(--sub)"), "go:apps")}</div>
       ${sec("Server")}${group(row("Status", { sub: "Live graphs, storage, backups", blue: true, icon: "status", tint: "#3ecf6e", click: "go:status" })
         + row("Storage & hardware", { sub: "Drives, pools, set up drives", blue: true, icon: "disk", tint: "#3ecf6e", click: "go:hardware" })
+        + (isAdmin() ? row("Free up", { sub: "Old images, logs, caches, trash — and memory", blue: true, icon: "del", tint: "var(--amber)", click: "go:freeup" }) : "")
         + row("Backups", { sub: "What's backed up, restore files", blue: true, icon: "backup", click: "go:backups" })
         + row("Updates", { sub: "Packages, containers and Nova", blue: true, icon: "update", tint: "#3ecf6e", click: "go:updates" })
         + (has("diag") ? row("Diagnostics", { sub: "Speed, stress and network tests", blue: true, icon: "speed", tint: "#64d2ff", click: "go:diag" }) : "")
@@ -248,7 +249,10 @@ export async function status(ctx) {
   const L = { tick: 0, added: 1, recent: [], history: [], now: null };
   const pts = () => !hour && L.recent.length >= 2 ? L.recent.slice(-122) : L.history;
   const live = () => !hour && L.recent.length >= 2;
-  const gcard = (label, id, v, sub) => `<div class="card glass"><div class="lbl">${esc(label)}</div><div class="val" id="${id}v">${esc(v)}</div><div class="sub" id="${id}s">${esc(sub)}</div><canvas id="${id}"></canvas></div>`;
+  const gcard = (label, id, v, sub) => `<div class="card glass" data-act="big:${id}" title="Click to enlarge"><div class="lbl">${esc(label)}</div><div class="val" id="${id}v">${esc(v)}</div><div class="sub" id="${id}s">${esc(sub)}</div><canvas id="${id}"></canvas></div>`;
+  let big = null;                                    // the graph shown large (tap a card), drawn with the others
+  const GRAPH = { c1: ["CPU", "--blue", x => +(x.cpu || 0), v => Math.round(v) + "%", 100], c2: ["Memory", "#bf5af2", x => +(x.mem || 0), v => Math.round(v) + "%", 100],
+                  c3: ["CPU temperature", "--amber", x => +(x.temp || 0), v => Math.round(v) + "°C", null], c4: ["Network", "--green", x => (x.rx || 0) + (x.tx || 0), v => rate(v), null] };
   const draw = () => {
     const st = S.overview?.status || {}, m = st.metrics || {}, n = L.now || liveNow(), lvl = st.level || "ok";
     const active = (st.active || []).filter(a => a.level !== "ok");
@@ -283,10 +287,9 @@ export async function status(ctx) {
     graphs();
   };
   const graphs = () => {
-    const p = pts(), n = L.now, opts = live() ? { window: 120, tick: L.tick, added: L.added } : { tick: 0 };
-    const s = k => p.map(x => +(x[k] || 0));
-    spark($("#c1"), s("cpu"), "--blue", { ...opts, max: 100 }); spark($("#c2"), s("mem"), "#bf5af2", { ...opts, max: 100 });
-    spark($("#c3"), s("temp"), "--amber", opts); spark($("#c4"), p.map(x => (x.rx || 0) + (x.tx || 0)), "--green", opts);
+    const p = pts(), n = L.now, opts = { ...(live() ? { window: 120, tick: L.tick, added: L.added } : { tick: 0 }), times: p.map(x => x.t) };
+    for (const [id, [, col, val, fmt, max]] of Object.entries(GRAPH)) spark($("#" + id), p.map(val), col, { ...opts, fmt, max });
+    if (big && big.canvas.isConnected) { const [, col, val, fmt, max] = GRAPH[big.id]; spark(big.canvas, p.map(val), col, { ...opts, fmt, max, scrub: "all" }); }
     const gn = $("#gnote"); if (gn) gn.textContent = p.length < 3 ? (hour ? "Graphs fill in over the next few minutes." : "Connecting to the live feed…") : "";
     if (!n) return;
     const set = (id, v) => { const e = $("#" + id); if (e) e.textContent = v; };
@@ -295,7 +298,14 @@ export async function status(ctx) {
     if (n.temp) set("c3v", Math.round(n.temp) + "°C"); set("c4v", "↓ " + rate(n.rx)); set("c4s", "↑ " + rate(n.tx));
   };
   const keyOf = a => { a.pop(); return a.join(":"); };          // keys contain ":" — rejoin the act arguments
-  ctx.handlers({ alert: (...a) => alertMenu(keyOf(a), draw), ignore: (...a) => dismissAlert(keyOf(a), draw) });
+  ctx.handlers({ alert: (...a) => alertMenu(keyOf(a), draw), ignore: (...a) => dismissAlert(keyOf(a), draw),
+    big: id => {
+      const [label] = GRAPH[id];
+      const box = sheet(`<h2>${esc(label)}</h2><p class="muted" style="margin:0 24px">${hour ? "Last hour" : "Live · last 2 minutes"} — ${matchMedia("(any-pointer: fine)").matches ? "point at" : "drag along"} the line to see the value at that time.</p>
+        <div class="pad" style="position:relative"><canvas class="bigchart" id="bigc"></canvas></div><div class="acts"><button data-b="0">Close</button></div>`, () => { big = null; });
+      $("[data-b]", box).onclick = () => { big = null; closeSheet(); };
+      big = { id, canvas: $("#bigc") }; graphs();
+    } });
   const load = r => { L.history = r.history || L.history; if (r.recent) L.recent = r.recent; if (r.now?.cpu != null) { L.now = r.now; S.lastNow = r.now; } L.tick++; L.added = 1; };
   if (S.cache["/api/v1/stats"]) load(S.cache["/api/v1/stats"]);
   draw();
@@ -847,6 +857,7 @@ export async function quick(ctx) {
       if (!isAdmin()) return viewOnly();
       try {
         if (id === "backup") { if (state("backup")[1]) return; busy = id; draw(); await post("/api/v1/actions/backup"); await get("/api/v1/backup"); toast("Backup started"); }
+        else if (id === "freeup") { ctx.go("freeup"); return; }
         else if (id === "freeram") { busy = id; draw(); const r = await post("/api/v1/actions/free-ram"); toast(`Freed ${r.freed_mb} MB · ${r.available_mb} MB available`); }
         else if (id === "dim" || id === "bright") { const p = changeFan({ on: true, brightness: id === "dim" ? 5 : 60 }); draw(); await p; }
         else if (id === "status_light") { const p = changeFan({ status_light: !S.fan?.status_light }); draw(); await p; }
@@ -977,7 +988,8 @@ export async function lighting(ctx) {
   const look = () => (litCur !== "main" && zoneOf(litCur)) || S.fan || {};
   ctx.handlers({
     lit: id => { litCur = id; draw(); },
-    set: (k, v) => { const f = look(); set({ [k]: v !== undefined ? v : k === "on" ? f.on === false : k === "rainbow" ? f.rainbow === false : !f[k] }); },
+    set: (k, v) => { if (typeof v !== "string") v = undefined;              // (the router adds the clicked element last)
+      const f = look(); set({ [k]: v !== undefined ? v : k === "on" ? f.on === false : k === "rainbow" ? f.rainbow === false : !f[k] }); },
     col: (k, h) => set({ [k]: h }),
     pick: async k => { const c = await colorPicker(look()[k] || "#3e91ff"); if (c) set({ [k]: c }); },
     pal: async i => { const p = [...(look().palette || [])], c = await colorPicker(p[+i]); if (c) { p[+i] = c; set({ palette: p, rainbow: false }); } },
@@ -1311,6 +1323,15 @@ export async function appearance(ctx) {
         ["material", "Material You", "Google's Material 3 Expressive: tonal colors from the accent, bolder shapes, springy motion"]].map(([k, l, d]) => row(l, { sub: d, end: radio(st === k), click: "style:" + k })).join(""))}
       ${sec("Theme")}${group([["system", "Same as this device"], ["light", `${look} light`], ["dark", `${look} dark`]].map(([k, l]) => row(l, { end: radio(t === k), click: "theme:" + k })).join(""))}
       ${group(switchRow("Reduce motion", "Simple fades instead of slides and bounces", prefs.reduceMotion, "motion", { blue: false }))}
+      ${sec("Colors")}${group(row("Accent color", { sub: prefs.accentLocal ? "This browser's own color" : `The server's color${S.overview?.server?.accent ? "" : " (Nova blue)"} — tap to pick your own`, blue: !!prefs.accentLocal,
+            end: `<span class="swatch" style="background:${esc(prefs.accentLocal || S.overview?.server?.accent || "#3e91ff")}"></span>`, click: "accent" })
+          + `<div class="swatches pad">${ACCENTS.filter(Boolean).map(c => `<button class="swatch press${prefs.accentLocal === c ? " on" : ""}" style="background:${c}" data-act="acc:${c}" aria-label="${c}"></button>`).join("")}</div>`
+          + (prefs.accentLocal ? row("Use the server's color", { icon: "refresh", click: "acc:" }) : "")
+          + `<div class="range-row"><div class="h"><span>Color strength${mat ? "" : " (Material You)"}</span><span id="tintl">${prefs.tint ?? 50}%</span></div>${`<input type="range" min="0" max="100" value="${prefs.tint ?? 50}" data-range="tint" style="--p:${prefs.tint ?? 50}%">`}</div>`)}
+      ${sec("Wallpaper")}${wallHas ? group(`<div class="range-row"><div class="h"><span>Blur</span><span id="blurl">${prefs.wallBlur ?? 16}px</span></div><input type="range" min="0" max="40" value="${prefs.wallBlur ?? 16}" data-range="wallBlur" style="--p:${(prefs.wallBlur ?? 16) / 40 * 100}%"></div>
+            <div class="range-row"><div class="h"><span>Dim</span><span id="diml">${prefs.wallDim ?? 35}%</span></div><input type="range" min="0" max="90" value="${prefs.wallDim ?? 35}" data-range="wallDim" style="--p:${(prefs.wallDim ?? 35) / 90 * 100}%"></div>`
+            + row("Change the picture", { icon: "image", blue: true, click: "wall" }) + row("Remove the wallpaper", { icon: "del", tint: "var(--red)", click: "unwall" }))
+          : group(row("Choose a picture", { sub: "Behind every page, blurred and dimmed as you like. Kept in this browser only.", icon: "image", blue: true, click: "wall" }))}
       ${sec("Lighter effects")}${segmented(["Automatic", "On", "Off"], ["auto", "on", "off"].indexOf(prefs.lite || "auto"), "lite")}
       ${note("No frosted-glass blur or soft shadows — much smoother on older computers and phones. Automatic turns it on when this device looks slow.")}
       ${sec("Home")}${group(row("Home layout", { sub: homeOrder().filter(id => prefs[HOME_SECTIONS.find(s => s[0] === id)[3]]).map(id => HOME_SECTIONS.find(s => s[0] === id)[1]).join(" · ") || "Just the header", blue: true, icon: "dash", click: "go:edit-home" })
@@ -1318,14 +1339,43 @@ export async function appearance(ctx) {
         + row("Start page", { sub: `Search, stats, apps and bookmarks · Nova opens on ${({ home: "Home", start: "the start page", status: "Status", apps: "Apps", inbox: "the Inbox", dashboard: "the dashboard" })[prefs.startRoute || "home"]}`, blue: true, icon: "home", click: "go:start-edit" })
         + row("Navigation pill", { sub: navTabs().map(s => s.label).join(", ") + " · along the bottom, or down the left on wide screens", blue: true, icon: "viewday", click: "go:edit-tabs" }))}
       ${note("These choices are saved in this browser. Each server also has its own name and accent color (Settings → Server).")}`, { title: "Appearance" });
-    wireCommon(ctx.root, { onSeg: (k, i) => { if (k === "lite") { prefs.lite = ["auto", "on", "off"][i]; ctx.applyTheme(); draw(); } } });
+    wireCommon(ctx.root, { onSeg: (k, i) => { if (k === "lite") { prefs.lite = ["auto", "on", "off"][i]; ctx.applyTheme(); draw(); } },
+      onRangeInput: (k, v) => {                                   // live while dragging
+        prefs[k] = v; ctx.applyTheme();
+        const l = { tint: ["tintl", "%"], wallBlur: ["blurl", "px"], wallDim: ["diml", "%"] }[k]; if (l && $("#" + l[0])) $("#" + l[0]).textContent = v + l[1];
+      } });
+  };
+  let wallHas = false;
+  const checkWall = async () => { wallHas = !!(await kv("wallpaper").catch(() => null)); if (ctx.alive()) draw(); };
+  const setAccent = c => {
+    prefs.accentLocal = c || "";
+    const acc = c || S.overview?.server?.accent;
+    if (/^#[0-9a-f]{6}$/i.test(acc || "")) document.documentElement.style.setProperty("--blue", acc); else document.documentElement.style.removeProperty("--blue");
+    ctx.applyTheme(); draw();
   };
   ctx.handlers({
+    accent: async () => { const c = await colorPicker(prefs.accentLocal || S.overview?.server?.accent || "#3e91ff"); if (c) setAccent(c); },
+    acc: c => setAccent(c && /^#[0-9a-f]{6}$/i.test(c) ? c : ""),
+    wall: () => {
+      const inp = document.createElement("input"); inp.type = "file"; inp.accept = "image/*";
+      inp.onchange = async () => {
+        const f = inp.files?.[0]; if (!f) return;
+        try {        // shrink it (the longest side 2560 px, JPEG) so it stays light in this browser's storage
+          const bmp = await createImageBitmap(f), k = Math.min(1, 2560 / Math.max(bmp.width, bmp.height));
+          const cv = document.createElement("canvas"); cv.width = Math.round(bmp.width * k); cv.height = Math.round(bmp.height * k);
+          cv.getContext("2d").drawImage(bmp, 0, 0, cv.width, cv.height);
+          const blob = await new Promise(r => cv.toBlob(r, "image/jpeg", .86));
+          await kv("wallpaper", blob); ctx.applyTheme(); toast("Wallpaper set"); checkWall();
+        } catch { toast("That picture couldn't be opened"); }
+      };
+      inp.click();
+    },
+    unwall: async () => { await kv("wallpaper", null).catch(() => {}); ctx.applyTheme(); checkWall(); },
     theme: k => { prefs.theme = k; ctx.applyTheme(); draw(); },
     style: k => { prefs.style = k; ctx.applyTheme(); ctx.refreshNav(); draw(); },
     motion: () => { prefs.reduceMotion = !prefs.reduceMotion; ctx.applyTheme(); draw(); },
   });
-  draw();
+  draw(); checkWall();
 }
 export async function editHome(ctx) {
   const draw = () => {
@@ -1369,7 +1419,8 @@ export async function about(ctx) {
     ${sec("Server")}${group(row("Name", { sub: s.name }) + row("Board", { sub: s.board }) + row("CPU", { sub: s.cpu }) + row("Memory", { sub: s.ram_gb ? s.ram_gb + " GB" : "" }) + row("Kernel", { sub: s.kernel }) + row("Up for", { sub: s.uptime_s ? uptime(s.uptime_s) : "" }))}
     ${sec("Security")}${group(row("Every request is signed", { sub: "By this browser's own key — it can't be copied out — time-stamped and single-use" }) + row("Risky actions need your phone", { sub: "Shells, stopping things, installs, unmounting, power — approved with your fingerprint" })
       + row("At home: encrypted", { sub: "HTTPS to the server's own certificate" }) + row("Outside home: Cloudflare Access", { sub: "Strangers are stopped before they reach the server" }))}
-    ${group(row("Questions", { sub: "Is it safe, what it connects to, how to undo things", blue: true, icon: "info", click: "go:faq" }))}
+    ${group(row("Questions", { sub: "Is it safe, what it connects to, how to undo things", blue: true, icon: "info", click: "go:faq" })
+      + `<a class="row press" href="https://github.com/dash1101/Nova/issues/new?template=feature_request.yml" target="_blank" rel="noopener"><span class="ri" style="color:var(--blue);background:color-mix(in srgb, var(--blue) 16%, transparent)">${I("add")}</span><div class="t"><b>Request a feature</b><small>Tell us what Nova should do — on GitHub</small></div></a>`)}
     ${sec("Project")}${group(`<a class="row click" href="https://github.com/dash1101/Nova" target="_blank" rel="noopener" style="color:inherit;text-decoration:none"><div class="t"><b>Nova by dash1101</b><small>Open source · AGPL-3.0 · github.com/dash1101/Nova</small></div></a>`)}`, { title: "About" });
 }
 /** Questions people ask before trusting Nova with their server — the same answers as the website's FAQ. */
@@ -1393,6 +1444,7 @@ export const FAQ = [
 ];
 export async function faq(ctx) {
   ctx.show(FAQ.map(([title, qs]) => sec(title) + group(qs.map(([q, a]) => expand(q, "", "", esc(a))).join(""))).join("")
+    + group(`<a class="row press" href="https://github.com/dash1101/Nova/issues/new?template=feature_request.yml" target="_blank" rel="noopener"><span class="ri" style="color:var(--blue);background:color-mix(in srgb, var(--blue) 16%, transparent)">${I("add")}</span><div class="t"><b>Request a feature</b><small>Tell us what Nova should do — on GitHub</small></div></a>`)
     + note("Something else? Ask on github.com/dash1101/Nova."), { title: "Questions" });
   wireCommon(ctx.root);
 }

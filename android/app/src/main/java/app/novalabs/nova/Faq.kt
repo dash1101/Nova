@@ -1,6 +1,11 @@
 package app.novalabs.nova
 
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Lightbulb
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.unit.dp
 
 /** Questions people ask before trusting Nova with their server — the same answers as the website's FAQ. */
 private val FAQ = listOf(
@@ -27,5 +32,9 @@ private val FAQ = listOf(
             SectionLabel(title)
             Group { qs.forEachIndexed { i, (q, a) -> if (i > 0) RowDivider(); ExpandRow(q) { Detail(a) } } }
         }
+        val ctx = androidx.compose.ui.platform.LocalContext.current
+        Spacer(androidx.compose.ui.Modifier.height(14.dp))
+        Group { Row1("Request a feature", "Tell us what Nova should do — on GitHub", true, Icons.Rounded.Lightbulb, onClick = {
+            runCatching { ctx.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://github.com/dash1101/Nova/issues/new?template=feature_request.yml"))) } }) }
     }
 }

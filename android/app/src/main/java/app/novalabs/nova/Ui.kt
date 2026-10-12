@@ -40,6 +40,9 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -75,13 +78,46 @@ fun materialTokens(c: ColorScheme, dark: Boolean) = NovaColors(
     divider = c.surfaceContainer, green = if (dark) Color(0xFF7DDC8E) else Color(0xFF2E7D45), amber = if (dark) Color(0xFFFFC66B) else Color(0xFFA15C00),
     red = c.error, dark = dark, material = true, onBlue = c.onPrimary, blueContainer = c.primaryContainer, onBlueContainer = c.onPrimaryContainer)
 
+/** A color with the seed's hue at a Material tone (0 = black … 100 = white), chroma scaled by [sat]. */
+private fun tone(seed: Color, t: Float, sat: Float = 1f): Color {
+    val hsl = FloatArray(3); androidx.core.graphics.ColorUtils.colorToHSL(seed.toArgb(), hsl)
+    hsl[1] = (hsl[1] * sat).coerceIn(0f, 1f); hsl[2] = (t / 100f).coerceIn(0f, 1f)
+    return Color(androidx.core.graphics.ColorUtils.HSLToColor(hsl))
+}
+
+/** A Material You scheme from one color (Appearance → Accent color), the way Android builds one from the wallpaper. */
+fun seedScheme(seed: Color, dark: Boolean): ColorScheme = if (dark) androidx.compose.material3.darkColorScheme(
+    primary = tone(seed, 80f), onPrimary = tone(seed, 20f), primaryContainer = tone(seed, 30f), onPrimaryContainer = tone(seed, 90f),
+    secondary = tone(seed, 80f, .4f), onSecondary = tone(seed, 20f, .4f), secondaryContainer = tone(seed, 30f, .4f), onSecondaryContainer = tone(seed, 90f, .4f),
+    tertiary = tone(seed.copy(red = seed.blue, blue = seed.red), 80f, .6f), background = tone(seed, 6f, .25f), surface = tone(seed, 6f, .25f),
+    onSurface = tone(seed, 90f, .1f), onSurfaceVariant = tone(seed, 80f, .15f), surfaceContainer = tone(seed, 12f, .25f),
+    surfaceContainerHigh = tone(seed, 17f, .25f), surfaceContainerHighest = tone(seed, 22f, .25f), surfaceBright = tone(seed, 24f, .25f), outline = tone(seed, 60f, .15f))
+else androidx.compose.material3.lightColorScheme(
+    primary = tone(seed, 40f), onPrimary = Color.White, primaryContainer = tone(seed, 90f), onPrimaryContainer = tone(seed, 10f),
+    secondary = tone(seed, 40f, .4f), onSecondary = Color.White, secondaryContainer = tone(seed, 90f, .4f), onSecondaryContainer = tone(seed, 10f, .4f),
+    tertiary = tone(seed.copy(red = seed.blue, blue = seed.red), 40f, .6f), background = tone(seed, 98f, .25f), surface = tone(seed, 98f, .25f),
+    onSurface = tone(seed, 10f, .1f), onSurfaceVariant = tone(seed, 30f, .15f), surfaceContainer = tone(seed, 94f, .25f),
+    surfaceContainerHigh = tone(seed, 92f, .25f), surfaceContainerHighest = tone(seed, 90f, .25f), surfaceBright = tone(seed, 98f, .25f), outline = tone(seed, 50f, .15f))
+
+/** Color strength (Appearance): 0 = plain grey surfaces, 50 = as Android makes them, 100 = strongly tinted. */
+private fun tinted(c: ColorScheme, strength: Int): ColorScheme {
+    if (strength == 50) return c
+    fun f(x: Color): Color = if (strength < 50) {
+        val g = (x.red * .299f + x.green * .587f + x.blue * .114f); lerp(Color(g, g, g, x.alpha), x, strength / 50f)
+    } else lerp(x, c.primary, (strength - 50) / 50f * .22f)
+    return c.copy(background = f(c.background), surface = f(c.surface), surfaceContainer = f(c.surfaceContainer), surfaceContainerHigh = f(c.surfaceContainerHigh),
+        surfaceContainerHighest = f(c.surfaceContainerHighest), surfaceBright = f(c.surfaceBright), secondaryContainer = f(c.secondaryContainer))
+}
+
 @Composable fun NovaTheme(content: @Composable () -> Unit) {
     val dark = when (AppPrefs.theme) { "dark" -> true; "light" -> false; else -> isSystemInDarkTheme() }
     val ctx = androidx.compose.ui.platform.LocalContext.current
     val material = materialStyle()
-    // wallpaper colors are Android 12+; before that, Material uses its own baseline palette
-    val dyn = if (!material) null else if (Compat.S) (if (dark) dynamicDarkColorScheme(ctx) else dynamicLightColorScheme(ctx))
+    val seed = AppPrefs.accent.takeIf { it.length == 7 }?.let { runCatching { Color(android.graphics.Color.parseColor(it)) }.getOrNull() }
+    // your own accent → a scheme from it; else the wallpaper's colors (Android 12+); before that, Material's own baseline palette
+    val dyn0 = if (!material) null else if (seed != null) seedScheme(seed, dark) else if (Compat.S) (if (dark) dynamicDarkColorScheme(ctx) else dynamicLightColorScheme(ctx))
               else (if (dark) androidx.compose.material3.darkColorScheme() else androidx.compose.material3.lightColorScheme())
+    val dyn = dyn0?.let { tinted(it, AppPrefs.tint) }
     val t = if (dyn != null) materialTokens(dyn, dark) else if (dark) DarkTokens else LightTokens
     val view = androidx.compose.ui.platform.LocalView.current
     if (!view.isInEditMode) SideEffect {                // status/nav bar icons follow the app's theme, not just the phone's
@@ -97,7 +133,8 @@ fun materialTokens(c: ColorScheme, dark: Boolean) = NovaColors(
 
 /** Per-server accent color (set in Settings → Server) replaces the blue throughout. */
 @Composable fun AccentTheme(hex: String?, content: @Composable () -> Unit) {
-    val c = hex?.takeIf { it.length == 7 }?.let { runCatching { Color(android.graphics.Color.parseColor(it)) }.getOrNull() }
+    // this phone's own accent wins over the server's
+    val c = (AppPrefs.accent.takeIf { it.length == 7 } ?: hex)?.takeIf { it.length == 7 }?.let { runCatching { Color(android.graphics.Color.parseColor(it)) }.getOrNull() }
     val t = N
     if (c == null || t.material) { content(); return }          // Material You: the wallpaper's colors win
     CompositionLocalProvider(LocalNova provides t.copy(blue = c, link = lerp(c, Color.White, if (t.dark) 0.25f else 0f)), content = content)
@@ -115,6 +152,7 @@ fun levelColor(level: String, t: NovaColors) = when (level) {
 /** The background color + glow on its own (pages paint it again inside their blur source). */
 @Composable fun GlowLayer() {
     val t = N
+    if (AppPrefs.wallV > 0L) { WallpaperLayer(); return }
     if (t.material) { Box(Modifier.fillMaxSize().background(t.bg)); return }
     Canvas(Modifier.fillMaxSize().background(t.bg)) {
         drawRect(Brush.radialGradient(listOf(t.glow.copy(alpha = if (t.dark) 0.9f else 0.8f), Color.Transparent),
@@ -643,4 +681,26 @@ fun bytesHuman(b: Long): String {
     val u = listOf("B", "KB", "MB", "GB", "TB"); var v = b.toDouble(); var i = 0
     while (v >= 1000 && i < u.lastIndex) { v /= 1000; i++ }
     return if (i >= 3) "%.1f %s".format(v, u[i]) else "%.0f %s".format(v, u[i])
+}
+
+
+/** Your own wallpaper (Appearance → Wallpaper), blurred and dimmed behind every page. */
+@Composable fun WallpaperLayer() {
+    val t = N
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val blur = AppPrefs.wallBlur
+    // a soft blur that works on every Android version: the picture is drawn from a much smaller copy, then scaled up smoothly
+    val bmp = remember(AppPrefs.wallV, blur) {
+        runCatching {
+            val f = java.io.File(ctx.filesDir, "wallpaper.jpg")
+            val full = android.graphics.BitmapFactory.decodeFile(f.path) ?: return@runCatching null
+            val k = 1f / (1f + blur / 3f)
+            android.graphics.Bitmap.createScaledBitmap(full, (full.width * k).toInt().coerceAtLeast(8), (full.height * k).toInt().coerceAtLeast(8), true).asImageBitmap()
+        }.getOrNull()
+    }
+    Box(Modifier.fillMaxSize().background(t.bg)) {
+        bmp?.let { androidx.compose.foundation.Image(it, null, Modifier.fillMaxSize().then(if (Compat.S && blur > 0) Modifier.blur((blur / 2).dp) else Modifier),
+            contentScale = androidx.compose.ui.layout.ContentScale.Crop, filterQuality = androidx.compose.ui.graphics.FilterQuality.High) }
+        Box(Modifier.fillMaxSize().background(t.bg.copy(alpha = AppPrefs.wallDim / 100f)))
+    }
 }

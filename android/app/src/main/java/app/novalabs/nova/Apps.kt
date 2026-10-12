@@ -224,6 +224,10 @@ fun appUrl(app: AppState, a: JSONObject): String? {
 }
 
 fun openApp(app: AppState, a: JSONObject) {
+    a.optString("companion_of").takeIf { it.isNotEmpty() }?.let { parent ->   // a share-link helper: its own page is blank on purpose
+        app.toast("${a.optString("name")} only opens share links you make in $parent (Share → Create link)${a.optString("remote_url").takeIf { it.isNotEmpty() }?.let { " — they start with $it/share/" } ?: ""}")
+        return
+    }
     if (appUrl(app, a) == null) { app.toast("Away from home this app needs its own link — hold it → Open it from anywhere"); return }
     AppSessions.open(a); app.go(Route.AppFrame(a.optString("id")))
 }

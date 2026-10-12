@@ -63,6 +63,7 @@ val PLACES: List<Triple<String, String, Pair<ImageVector, Route>>> = listOf(
     Triple("Servers", "multiple servers add switch", Icons.Rounded.Lan to Route.Servers),
     Triple("Setup guide", "help install how to", Icons.Rounded.Help to Route.SetupGuide),
     Triple("About", "version license", Icons.Rounded.Info to Route.About),
+    Triple("Free up", "free space clean clear storage disk full delete old files cache logs trash memory ram", Icons.Rounded.CleaningServices to Route.FreeUp),
     Triple("Questions", "faq safe safety privacy data uninstall remove undo revert rollback trust", Icons.Rounded.Help to Route.Faq),
     Triple("Labs", "labs experimental beta features try new", Icons.Rounded.Science to Route.Labs),
     Triple("Automation", "automation automatic crash guard weekly updates cleanup wake on lan", Icons.Rounded.AutoMode to Route.Automation),
