@@ -328,7 +328,7 @@ def share_setup(spec, log, progress):
     else:
         log(f"Installing {t['name']}…")
         store_install({"id": t["id"], "params": {"PUBLIC_URL": f"https://{host}", "IMMICH_PORT": str(spec.get("app_port", ""))}}, log,
-                      lambda p: progress(int(p * 0.6)))
+                      lambda p, *note: progress(int(p * 0.6), *note))
     log(f"Putting {host} on your Cloudflare tunnel, for share links only…"); progress(70)
     r = cfsync.share(host, f"http://localhost:{t['port']}", str(spec.get("for_host", ""))[:253] or None)
     changelog(f"Share links for {spec.get('for_host') or 'an app'} at https://{host} ({t['name']})")

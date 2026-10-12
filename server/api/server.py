@@ -39,7 +39,7 @@ try:                       # optional module: fan/case lighting (modules/fan-gig
 except ImportError:
     nova_rgb = None
 
-API_VERSION = "0.6.1-alpha"
+API_VERSION = "0.6.2-alpha"
 CONFIG = "/etc/nova-api/config.json"
 DATA = "/var/lib/nova-api"
 DEVICES = f"{DATA}/devices.json"
@@ -1245,6 +1245,7 @@ class Handler(BaseHTTPRequestHandler):
             fan = None
             if nova_rgb:
                 with rgb_lock: fan = nova_rgb.load()
+                fan = {**fan, "status_override": nova_rgb.status_override(fan)}   # the Home picture shows the status color too
             cfg = load_json(SETTINGS, {})
             return 200, {"time": time.time(),             # lets apps line their fan animation up with the real fan
                          "server": {"name": os.uname().nodename, "display_name": cfg.get("display_name", ""),
@@ -1379,7 +1380,7 @@ class Handler(BaseHTTPRequestHandler):
                     if any(k in patch for k in look):                # a manual change wins over a schedule's fade
                         for r in (st.get("running") or {}).values(): r.pop("fade", None)
                         st["running"] = {k: v for k, v in (st.get("running") or {}).items() if v}
-                    if any(k in patch for k in nova_rgb.SETTABLE):   # only touch the hardware when the look changes
+                    if any(k in patch for k in nova_rgb.SETTABLE + ("status_light", "status_target")):   # only touch the hardware when what it shows changes (now, not at the next minute's check)
                         nova_rgb.apply(st, nova_rgb.status_override(st))
                     nova_rgb.save(st)
                 ex = nova_rgb.extras(st) if hasattr(nova_rgb, "extras") else {"effects": nova_rgb.EFFECT_NAMES}

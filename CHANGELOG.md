@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.2-alpha (app and server)
+- **Fixed: Share links setup failed** (“takes 1 positional argument but 2 were given”) while downloading the share proxy.
+- **Fixed: the status light** showed in the app right away but only reached the fan at the next once-a-minute check (and turning it off waited the same way). It now applies the moment you switch it, and the Home picture shows the status color too.
+- **Cloudflare changes show what's happening:** a spinner and “Switching to you and guests… this can take up to a minute”, and a second tap does nothing until it's done (app and web) — including Take it off and Share links.
+- Share links: a tip that Immich's own password, expiry date and custom links (like /s/family-trip) all work at the share address.
+
 ## 0.6.1-alpha (app, server and watch)
 - **Who can open it** (Labs → Cloudflare → tap an address, or an app's *Open it from anywhere*): **Only you**, **You and guests** (add people by email — they sign in with a one-time code and can open only that app; choose how long they stay signed in), or **Anyone**. Change it any time; every change asks for your fingerprint, and switching logins never leaves the address open in between (if something fails it goes offline, never public).
 - **Share links for Immich:** keep Immich behind the login and still send albums to family — Nova installs a read-only share proxy and puts it on a share address (or uses yours if it already points there), then shows exactly which Immich setting to change and checks it. Works the same from the web.

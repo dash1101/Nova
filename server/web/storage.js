@@ -858,7 +858,7 @@ export async function openrgb(ctx) {
 const SESSIONS = [["1h", "1 hour"], ["24h", "1 day"], ["168h", "1 week"], ["720h", "30 days"]];
 export async function access(ctx) {
   const host = decodeURIComponent(ctx.args[0] || ""), appId = decodeURIComponent(ctx.args[1] || "");
-  let st = null, err = null, share = null, guests = [], session = "24h", loaded = "";
+  let st = null, err = null, share = null, guests = [], session = "24h", loaded = "", busy = "";
   const load = async () => {
     try { st = await get("/api/v1/cloudflare"); err = null; } catch (e) { err = e.message; }
     if (appId) { try { share = await get(`/api/v1/apps/${encodeURIComponent(appId)}/sharing?host=${encodeURIComponent(host)}`); } catch { share = null; } }
@@ -872,7 +872,7 @@ export async function access(ctx) {
     const rec = st.nova?.[host], prot = (st.protected || []).includes(host), onTunnel = (st.hostnames || []).includes(host);
     const outside = !rec && prot, isShare = rec?.kind === "share", mode = rec?.mode || (prot ? "me" : "public");
     const saved = rec?.guests || [], dirty = mode === "guests" && (JSON.stringify(saved) !== JSON.stringify(guests) || (rec?.session || "24h") !== session);
-    const choice = (k, t, sub, icon) => row(t, { sub, icon, tint: k === "public" ? "var(--amber)" : "var(--blue)", end: radio(mode === k), click: isAdmin() && k !== mode ? "mode:" + k : "" });
+    const choice = (k, t, sub, icon) => row(t, { sub, icon, tint: k === "public" ? "var(--amber)" : "var(--blue)", end: radio(mode === k), click: isAdmin() && k !== mode && !busy ? "mode:" + k : "" });
     let sh = "";
     if (share?.supported) {
       const ok = share.wanted && (share.external_domain || "").replace(/\/$/, "") === share.wanted;
@@ -885,25 +885,29 @@ export async function access(ctx) {
             + row("Set it up", { sub: "Installs the share proxy and opens this address for share links only (approved on your phone)", blue: true, icon: "add", click: "share" }))
           : share.wanted && !ok ? group(row(`Copy ${esc(share.wanted)}`, { sub: `Then paste it into ${esc(share.setting_name)}`, blue: true, icon: "copy", click: "copyext" })
             + (share.setting_url ? `<a class="row press" href="${esc(share.setting_url)}" target="_blank" rel="noopener"><div class="t"><b>Open ${esc(share.name)}'s settings</b><small>Sign in as an admin, paste it and save</small></div></a>` : "")
-            + row("Check again", { icon: "refresh", blue: true, click: "recheck" })) : ok ? note(`All set: share links open at ${esc(share.wanted)} for anyone.`) : "");
+            + row("Check again", { icon: "refresh", blue: true, click: "recheck" })) : ok ? note(`All set: share links open at ${esc(share.wanted)} for anyone.`) : "")
+        + (share.share_host ? note(`Tip: when you share in ${esc(share.name)} you can add a password (people type it to see the album), an expiry date, and a custom link — like ${esc(share.wanted || "https://share.example.com")}/s/family-trip. They all work at the share address.`) : "");
     }
     ctx.show(`${group(`<a class="row press" href="https://${esc(host)}" target="_blank" rel="noopener"><div class="t"><b>${esc(host)}</b><small>${isShare ? "Share links" + (rec.for_host ? " for " + esc(rec.for_host) : "") : outside ? "Behind a login you set up in Cloudflare" : rec?.kind === "protected" ? "Yours — Nova manages its login" : rec ? "Put online by Nova" : onTunnel ? "Yours — open to anyone" : "Not on your tunnel"}</small></div></a>`)}
       ${outside ? note("Its login was set up in Cloudflare, outside Nova, so Nova doesn't change it. Edit it in Zero Trust → Access → Applications.") : ""}
       ${isShare ? note("Anyone with a share link can open what you've shared there — nothing else. To stop sharing publicly, take this address off below.") : ""}
       ${mode === "offline" ? group(row("Off the internet", { sub: "A change didn't finish, so Nova took it offline instead of leaving it open. Pick who can open it to put it back.", icon: "warn", tint: "var(--amber)" })) : ""}
-      ${!outside && !isShare && (rec || onTunnel) ? sec("Who can open it") + group(choice("me", "Only you", "Your Cloudflare login, the same as Nova", "shield")
+      ${!outside && !isShare && (rec || onTunnel) ? sec("Who can open it") + (busy ? group(`<div class="row"><span class="spin" aria-hidden="true"></span><div class="t"><b>${esc(busy)}</b><small>This can take up to a minute — no need to click again.</small></div></div>`) : "") + group(choice("me", "Only you", "Your Cloudflare login, the same as Nova", "shield")
           + choice("guests", "You and guests", "People you add by email sign in with a one-time code sent to them", "group") + choice("public", "Anyone", "No login — anyone with the address can open it", "cloud")) : ""}
       ${mode === "guests" && !isShare ? sec("Guests") + group((guests.map(g => row(g, { icon: "phone", end: isAdmin() ? `<button class="rmbtn press" data-act="rmg:${esc(g)}" aria-label="Remove">${I("del")}</button>` : "" })).join("") || row("No guests yet", { sub: "Add someone by their email address" }))
           + (isAdmin() ? row("Add a guest", { icon: "add", blue: true, click: "addg" }) : ""))
         + note("Stays signed in for") + segmented(SESSIONS.map(x => x[1]), Math.max(0, SESSIONS.findIndex(x => x[0] === session)), "sess")
-        + (dirty ? group(row("Save changes", { sub: "Approved on your phone", blue: true, icon: "check", click: "saveg" }) + row("Undo", { icon: "back", click: "undog" })) : "")
+        + (dirty ? group(row(busy ? "Saving…" : "Save changes", { sub: "Approved on your phone", blue: true, icon: "check", click: busy ? "" : "saveg" }) + row("Undo", { icon: "back", click: "undog" })) : "")
         + note("Guests open the address, type their email, and Cloudflare sends them a code. They can only open this app — not Nova.") : ""}
       ${sh}
       ${rec && isAdmin() ? sec("Take it off") + group(row(rec.kind === "protected" ? "Take the login off" : "Take it off the internet", { sub: rec.kind === "protected" ? "It was yours before — it goes back to being open to anyone" : "Nova removes what it added: route, DNS record and login", icon: "del", tint: "var(--red)", click: "rm" })) : ""}`, { title: "Who can open it" });
     wireCommon(ctx.root, { onSeg: (k, i) => { if (k === "sess") { session = SESSIONS[i][0]; draw(); } } });
   };
   const change = async (mode, gs, pub) => {
-    try { await post("/api/v1/cloudflare/access", { host, mode, guests: gs, session, allow_public: !!pub }); toast("Saved"); loaded = ""; } catch (e) { toast(e.message); } load();
+    if (busy) return;                                          // one change at a time
+    busy = { me: "Switching to only you…", guests: "Saving who can open it…", public: "Opening it to anyone…" }[mode]; draw();
+    try { await post("/api/v1/cloudflare/access", { host, mode, guests: gs, session, allow_public: !!pub }); toast("Saved"); loaded = ""; } catch (e) { toast(e.message); }
+    busy = ""; load();
   };
   ctx.handlers({
     mode: async k => {

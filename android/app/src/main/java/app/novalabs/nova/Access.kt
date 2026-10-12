@@ -20,6 +20,17 @@ import org.json.JSONObject
  * apps that have one (Immich), public share links on their own address while the app stays private.
  * Everything here can be changed again later; every change asks for your fingerprint.
  */
+/** Changes in flight, per address (kept outside the screen, so leaving and coming back still shows it — and blocks a second tap). */
+object AccessBusy { val work = androidx.compose.runtime.mutableStateMapOf<String, String>() }
+
+/** A Cloudflare change can take a while: a spinner and what's happening, instead of a screen that looks stuck. */
+@Composable fun WorkingRow(text: String) = Group {
+    Row(Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 18.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+        OneSpinner(22.dp); Spacer(Modifier.width(14.dp))
+        Column { Text(text, color = N.text, fontSize = 16.sp); Text("This can take up to a minute — no need to tap again.", color = N.sub, fontSize = 13.sp) }
+    }
+}
+
 private val SESSIONS = listOf("1h" to "1 hour", "24h" to "1 day", "168h" to "1 week", "720h" to "30 days")
 
 @Composable fun AccessScreen(app: AppState, host: String, appId: String) {
@@ -44,10 +55,17 @@ private val SESSIONS = listOf("1h" to "1 hour", "24h" to "1 day", "168h" to "1 w
     var addGuest by remember { mutableStateOf(false) }
     var remove by remember { mutableStateOf(false) }
 
-    fun change(to: String, gs: List<String> = guests, publicOk: Boolean = false) = app.act {
-        val what = when (to) { "me" -> "Only you can open $host"; "guests" -> "You and ${gs.size} guest${if (gs.size == 1) "" else "s"} can open $host"; else -> "Make $host open to anyone" }
-        app.stepUp(what, "POST", "/api/v1/cloudflare/access", JSONObject().put("host", host).put("mode", to).put("guests", JSONArray(gs)).put("session", session).put("allow_public", publicOk))
-        app.toast("Saved"); round++
+    val working = AccessBusy.work[host]
+    fun change(to: String, gs: List<String> = guests, publicOk: Boolean = false) {
+        if (AccessBusy.work.containsKey(host)) return                       // one change at a time
+        app.act {
+            val what = when (to) { "me" -> "Only you can open $host"; "guests" -> "You and ${gs.size} guest${if (gs.size == 1) "" else "s"} can open $host"; else -> "Make $host open to anyone" }
+            AccessBusy.work[host] = when (to) { "me" -> "Switching to only you…"; "guests" -> if (to == mode) "Saving the guest list…" else "Switching to you and guests…"; else -> "Opening it to anyone…" }
+            try {
+                app.stepUp(what, "POST", "/api/v1/cloudflare/access", JSONObject().put("host", host).put("mode", to).put("guests", JSONArray(gs)).put("session", session).put("allow_public", publicOk))
+                app.toast("Saved"); round++
+            } finally { AccessBusy.work.remove(host) }
+        }
     }
 
     Page("Who can open it", app::back) {
@@ -69,9 +87,10 @@ private val SESSIONS = listOf("1h" to "1 hour", "24h" to "1 day", "168h" to "1 w
         }
         if (st != null && err == null && !outsideNova && !isShare && (rec != null || onTunnel)) {
             SectionLabel("Who can open it")
+            working?.let { WorkingRow(it); Spacer(Modifier.height(10.dp)) }
             Group {
                 @Composable fun Choice(k: String, title: String, sub: String, icon: androidx.compose.ui.graphics.vector.ImageVector) =
-                    Row1(title, sub, false, icon, if (k == "public") N.amber else N.blue, enabled = app.isAdmin, onClick = { if (k != mode) ask = k }) { OneRadio(mode == k) }
+                    Row1(title, sub, false, icon, if (k == "public") N.amber else N.blue, enabled = app.isAdmin && working == null, onClick = { if (k != mode) ask = k }) { OneRadio(mode == k) }
                 Choice("me", "Only you", "Your Cloudflare login, the same as Nova", Icons.Rounded.Lock); RowDivider()
                 Choice("guests", "You and guests", "People you add by email sign in with a one-time code sent to them", Icons.Rounded.Group); RowDivider()
                 Choice("public", "Anyone", "No login — anyone with the address can open it", Icons.Rounded.Public)
@@ -89,7 +108,7 @@ private val SESSIONS = listOf("1h" to "1 hour", "24h" to "1 day", "168h" to "1 w
             Segmented(SESSIONS.map { it.second }, SESSIONS.indexOfFirst { it.first == session }.let { if (it < 0) 1 else it }) { session = SESSIONS[it].first }
             if (dirty) Row(Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Box(Modifier.weight(1f)) { PillButton("Undo", color = N.text) { guests = savedGuests; session = rec?.optString("session")?.ifEmpty { null } ?: "24h" } }
-                Box(Modifier.weight(1f)) { PillButton("Save changes") { change("guests") } }
+                Box(Modifier.weight(1f)) { PillButton(if (working != null) "Saving…" else "Save changes", enabled = working == null) { change("guests") } }
             }
             Text("Guests open the address, type their email, and Cloudflare sends them a code. They can only open this app — not Nova.",
                 color = N.sub, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 30.dp, vertical = 6.dp))
@@ -128,8 +147,9 @@ private val SESSIONS = listOf("1h" to "1 hour", "24h" to "1 day", "168h" to "1 w
         OneDialog({ remove = false }, if (prot) "Take the login off $host?" else "Take $host off?",
             if (prot) "It goes back to how it was before Nova: open to anyone. The route and DNS record stay." else "Nova removes the route, the DNS record and the login it added. Nothing else in your Cloudflare account changes.",
             listOf(DialogButton("Cancel") { remove = false }, DialogButton(if (prot) "Make it public" else "Take it off", N.red) { remove = false
-                app.act { app.stepUp(if (prot) "Take Nova's login off $host — it will be open to anyone" else "Take $host off your Cloudflare tunnel", "POST", "/api/v1/cloudflare/remove",
-                    JSONObject().put("host", host).put("allow_public", prot)); app.toast("Done"); app.back() } })) }
+                if (!AccessBusy.work.containsKey(host)) app.act { AccessBusy.work[host] = if (prot) "Taking the login off…" else "Taking it off the internet…"
+                    try { app.stepUp(if (prot) "Take Nova's login off $host — it will be open to anyone" else "Take $host off your Cloudflare tunnel", "POST", "/api/v1/cloudflare/remove",
+                        JSONObject().put("host", host).put("allow_public", prot)); app.toast("Done"); app.back() } finally { AccessBusy.work.remove(host) } } })) }
 }
 
 /** Share links: the app stays behind your login; a small companion (Immich's share proxy) serves only what you share, on its own address. */
@@ -159,9 +179,13 @@ private val SESSIONS = listOf("1h" to "1 hour", "24h" to "1 day", "168h" to "1 w
         Group { Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
             OneTextField(shareHost, { shareHost = it.trim().lowercase().take(253) }, "share.example.com", Modifier.fillMaxWidth())
             Spacer(Modifier.height(10.dp))
-            PillButton("Set it up", enabled = shareHost.contains('.')) { app.act {
-                val r = app.stepUp("Turn on public share links at $shareHost", "POST", "/api/v1/apps/$appId/sharing", JSONObject().put("share_host", shareHost).put("for_host", host))
-                r.optString("task").ifEmpty { null }?.let { app.go(Route.Task(it)) } } }
+            val busyShare = AccessBusy.work["share:$appId"]
+            PillButton(busyShare ?: "Set it up", enabled = shareHost.contains('.') && busyShare == null) { if (busyShare == null) app.act {
+                AccessBusy.work["share:$appId"] = "Starting…"
+                try {
+                    val r = app.stepUp("Turn on public share links at $shareHost", "POST", "/api/v1/apps/$appId/sharing", JSONObject().put("share_host", shareHost).put("for_host", host))
+                    r.optString("task").ifEmpty { null }?.let { app.go(Route.Task(it)) }     // the install's own progress page
+                } finally { AccessBusy.work.remove("share:$appId") } } }
         } }
         Text("Nova installs the share proxy and opens this address on your tunnel for share links only. If the address already points at the proxy, Nova just uses it.",
             color = N.sub, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 30.dp, vertical = 4.dp))
@@ -176,4 +200,6 @@ private val SESSIONS = listOf("1h" to "1 hour", "24h" to "1 day", "168h" to "1 w
         }
     } else if (ready) Text("All set: share a photo or album in $name and its link opens at $wanted for anyone.",
         color = N.green, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 30.dp, vertical = 4.dp))
+    if (v.optString("share_host").isNotEmpty()) Text("Tip: when you share in $name you can add a password (people type it to see the album), an expiry date, and a custom link — like ${wanted.ifEmpty { "https://share.example.com" }}/s/family-trip. They all work at the share address.",
+        color = N.sub, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 30.dp, vertical = 4.dp))
 }

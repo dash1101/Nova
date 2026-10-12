@@ -511,3 +511,5 @@ html.material .alertcard { border-radius: 16px; background: var(--card); backdro
 .upnote { display: flex; align-items: center; gap: 10px; margin: 6px var(--gutter); padding: 6px 6px 6px 14px; border-radius: 20px; }
 .upnote svg { width: 20px; height: 20px; }
 .linkbtn { border: 0; background: none; font: inherit; color: var(--link, var(--blue)); font-size: 14px; font-weight: 600; padding: 6px 8px; border-radius: 12px; cursor: pointer; display: block; }
+.spin { width: 22px; height: 22px; border-radius: 50%; border: 3px solid color-mix(in srgb, var(--blue) 25%, transparent); border-top-color: var(--blue); animation: nova-spin .9s linear infinite; flex: none; margin-right: 14px; }
+@keyframes nova-spin { to { transform: rotate(360deg); } }
