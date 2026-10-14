@@ -360,12 +360,18 @@ private val MY_ACCENTS = listOf("#3e91ff", "#5e5ce6", "#bf5af2", "#ff2d55", "#ff
 
 val ICON_THEMES = listOf("style" to "Matches the style", "tonal" to "Tonal", "tiles" to "Tiles", "circles" to "Circles", "outline" to "Outline", "glyph" to "Symbols only", "mono" to "Monochrome")
 @Composable fun IconThemePicker() {
-    var open by remember { mutableStateOf(false) }
     SectionLabel("Icons")
-    Group { Row1("Icon style", ICON_THEMES.firstOrNull { it.first == AppPrefs.iconTheme }?.second ?: "Matches the style", false,
-        androidx.compose.material.icons.Icons.Rounded.Palette, N.blue, onClick = { open = true }) }
-    if (open) OneDialog({ open = false }, "Icon style", null, listOf(DialogButton("Done") { open = false })) {
-        ICON_THEMES.forEach { (k, l) -> Row1(l, null, false, androidx.compose.material.icons.Icons.Rounded.Dns, N.blue, onClick = { AppPrefs.set("icon_theme", k) },
-            trailing = { OneRadio(AppPrefs.iconTheme == k) }) }
+    val samples = listOf(androidx.compose.material.icons.Icons.Rounded.MonitorHeart to N.green, androidx.compose.material.icons.Icons.Rounded.Backup to N.blue,
+        androidx.compose.material.icons.Icons.Rounded.CleaningServices to N.amber)
+    Group {
+        ICON_THEMES.forEachIndexed { i, (k, l) ->
+            if (i > 0) RowDivider()
+            Row(Modifier.fillMaxWidth().clickable { AppPrefs.set("icon_theme", k) }.padding(horizontal = 22.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(l, fontSize = 17.sp, color = N.text, modifier = Modifier.weight(1f))
+                // always shown: what the icons look like in this style
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) { samples.forEach { (ic, c) -> RowIcon(ic, c, k) } }
+                Spacer(Modifier.width(12.dp)); OneRadio(AppPrefs.iconTheme == k)
+            }
+        }
     }
 }

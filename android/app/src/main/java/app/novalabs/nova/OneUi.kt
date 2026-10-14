@@ -52,6 +52,7 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
+import kotlinx.coroutines.launch
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
@@ -208,6 +209,17 @@ object DialogStack {
 data class DialogButton(val label: String, val color: Color? = null, val enabled: Boolean = true, val onClick: () -> Unit)
 
 /** One UI dialog: floats at the bottom of the screen, big rounded card, text buttons split by a hairline. */
+/** A dialog window whose card eases in (fade + a small scale-up), and eases out when it's dismissed by Back or a tap outside. */
+@Composable fun MotionDialog(onDismiss: () -> Unit, content: @Composable () -> Unit) {
+    val p = remember { androidx.compose.animation.core.Animatable(if (reduceMotion()) 1f else 0f) }
+    val scope = rememberCoroutineScope()
+    LaunchedEffect(Unit) { if (p.value < 1f) p.animateTo(1f, androidx.compose.animation.core.spring(dampingRatio = .82f, stiffness = 520f)) }
+    val dismiss: () -> Unit = { if (reduceMotion()) onDismiss() else scope.launch { p.animateTo(0f, androidx.compose.animation.core.tween(140)); onDismiss() } }
+    Dialog(dismiss, DialogProperties(usePlatformDefaultWidth = false)) {
+        Box(Modifier.graphicsLayer { alpha = p.value; val k = .92f + .08f * p.value; scaleX = k; scaleY = k }) { content() }
+    }
+}
+
 @Composable fun OneDialog(onDismiss: () -> Unit, title: String? = null, text: String? = null,
                           buttons: List<DialogButton> = emptyList(), content: (@Composable ColumnScope.() -> Unit)? = null) {
     val key = (title ?: "") + "\u0000" + (text ?: "")
@@ -216,7 +228,7 @@ data class DialogButton(val label: String, val color: Color? = null, val enabled
     if (DialogStack.owners[key] !== me) { if (DialogStack.owners[key] == null) SideEffect { DialogStack.owners.putIfAbsent(key, me) }; return }
     if (N.preset.isNotEmpty()) { PresetDialog(onDismiss, title, text, buttons, content); return }
     if (N.material) {                       // M3 dialog: centered, 28dp corners, text buttons on the right
-        Dialog(onDismiss, DialogProperties(usePlatformDefaultWidth = false)) {
+        MotionDialog(onDismiss) {
             Column(Modifier.padding(horizontal = 24.dp).widthIn(max = 560.dp).fillMaxWidth().clip(RoundedCornerShape(28.dp))
                 .background(MaterialTheme.colorScheme.surfaceContainerHigh).padding(top = 24.dp, bottom = 12.dp)) {
                 DialogToasts()
@@ -238,7 +250,7 @@ data class DialogButton(val label: String, val color: Color? = null, val enabled
         }
         return
     }
-    Dialog(onDismiss, DialogProperties(usePlatformDefaultWidth = false)) {
+    MotionDialog(onDismiss) {
         val view = LocalView.current
         SideEffect { (view.parent as? DialogWindowProvider)?.window?.setGravity(Gravity.BOTTOM) }
         Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.BottomCenter) {
@@ -284,7 +296,10 @@ private fun DialogButton.role(t: NovaColors) = when { color == null -> "cancel";
  */
 @Composable private fun PresetDialog(onDismiss: () -> Unit, title: String?, text: String?, buttons: List<DialogButton>, content: (@Composable ColumnScope.() -> Unit)?) {
     val t = N
-    Dialog(onDismiss, DialogProperties(usePlatformDefaultWidth = false)) {
+    val host = androidx.compose.ui.platform.LocalContext.current.let { c -> var x: android.content.Context? = c; while (x is android.content.ContextWrapper && x !is android.app.Activity) x = x.baseContext; x as? android.app.Activity }
+    if (t.preset == "liquid") LaunchedEffect(Unit) { Behind.take(host) }          // what the glass will bend: the page as it is now
+    MotionDialog(onDismiss) {
+      androidx.compose.runtime.CompositionLocalProvider(LocalInDialog provides true) {
         when (t.preset) {
             "liquid" -> {
                 val k = AppPrefs.round.coerceIn(25, 150) / 100f; val shape = RoundedCornerShape(34.dp * k)
@@ -352,6 +367,7 @@ private fun DialogButton.role(t: NovaColors) = when { color == null -> "cancel";
                 }
             }
         }
+      }
     }
 }
 

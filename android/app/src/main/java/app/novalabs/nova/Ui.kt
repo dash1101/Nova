@@ -169,9 +169,9 @@ fun levelColor(level: String, t: NovaColors) = when (level) {
     Canvas(Modifier.fillMaxSize().background(t.bg).onGloballyPositioned { origin = it.positionInWindow() }) {
         val W = if (win.width > 0) win.width.toFloat() else size.width; val H = if (win.height > 0) win.height.toFloat() else size.height
         drawRect(Brush.radialGradient(listOf(t.glow.copy(alpha = if (t.dark) 0.9f else 0.8f), Color.Transparent),
-            center = Offset(W * 0.85f, H * 0.18f) - origin, radius = W * 0.95f))
+            center = Offset(W * 0.85f, H * 0.18f) - origin, radius = minOf(W, H) * 0.95f))
         drawRect(Brush.radialGradient(listOf(t.glow2.copy(alpha = 0.6f), Color.Transparent),
-            center = Offset(W * 0.1f, H * 0.35f) - origin, radius = W * 0.8f))
+            center = Offset(W * 0.1f, H * 0.35f) - origin, radius = minOf(W, H) * 0.8f))
     }
 }
 
@@ -220,6 +220,19 @@ fun levelColor(level: String, t: NovaColors) = when (level) {
     }
 }
 
+/** A row's icon in the chosen icon style ([theme] = one of ICON_THEMES, or the current setting). */
+@Composable fun RowIcon(icon: ImageVector, c: Color, theme: String = AppPrefs.iconTheme) {
+    val t = N
+    when (theme.takeIf { it != "style" } ?: when (t.preset) { "liquid" -> "tiles"; "fluent", "breeze" -> "glyph"; else -> "tonal" }) {
+        "tiles" -> Box(Modifier.size(30.dp).clip(RoundedCornerShape(cardRadius(8.dp))).background(c), contentAlignment = Alignment.Center) { Icon(icon, null, tint = Color.White, modifier = Modifier.size(19.dp)) }
+        "circles" -> Box(Modifier.size(34.dp).clip(CircleShape).background(c), contentAlignment = Alignment.Center) { Icon(icon, null, tint = Color.White, modifier = Modifier.size(19.dp)) }
+        "outline" -> Box(Modifier.size(34.dp).border(1.5.dp, c, CircleShape), contentAlignment = Alignment.Center) { Icon(icon, null, tint = c, modifier = Modifier.size(18.dp)) }
+        "glyph" -> Box(Modifier.size(28.dp), contentAlignment = Alignment.Center) { Icon(icon, null, tint = c, modifier = Modifier.size(22.dp)) }
+        "mono" -> Box(Modifier.size(28.dp), contentAlignment = Alignment.Center) { Icon(icon, null, tint = t.text, modifier = Modifier.size(22.dp)) }
+        else -> Box(Modifier.size(36.dp).clip(CircleShape).background(c.copy(alpha = 0.16f)), contentAlignment = Alignment.Center) { Icon(icon, null, tint = c, modifier = Modifier.size(20.dp)) }
+    }
+}
+
 @Composable fun Row1(title: String, subtitle: String? = null, subtitleBlue: Boolean = false,
                      icon: ImageVector? = null, iconTint: Color? = null, enabled: Boolean = true,
                      onClick: (() -> Unit)? = null, trailing: (@Composable () -> Unit)? = null) {
@@ -227,15 +240,7 @@ fun levelColor(level: String, t: NovaColors) = when (level) {
     Row(Modifier.fillMaxWidth().then(if (onClick != null && enabled) Modifier.clickable(onClick = onClick) else Modifier)
         .padding(horizontal = 22.dp, vertical = 17.dp), verticalAlignment = Alignment.CenterVertically) {
         if (icon != null) {
-            val c = iconTint ?: t.blue
-            when (AppPrefs.iconTheme.takeIf { it != "style" } ?: when (t.preset) { "liquid" -> "tiles"; "fluent", "breeze" -> "glyph"; else -> "tonal" }) {
-                "tiles" -> Box(Modifier.size(30.dp).clip(RoundedCornerShape(cardRadius(8.dp))).background(c), contentAlignment = Alignment.Center) { Icon(icon, null, tint = Color.White, modifier = Modifier.size(19.dp)) }
-                "circles" -> Box(Modifier.size(34.dp).clip(CircleShape).background(c), contentAlignment = Alignment.Center) { Icon(icon, null, tint = Color.White, modifier = Modifier.size(19.dp)) }
-                "outline" -> Box(Modifier.size(34.dp).border(1.5.dp, c, CircleShape), contentAlignment = Alignment.Center) { Icon(icon, null, tint = c, modifier = Modifier.size(18.dp)) }
-                "glyph" -> Box(Modifier.size(28.dp), contentAlignment = Alignment.Center) { Icon(icon, null, tint = c, modifier = Modifier.size(22.dp)) }
-                "mono" -> Box(Modifier.size(28.dp), contentAlignment = Alignment.Center) { Icon(icon, null, tint = t.text, modifier = Modifier.size(22.dp)) }
-                else -> Box(Modifier.size(36.dp).clip(CircleShape).background(c.copy(alpha = 0.16f)), contentAlignment = Alignment.Center) { Icon(icon, null, tint = c, modifier = Modifier.size(20.dp)) }
-            }
+            RowIcon(icon, iconTint ?: t.blue)
             Spacer(Modifier.width(14.dp))
         }
         Column(Modifier.weight(1f)) {
@@ -283,8 +288,9 @@ val LocalCompactHeight = staticCompositionLocalOf { false }
 
 @Composable fun BottomScrim(modifier: Modifier = Modifier) {
     if (LocalCompactHeight.current) return                 // a phone on its side: no room for fades
-    Box(modifier.fillMaxWidth().windowInsetsBottomHeight(WindowInsets.navigationBars.add(WindowInsets(bottom = if (LocalCompactHeight.current) 16.dp else 56.dp)))
-        .background(Brush.verticalGradient(listOf(Color.Transparent, N.bg.copy(alpha = 0.85f), N.bg))))
+    // lighter than it was: shorter, and never fully opaque, so the page (and a wallpaper) still shows through at the very bottom
+    Box(modifier.fillMaxWidth().windowInsetsBottomHeight(WindowInsets.navigationBars.add(WindowInsets(bottom = 40.dp)))
+        .background(Brush.verticalGradient(listOf(Color.Transparent, N.bg.copy(alpha = 0.45f), N.bg.copy(alpha = 0.72f)))))
 }
 
 @Composable fun StatusBarScrim(modifier: Modifier = Modifier) {

@@ -29,7 +29,8 @@ const P = {
   bulb: "M9 21c0 .55.45 1 1 1h4c.55 0 1-.45 1-1v-1H9v1zm3-19C8.14 2 5 5.14 5 9c0 2.38 1.19 4.47 3 5.74V17c0 .55.45 1 1 1h6c.55 0 1-.45 1-1v-2.26c1.81-1.27 3-3.36 3-5.74 0-3.86-3.14-7-7-7z",
   cpu: "M9 9h6v6H9Zm12 2V9h-2V7a2 2 0 0 0-2-2h-2V3h-2v2h-2V3H9v2H7a2 2 0 0 0-2 2v2H3v2h2v2H3v2h2v2a2 2 0 0 0 2 2h2v2h2v-2h2v2h2v-2h2a2 2 0 0 0 2-2v-2h2v-2h-2v-2ZM17 17H7V7h10Z",
   mem: "M15 9H9v6h6Zm-2 4h-2v-2h2Zm8-2V9h-2V7a2 2 0 0 0-2-2h-2V3h-2v2h-2V3H9v2H7a2 2 0 0 0-2 2v2H3v2h2v2H3v2h2v2a2 2 0 0 0 2 2h2v2h2v-2h2v2h2v-2h2a2 2 0 0 0 2-2v-2h2v-2h-2v-2Z",
-  disk: "M2 20h20v-4H2Zm2-3h2v2H4ZM2 4v4h20V4Zm4 3H4V5h2Zm-4 7h20v-4H2Zm2-3h2v2H4Z",
+  disk: "M4 20q-.83 0-1.41-.59Q2 18.83 2 18v-4q0-.83.59-1.41Q3.17 12 4 12h16q.83 0 1.41.59Q22 13.17 22 14v4q0 .83-.59 1.41Q20.83 20 20 20Zm13-2q.43 0 .71-.29Q18 17.43 18 17t-.29-.71Q17.43 16 17 16t-.71.29Q16 16.57 16 17t.29.71q.28.29.71.29ZM2.2 10.5l2.6-5.7q.28-.6.82-.95.55-.35 1.18-.35h10.4q.63 0 1.18.35.54.35.82.95l2.6 5.7Z",
+  help: "M11.95 18q.53 0 .89-.36.36-.37.36-.89t-.36-.89q-.36-.36-.89-.36t-.89.36q-.36.37-.36.89t.36.89q.37.36.89.36Zm-.9-3.85h1.85q0-.83.19-1.3.19-.48 1.06-1.3.65-.65 1.03-1.24.37-.59.37-1.41 0-1.4-1.03-2.15Q13.5 6 12.1 6q-1.43 0-2.31.75-.88.75-1.24 1.8l1.65.65q.13-.45.56-.97.44-.53 1.34-.53.8 0 1.2.44.4.44.4.96 0 .5-.3.94-.3.44-.75.81-1.1.98-1.35 1.48-.25.5-.25 1.82ZM12 22q-2.08 0-3.9-.79-1.83-.79-3.18-2.14-1.35-1.35-2.14-3.17Q2 14.08 2 12t.79-3.9q.79-1.83 2.14-3.18Q6.27 3.57 8.1 2.78 9.92 2 12 2t3.9.78q1.83.79 3.18 2.14 1.35 1.35 2.14 3.18Q22 9.92 22 12t-.78 3.9q-.79 1.82-2.14 3.17-1.35 1.35-3.18 2.14Q14.08 22 12 22Z",
   ssd: "M18 2h-8L4.02 8 4 20c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-6 6h-2V4h2v4zm3 0h-2V4h2v4zm3 0h-2V4h2v4z",
   temp: "M15 13V5a3 3 0 0 0-6 0v8a5 5 0 1 0 6 0Zm-3-9a1 1 0 0 1 1 1v3h-2V5a1 1 0 0 1 1-1Z",
   net: "M16 17.01V10h-2v7.01h-3L15 21l4-3.99ZM9 3 5 6.99h3V14h2V6.99h3Z",
@@ -131,7 +132,15 @@ export function sheet(html, onClose, kind = "") {
   s.onclick = e => { if (e.target === s) { closeSheet(); onClose?.(); } };
   return $(".box", s);
 }
-export function closeSheet() { const s = $("#sheet"); s.hidden = true; s.innerHTML = ""; }
+export function closeSheet() {
+  const s = $("#sheet");
+  // a copy fades out in its place while the real one is already free for the next dialog
+  if (!s.hidden && s.innerHTML && !document.documentElement.classList.contains("reduce")) {
+    const g = s.cloneNode(true); g.classList.add("ghost"); g.setAttribute("aria-hidden", "true"); s.after(g);
+    setTimeout(() => g.remove(), 200);
+  }
+  s.hidden = true; s.innerHTML = "";
+}
 // each button's role (cancel / primary / destructive) lets a style shape them: filled, tinted or plain
 const role = b => /red/.test(b.color || "") ? "destructive" : b.color ? "primary" : "cancel";
 const acts = btns => `<div class="acts" data-n="${btns.length}">${btns.map((b, i) => `${i ? "<i></i>" : ""}<button data-b="${i}" data-role="${role(b)}" style="${b.color ? `color:${b.color}` : ""}" ${b.dis ? "disabled" : ""}>${esc(b.label)}</button>`).join("")}</div>`;

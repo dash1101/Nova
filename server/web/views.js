@@ -253,7 +253,7 @@ export async function menu(ctx) {
       ${sec("You and this browser")}${group(row("Users & devices", { sub: "Who can reach this server", blue: true, icon: "group", click: "go:devices" })
         + row("Appearance", { sub: "Look, theme, home layout", blue: true, icon: "palette", click: "go:appearance" })
         + row("Settings", { sub: "Labs, features, plugins", icon: "gear", tint: "var(--sub)", click: "go:settings" })
-        + row("Questions", { sub: "Is it safe, what it connects to, how to undo things", icon: "info", tint: "var(--sub)", click: "go:faq" })
+        + row("Questions", { sub: "Is it safe, what it connects to, how to undo things", icon: "help", tint: "var(--sub)", click: "go:faq" })
         + row("About Nova", { sub: "Nova web", icon: "info", tint: "var(--sub)", click: "go:about" }))}`,
       { title: "Menu", root: true, tabroot: true });
     $$("[data-ic]", ctx.root).forEach(async el => { const u = await ST.appIconUrl(el.dataset.ic); if (u && el.isConnected) { el.classList.add("img"); el.style.backgroundImage = `url(${u})`; el.textContent = ""; } });
@@ -1416,6 +1416,16 @@ export async function serverSettings(ctx) {
 }
 const ICON_THEMES = [["style", "Matches the style", "Each style's own icons"], ["tonal", "Tonal", "Colored symbols on a soft circle"], ["tiles", "Tiles", "White symbols on colored rounded squares"],
   ["circles", "Circles", "White symbols on colored circles"], ["outline", "Outline", "Colored symbols in a thin ring"], ["glyph", "Symbols only", "Just the colored symbol"], ["mono", "Monochrome", "Plain symbols in the text color"]];
+/** One icon drawn the way an icon style draws it, for the picker — shown beside each choice, all the time. */
+function iconSample(theme, icon, tint) {
+  const look = theme !== "style" ? theme : ({ liquid: "tiles", fluent: "glyph", breeze: "glyph" })[prefs.style] || "tonal";
+  const base = "display:inline-grid;place-items:center;flex:none;";
+  const st = { tonal: `width:30px;height:30px;border-radius:50%;color:${tint};background:color-mix(in srgb, ${tint} 16%, transparent)`,
+    tiles: `width:28px;height:28px;border-radius:8px;color:#fff;background:${tint}`, circles: `width:28px;height:28px;border-radius:50%;color:#fff;background:${tint}`,
+    outline: `width:28px;height:28px;box-sizing:border-box;border-radius:50%;color:${tint};border:1.5px solid ${tint}`, glyph: `width:26px;height:26px;color:${tint}`,
+    mono: "width:26px;height:26px;color:var(--text)" }[look];
+  return `<span style="${base}${st}">${I(icon).replace('class="i', 'style="width:17px;height:17px;fill:currentColor" class="i')}</span>`;
+}
 export async function appearance(ctx) {
   const draw = () => {
     const t = prefs.theme, st = prefs.style, mat = document.documentElement.classList.contains("material"), look = mat ? "Material" : ({ liquid: "Glass", fluent: "Mica", breeze: "Breeze" })[st] || "Default";
@@ -1445,7 +1455,8 @@ export async function appearance(ctx) {
       ${(() => { const g = gpuInfo(); if (!g.software && g.blur) return "";
         return `<div class="hint" style="margin:10px var(--gutter);border:1px solid color-mix(in srgb,var(--amber) 50%,transparent)"><b style="color:var(--amber)">${g.software ? "This browser isn't using the graphics card" : "This browser can't blur"}</b>
           <p class="muted" style="margin:6px 0 0">${g.software ? "Glass, blur and the live graphs are drawn by the processor instead, so they can stutter and use more power. Turn on hardware acceleration and restart the browser — Chrome or Edge: Settings → System → “Use graphics acceleration when available”. Firefox: Settings → Performance. Until then, Lighter effects is on automatically." : "Frosted glass shows as plain, see-through surfaces here. Update the browser, or turn on Reduce transparency for solid surfaces."}</p></div>`; })()}
-      ${sec("Icons")}${group(row("Icon style", { sub: ICON_THEMES.find(t => t[0] === (prefs.iconTheme || "style"))?.[1] || "Matches the style", icon: "palette", click: "icons" }))}
+      ${sec("Icons")}${group(ICON_THEMES.map(([k, l, d]) => `<div class="row click" data-act="icon:${k}"><div class="t"><b>${esc(l)}</b><small>${esc(d)}</small></div>
+          <span class="icprev" aria-hidden="true">${[["status", "#3ecf6e"], ["backup", "var(--blue)"], ["del", "var(--amber)"]].map(([ic, c]) => iconSample(k, ic, c)).join("")}</span>${radio((prefs.iconTheme || "style") === k)}</div>`).join(""))}
       ${sec("Lighter effects")}${segmented(["Automatic", "On", "Off"], ["auto", "on", "off"].indexOf(prefs.lite || "auto"), "lite")}
       ${note("No frosted-glass blur or soft shadows — much smoother on older computers and phones. Automatic turns it on when this device looks slow.")}
       ${sec("Home")}${group(row("Home layout", { sub: homeOrder().filter(id => prefs[HOME_SECTIONS.find(s => s[0] === id)[3]]).map(id => HOME_SECTIONS.find(s => s[0] === id)[1]).join(" · ") || "Just the header", blue: true, icon: "dash", click: "go:edit-home" })
@@ -1468,11 +1479,7 @@ export async function appearance(ctx) {
     ctx.applyTheme(); draw();
   };
   ctx.handlers({
-    icons: async () => {
-      const preview = id => { document.documentElement.dataset.icons = id; };
-      const v = await choose("Icon style", ICON_THEMES, prefs.iconTheme || "style");
-      if (v) { prefs.iconTheme = v; } ctx.applyTheme(); draw();
-    },
+    icon: k => { prefs.iconTheme = k; ctx.applyTheme(); draw(); },
     accent: async () => { const c = await colorPicker(prefs.accentLocal || S.overview?.server?.accent || "#3e91ff"); if (c) setAccent(c); },
     acc: c => setAccent(c && /^#[0-9a-f]{6}$/i.test(c) ? c : ""),
     wall: () => {
@@ -1543,7 +1550,7 @@ export async function about(ctx) {
     ${sec("Server")}${group(row("Name", { sub: s.name }) + row("Board", { sub: s.board }) + row("CPU", { sub: s.cpu }) + row("Memory", { sub: s.ram_gb ? s.ram_gb + " GB" : "" }) + row("Kernel", { sub: s.kernel }) + row("Up for", { sub: s.uptime_s ? uptime(s.uptime_s) : "" }))}
     ${sec("Security")}${group(row("Every request is signed", { sub: "By this browser's own key — it can't be copied out — time-stamped and single-use" }) + row("Risky actions need your phone", { sub: "Shells, stopping things, installs, unmounting, power — approved with your fingerprint" })
       + row("At home: encrypted", { sub: "HTTPS to the server's own certificate" }) + row("Outside home: Cloudflare Access", { sub: "Strangers are stopped before they reach the server" }))}
-    ${group(row("Questions", { sub: "Is it safe, what it connects to, how to undo things", blue: true, icon: "info", click: "go:faq" })
+    ${group(row("Questions", { sub: "Is it safe, what it connects to, how to undo things", blue: true, icon: "help", click: "go:faq" })
       + `<a class="row press" href="https://github.com/dash1101/Nova/issues/new?template=feature_request.yml" target="_blank" rel="noopener"><span class="ri" style="color:var(--blue);background:color-mix(in srgb, var(--blue) 16%, transparent)">${I("add")}</span><div class="t"><b>Request a feature</b><small>Tell us what Nova should do — on GitHub</small></div></a>`)}
     ${sec("Project")}${group(`<a class="row click" href="https://github.com/dash1101/Nova" target="_blank" rel="noopener" style="color:inherit;text-decoration:none"><div class="t"><b>Nova by dash1101</b><small>Open source · AGPL-3.0 · github.com/dash1101/Nova</small></div></a>`)}`, { title: "About" });
 }
@@ -1581,7 +1588,7 @@ export async function guide(ctx) {
     ${step(4, "Optional: use it away from home", "Without a VPN, put Nova behind Cloudflare Access (free) — docs/REMOTE.md walks you through it. For this web version away from home, add an Allow policy for your email to the same Access application.")}
     ${step(5, "Optional: other people, tablets, browsers", "In the app: Menu → Users & devices — invite phones as Admin or View only, and approve browsers (open https://&lt;server&gt;:8495, choose “Get a code”).")}
     ${note("Security in a sentence: every request is signed by a key the device can't give away, and anything risky also needs your fingerprint on a phone.")}
-    ${group(row("Questions", { sub: "Is it safe, what it connects to, how to undo things", blue: true, icon: "info", click: "go:faq" }))}`, { title: "Setup guide" });
+    ${group(row("Questions", { sub: "Is it safe, what it connects to, how to undo things", blue: true, icon: "help", click: "go:faq" }))}`, { title: "Setup guide" });
 }
 export async function terminal(ctx) {
   ctx.show(`<div class="center" style="padding:18px 0"><div style="width:96px;height:96px;border-radius:30px;background:#0b0b0d;margin:0 auto 12px;display:grid;place-items:center;color:#3ecf6e;font:700 34px ui-monospace,monospace">&gt;_</div>

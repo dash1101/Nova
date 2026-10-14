@@ -65,6 +65,16 @@ fun presetTokens(preset: String, dark: Boolean, seed: Color?): NovaColors? = whe
 /** The wallpaper, made once (a small copy: scaled back up it's smoothly soft, on every Android). */
 object Backdrop {
     private var key = ""; private var bmp: ImageBitmap? = null
+    private var gkey = ""; private var gbmp: ImageBitmap? = null
+    /** An even smaller copy for Glass cards: drawn back at full size it's frosted, with no blur pass needed. */
+    fun frosted(ctx: android.content.Context): ImageBitmap? {
+        val src = wallpaper(ctx) ?: return null
+        if (gkey != key) { gkey = key; gbmp = runCatching { val b = src.asAndroidBitmap()
+            android.graphics.Bitmap.createScaledBitmap(b, (b.width / 6).coerceAtLeast(8), (b.height / 6).coerceAtLeast(8), true).asImageBitmap() }.getOrNull() }
+        return gbmp
+    }
+    /** How bright the wallpaper is on average (0 dark … 1 bright), so text on it can stay readable. */
+    var lum = .5f; private set
     fun wallpaper(ctx: android.content.Context): ImageBitmap? {
         val k = "${AppPrefs.wallV}:${AppPrefs.wallBlur}"
         if (AppPrefs.wallV <= 0L) return null
@@ -73,11 +83,22 @@ object Backdrop {
             bmp = runCatching {
                 val full = android.graphics.BitmapFactory.decodeFile(java.io.File(ctx.filesDir, "wallpaper.jpg").path) ?: return@runCatching null
                 val s = 1f / (1f + AppPrefs.wallBlur / 3f)
+                val tiny = android.graphics.Bitmap.createScaledBitmap(full, 16, 16, true)
+                var sum = 0f; for (y in 0 until 16) for (x in 0 until 16) { val c = tiny.getPixel(x, y)
+                    sum += (.2126f * ((c shr 16) and 255) + .7152f * ((c shr 8) and 255) + .0722f * (c and 255)) / 255f }
+                lum = sum / 256f
                 android.graphics.Bitmap.createScaledBitmap(full, (full.width * s).toInt().coerceAtLeast(8), (full.height * s).toInt().coerceAtLeast(8), true).asImageBitmap()
             }.getOrNull()
         }
         return bmp
     }
+}
+
+/** How much of the theme's background to lay over the wallpaper: your Dim setting, but at least enough that the page's
+ *  text stays readable — a bright wallpaper under dark mode (or a dark one under light mode) gets dimmed further. */
+fun wallScrim(t: NovaColors): Float {
+    val clash = if (t.dark) Backdrop.lum else 1f - Backdrop.lum
+    return maxOf(AppPrefs.wallDim / 100f, (clash - .35f).coerceAtLeast(0f) * .9f).coerceAtMost(.85f)
 }
 
 /** What's behind everything at this spot: the wallpaper (cover-fit to the window) or the glow, dimmed as set. */
@@ -88,12 +109,38 @@ fun DrawScope.drawBackdrop(t: NovaColors, origin: Offset, win: IntSize, wall: Im
         val k = maxOf(W / wall.width, H / wall.height); val dw = wall.width * k; val dh = wall.height * k
         drawImage(wall, dstOffset = IntOffset(((W - dw) / 2 - origin.x).toInt(), ((H - dh) / 2 - origin.y).toInt()),
             dstSize = IntSize(dw.toInt(), dh.toInt()), filterQuality = FilterQuality.Medium)
-        drawRect(t.bg.copy(alpha = AppPrefs.wallDim / 100f))
+        drawRect(t.bg.copy(alpha = wallScrim(t)))
     } else if (!t.material && t.glow != Color.Transparent) {
-        drawRect(Brush.radialGradient(listOf(t.glow.copy(alpha = if (t.dark) 0.9f else 0.8f), Color.Transparent), center = Offset(W * 0.85f, H * 0.18f) - origin, radius = W * 0.95f))
-        drawRect(Brush.radialGradient(listOf(t.glow2.copy(alpha = 0.6f), Color.Transparent), center = Offset(W * 0.1f, H * 0.35f) - origin, radius = W * 0.8f))
+        drawRect(Brush.radialGradient(listOf(t.glow.copy(alpha = if (t.dark) 0.9f else 0.8f), Color.Transparent), center = Offset(W * 0.85f, H * 0.18f) - origin, radius = minOf(W, H) * 0.95f))
+        drawRect(Brush.radialGradient(listOf(t.glow2.copy(alpha = 0.6f), Color.Transparent), center = Offset(W * 0.1f, H * 0.35f) - origin, radius = minOf(W, H) * 0.8f))
     }
 }
+
+// ── what's behind a dialog ──────────────────────────────────────────────────────────────
+/** A popup sits in its own window, so it can't see the live page. When one opens, Nova takes one picture of the app's
+ *  window (small, which also softens it like frosted glass) and the popup's glass bends that — the real cards and text
+ *  behind it, not just the wallpaper. */
+object Behind {
+    var shot by mutableStateOf<ImageBitmap?>(null); private set
+    private var taken = 0L
+    fun take(activity: android.app.Activity?) {
+        val w = activity?.window ?: return
+        if (System.currentTimeMillis() - taken < 300 && shot != null) return              // dialogs opening one after another
+        val v = w.decorView; if (v.width <= 0 || v.height <= 0) return
+        val full = runCatching { android.graphics.Bitmap.createBitmap(v.width, v.height, android.graphics.Bitmap.Config.ARGB_8888) }.getOrNull() ?: return
+        runCatching {
+            android.view.PixelCopy.request(w, full, { r ->
+                if (r == android.view.PixelCopy.SUCCESS) {
+                    shot = android.graphics.Bitmap.createScaledBitmap(full, (v.width / 4).coerceAtLeast(8), (v.height / 4).coerceAtLeast(8), true).asImageBitmap()
+                    taken = System.currentTimeMillis()
+                }
+                full.recycle()
+            }, android.os.Handler(android.os.Looper.getMainLooper()))
+        }
+    }
+}
+/** True inside a popup: Glass there bends the picture of the page (Behind.shot) instead of the wallpaper. */
+val LocalInDialog = androidx.compose.runtime.staticCompositionLocalOf { false }
 
 // ── the lens ────────────────────────────────────────────────────────────────────────────
 private const val LENS = """
@@ -111,12 +158,15 @@ half4 main(float2 p) {
     float2 n = ol > 0.0 ? o / ol : (q.x > q.y ? float2(1.0, 0.0) : float2(0.0, 1.0));
     n *= sign(p - h + 0.0001);
     float t = clamp(1.0 - depth / bevel, 0.0, 1.0);
-    float m = t * t * (3.0 - 2.0 * t) * strength;               // none inside the bevel, most at the rim
+    if (t <= 0.0) return content.eval(p);                       // the flat middle: one plain sample (most of the card, so it stays cheap)
+    float e = t * t * (3.0 - 2.0 * t);
+    float m = e * strength;                                      // none inside the bevel, most at the rim
     float2 d = -n * m;                                           // look inward: the rim gathers what's behind the middle
     half4 c = content.eval(p + d);
     half r = content.eval(p + d * 1.06).r;                       // a faint prism fringe at the edge
     half b = content.eval(p + d * 0.94).b;
-    return half4(r, c.g, b, c.a);
+    half glint = half(e * e * 0.10);                             // the curved edge catches a little light, on all four sides
+    return half4(min(r + glint, 1.0), min(c.g + glint, 1.0), min(b + glint, 1.0), c.a);
 }
 """
 
@@ -138,9 +188,13 @@ private fun lensEffect(w: Float, h: Float, radius: Float, blurPx: Float): Render
     val ctx = androidx.compose.ui.platform.LocalContext.current
     val win = androidx.compose.ui.platform.LocalWindowInfo.current.containerSize
     var origin by remember { mutableStateOf(Offset.Zero) }
-    val wall = Backdrop.wallpaper(ctx)
+    val wall = Backdrop.frosted(ctx)
+    val inDialog = LocalInDialog.current
     val clear = AppPrefs.glass.coerceIn(0, 100) / 100f
-    val tint = (if (t.dark) Color(0xFF16161C) else Color(0xFFFAFAFC)).copy(alpha = (if (t.dark) .55f else .72f) - clear * .45f)
+    // the tint thins out with Glass clarity, but over a wallpaper that clashes with the theme (bright under dark mode, dark
+    // under light) it keeps enough body that the text on the card stays easy to read
+    val clash = if (wall == null) 0f else if (t.dark) Backdrop.lum else 1f - Backdrop.lum
+    val tint = (if (t.dark) Color(0xFF16161C) else Color(0xFFFAFAFC)).copy(alpha = maxOf((if (t.dark) .55f else .72f) - clear * .45f, .30f + clash * .45f).coerceAtMost(.9f))
     val hi = Color.White
     if (solidGlass() || lite()) return this.shadow(if (lite()) 0.dp else elevation, shape).clip(shape).background(t.card)
     // on-screen position: the same in the app's window and in a dialog's own window, so dialogs line up with the wallpaper too
@@ -150,14 +204,22 @@ private fun lensEffect(w: Float, h: Float, radius: Float, blurPx: Float): Render
         .drawWithCache {
             val layer = obtainGraphicsLayer()
             val r = corner.toPx()
-            layer.renderEffect = lensEffect(size.width, size.height, r, (6.dp + (AppPrefs.wallBlur / 4).dp).toPx())
+            // no live blur: the wallpaper copy, the glow and the popup's snapshot are all soft already, and a blur over a whole
+            // card every frame is what costs the most while scrolling — only Android 12 (no lens shader) still blurs a little
+            layer.renderEffect = lensEffect(size.width, size.height, r, if (android.os.Build.VERSION.SDK_INT < 33) 4.dp.toPx() else 0f)
             val outline = shape.createOutline(size, layoutDirection, this)
             val sheen = Brush.linearGradient(listOf(hi.copy(alpha = if (t.dark) .10f else .30f), Color.Transparent), Offset.Zero, Offset(size.width * .35f, size.height * .38f))
             val rim = Brush.sweepGradient(0f to hi.copy(alpha = .06f), .12f to hi.copy(alpha = .03f), .35f to hi.copy(alpha = .30f), .5f to hi.copy(alpha = .06f),
                 .62f to hi.copy(alpha = .75f), .7f to hi.copy(alpha = .75f), .85f to hi.copy(alpha = .06f), 1f to hi.copy(alpha = .06f), center = Offset(size.width / 2, size.height / 2))
             val stroke = Stroke(0.7.dp.toPx())
             onDrawBehind {
-                layer.record { drawBackdrop(t, origin, win, wall) }
+                val shot = if (inDialog) Behind.shot else null
+                layer.record {
+                    if (shot != null) {                      // the page behind this popup, as the popup window dims it
+                        drawImage(shot, dstOffset = IntOffset(-origin.x.toInt(), -origin.y.toInt()), dstSize = IntSize(shot.width * 4, shot.height * 4), filterQuality = FilterQuality.Low)
+                        drawRect(Color.Black.copy(alpha = .30f))
+                    } else drawBackdrop(t, origin, win, wall)
+                }
                 drawLayer(layer)
                 drawRect(tint)
                 drawRect(sheen)
