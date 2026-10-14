@@ -63,7 +63,11 @@ def detect():
             "docker": bool(shutil.which("docker")), "missing_tools": miss,
             "firewall": "ufw" if sh("ufw", "status")[1].startswith("Status: active") else "firewalld" if sh("firewall-cmd", "--state")[1] == "running" else "",
             "ssh_user": cfg.get("ssh_user") or os.environ.get("SUDO_USER", ""), "discord": bool(ac.get("discord_webhook")),
-            "near": tzl["name"] if tzl else "", "remote_url": cfg.get("remote_url", "")}
+            "near": tzl["name"] if tzl else "", "remote_url": cfg.get("remote_url", ""), "checks": _checks()}
+
+def _checks():
+    try: import preflight; return [c for c in preflight.checks() if c["level"] != "ok" or c["fix"]]
+    except Exception: return []
 
 def run_setup(answers):
     STATE.update(running=True, lines=[], done=False, rc=None)
@@ -168,6 +172,7 @@ const STEPS = [
   () => `<h2>Welcome</h2><p class="lead">This sets up Nova on <b>${esc(D.hostname)}</b>${D.os ? ` (${esc(D.os)})` : ""}. Five short steps — the suggestions are filled in, and you can change anything later.</p>
     <div class="card"><dl class="kv"><dt>Package manager</dt><dd>${esc(D.pm || "not found")}</dd><dt>Docker</dt><dd>${D.docker ? "installed" : "not installed"}</dd>
     <dt>Tailscale</dt><dd>${D.tailscale_ip ? "running (" + esc(D.tailscale_ip) + ")" : D.tailscale ? "installed" : "not installed"}</dd><dt>Firewall</dt><dd>${esc(D.firewall || "none active")}</dd></dl></div>
+    ${(D.checks || []).length ? `<div class="card">${D.checks.map(c => `<p style="margin:0 0 10px"><b class="${c.level === "ok" ? "ok" : "warn"}">${c.level === "stop" ? "✗" : c.level === "warn" ? "!" : "✓"} ${esc(c.title)}</b>${c.detail ? `<br><span class="hint">${esc(c.detail)}</span>` : ""}${c.fix ? `<br><span class="hint">→ ${esc(c.fix)}</span>` : ""}</p>`).join("")}</div>` : ""}
     ${D.configured ? `<p class="hint warn">Nova is already set up here. Going through it again keeps what you don't change.</p>` : ""}`,
   () => `<h2>Network</h2><p class="lead">How phones and browsers at home find this server. Only devices on your home network can pair.</p>
     <div class="card">${field("lan_host", "This server's address at home", "Phones open Nova at https://this-address:8495", D.lan_host)}${field("lan_subnet", "Your home network", "Like 192.168.1.0/24", D.lan_subnet)}</div>`,
@@ -196,7 +201,8 @@ function paint() {
     <div class="row">${step ? `<button class="back" id="back">Back</button>` : "<span></span>"}<button class="go" id="next">${last ? "Set up Nova" : step ? "Next" : "Start"}</button></div>`;
   document.querySelectorAll("[data-k]").forEach(el => el.addEventListener(el.type === "checkbox" ? "change" : "input", () => A[el.dataset.k] = el.type === "checkbox" ? el.checked : el.value.trim()));
   $("#back")?.addEventListener("click", () => { step--; paint(); });
-  $("#next").addEventListener("click", () => { if (step === 1 && !/^\d+\.\d+\.\d+\.\d+$/.test(A.lan_host || "")) return alert("That address doesn't look right — like 192.168.1.20"); last ? run() : (step++, paint()); });
+  $("#next").addEventListener("click", () => { if (step === 0 && (D.checks || []).some(c => c.level === "stop")) return alert("Fix the problem marked ✗ first, then reload this page.");
+    if (step === 1 && !/^\d+\.\d+\.\d+\.\d+$/.test(A.lan_host || "")) return alert("That address doesn't look right — like 192.168.1.20"); last ? run() : (step++, paint()); });
   scrollTo(0, 0);
 }
 async function run() {

@@ -7,6 +7,7 @@ defaults, and pressing Enter keeps them.
     sudo nova-setup --yes      accept every detected default (unattended installs)
     sudo nova-setup --gui      the same in a browser (on this computer or another one at home)
     sudo nova-setup --answers FILE --yes    answers from a JSON file (what the browser setup uses)
+    sudo nova-setup --check    only check this machine (ports, systemd, clock, network) and print what's wrong
 """
 import getpass, glob, ipaddress, json, os, re, shutil, subprocess, sys
 
@@ -255,6 +256,10 @@ def s_start(cfg, st):
     sh("systemctl", "enable", "nova-api.service"); sh("systemctl", "restart", "nova-api.service")
     if sh("systemctl", "is-active", "nova-api.service")[0] != 0: sys.exit(f"  {R}Nova didn't start — see: journalctl -u nova-api -n 50{X}")
     ok("Nova is running")
+    try:
+        import preflight, time; time.sleep(1.5)
+        if not preflight.reachable(host): warn(f"Nova is running, but {host}:8495 doesn't answer — check the firewall and that {host} is this server's address")
+    except Exception: pass
     print(f"\n  {B}All set.{X}")
     print(f"    App      pair with {B}sudo nova add{X} and scan the code with the Nova app (on your home Wi-Fi)")
     print(f"    Browser  https://{host}:8495/")
@@ -270,11 +275,22 @@ def main():
     if "--gui" in sys.argv:                               # the same setup in a browser (nova-setup-gui)
         g = shutil.which("nova-setup-gui") or os.path.join(os.path.dirname(os.path.realpath(__file__)), "nova-setup-gui")
         os.execv(sys.executable, [sys.executable, g])
+    if "--check" in sys.argv: import preflight; print(json.dumps(preflight.checks(), indent=1)); return
     cfg = {}
     try: cfg = json.load(open(CONF))
     except Exception: pass
     st = {}
     print(f"\n{B}Nova setup{X}")
+    # before anything changes: what would make Nova fail later (a taken port, no systemd, a wrong clock…)
+    try:
+        import preflight; found = [c for c in preflight.checks() if c["level"] != "ok" or c["fix"]]
+    except Exception: found = []
+    for c in found:
+        (warn if c["level"] != "stop" else lambda m: print(f"  {R}✗{X} {m}"))(c["title"])
+        if c["detail"]: info(c["detail"])
+        if c["fix"]: info(f"→ {c['fix']}")
+    if any(c["level"] == "stop" for c in found) and "--force" not in sys.argv:
+        sys.exit(f"\n  {R}Fix the problem above, then run setup again{X} {D}(or add --force to go ahead anyway){X}")
     if cfg.get("lan_host") and not YES and not ANSWERS:
         # Already set up: change one part without walking through the rest
         print(f"  {D}Nova is set up. What would you like to change?{X}\n")

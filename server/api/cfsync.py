@@ -119,6 +119,18 @@ def access_app(acct):
             return a
     raise ValueError(f"couldn't find the Cloudflare Access application that protects {nova}")
 
+def _edit_login(acct, host, add):
+    """Add or take one address on Nova's shared login (the Access application), checking afterwards that it took and
+    retrying — another Nova server on the same account may be changing the same application at that moment."""
+    for _ in range(3):
+        a = access_app(acct); doms = _domains(a)
+        if (host in doms) == add: return
+        if not add and len(doms) <= 1: return                                    # never empty the login Nova itself sits behind
+        call("PUT", f"/accounts/{acct}/access/apps/{a['id']}", _access_body(a, doms + [host] if add else [d for d in doms if d != host]))
+        if (host in _domains(access_app(acct))) == add: return
+        __import__("time").sleep(1.5)
+    raise ValueError("Cloudflare's login settings kept changing underneath (another server editing at the same time?) — try again in a moment")
+
 def _domains(a):
     return [d.get("uri") for d in a.get("destinations") or [] if isinstance(d, dict) and d.get("uri")] or list(a.get("self_hosted_domains") or [a.get("domain")])
 
@@ -189,11 +201,13 @@ def plan(host, service, no_tls_verify=False):
         protected = host in _domains(a)
         c = {"route": bool(route), "route_service": (route or {}).get("service"), "dns": bool(dns), "dns_to_tunnel": to_tunnel,
              "protected": protected, "nova_added": host in ledger()}
-        why = ("Nova already put it on your tunnel" if c["nova_added"] else
+        other = _other_nova(dns); c["other_nova"] = other
+        why = (f"Nova on another server ({other}) already uses it — pick a different name for this one" if other else
+               "Nova already put it on your tunnel" if c["nova_added"] else
                f"it's already on your tunnel (→ {c['route_service']}){' and behind the login' if protected else ', open to anyone — no login'}" if route else
                "it already has a DNS record (something else uses that name)")
         return {"host": host, "service": service, "zone": zname, "access_app": a.get("name"), "conflict": c, "why": why,
-                "can_protect": bool(route) and to_tunnel and not protected and not c["nova_added"],
+                "can_protect": bool(route) and to_tunnel and not protected and not c["nova_added"] and not other,
                 "suggest": _free_name(host, ingress, zid)}
     return {"host": host, "service": service, "zone": zname, "access_app": a.get("name"),
             "steps": [f"Protect {host} with “{a.get('name')}” — the same Cloudflare login as Nova",
@@ -212,6 +226,40 @@ def _access_body(a, doms):
     body.update(domain=doms[0], destinations=[{"type": "public", "uri": d} for d in doms], type=a.get("type", "self_hosted"))
     body["policies"] = [{"id": x["id"], "precedence": x.get("precedence", i + 1)} for i, x in enumerate(a.get("policies") or []) if x.get("id")]
     return body
+
+def _edit_ingress(acct, tun, change, check):
+    """Change the tunnel's rules safely when several Nova servers share one Cloudflare account: read, change, write,
+    then read again — if another server wrote at the same moment and our change (or theirs) got lost, do it again."""
+    for _ in range(3):
+        cur = (call("GET", f"/accounts/{acct}/cfd_tunnel/{tun}/configurations") or {}).get("config") or {}
+        new = change(list(cur.get("ingress") or []))
+        if new is None: return
+        call("PUT", f"/accounts/{acct}/cfd_tunnel/{tun}/configurations", {"config": {**cur, "ingress": new}})
+        after = (call("GET", f"/accounts/{acct}/cfd_tunnel/{tun}/configurations") or {}).get("config") or {}
+        if check(after.get("ingress") or []): return
+        __import__("time").sleep(1.5)
+    raise ValueError("the tunnel's settings kept changing underneath (another server editing at the same time?) — try again in a moment")
+
+def _tunnel_machines(acct, tun):
+    """How many different machines run this tunnel. A tunnel shared by two servers sends each visit to either one,
+    so an app at localhost would sometimes be the other server's — Nova refuses to publish on such a tunnel."""
+    try: cs = call("GET", f"/accounts/{acct}/cfd_tunnel/{tun}/connections") or []
+    except ValueError: return 1
+    groups = []                                     # one group per machine: cloudflared clients that share an address are the same machine
+    for cl in cs:
+        ips = {c.get("origin_ip") for c in (cl.get("conns") or []) if c.get("origin_ip")}
+        if not ips: continue
+        hit = [g for g in groups if g & ips]
+        for g in hit: groups.remove(g); ips |= g
+        groups.append(ips)
+    return max(1, len(groups))
+
+def _other_nova(dns):
+    """If another Nova server added this DNS record: its name."""
+    for r in dns or []:
+        c = r.get("comment") or ""
+        if c.startswith("Added by Nova · ") and not _ours(c): return c.split(" · ")[1] if c.count(" · ") >= 2 else "another server"
+    return None
 
 def _with_rule(ingress, rule):
     """The tunnel's rules with one more, just before the final catch-all — every other rule (and its order) kept."""
@@ -268,8 +316,7 @@ def _protect(acct, host, rec, mode, guests, session):
     if mode == "me" and rec.get("app_token"):          # only you, plus the app's own key: its own login, with no guests
         rec["app_id"], rec["policy_id"] = _own_app(acct, host, [], session or rec.get("session"), extra=tok)
     elif mode == "me":
-        a = access_app(acct); doms = _domains(a)
-        if host not in doms: call("PUT", f"/accounts/{acct}/access/apps/{a['id']}", _access_body(a, doms + [host])); rec["access"] = True
+        _edit_login(acct, host, add=True); rec["access"] = True
     elif mode == "guests":
         rec["app_id"], rec["policy_id"] = _own_app(acct, host, guests, session, extra=tok)
         rec["guests"], rec["session"] = guests, session
@@ -287,8 +334,7 @@ def _unprotect(acct, host, rec):
         except ValueError: pass                                        # an orphaned, empty guest list is harmless
         rec.pop("policy_id", None)
     if rec.get("access"):
-        a = access_app(acct); doms = _domains(a)
-        if host in doms and len(doms) > 1: call("PUT", f"/accounts/{acct}/access/apps/{a['id']}", _access_body(a, [d for d in doms if d != host]))
+        _edit_login(acct, host, add=False)
         rec["access"] = False
 
 def apply(host, service, no_tls_verify=False, mode="me", guests=None, session="24h", allow_public=False, kind=None, for_host=None):
@@ -298,6 +344,8 @@ def apply(host, service, no_tls_verify=False, mode="me", guests=None, session="2
     p = plan(host, service, no_tls_verify); host = p["host"]
     if p.get("conflict"): raise ValueError(f"{host} is in use: {p['why']}")
     acct, tun = tunnel(); zid, _ = zone_for(host)
+    if _tunnel_machines(acct, tun) > 1:
+        raise ValueError("this Cloudflare tunnel runs on more than one machine, so visits would land on either one — give each server its own tunnel (Zero Trust → Networks → Tunnels → Create), then paste its token here")
     rec = {"service": service, "zone": zid, "added": int(__import__("time").time()), "access": False, "dns_id": None, "route": False, "mode": mode}
     if kind: rec.update(kind=kind, for_host=for_host)
     try:
@@ -308,9 +356,8 @@ def apply(host, service, no_tls_verify=False, mode="me", guests=None, session="2
                                                        "comment": _tag()})
         rec["dns_id"] = (r or {}).get("id")
         # 3. route (read-modify-write: every existing rule stays, in order; the catch-all stays last)
-        cur = (call("GET", f"/accounts/{acct}/cfd_tunnel/{tun}/configurations") or {}).get("config") or {}
         rule = {"hostname": host, "service": service, **({"originRequest": {"noTLSVerify": True}} if no_tls_verify else {})}
-        call("PUT", f"/accounts/{acct}/cfd_tunnel/{tun}/configurations", {"config": {**cur, "ingress": _with_rule(cur.get("ingress"), rule)}}); rec["route"] = True
+        _edit_ingress(acct, tun, lambda ing: _with_rule(ing, rule), lambda ing: any(r.get("hostname") == host for r in ing)); rec["route"] = True
     except ValueError as e:
         # halfway: take back what this attempt added (route, name, then protection), so nothing is left behind
         try: _undo(host, rec, acct, tun)
@@ -322,14 +369,13 @@ def apply(host, service, no_tls_verify=False, mode="me", guests=None, session="2
 def _route_off(acct, tun, host):
     cur = (call("GET", f"/accounts/{acct}/cfd_tunnel/{tun}/configurations") or {}).get("config") or {}
     rule = next((r for r in cur.get("ingress") or [] if r.get("hostname") == host), None)
-    if rule: call("PUT", f"/accounts/{acct}/cfd_tunnel/{tun}/configurations", {"config": {**cur, "ingress": [r for r in cur["ingress"] if r.get("hostname") != host]}})
+    if rule: _edit_ingress(acct, tun, lambda ing: [r for r in ing if r.get("hostname") != host], lambda ing: not any(r.get("hostname") == host for r in ing))
     return rule
 
 def _route_on(acct, tun, rule):
     if not rule: return
-    cur = (call("GET", f"/accounts/{acct}/cfd_tunnel/{tun}/configurations") or {}).get("config") or {}
-    if any(r.get("hostname") == rule["hostname"] for r in cur.get("ingress") or []): return
-    call("PUT", f"/accounts/{acct}/cfd_tunnel/{tun}/configurations", {"config": {**cur, "ingress": _with_rule(cur.get("ingress"), rule)}})
+    _edit_ingress(acct, tun, lambda ing: None if any(r.get("hostname") == rule["hostname"] for r in ing) else _with_rule(ing, rule),
+                  lambda ing: any(r.get("hostname") == rule["hostname"] for r in ing))
 
 def _existing_open(host, acct, tun):
     """Your own address on this tunnel, open to anyone (not Nova's): a record Nova can start from."""
@@ -397,9 +443,8 @@ def share(share_host, service, for_host):
 def _undo(host, rec, acct, tun):
     """Remove exactly the parts recorded in `rec`, in the safe order (route, name, then protection)."""
     if rec.get("route"):
-        cur = (call("GET", f"/accounts/{acct}/cfd_tunnel/{tun}/configurations") or {}).get("config") or {}
-        if any(r.get("hostname") == host for r in cur.get("ingress") or []):
-            call("PUT", f"/accounts/{acct}/cfd_tunnel/{tun}/configurations", {"config": {**cur, "ingress": [r for r in cur["ingress"] if r.get("hostname") != host]}})
+        _edit_ingress(acct, tun, lambda ing: [r for r in ing if r.get("hostname") != host] if any(r.get("hostname") == host for r in ing) else None,
+                      lambda ing: not any(r.get("hostname") == host for r in ing))
     zid = rec.get("zone")
     if rec.get("dns_id") and zid:
         try: r = call("GET", f"/zones/{zid}/dns_records/{rec['dns_id']}")
