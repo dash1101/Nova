@@ -1,5 +1,6 @@
 package app.novalabs.nova
 
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.verticalScroll
@@ -80,7 +81,8 @@ private fun lastText(j: JSONObject): Pair<String, String> {
                 Row1("Back up now", "Runs your script (it also runs nightly)", false, Icons.Rounded.PlayArrow, N.green, enabled = app.isAdmin,
                     onClick = { app.act("Backup started") { app.api.post("/api/v1/actions/backup") } })
             }
-            Note("This one is a script on the server (${legacy.optString("script")}), so Nova shows it but doesn't edit it. Backups you add below run alongside it.", 13.sp, 4.dp)
+            if (app.isAdmin) Group { Row1("Edit the script", "Change what it copies and where — saving needs your fingerprint", false, Icons.Rounded.Edit, N.blue, onClick = { app.go(Route.BackupScript) }) }
+            Note("This one is a script on the server (${legacy.optString("script")}). Nova checks your changes before saving and keeps the old version next to it. Backups you add below run alongside it.", 13.sp, 4.dp)
         }
         SectionLabel(if (legacy != null) "Nova backups" else "Your backups")
         Group {
@@ -163,6 +165,9 @@ private fun lastText(j: JSONObject): Pair<String, String> {
     var sched by remember { mutableIntStateOf(0) }                       // 0 daily, 1 every N h, 2 manual
     var hour by remember { mutableIntStateOf(3) }; var minute by remember { mutableIntStateOf(30) }
     var days by remember { mutableStateOf((0..6).toSet()) }
+    var defaulted by remember { mutableStateOf(false) }
+    LaunchedEffect(sug) { if (r.id == null && r.sources.isEmpty() && !defaulted && sug != null) { defaulted = true
+        sources = sources + sug!!.optJSONArray("sources").objs().filter { it.optBoolean("default") }.map { it.optString("path") } } }
     var every by remember { mutableIntStateOf(6) }
     var daily by remember { mutableFloatStateOf(14f) }; var weekly by remember { mutableFloatStateOf(8f) }; var monthly by remember { mutableFloatStateOf(12f) }
     var name by remember { mutableStateOf("") }
@@ -426,6 +431,39 @@ fun kotlinx.coroutines.CoroutineScope.launchCatching(onError: (String) -> Unit, 
                         Text(d, color = N.text, fontSize = 16.sp, maxLines = 1, modifier = Modifier.weight(1f))
                         androidx.compose.material3.Icon(Icons.Rounded.ChevronRight, null, tint = N.sub)
                     }
+                }
+            }
+        }
+    }
+}
+
+
+/** Your own nova-backup script, as text. It runs as root, so saving goes through your fingerprint, and the server
+ *  checks it with bash first and keeps the old version next to it. */
+@Composable fun BackupScriptScreen(app: AppState) {
+    var d by remember { mutableStateOf<JSONObject?>(null) }; var err by remember { mutableStateOf<String?>(null) }
+    var text by remember { mutableStateOf("") }; var saving by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { runCatching { app.api.get("/api/v1/backups/legacy/script") }.onSuccess { d = it; text = it.optString("text") }.onFailure { err = it.message } }
+    Page("Backup script", app::back) {
+        val dd = d
+        if (err != null) Group { Row1("Couldn't open the script", err, false, Icons.Rounded.Error, N.red) }
+        else if (dd == null) Group { Row1("Opening…", enabled = false) }
+        else {
+            Note("${dd.optString("path")} · runs as root, so a mistake here can break your backups. Nova checks it with bash before saving and keeps the old version as nova-backup.nova-prev.", 13.sp, 4.dp)
+            androidx.compose.foundation.text.BasicTextField(text, { text = it },
+                textStyle = androidx.compose.ui.text.TextStyle(color = N.text, fontSize = 12.sp, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace, lineHeight = 17.sp),
+                cursorBrush = androidx.compose.ui.graphics.SolidColor(N.blue),
+                modifier = Modifier.padding(horizontal = Space.gutter).fillMaxWidth().heightIn(min = 360.dp)
+                    .background(N.card, RoundedCornerShape(cardRadius(20.dp))).padding(14.dp)
+                    .then(Modifier.horizontalScroll(androidx.compose.foundation.rememberScrollState())))
+            Row(Modifier.padding(horizontal = Space.gutter, vertical = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                PillButton("Cancel", color = N.sub) { app.back() }
+                Spacer(Modifier.weight(1f))
+                PillButton(if (saving) "Saving…" else "Save", enabled = !saving) {
+                    if (text == dd.optString("text")) { app.toast("No changes"); return@PillButton }
+                    saving = true
+                    app.act { try { app.stepUp("Change your backup script", "POST", "/api/v1/backups/legacy/script", JSONObject().put("text", text).put("mtime", dd.optLong("mtime")))
+                        app.toast("Saved — the old version is kept as nova-backup.nova-prev"); app.back() } finally { saving = false } }
                 }
             }
         }

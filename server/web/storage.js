@@ -284,8 +284,9 @@ export async function backups(ctx) {
     const bl = S.cache["/api/v1/backups"], jobs = bl?.jobs || [], legacy = bl?.legacy, ls = S.cache["/api/v1/backup"];
     ctx.show(`<div style="display:flex;align-items:center;gap:8px;margin:4px 22px"><p class="muted" style="flex:1;margin:0">Copies of your folders on another drive or a NAS, made on a schedule.</p>${helpBtn("backup")}</div>
       ${legacy ? sec("Your backup script") + group(row("nova-backup", { sub: `${ls?.running ? "Running now…" : `Last run ${ls?.time || "—"}`} · ${(legacy.sets || []).map(s => s.name).join(", ")} → ${legacy.dest}`, blue: !!ls?.running, icon: "article" })
-          + row("Back up now", { sub: "Runs your script (it also runs nightly)", icon: "play", tint: "var(--green)", click: isAdmin() ? "legacy" : "" }))
-        + note(`This one is a script on the server (${legacy.script}), so Nova shows it but doesn't edit it. Backups you add below run alongside it.`) : ""}
+          + row("Back up now", { sub: "Runs your script (it also runs nightly)", icon: "play", tint: "var(--green)", click: isAdmin() ? "legacy" : "" })
+        + (isAdmin() ? row("Edit the script", { sub: "Change what it copies and where — saving needs your fingerprint", icon: "edit", click: "go:backup-script" }) : ""))
+        + note(`This one is a script on the server (${legacy.script}). Nova checks your changes before saving and keeps the old version next to it. Backups you add below run alongside it.`) : ""}
       ${sec(legacy ? "Nova backups" : "Your backups")}${group(!bl ? row("Loading…", { dis: true }) : jobs.length ? jobs.map((j, i) => { const [t, lv] = lastText(j);
           return row(j.name, { sub: `${j.running ? "Running now…" : t} · ${schedText(j.schedule)} → ${destText(j.dest)}`, blue: j.running, icon: "backup", tint: j.enabled === false ? "var(--sub)" : lvColor(lv), click: `go:backup/${j.id}` }); }).join("")
         : row("Set up your first backup", { sub: "Pick what to protect and where to keep the copies — a drive or a NAS", blue: true, icon: "addc", tint: "var(--green)", click: "new" }))}`,
@@ -293,6 +294,26 @@ export async function backups(ctx) {
   };
   ctx.handlers({ new: () => isAdmin() ? ctx.go("backup-edit/new") : viewOnly(), legacy: async () => { try { await post("/api/v1/actions/backup"); toast("Backup started"); } catch (e) { toast(e.message); } } });
   draw(); ctx.every(5000, async () => { await Promise.all([get("/api/v1/backups"), get("/api/v1/backup").catch(() => {})]); draw(); }, true);
+}
+export async function backupScript(ctx) {
+  let d = null, err = null, dirty = false;
+  const draw = () => {
+    ctx.show(err ? group(row("Couldn't open the script", { sub: err, icon: "err", tint: "var(--red)" })) : !d ? group(row("Opening…", { dis: true }))
+      : note(`${d.path} · runs as root, so a mistake here can break your backups. Nova checks it with bash before saving and keeps the old version as nova-backup.nova-prev.`)
+        + `<div style="padding:0 var(--gutter)"><textarea class="editor field" id="scr" spellcheck="false" autocomplete="off" style="width:100%;min-height:60vh;font:13px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre;resize:vertical;padding:14px">${esc(d.text)}</textarea></div>`
+        + `<div style="display:flex;gap:12px;padding:18px 22px"><button class="btn" style="flex:1;background:color-mix(in srgb,var(--text) 8%,transparent);color:var(--text)" data-act="back">Cancel</button><button class="btn" style="flex:1" data-act="save">Save</button></div>`,
+      { title: "Backup script" });
+    const t = $("#scr"); if (t) { t.oninput = () => { dirty = true; }; t.onkeydown = e => { if (e.key === "Tab") { e.preventDefault(); t.setRangeText("    ", t.selectionStart, t.selectionEnd, "end"); dirty = true; } }; }
+  };
+  ctx.handlers({
+    save: async () => { const text = $("#scr").value;
+      if (!dirty) return toast("No changes");
+      try { const r = await post("/api/v1/backups/legacy/script", { text, mtime: d.mtime }); d = { ...d, text, mtime: r.mtime }; dirty = false; toast("Saved — the old version is kept as nova-backup.nova-prev"); ctx.back(); }
+      catch (e) { toast(e.message); } },
+  });
+  draw();
+  try { d = await get("/api/v1/backups/legacy/script"); } catch (e) { err = e.message; }
+  if (ctx.alive()) draw();
 }
 export async function backup(ctx) {
   const id = ctx.args[0];
@@ -326,6 +347,7 @@ export async function backupEdit(ctx) {
   const field = (id, val, ph, type = "text") => `<input class="field" id="${id}" type="${type}" placeholder="${esc(ph)}" value="${esc(val)}" autocomplete="off">`;
   const draw = () => {
     const sug = S.cache["/api/v1/backups/suggest"], srcs = sug?.sources || [], dests = sug?.destinations || [];
+    if (isNew && sug && !v.defaulted) { v.defaulted = true; if (!srcArg) srcs.filter(s => s.default).forEach(s => v.sources.add(s.path)); }
     if (!v.loaded) { const j = S.cache["/api/v1/backups"]?.jobs?.find(x => x.id === idArg);
       if (j) { Object.assign(v, { loaded: true, sources: new Set(j.sources), name: j.name, destType: j.dest.type, destPath: j.dest.path || "", host: j.dest.host || "", share: j.dest.share || "", subdir: j.dest.subdir || "", user: j.dest.user || "",
           sched: j.schedule.manual ? 2 : j.schedule.every_hours ? 1 : 0, every: j.schedule.every_hours || 6, time: j.schedule.time || "03:30", days: new Set(j.schedule.days || [0, 1, 2, 3, 4, 5, 6]),

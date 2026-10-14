@@ -568,6 +568,7 @@ def describe_action(a):
     if p == ["updates", "packages"]: return "Update system packages"
     if p == ["notify", "discord"]: return "Change where Discord alerts go"
     if p == ["updates", "containers"]: return "Update containers"
+    if p == ["backups", "legacy", "script"]: return "Change your backup script (it runs as root)"
     if p[:1] == ["backups"] and p[-1:] == ["restore"]: return f"Restore {a.get('data', {}).get('path', 'files')} from a backup"
     return f"{a['method']} {a['path']}"
 
@@ -654,6 +655,7 @@ def needs_stepup(method, parts):
     if parts == ["labs", "images", "clean"]: return True                    # deletes images: fingerprint
     if parts == ["notify", "discord"]: return True                         # where alerts get sent: fingerprint
     if parts[:1] == ["backups"] and len(parts) == 3 and parts[2] == "restore": return True
+    if parts == ["backups", "legacy", "script"]: return True                 # the script runs as root: fingerprint
     return False
 
 # ── Cloudflare Access JWT (remote requests) ─────────────────────────────────────
@@ -1817,7 +1819,14 @@ class Handler(BaseHTTPRequestHandler):
             rc, res = helper("backup-suggest", timeout=90); return (200 if rc == 0 else 502), res
         if method == "POST" and parts == ["backups", "test"]:
             rc, res = helper("backup-test", json.dumps(data)[:8000], timeout=120); return (200 if rc == 0 else 400), res
-        if len(parts) >= 2 and parts[0] == "backups" and re.fullmatch(r"[a-z0-9]{1,12}", parts[1]):
+        if parts == ["backups", "legacy", "script"]:                 # your own nova-backup script: read it, or change it (fingerprint)
+            if role_of(dev) != "admin" or dev.get("type") == "watch": return 403, {"error": "admins only"}
+            if method == "GET": rc, res = helper("legacy-script-read"); return (200 if rc == 0 else 400), res
+            if method == "POST":
+                text = str(data.get("text", ""))
+                if len(text.encode()) > 60000: raise ValueError("that script is too long to edit here")
+                rc, res = helper("legacy-script-write", base64.b64encode(text.encode()).decode(), str(int(data.get("mtime") or 0))); return (200 if rc == 0 else 400), res
+        if len(parts) >= 2 and parts[0] == "backups" and re.fullmatch(r"[a-z0-9]{1,12}", parts[1]) and parts[1] != "legacy":
             jid = parts[1]
             if method == "DELETE" and len(parts) == 2:
                 rc, res = helper("backup-delete", jid); return (200 if rc == 0 else 400), res

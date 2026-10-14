@@ -8,7 +8,7 @@ must exist and be compose-managed, store items / programs must be in the server-
 drives are addressed by serial and protected mounts refuse). No shell, no caller-supplied paths
 or commands. Output is one JSON object on stdout.
 """
-import glob, json, os, re, secrets, shutil, socket, string, subprocess, sys, time
+import base64, glob, json, os, re, secrets, shutil, socket, string, subprocess, sys, time
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 import safeio  # noqa: E402  (writes into nova-api's folders without following symlinks)
 
@@ -884,6 +884,40 @@ if verb == "task-stop" and len(args) == 1 and re.fullmatch(r"[0-9a-f]{12}", args
 if verb == "backups-list" and not args:
     import backups, storage
     _guard(lambda: {"jobs": backups.overview(), "legacy": storage.legacy_backup()})
+
+LEGACY_SCRIPT = "/usr/local/bin/nova-backup"
+if verb == "legacy-script-read" and not args:
+    def go():
+        if not os.path.isfile(LEGACY_SCRIPT): raise ValueError("there's no backup script on this server")
+        raw = open(LEGACY_SCRIPT, "rb").read()
+        if len(raw) > 60000: raise ValueError("that script is too long to edit here")
+        return {"path": LEGACY_SCRIPT, "text": raw.decode("utf-8", "replace"), "mtime": int(os.path.getmtime(LEGACY_SCRIPT)),
+                "previous": os.path.exists(LEGACY_SCRIPT + ".nova-prev")}
+    _guard(go)
+
+if verb == "legacy-script-write" and len(args) == 2 and args[1].isdigit():
+    # Safeguards: only this one file, only if it didn't change since it was opened, only if bash can parse it;
+    # the old version is kept next to it (nova-backup.nova-prev) so a bad edit is one copy away from undone.
+    def go():
+        if not os.path.isfile(LEGACY_SCRIPT) or os.path.islink(LEGACY_SCRIPT): raise ValueError("there's no backup script on this server")
+        try: text = base64.b64decode(args[0], validate=True)
+        except ValueError: raise ValueError("bad request")
+        if len(text) > 60000: raise ValueError("that script is too long to edit here")
+        if b"\0" in text: raise ValueError("that isn't a text file")
+        if int(args[1]) and int(os.path.getmtime(LEGACY_SCRIPT)) != int(args[1]): raise ValueError("the script changed on the server since you opened it — reopen it to see the new version")
+        if not text.startswith(b"#!"): raise ValueError("keep the first line (#!/bin/bash) — it says how to run the script")
+        tmp = LEGACY_SCRIPT + ".nova-tmp"
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o700)
+        with os.fdopen(fd, "wb") as f: f.write(text.replace(b"\r\n", b"\n"))
+        r = subprocess.run(["bash", "-n", tmp], capture_output=True, text=True, timeout=10)
+        if r.returncode != 0:
+            os.remove(tmp); raise ValueError("bash can't read it, so nothing was saved: " + (r.stderr.strip().replace(tmp + ": ", "").splitlines() or ["syntax error"])[0][:200])
+        st = os.stat(LEGACY_SCRIPT); os.chmod(tmp, st.st_mode & 0o7777); os.chown(tmp, st.st_uid, st.st_gid)
+        shutil.copy2(LEGACY_SCRIPT, LEGACY_SCRIPT + ".nova-prev")
+        os.replace(tmp, LEGACY_SCRIPT)
+        changelog("Backup script /usr/local/bin/nova-backup edited (from the Nova app; old version kept as nova-backup.nova-prev)")
+        return {"ok": True, "mtime": int(os.path.getmtime(LEGACY_SCRIPT))}
+    _guard(go)
 
 if verb == "backup-put" and len(args) == 1:
     import backups

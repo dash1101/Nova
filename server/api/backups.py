@@ -471,9 +471,12 @@ def suggest_sources():
     """Folders worth backing up on this machine, with rough sizes, for the backup wizard."""
     import storage
     out, seen = [], set()
-    def add(path, label, why, size=None):
+    def add(path, label, why, size=None, default=False):
         if path in seen or not os.path.isdir(path): return
-        seen.add(path); out.append({"path": path, "label": label, "why": why, "size": size})
+        seen.add(path); out.append({"path": path, "label": label, "why": why, "size": size, "default": default})
+    # Nova's own settings first, picked by default: paired devices, apps, alerts and Cloudflare setup — small, and a pain to redo
+    add("/etc/nova-api", "Nova's settings", "Cloudflare setup and server settings for Nova", default=True)
+    add("/var/lib/nova-api", "Nova's devices and apps", "Paired phones and browsers, your apps list, alerts and schedules", default=True)
     m = storage.storage_map()
     for p in m["pools"]:
         if p["mount"]: add(p["mount"], f"{p['name']} pool", ", ".join(p["used_by"]) and f"Used by {', '.join(p['used_by'][:3])}" or "All files in the pool", (p.get("usage") or {}).get("used"))
