@@ -182,8 +182,13 @@ def execute(tid):
         summary = (t["log"][-1][9:] if t["log"] else "")[:300]
         t.update(state="done", pct=100, result=res, step="Done")
         if kind not in ANNOUNCES_DONE: notify("info", f"Done: {t['title']}", summary, "task")
-    except ValueError as e:                          # refused by a safety check: the app shows why; no alert
-        t.update(state="failed", error=str(e)[:500], step="Not started", refused=True)
+    except ValueError as e:
+        if isinstance(e, UnicodeError):              # a crash reading a tool's output, not a refusal: it may have done things already
+            t.update(state="failed", error=f"Nova couldn't read the result: {e}"[:500], step="Failed")
+            notify("warning", f"{t['title']} failed", t["error"][:300], "task")
+        else:                                        # refused by a safety check: the app shows why
+            t.update(state="failed", error=str(e)[:500], step="Not started", refused=True)
+            if kind in ("repair", "clone"): notify("info", f"{t['title']}: not started", str(e)[:300], "task")      # so it's in the Inbox too
     except Exception as e:
         t.update(state="failed", error=str(e)[:500], step="Failed")
         if kind not in ANNOUNCES_FAIL: notify("warning", f"{t['title']} failed", str(e)[:300], "task")

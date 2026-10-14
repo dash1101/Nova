@@ -24,7 +24,7 @@ ESSENTIAL = {"nova-server", "systemd", "systemd-sysv", "openssh-server", "sudo",
 
 
 def run(cmd, timeout=600, **kw):
-    try: r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, env=ENV, **kw)
+    try: r = subprocess.run(cmd, capture_output=True, text=True, errors="replace", timeout=timeout, env=ENV, **kw)
     except FileNotFoundError: return 127, "", f"{cmd[0]} isn't installed"     # e.g. no Docker on this server
     return r.returncode, r.stdout, r.stderr
 
@@ -65,7 +65,7 @@ def pull(cwd, log, progress, lo=5, hi=80):
     images = [i for i in so.split() if i] or []
     for n, img in enumerate(images):
         log(f"Downloading {img}…")
-        p = subprocess.Popen(["docker", "pull", img], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=ENV)
+        p = subprocess.Popen(["docker", "pull", img], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="replace", env=ENV)
         layers, done = set(), set()
         base, span = lo + (hi - lo) * n / max(1, len(images)), (hi - lo) / max(1, len(images))
         for line in p.stdout:

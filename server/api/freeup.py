@@ -20,7 +20,7 @@ NOVA_LEFTOVERS = ("/var/lib/nova-api/crashes", "/var/lib/nova-api/apk")
 
 def run(cmd, timeout=120):
     try:
-        r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        r = subprocess.run(cmd, capture_output=True, text=True, errors="replace", timeout=timeout)
         return r.returncode, r.stdout, r.stderr
     except (OSError, subprocess.TimeoutExpired) as e: return 1, "", str(e)
 

@@ -268,9 +268,12 @@ class MainActivity : ComponentActivity() {
         DeviceForm.init(this)
         if (android.os.Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED)
             requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1)
-        val openInbox = intent?.getStringExtra("open") == "inbox"
-        openApprovals = intent?.getStringExtra("open") == "approvals"
-        openUpdate = intent?.getStringExtra("open") == "update"
+        // a notification's "open the Inbox" happens once — not again when the screen is rebuilt (rotation, dark mode, …)
+        val fresh = savedInstanceState == null
+        val openInbox = fresh && intent?.getStringExtra("open") == "inbox"
+        openApprovals = fresh && intent?.getStringExtra("open") == "approvals"
+        openUpdate = fresh && intent?.getStringExtra("open") == "update"
+        intent?.removeExtra("open")
         Alerts.start(this)
         AppPrefs.init(this); applySecureFlag(this)
         setContent { NovaTheme {

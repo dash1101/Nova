@@ -30,7 +30,7 @@ def out(obj, code=0):
 def fail(msg, code=1): out({"ok": False, "error": msg}, code)
 
 def run(cmd, timeout=120, **kw):
-    try: r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, **kw)
+    try: r = subprocess.run(cmd, capture_output=True, text=True, errors="replace", timeout=timeout, **kw)
     except FileNotFoundError: return 127, "", f"{cmd[0]} isn't installed"     # e.g. no Docker on this server
     return r.returncode, r.stdout, r.stderr
 
@@ -909,7 +909,7 @@ if verb == "legacy-script-write" and len(args) == 2 and args[1].isdigit():
         tmp = LEGACY_SCRIPT + ".nova-tmp"
         fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o700)
         with os.fdopen(fd, "wb") as f: f.write(text.replace(b"\r\n", b"\n"))
-        r = subprocess.run(["bash", "-n", tmp], capture_output=True, text=True, timeout=10)
+        r = subprocess.run(["bash", "-n", tmp], capture_output=True, text=True, errors="replace", timeout=10)
         if r.returncode != 0:
             os.remove(tmp); raise ValueError("bash can't read it, so nothing was saved: " + (r.stderr.strip().replace(tmp + ": ", "").splitlines() or ["syntax error"])[0][:200])
         st = os.stat(LEGACY_SCRIPT); os.chmod(tmp, st.st_mode & 0o7777); os.chown(tmp, st.st_uid, st.st_gid)

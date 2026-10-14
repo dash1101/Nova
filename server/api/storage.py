@@ -34,7 +34,7 @@ TOOLS = {"mergerfs": "mergerfs", "mdadm": "mdadm", "mkfs.xfs": "xfsprogs", "mkfs
 
 
 def run(cmd, timeout=600, check=False, **kw):
-    r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, **kw)
+    r = subprocess.run(cmd, capture_output=True, text=True, errors="replace", timeout=timeout, **kw)   # tools like e2fsck can print bytes that aren't UTF-8
     if check and r.returncode != 0:
         raise RuntimeError(f"{os.path.basename(cmd[0])}: {(r.stderr or r.stdout).strip()[-300:]}")
     return r.returncode, r.stdout, r.stderr
@@ -790,7 +790,7 @@ def grow_last(dst, fs_by_n, log):
     """After an exact copy to a bigger drive: move the partition table's backup copy to the real end, then let the
     last partition and its filesystem use the extra space."""
     if have("sgdisk"): run(["sgdisk", "-e", dst["path"]], timeout=60)
-    else: subprocess.run(["parted", "---pretend-input-tty", dst["path"], "print"], input="Fix\n", capture_output=True, text=True, timeout=60)
+    else: subprocess.run(["parted", "---pretend-input-tty", dst["path"], "print"], input="Fix\n", capture_output=True, text=True, errors="replace", timeout=60)
     run(["partprobe", dst["path"]], timeout=60); settle()
     rc, so, _ = run(["lsblk", "-J", "-b", "-o", "NAME,PATH,FSTYPE,TYPE", dst["path"]], timeout=30)
     kids = [c for c in (json.loads(so)["blockdevices"][0].get("children") or []) if c["type"] == "part"] if rc == 0 else []
@@ -833,7 +833,7 @@ def op_clone(spec, log, progress):
             except OSError: pass
             cmd = ["ddrescue", "-f", "-n", src["path"], dst["path"], mapf] if rescue else \
                   ["dd", f"if={src['path']}", f"of={dst['path']}", "bs=16M", "conv=noerror,sync,fsync", "status=progress"]
-            pr = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)   # ddrescue reports on stdout, dd on stderr
+            pr = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="replace", bufsize=1)   # ddrescue reports on stdout, dd on stderr
             buf, t0 = "", time.time()
             for ch in iter(lambda: pr.stdout.read(1), ""):                          # dd/ddrescue redraw with \r
                 if ch in "\r\n":
@@ -898,7 +898,7 @@ def op_clone(spec, log, progress):
                     run(["mount", tp, b], timeout=120, check=True)
                     try:
                         log(f"Copying the files from {p['path']}…")
-                        pr = subprocess.Popen(["rsync", "-aHAX", "--numeric-ids", "--info=progress2", "--no-inc-recursive", a + "/", b + "/"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1)
+                        pr = subprocess.Popen(["rsync", "-aHAX", "--numeric-ids", "--info=progress2", "--no-inc-recursive", a + "/", b + "/"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, errors="replace", bufsize=1)
                         buf = ""
                         for ch in iter(lambda: pr.stdout.read(1), ""):
                             if ch in "\r\n":

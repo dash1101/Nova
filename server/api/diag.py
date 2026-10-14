@@ -16,7 +16,7 @@ UA = {"User-Agent": "nova-diagnostics/1"}
 
 
 def run(cmd, timeout=120, **kw):
-    r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, **kw)
+    r = subprocess.run(cmd, capture_output=True, text=True, errors="replace", timeout=timeout, **kw)
     return r.returncode, r.stdout, r.stderr
 
 
@@ -205,7 +205,7 @@ def _stress(cmd, seconds, log, progress, extra=lambda s: s, sample=None):
     pw = Power(); samples = []; t0 = time.time()
     base = {"temp": cpu_temp(), "mhz": (cpu_mhz() or {}).get("avg"), "watts": None}
     time.sleep(1); base["watts"] = pw.watts()
-    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="replace")
     try:
         while p.poll() is None:
             time.sleep(1)

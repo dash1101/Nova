@@ -47,7 +47,7 @@ def human(n):
         n /= 1000
 
 def run(cmd, timeout=600, **kw):
-    r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, **kw)
+    r = subprocess.run(cmd, capture_output=True, text=True, errors="replace", timeout=timeout, **kw)
     return r.returncode, r.stdout, r.stderr
 
 def notify(level, title, detail=""):
@@ -260,7 +260,7 @@ def rsync_cmd(job, extra):
     return cmd + extra
 
 def run_rsync(cmd, progress, log):
-    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1)
+    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, errors="replace", bufsize=1)
     stats, buf = {}, ""
     while True:
         ch = p.stdout.read(1)
