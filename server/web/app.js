@@ -3,6 +3,8 @@
 import { S, $, $$, esc, sleep, kv, pemOf, get, post, prefs, has, refresh, onApproval, ApiError, webForm, levelColor, cleanTitle, switchServer, savedTarget, loadNodes } from "./core.js";
 import { I, logo, toast, waitApproval, closeSheet, copyCmd } from "./ui.js";
 import * as V from "./views.js";
+import { loadLang, watch } from "./i18n.js";
+import { liquid } from "./glass.js";
 import * as ST from "./storage.js";
 import * as SR from "./start.js";
 import * as SV from "./servers.js";
@@ -32,8 +34,19 @@ function applyTheme() {
   const dark = t === "dark" || (t === "system" && !matchMedia("(prefers-color-scheme: light)").matches);
   // Style: Material You on Android phones that aren't Samsung (or another One UI/iOS-like maker); the Default look elsewhere
   const autoMaterial = /Android/i.test(navigator.userAgent) && !/SamsungBrowser|SM-[A-Z0-9]|Xiaomi|Redmi|POCO|HUAWEI|HONOR|vivo|OPPO|realme/i.test(navigator.userAgent);
-  const material = prefs.style === "material" || (prefs.style !== "default" && autoMaterial);
+  const preset = ["liquid", "fluent", "breeze"].includes(prefs.style) ? prefs.style : "";
+  const material = !preset && (prefs.style === "material" || (prefs.style !== "default" && autoMaterial));
   root.classList.toggle("material", material); root.classList.toggle("m-dark", material && dark); root.classList.toggle("m-light", material && !dark);
+  for (const p of ["liquid", "fluent", "breeze"]) root.classList.toggle(p, preset === p);
+  root.classList.toggle("l-light", !dark);
+  // Reduce transparency: every glass surface solid (also when the system asks for it)
+  const solid = !!prefs.reduceTransparency || matchMedia("(prefers-reduced-transparency: reduce)").matches;
+  root.classList.toggle("solid", solid);
+  // how clear the glass is (Liquid Glass, Fluent) and how round the corners are (the three presets)
+  const clear = Math.max(0, Math.min(100, prefs.glass ?? 60)) / 100;
+  if (preset === "liquid" || preset === "fluent") root.style.setProperty("--ga", String((preset === "liquid" ? .55 : .95) - clear * .45)); else root.style.removeProperty("--ga");
+  root.style.setProperty("--rk", String(Math.max(25, Math.min(150, prefs.round ?? 100)) / 100));
+  liquid(preset === "liquid" && !solid && !root.classList.contains("lite"));
   $('meta[name="theme-color"]')?.setAttribute("content", dark ? "#000000" : "#f4f3f8");
   // Your own colors (Appearance → Colors): an accent for this device, how strongly it tints, and a wallpaper
   root.style.setProperty("--tintk", String(Math.max(0, Math.min(100, prefs.tint ?? 50)) / 50));
@@ -128,6 +141,14 @@ function ensureShell() {
     <div class="ctlbar frost" id="ctlbar" hidden></div>`;
   addEventListener("scroll", fade, { passive: true });
 }
+/** A redraw makes new spinners: start them where the old ones were, so they keep turning without a jump. */
+function syncSpinners(root) {
+  const now = performance.now();
+  for (const el of root.querySelectorAll(".spinner, .spin, .taskchip svg")) {
+    const d = parseFloat(getComputedStyle(el).animationDuration) * 1000 || 900;
+    el.style.animationDelay = `-${(now % d).toFixed(0)}ms`;
+  }
+}
 /** "Controlling <server>" — always on screen while this web controls another server, with the way back. */
 function drawCtl() {
   const b = $("#ctlbar"); if (!b) return;
@@ -211,6 +232,7 @@ function render(dir = 0) {
       const keepY = scrollY;
       main.innerHTML = `<div class="page${wide ? "" : " narrow"}${V.navTabs().some(t => t.route === r) ? " tabroot" : ""}${window.__filesHop ? "" : first && dir !== 0 && !document.startViewTransition ? ` enter-${dir}` : first ? " enter-0" : ""}"><div class="col">${header}${html}</div></div>`;
       main.dataset.seq = my; ctx.root = main;
+      syncSpinners(main);
       $("#topbar").innerHTML = (o.root || o.noHeader ? "" : `<button class="circle press" data-act="back" aria-label="Back"><span class="bgc frost"></span>${I("back")}</button>`)
         + `<span class="sp"></span>` + (o.actions || []).map(a => `<button class="circle press" data-act="${esc(a.act)}" aria-label="${esc(a.label)}"><span class="bgc frost"></span>${I(a.icon)}</button>`).join("");
       drawNav(r);
@@ -311,6 +333,7 @@ function renderGuideOnly() {   // the setup guide is readable before pairing
 
 // ── start ────────────────────────────────────────────────────────────────────────
 async function start() {
+  await loadLang(prefs.lang); watch();                      // your language (Appearance → Language), or this browser's
   if (!crypto?.subtle) { $("#app").innerHTML = `<div class="pair"><h1>Nova</h1><p class="lead">This page needs a secure connection (https). Open it at <b>https://</b>${esc(location.host)}.</p></div>`; return; }
   const d = await kv("device").catch(() => null);
   if (!d?.id) return pairScreen();

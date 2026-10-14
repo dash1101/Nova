@@ -13,12 +13,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -28,7 +28,7 @@ import androidx.core.graphics.drawable.toBitmap
 /** The app's icon on the home screen: one launcher entry (MainActivity, or one of its aliases) is on at a time. */
 object AppIcon {
     data class Choice(val id: String, val label: String, val cls: String, val res: Int)
-    val all = listOf(
+    val base = listOf(
         Choice("default", "Default", ".MainActivity", R.mipmap.ic_launcher),
         Choice("material", "Material You", ".IconMaterial", R.mipmap.ic_launcher_material),
         Choice("dark", "Dark", ".IconDark", R.mipmap.ic_launcher_dark),
@@ -43,6 +43,29 @@ object AppIcon {
         Choice("red", "Red", ".IconRed", R.mipmap.ic_launcher_red),
         Choice("pink", "Pink", ".IconPink", R.mipmap.ic_launcher_pink),
     )
+    /** Every launcher entry: the ones in the picker, and the tonal ones "Match my accent color" chooses from. */
+    val all = base + TONE_ICONS.map { Choice(it.id, "Your color", it.cls, it.res) }
+
+    /** The shipped icon closest to these colors (Android can't make a new one), by background first, then the symbol. */
+    fun nearest(ctx: Context, bg: Int, fg: Int): String {
+        fun d(a: Int, b: Int): Double { val dr = ((a shr 16) and 255) - ((b shr 16) and 255); val dg = ((a shr 8) and 255) - ((b shr 8) and 255); val db = (a and 255) - (b and 255)
+            return Math.sqrt(2.0 * dr * dr + 4.0 * dg * dg + 3.0 * db * db) }
+        val fixed = listOf("bw" to (0xFFFFFFFF.toInt() to 0xFF000000.toInt()), "wb" to (0xFF000000.toInt() to 0xFFFFFFFF.toInt()))
+        val cand = TONE_ICONS.map { it.id to (it.bg to it.fg) } + fixed
+        return cand.minBy { (_, c) -> d(c.first, bg) * 2 + d(c.second, fg) }.first
+    }
+
+    /** "Match my accent color": the tonal icon in the accent's hue (light or dark like the app), or black & white for a grey. */
+    fun forAccent(accent: Int, dark: Boolean): String {
+        val hsl = FloatArray(3); androidx.core.graphics.ColorUtils.colorToHSL(accent, hsl)
+        if (hsl[1] < .12f) return if (dark) "wb" else "bw"
+        val h = ((Math.round(hsl[0] / 20f) * 20) % 360)
+        return "tone_${if (dark) "d" else "l"}%03d".format(h)
+    }
+    fun matching(ctx: Context) = ctx.getSharedPreferences("nova_icon", Context.MODE_PRIVATE).getBoolean("match", false)
+    fun setMatching(ctx: Context, on: Boolean) = ctx.getSharedPreferences("nova_icon", Context.MODE_PRIVATE).edit().putBoolean("match", on).apply()
+    /** Called when the colors change: switch only if it's a different icon (launchers redraw on every switch). */
+    fun follow(ctx: Context, accent: Int, dark: Boolean) { if (matching(ctx)) forAccent(accent, dark).let { if (it != current(ctx)) set(ctx, it) } }
     private fun comp(ctx: Context, cls: String) = ComponentName(ctx.packageName, ctx.packageName + cls)
 
     /** An intent that opens Nova through whichever launcher entry is on (a disabled MainActivity can't be started by name). */
@@ -77,7 +100,7 @@ object AppIcon {
     SectionLabel("App icon")
     Group {
         Column(Modifier.padding(horizontal = 14.dp, vertical = 14.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            AppIcon.all.chunked(4).forEach { row ->
+            AppIcon.base.chunked(4).forEach { row ->
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     row.forEach { c ->
                         val bmp = remember(c.res) { ctx.getDrawable(c.res)!!.toBitmap(168, 168).asImageBitmap() }
@@ -96,12 +119,19 @@ object AppIcon {
         }
     }
     var custom by remember { mutableStateOf(false) }
+    var match by remember { mutableStateOf(AppIcon.matching(ctx)) }
+    val accent = N.blue; val dark = N.dark
+    Group { SwitchRow("Match my accent color", "The icon takes on your accent color in Material You's tonal style, and changes with it", match) { on ->
+        match = on; AppIcon.setMatching(ctx, on)
+        if (on) { AppIcon.follow(ctx, accent.toArgb(), dark); cur = AppIcon.current(ctx); app.toast("App icon changed") } } }
+    if (match) TONE_ICONS.firstOrNull { it.id == cur }?.let { t ->
+        Note("Now: the ${if (t.mode == "d") "dark" else "light"} tonal icon nearest your accent. Picking an icon above turns this off.", 13.sp, 4.dp) }
     Group { Row1("Your own colors", "Pick the background and the symbol's color — added to your home screen as a Nova icon", true, Icons.Rounded.Palette, onClick = { custom = true }) }
     if (custom) CustomIconDialog(app) { custom = false }
     Note("Material You follows your wallpaper's colors. With themed icons on (Android 13+), every choice turns into your phone's themed style.", 13.sp, 4.dp)
     ask?.let { c -> OneDialog({ ask = null }, "Use the ${c.label} icon?",
         "Your home screen switches to it in a moment. If Nova was on your home screen, you may need to add it there again.",
-        listOf(DialogButton("Cancel") { ask = null }, DialogButton("Change", N.blue) { ask = null; AppIcon.set(ctx, c.id); cur = c.id; app.toast("App icon changed") })) }
+        listOf(DialogButton("Cancel") { ask = null }, DialogButton("Change", N.blue) { ask = null; AppIcon.setMatching(ctx, false); match = false; AppIcon.set(ctx, c.id); cur = c.id; app.toast("App icon changed") })) }
 }
 
 /** Nova's symbol in your colors, as an adaptive icon bitmap (the launcher masks it into its own shape). */
@@ -134,8 +164,11 @@ private val ICON_SWATCHES = listOf(0xFF0A0A0C, 0xFF1C2541, 0xFF0B3D91, 0xFF2F80E
         OneTextField(hex, { v -> hex = v.take(7); Regex("#?([0-9a-fA-F]{6})").matchEntire(v.trim())?.let { pick(0xFF000000.toInt() or it.groupValues[1].toInt(16)) } },
             "#RRGGBB", Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 6.dp), mono = true)
     }
-    OneDialog(onDone, "Your own colors", "Android only lets an app switch between icons it ships with, so this adds a Nova icon in your colors to your home screen (you can remove the old one).",
-        listOf(DialogButton("Cancel", onClick = onDone), DialogButton("Add to home screen", N.blue) {
+    OneDialog(onDone, "Your own colors", "Android only lets an app switch between icons it ships with. Use as the app icon picks the closest of Nova's 38 icons; Add to home screen adds one in exactly these colors (you can remove the old one).",
+        listOf(DialogButton("Cancel", onClick = onDone), DialogButton("Use as the app icon", N.blue) {
+            sp.edit().putInt("bg", bg).putInt("fg", fg).putBoolean("match", false).apply()
+            AppIcon.set(ctx, AppIcon.nearest(ctx, bg, fg)); app.toast("App icon changed to the closest match"); onDone() },
+            DialogButton("Add to home screen", N.blue) {
             sp.edit().putInt("bg", bg).putInt("fg", fg).apply()
             val ok = androidx.core.content.pm.ShortcutManagerCompat.isRequestPinShortcutSupported(ctx) &&
                 androidx.core.content.pm.ShortcutManagerCompat.requestPinShortcut(ctx, androidx.core.content.pm.ShortcutInfoCompat.Builder(ctx, "nova-custom-${bg}-${fg}")

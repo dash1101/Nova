@@ -17,7 +17,6 @@ import androidx.compose.material.icons.automirrored.rounded.Send
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -25,6 +24,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
@@ -144,7 +146,7 @@ private fun copy(ctx: Context, label: String, text: String) =
 @Composable fun SshTermScreen(app: AppState) {
     val term = SshSession.term
     val v = term.version
-    val text = remember(v) { term.text() }
+    val text = remember(v) { term.styled(Color(0xFFE6E6EA), Color(0xFF0B0B0D)) }
     var input by remember { mutableStateOf("") }
     val history = remember { mutableStateListOf<String>() }
     var hIndex by remember { mutableIntStateOf(-1) }
@@ -156,9 +158,15 @@ private fun copy(ctx: Context, label: String, text: String) =
         FixedTopBar(when (SshSession.state) { "open" -> "Terminal · ${SshSession.hostName}"; "connecting" -> "Connecting…"; else -> "Terminal · disconnected" },
             app::back, listOf(if (SshSession.state == "open") TopAction(Icons.Rounded.LinkOff, "Disconnect") { SshSession.disconnect() }
                               else TopAction(Icons.Rounded.Refresh, "Reconnect") { app.back(); app.go(Route.Ssh) }))
-        Box(Modifier.weight(1f).fillMaxWidth().padding(horizontal = 10.dp).clip(RoundedCornerShape(22.dp)).background(Color(0xFF0B0B0D))) {
+        BoxWithConstraints(Modifier.weight(1f).fillMaxWidth().padding(horizontal = 10.dp).clip(RoundedCornerShape(22.dp)).background(Color(0xFF0B0B0D))) {
+            // how many characters fit: the server wraps long lines there, the same place you see them wrap
+            val measurer = rememberTextMeasurer(); val density = LocalDensity.current
+            val cell = remember(density) { measurer.measure("M".repeat(20), TextStyle(fontFamily = Mono, fontSize = 12.sp, lineHeight = 16.sp)).size.let { it.width / 20f to it.height.toFloat() } }
+            val pad = with(density) { 28.dp.toPx() }
+            val cols = ((constraints.maxWidth - pad) / cell.first).toInt(); val rows = ((constraints.maxHeight - pad) / cell.second).toInt()
+            LaunchedEffect(cols, rows) { if (cols > 0 && rows > 0) SshSession.resize(cols, rows) }
             SelectionContainer {
-                Text(text, color = Color(0xFFE6E6EA), fontFamily = Mono, fontSize = 12.sp, lineHeight = 16.sp,
+                androidx.compose.material3.Text(text, color = Color(0xFFE6E6EA), fontFamily = Mono, fontSize = 12.sp, lineHeight = 16.sp,
                     modifier = Modifier.fillMaxSize().verticalScroll(scroll).padding(14.dp))
             }
         }

@@ -9,7 +9,7 @@ install -d "$P$L/web" "$P$L/store" "$P$L/monitor" "$P/usr/bin" "$P/usr/sbin" "$P
            "$P/etc/logrotate.d" "$P/usr/share/doc/nova-server" "$P/DEBIAN"
 install -m 755 "$S/api/server.py" "$P$L/server.py"
 install -m 755 "$S/api/helper.py" "$P$L/helper"
-install -m 644 "$S/api/plugins.py" "$S/api/safeio.py" "$S/api/nova_tz.py" "$S/api/storage.py" "$S/api/diag.py" "$S/api/apps.py" "$S/api/apkver.py" "$S/api/updates.py" "$S/api/nodes.py" "$S/api/installs.py" "$S/api/files.py" "$S/api/cfsync.py" "$S/api/appfix.py" "$P$L/"
+install -m 644 "$S/api/plugins.py" "$S/api/safeio.py" "$S/api/nova_tz.py" "$S/api/storage.py" "$S/api/diag.py" "$S/api/apps.py" "$S/api/apkver.py" "$S/api/updates.py" "$S/api/nodes.py" "$S/api/installs.py" "$S/api/files.py" "$S/api/cfsync.py" "$S/api/appfix.py" "$S/api/pkg.py" "$P$L/"
 install -m 755 "$S/api/backups.py" "$S/api/tasks.py" "$S/api/labs.py" "$S/api/freeup.py" "$P$L/"
 install -m 755 "$S/api/helper-sock.py" "$P$L/helper-sock"
 install -m 755 "$S/monitor/nova_alerts.py" "$P$L/monitor/nova_alerts.py"
@@ -19,6 +19,7 @@ cp -r "$S/store/." "$P$L/store/"
 install -m 755 "$S/api/nova" "$P/usr/bin/nova"
 ln -s ../bin/nova "$P/usr/sbin/nova-api"   # the old name still works
 install -m 755 "$S/api/nova-setup" "$P/usr/sbin/nova-setup"
+install -m 755 "$S/api/nova-setup-gui" "$P/usr/sbin/nova-setup-gui"
 install -m 755 "$ROOT/packaging/nova-setup-lighting" "$P/usr/sbin/nova-setup-lighting"
 install -m 755 "$S/api/nova-app-publish" "$P/usr/sbin/nova-app-publish"
 install -m 755 "$S/api/nova-update" "$P/usr/sbin/nova-update"
@@ -33,6 +34,9 @@ install -m 644 "$ROOT/packaging/logrotate" "$P/etc/logrotate.d/nova-api"
 install -m 644 "$ROOT/README.md" "$ROOT"/docs/*.md "$P/usr/share/doc/nova-server/"
 install -m 644 "$S/config.example.json" "$P/usr/share/doc/nova-server/"
 [ -f "$ROOT/LICENSE" ] && install -m 644 "$ROOT/LICENSE" "$P/usr/share/doc/nova-server/copyright"
+echo "$VERSION" > "$P$L/VERSION"
+# packaging/build-tar.sh wants the same files without the Debian wrapping
+if [ -n "${NOVA_STAGE:-}" ]; then cp -a "$P/." "$NOVA_STAGE/"; rm -rf "$NOVA_STAGE/DEBIAN"; echo "staged in $NOVA_STAGE"; exit 0; fi
 SIZE=$(du -sk "$P" | cut -f1)
 sed -e "s/@VERSION@/$VERSION/" -e "s/@SIZE@/$SIZE/" "$ROOT/packaging/deb/control" > "$P/DEBIAN/control"
 for f in postinst prerm postrm; do install -m 755 "$ROOT/packaging/deb/$f" "$P/DEBIAN/$f"; done

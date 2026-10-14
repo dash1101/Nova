@@ -18,3 +18,4 @@ __pycache__/
 server/config.json
 dist/
 release-ed25519.pem
+i18n/work/

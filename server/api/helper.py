@@ -151,6 +151,7 @@ def disks():
                     "usage": sorted(usage, key=lambda u: (u["mount"] != "/", -u["total"])),
                     "protected": protected, "temp": sm.get("temp"), "smart_passed": sm.get("passed"),
                     "realloc": sm.get("realloc"), "pending": sm.get("pending"), "uncorrect": sm.get("uncorrect"),
+                    "life": sm.get("life"), "hours": sm.get("hours"), "health": _health(sm, not d.get("rota")),
                     "crc": sm.get("crc")})
     return res
 
@@ -531,6 +532,19 @@ if verb in ("app-fix-check", "app-fix-apply") and len(args) == 1:
         out(r)
     except (ValueError, OSError) as e: fail(str(e)[:300])
 
+if verb in ("plugin-install", "plugin-remove"):
+    # Store → Plugins: write a plugin.json the API downloaded (checked again here), or delete one
+    sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+    import plugins
+    try:
+        if verb == "plugin-install" and not args:
+            c = plugins.install_root(sys.stdin.buffer.read(64 * 1024 + 1)[:64 * 1024 + 1])
+            changelog(f"Plugin installed from the Nova app: {c['name']} {c['version']} ({len(c['apps'])} apps, {len(c['commands'])} tools)"); out({"ok": True, "id": c["id"]})
+        if verb == "plugin-remove" and len(args) == 1:
+            plugins.remove_root(args[0]); changelog(f"Plugin removed from the Nova app: {args[0][:40]}"); out({"ok": True})
+    except (ValueError, OSError, UnicodeDecodeError) as e: fail(str(e)[:300])
+    fail("bad plugin request")
+
 if verb.startswith("cf-") and len(args) <= 1:
     # Labs · Cloudflare auto-setup (cfsync.py)
     sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
@@ -538,6 +552,8 @@ if verb.startswith("cf-") and len(args) <= 1:
     try:
         if verb == "cf-status": out(cfsync.status())
         if verb == "cf-token" and args: cfsync.save_token(args[0]); out({"ok": True, **cfsync.status()})
+        if verb == "cf-token-show" and not args:                         # Settings → Cloudflare → Show the token (fingerprint first)
+            changelog("Cloudflare: the API token was shown in the Nova app"); out({"token": cfsync.token()})
         if verb in ("cf-plan", "cf-apply") and args:
             a = json.loads(args[0]); fn = cfsync.plan if verb == "cf-plan" else cfsync.apply
             r = fn(a.get("host", ""), a.get("service", ""), bool(a.get("no_tls_verify"))) if verb == "cf-plan" else \
@@ -574,9 +590,17 @@ if verb == "program-search" and len(args) == 1:
     out({"items": installs.search_programs(args[0])})
 
 if verb == "programs" and not args:
-    rc, so, _ = run(["dpkg-query", "-W", "-f", "${Package} ${db:Status-Abbrev}\n"])
-    inst = {l.split()[0] for l in so.splitlines() if len(l.split()) > 1 and l.split()[1].startswith("ii")}
-    out({"items": [p | {"installed": p["pkg"] in inst} for p in programs().values()]})
+    sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+    import pkg                                            # apt, dnf, pacman or zypper
+    ps = programs(); inst = pkg.installed([p["pkg"] for p in ps.values()])
+    out({"items": [p | {"installed": inst.get(p["pkg"], False)} for p in ps.values() if pkg.name(p["pkg"])]})
+
+def _health(sm, ssd):
+    sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+    try:
+        import storage
+        return storage.health_pct(sm, ssd)
+    except Exception: return None
 
 if verb == "drives" and not args:
     out({"drives": disks(), "unmounted": load_json(UNMOUNTED, []),
@@ -700,9 +724,18 @@ if verb == "smart-test" and len(args) == 2 and args[1] in ("short", "long", "abo
     out({"ok": True, "minutes": int(m.group(1)) if m else None})
 if verb == "smart-tests" and len(args) == 1:
     dev, d = smart_dev(args[0])
-    rc, so, _ = run(["smartctl", "-j", "-c", "-A", "-l", "selftest", dev], timeout=60)
+    rc, so, _ = run(["smartctl", "-j", "-c", "-A", "-H", "-l", "selftest", dev], timeout=60)
     try: j = json.loads(so)
-    except Exception: fail("smartctl gave no answer")
+    except Exception: j = {}
+    if not j.get("ata_smart_attributes") and not j.get("nvme_smart_health_information_log") and d.get("bus") == "usb":
+        rc, so, _ = run(["smartctl", "-d", "sat", "-j", "-c", "-A", "-H", "-l", "selftest", dev], timeout=60)   # through a USB adapter
+        try: j = json.loads(so)
+        except Exception: j = {}
+    if not j: fail("smartctl gave no answer")
+    _at = {a["id"]: a["raw"]["value"] for a in (j.get("ata_smart_attributes") or {}).get("table", [])}
+    _nv = j.get("nvme_smart_health_information_log") or {}
+    attrs = {"passed": (j.get("smart_status") or {}).get("passed"), "temp": (j.get("temperature") or {}).get("current"),
+             "realloc": _at.get(5), "pending": _at.get(197), "uncorrect": _at.get(187), "crc": _at.get(199), "media_errors": _nv.get("media_errors")}
     st = (j.get("ata_smart_data") or {}).get("self_test", {}).get("status", {})
     nv = j.get("nvme_self_test_log") or {}
     running = st.get("remaining_percent") is not None and "in progress" in (st.get("string") or "").lower() \
@@ -718,7 +751,8 @@ if verb == "smart-tests" and len(args) == 1:
     out({"running": running, "remaining_pct": st.get("remaining_percent") if running else None,
          "progress_pct": nv.get("current_self_test_completion_percent") if running and nv else None,
          "status": st.get("string") or "", "log": log, "power_on_hours": (j.get("power_on_time") or {}).get("hours"),
-         "short_minutes": caps.get("short"), "long_minutes": caps.get("extended"), "supported": bool(caps) or bool(nv)})
+         "short_minutes": caps.get("short"), "long_minutes": caps.get("extended"), "supported": bool(caps) or bool(nv),
+         "attrs": attrs})                    # read fresh now (the monitor only refreshes every 30 minutes)
 
 # ── SSH: a phone's own key in the terminal user's authorized_keys ─────────────────
 # The key comes from the phone's hardware keystore over the signed, fingerprint-confirmed API,
@@ -773,6 +807,9 @@ if verb == "ssh-key-status" and len(args) == 1 and re.fullmatch(DEV_RE, args[0])
 if verb == "update-status" and not args:
     st = load_json("/var/lib/nova-api/update.json", {})
     rc, v, _ = run(["dpkg-query", "-W", "-f=${Version}", "nova-server"])
+    if rc != 0:                                           # installed from the tarball (any Linux): its VERSION file
+        try: v, rc = open(os.path.join(os.path.dirname(os.path.realpath(__file__)), "VERSION")).read().strip(), 0
+        except OSError: v = ""
     st["installed"] = v.strip() if rc == 0 else ""
     st["source"] = SITE.get("update_source", "")
     rc, so, _ = run(["systemctl", "is-active", "nova-self-update.service"])

@@ -28,6 +28,23 @@ small agent rather than a port of everything:
   and shows the pairing QR code (`nova add` equivalent) in a small tray window.
 - **Remote access:** the same Cloudflare Access setup works (`cloudflared` runs on Windows).
 
+## macOS (server side)
+
+A Mac mini makes a quiet home server, so a Mac agent follows the Windows one, built the same way: the
+unprivileged API as a `launchd` agent, the privileged half as a `launchd` daemon with the same fixed list
+of verbs, reached over a local socket only the API can use. Status comes from `sysctl`/`vm_stat`/`iostat`
+and `powermetrics`, drives from `diskutil`, containers from Docker Desktop or OrbStack, packages from
+**Homebrew**, and the sign-in key and pairing work exactly as they do now. It ships as a signed, notarized
+`.pkg`. Until then, Nova runs on Linux — including in a small Linux VM on the Mac.
+
+## Other Linux (done in 0.7)
+
+Nova now runs on any Linux with systemd: Debian and Ubuntu (the .deb), and Fedora/RHEL, Arch and openSUSE
+(a tarball with an installer, or the one-file `nova-installer.run`). Everything that installs or updates
+packages goes through one layer (`server/api/pkg.py`) that speaks apt, dnf, pacman and zypper, and Nova's
+own updates use the signed tarball on those systems. The setup can also run in a browser
+(`sudo nova-setup --gui`), for people who'd rather not use a terminal.
+
 ## iOS app
 
 - SwiftUI app with the same screens. The security model carries over directly: keys made in the

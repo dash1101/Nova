@@ -89,12 +89,13 @@ private fun storeItem(id: String) = Cache["/api/v1/store"]?.optJSONArray("items"
         }
     }
     TabOrPage(app, "App store") {
-        Text(if (tab == 0) "Containers run in Docker, each in its own box with its own folder in /opt." else "Programs install straight onto the server with its package manager (apt), no Docker needed.",
+        Text(when (tab) { 0 -> "Containers run in Docker, each in its own box with its own folder in /opt."; 1 -> "Programs install straight onto the server with its package manager (apt), no Docker needed."; else -> "Plugins add apps and one-tap tools to Nova." },
             color = N.sub, fontSize = 15.sp, modifier = Modifier.padding(start = 26.dp, end = 26.dp, top = 8.dp, bottom = 12.dp))
-        Segmented(listOf("Containers", "Programs"), tab) { tab = it; q = "" }
+        Segmented(listOf("Containers", "Programs", "Plugins"), tab) { tab = it; q = "" }
         Box(Modifier.padding(horizontal = Space.gutter, vertical = 8.dp)) {
-            OneTextField(q, { q = it.take(60) }, if (tab == 0) "Search containers" else "Search every program", Modifier.fillMaxWidth()) }
-        if (tab == 0) {
+            OneTextField(q, { q = it.take(60) }, listOf("Search containers", "Search every program", "Search plugins")[tab], Modifier.fillMaxWidth()) }
+        if (tab == 2) PluginsTab(app, q.trim().lowercase())
+        else if (tab == 0) {
             val items = apps.objs()
             if (!docker) Group {
                 Row1("Docker isn't installed", "Containers need it. Install Docker and Compose from your package manager — Nova sets them up to start with the server.", false, Icons.Rounded.ViewInAr, N.amber)
@@ -302,4 +303,87 @@ private fun storeItem(id: String) = Cache["/api/v1/store"]?.optJSONArray("items"
                     } finally { busy.remove(pkg) }
                 } }))
     }
+}
+
+
+/** Store → Plugins: the community list (reviewed or not), what's installed, and installing from a link or a file. */
+@Composable private fun PluginsTab(app: AppState, ql: String) {
+    var cat by remember { mutableStateOf<JSONObject?>(null) }
+    var mine by remember { mutableStateOf<List<JSONObject>?>(null) }
+    var round by remember { mutableIntStateOf(0) }
+    var preview by remember { mutableStateOf<Triple<JSONObject, JSONObject, Boolean>?>(null) }     // (source, preview, reviewed)
+    var askUrl by remember { mutableStateOf(false) }
+    var remove by remember { mutableStateOf<JSONObject?>(null) }
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    LaunchedEffect(round) {
+        cat = runCatching { app.api.get("/api/v1/plugins/catalog") }.getOrElse { JSONObject().put("error", it.message) }
+        mine = runCatching { app.api.get("/api/v1/plugins").optJSONArray("plugins").objs() }.getOrNull() ?: emptyList()
+    }
+    fun look(src: JSONObject, reviewed: Boolean) = app.act { preview = Triple(src, app.api.post("/api/v1/plugins/preview", src), reviewed) }
+    val pick = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) app.act {
+            val bytes = ctx.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: return@act
+            if (bytes.size > 256 * 1024) { app.toast("That's too big for a plugin (256 KB at most)"); return@act }
+            look(JSONObject().put("zip", android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)), false)
+        }
+    }
+    Group { Row1("Plugins come from other people", "A plugin's tools run commands on your server as your normal account (never as root). Install only ones you trust, and read what each tool runs before you say yes.",
+        false, Icons.Rounded.Warning, N.amber) }
+    val installed = mine.orEmpty()
+    if (installed.isNotEmpty()) {
+        SectionLabel("Installed")
+        Group { installed.forEachIndexed { i, p -> if (i > 0) RowDivider()
+            Row1("${p.optString("name")} ${p.optString("version")}", listOf(p.optString("description"), if (p.optBoolean("on", true)) "" else "switched off").filter { it.isNotEmpty() }.joinToString(" · "),
+                icon = Icons.Rounded.Widgets) { if (app.isAdmin) PillButton("Remove", color = N.red) { remove = p } } } }
+    }
+    SectionLabel("Community plugins")
+    Group {
+        val c = cat; val list = c?.optJSONArray("plugins").objs().filter { ql.isEmpty() || listOf("name", "description", "author").any { k -> it.optString(k).lowercase().contains(ql) } }
+        val have = installed.map { it.optString("id") }.toSet()
+        when {
+            c == null -> Row1("Loading…")
+            list.isEmpty() && c.optString("error").isNotEmpty() -> Row1("Couldn't load the list", c.optString("error"), false, Icons.Rounded.Warning, N.amber)
+            list.isEmpty() -> Row1(if (ql.isNotEmpty()) "No plugin matches “$ql”" else "None listed yet")
+            else -> list.forEachIndexed { i, p -> if (i > 0) RowDivider()
+                val rev = p.optBoolean("reviewed")
+                Row1(p.optString("name"), listOf(p.optString("description"), p.optString("author").takeIf { it.isNotEmpty() }?.let { "by $it" } ?: "",
+                        if (rev) "✓ Reviewed by Nova" else "Not reviewed — listed as-is").filter { it.isNotEmpty() }.joinToString(" · "),
+                    icon = if (rev) Icons.Rounded.Shield else Icons.Rounded.Widgets, iconTint = if (rev) N.green else N.amber) {
+                    if (p.optString("id") in have) Text("Installed", color = N.sub, fontSize = 14.sp)
+                    else if (app.isAdmin) PillButton("Get") { look(JSONObject().put("url", p.optString("url")), rev) }
+                } }
+        }
+    }
+    if (app.isAdmin) {
+        SectionLabel("Your own")
+        Group {
+            Row1("Install from a link", "An https:// link to a plugin.json or a .zip", true, Icons.Rounded.Link, onClick = { askUrl = true }); RowDivider()
+            Row1("Install from a file", "A .zip or plugin.json on this ${DeviceForm.noun}", true, Icons.Rounded.Upload, onClick = { pick.launch("*/*") })
+        }
+    }
+    Note("Make one: a folder with a plugin.json — see docs/PLUGINS.md. Share it by adding it to plugins/index.json on GitHub.", 13.sp, 4.dp)
+    if (askUrl) { var u by remember { mutableStateOf("") }
+        OneDialog({ askUrl = false }, "Install from a link", null, listOf(DialogButton("Cancel") { askUrl = false },
+            DialogButton("Look at it", N.blue, enabled = u.startsWith("https://")) { askUrl = false; look(JSONObject().put("url", u.trim()), false) })) {
+            OneTextField(u, { u = it.trim().take(1000) }, "https://…/plugin.json", Modifier.fillMaxWidth().padding(horizontal = 22.dp), mono = true) } }
+    preview?.let { (src, pv, rev) -> val p = pv.optJSONObject("plugin") ?: JSONObject(); val upd = pv.optBoolean("installed")
+        OneDialog({ preview = null }, "${if (upd) "Update" else "Install"} ${p.optString("name")} ${p.optString("version")}?",
+            listOf(p.optString("author").takeIf { it.isNotEmpty() }?.let { "By $it." } ?: "", if (rev) "Reviewed by the Nova project." else "Not reviewed by anyone at Nova — check what it runs.",
+                if (upd) "Replaces version ${pv.optString("installed_version").ifEmpty { "?" }}." else "").filter { it.isNotEmpty() }.joinToString(" "),
+            listOf(DialogButton("Cancel") { preview = null }, DialogButton(if (upd) "Update" else "Install", N.blue) { preview = null
+                app.act { app.stepUp("Install the plugin ${p.optString("name")} — its tools run as your normal account", "POST", "/api/v1/plugins/install",
+                    JSONObject(src.toString()).put("sha256", pv.optString("sha256"))); app.toast("${p.optString("name")} installed — its apps and tools are in Apps"); round++ } })) {
+            Column(Modifier.heightIn(max = 380.dp).verticalScroll(rememberScrollState()).padding(horizontal = 22.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (p.optString("description").isNotEmpty()) Text(p.optString("description"), color = N.sub, fontSize = 14.sp)
+                p.optJSONArray("apps").objs().forEach { a -> Text("App: ${a.optString("name")} — ${a.optString("url").ifEmpty { ":" + a.optInt("port") + a.optString("path") }}", color = N.text, fontSize = 14.sp) }
+                p.optJSONArray("commands").objs().forEach { c ->
+                    Text("Tool: ${c.optString("name")}${if (c.optBoolean("confirm")) " (asks first)" else ""}", color = N.text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                    Text(c.optString("command"), color = N.text, fontSize = 12.sp, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(N.pill).padding(10.dp))
+                }
+            }
+        } }
+    remove?.let { p -> OneDialog({ remove = null }, "Remove ${p.optString("name")}?", "Its apps and tools leave Nova. You can install it again any time.",
+        listOf(DialogButton("Cancel") { remove = null }, DialogButton("Remove", N.red) { remove = null
+            app.act { app.stepUp("Remove the plugin ${p.optString("name")}", "POST", "/api/v1/plugins/remove", JSONObject().put("id", p.optString("id"))); app.toast("Removed"); round++ } })) }
 }

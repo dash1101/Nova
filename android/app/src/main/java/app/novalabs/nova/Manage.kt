@@ -9,7 +9,6 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.Icon
-import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -206,9 +205,9 @@ fun roleLabel(r: String) = if (r == "viewer") "View only" else "Admin"
     }
     menu?.let { d ->
         OneDialog({ menu = null }, d.optString("name"), buttons = listOf(DialogButton("Close") { menu = null })) {
-            DialogChoice("Who & access", "${d.optString("user").ifEmpty { "No name" }} · ${roleLabel(d.optString("role"))}", false) { menu = null; access = d }
-            DialogChoice("Rename device", null, false) { menu = null; rename = d }
-            DialogChoice(if (d.optBoolean("current")) "Remove this ${DeviceForm.noun}" else "Remove access", "It can never connect again", false) { menu = null; revoke = d }
+            DialogChoice("Who & access", "${d.optString("user").ifEmpty { "No name" }} · ${roleLabel(d.optString("role"))}", false, action = true) { menu = null; access = d }
+            DialogChoice("Rename device", null, false, action = true) { menu = null; rename = d }
+            DialogChoice(if (d.optBoolean("current")) "Remove this ${DeviceForm.noun}" else "Remove access", "It can never connect again", false, action = true) { menu = null; revoke = d }
         }
     }
     access?.let { d ->

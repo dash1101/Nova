@@ -75,6 +75,10 @@ def add(args):
         lan = f"https://{cfg.get('lan_host') or '127.0.0.1'}:{cfg.get('tls_port', 8495)}"
     except Exception: pass
     payload = json.dumps({"nova": 1, "lan": lan, "pin": pin, "remote": cfg.get("remote_url", ""), "code": code}, separators=(",", ":"))
+    if "--json" in args:          # for the GUI setup: the same code and QR, as data (it shows them itself)
+        svg = subprocess.run(["qrencode", "-t", "SVG", "-m", "2", "-o", "-", payload], capture_output=True, text=True).stdout
+        print(json.dumps({"code": code, "host": cfg.get("lan_host", ""), "pin": " ".join(pin[i:i + 4].upper() for i in (0, 4, 8)), "expires": expires, "svg": svg, "role": role}))
+        return
     subprocess.run(["qrencode", "-t", "ANSIUTF8", "-m", "2", payload])
     print(f"\nScan this with the Nova app on your {B}home Wi-Fi{X}, or type it in:")
     print(f"  Server address  {B}{cfg.get('lan_host', '')}{X}      Code  {B}{code}{X}      Certificate  {pin[:4].upper()} {pin[4:8].upper()} {pin[8:12].upper()}")

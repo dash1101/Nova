@@ -28,6 +28,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.ArrowBackIosNew
 import dev.chrisbanes.haze.hazeSource
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
@@ -38,7 +39,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
@@ -273,14 +273,15 @@ data class DialogButton(val label: String, val color: Color? = null, val enabled
 }
 
 /** Radio list inside a dialog (choose one). */
-@Composable fun DialogChoice(label: String, sub: String? = null, selected: Boolean, onClick: () -> Unit) {
+/** A row in a dialog: a choice (radio) — or, with [action], something to do (an arrow, like a menu). */
+@Composable fun DialogChoice(label: String, sub: String? = null, selected: Boolean, action: Boolean = false, onClick: () -> Unit) {
     Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 26.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
             Text(label, color = N.text, fontSize = 17.sp)
             if (sub != null) Text(sub, color = N.sub, fontSize = 13.sp)
         }
-        OneRadio(selected)
+        if (action) Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, null, tint = N.sub, modifier = Modifier.size(22.dp)) else OneRadio(selected)
     }
 }
 

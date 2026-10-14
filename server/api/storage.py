@@ -42,18 +42,18 @@ def have(tool):
     return bool(shutil.which(tool) or any(os.path.exists(p + tool) for p in ("/sbin/", "/usr/sbin/")))
 
 def missing_packages(tools):
-    return sorted({TOOLS[t] for t in tools if t in TOOLS and not have(t)})
+    return sorted({TOOLS[t] for t in tools if t in TOOLS and not have(t)})     # (Debian's names; pkg.py maps them for other distros)
 
 def ensure_tools(tools, log=print):
-    """apt-get install whatever is missing for these tools (no-op when all are there)."""
+    """Install whatever is missing for these tools with the server's package manager (no-op when all are there)."""
+    import pkg
     pk = missing_packages(tools)
     if not pk: return
     log(f"Installing {', '.join(pk)}…")
-    env = {**os.environ, "DEBIAN_FRONTEND": "noninteractive"}
-    rc, _, se = run(["apt-get", "install", "-y", "--no-install-recommends", *pk], timeout=900, env=env)
-    if rc != 0:
-        run(["apt-get", "update"], timeout=600, env=env)
-        run(["apt-get", "install", "-y", "--no-install-recommends", *pk], timeout=900, env=env, check=True)
+    rc, out = pkg.install(pk, recommends=False)
+    if rc != 0:                                          # stale package lists: refresh once and retry
+        pkg.refresh(); rc, out = pkg.install(pk, recommends=False)
+        if rc != 0: raise RuntimeError(f"couldn't install {', '.join(pk)}: {out.strip()[-300:]}")
 
 def load_json(p, d):
     try: return json.load(open(p))
@@ -193,6 +193,16 @@ def disks_of_dev(name):
     if os.path.exists(os.path.join(p, "partition")): return {os.path.basename(os.path.dirname(p))}
     return {name}
 
+def health_pct(sm, ssd):
+    """A rough "how healthy is it" number from SMART, for the drive list (100 = like new).
+    SSDs: the wear the drive reports itself. All drives lose points for bad sectors and read errors;
+    a failed SMART verdict caps it at 5. An estimate, not a promise — drives can die at 100%."""
+    if not sm: return None
+    h = sm.get("life") if sm.get("life") is not None else 100
+    h -= min(50, 2 * (sm.get("realloc") or 0)) + min(30, 6 * (sm.get("pending") or 0)) + min(30, 6 * (sm.get("uncorrect") or 0)) + min(40, 4 * (sm.get("media_errors") or 0))
+    if sm.get("passed") is False: h = min(h, 5)
+    return max(0, min(100, int(round(h))))
+
 def owner_mount(path, mps):
     """The mount point a path lives on (longest prefix)."""
     best = "/"
@@ -280,7 +290,8 @@ def storage_map():
                                                                        "usage": next((usage(m) for m in mps), None)}] if d.get("fstype") else []),
                        "mounts": [m for m in mps if m != "[SWAP]"], "roles": sorted(set(roles)), "uses": sorted(set(uses)), "warnings": warn,
                        "system": system, "erasable": erasable, "has_data": bool(has_fs), "pool": member_of["id"] if member_of else None,
-                       "smart": {k: sm.get(k) for k in ("passed", "temp", "realloc", "pending", "uncorrect", "crc")} if sm else None})
+                       "smart": {k: sm.get(k) for k in ("passed", "temp", "realloc", "pending", "uncorrect", "crc", "life", "hours")} if sm else None,
+                       "health": health_pct(sm, not d.get("rota")) if sm else None})
     # Network shares ─────────────────────────────────────────────────────────────────────
     network = [{"mount": m, "src": i["src"], "type": i["type"], "usage": usage(m)} for m, i in mp.items() if i["type"] in ("nfs", "nfs4", "cifs", "smb3")]
     res = {"drives": drives, "pools": pools, "network": network, "legacy_backup": legacy, "jobs": [{"id": j["id"], "name": j.get("name"), "sources": j.get("sources", []),

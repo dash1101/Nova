@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.7.0-alpha (server, Nova web, app, watch and website)
+- **Runs on more Linux:** besides Debian and Ubuntu, Nova now runs on Fedora, RHEL, Arch and openSUSE. Installing, searching for programs, updates and Free up use whichever package manager the server has (apt, dnf, pacman or zypper). Releases carry a tarball and a one-file **nova-installer.run**, and Nova updates itself from them on those systems.
+- **Set up in a browser:** `sudo nova-setup --gui` opens the setup as a web page (on the server or any device at home) behind a one-time key, and ends with the code to pair your phone. The terminal setup is tidier too: six clear steps, and running it again asks which part you want to change.
+- **New looks** (Appearance → Style): **Liquid Glass** (clear glass that really bends what's behind it at the edges), **Fluent** (Windows 11) and **Breeze** (KDE Plasma), with sliders for glass clarity and corner roundness. Plus **Reduce transparency** for solid surfaces everywhere.
+- **Material You on the web:** surfaces are now tinted the way Android does it instead of washing over with the accent, and blue subtext follows your accent color.
+- **App icon follows your color:** turn on **Match my accent color** and the launcher icon becomes a Material You tonal icon in your accent's color. Your own icon colors can now become the real app icon too (the closest of Nova's icons).
+- **Plugins in the App store:** a community list (reviewed ones marked), and install from a link or a file. Before installing you see every app and the exact command each tool runs, and your fingerprint confirms it.
+- **One Cloudflare token for several servers:** what each server adds is signed with its name, each only takes off its own, and you can see what your other servers added. **Show the token** (fingerprint) to copy it to another server.
+- **Drives:** a drive that's mounted and working no longer stays "not responding", one that's just unmounted shows as "Not mounted" instead of missing, and a drive with read/write errors is flagged. Storage shows each drive's estimated health and powered-on time, and quick tests fill in SMART details on USB drives too. A failing drive's light on the server picture pulses red.
+- **Server picture:** tap the drive lights for Storage, the fan for Lighting and the power button for the power menu. Light strips show in the two bars.
+- **Inbox:** tap an event's text to read all of it, and **Select all** turns into **Select none**.
+- **Files:** your drives are one tap away at the top.
+- **Android terminal:** colors, lines that wrap where the screen ends, line and screen clearing, and full-screen programs like top and nano.
+- **Languages (preview):** Spanish, German, French, Portuguese, Italian, Russian, Chinese, Japanese and Korean in Nova web, the app (Appearance → Language) and the website. About 40% of the text is translated so far, by machine; the rest stays English for now.
+- Menus that open something show an arrow instead of a radio button, the status light pulses more slowly, spinners turn smoothly, and Free up's memory step no longer stalls the server.
+- **Fixed:** "Data backup failed" now says why, and a backup no longer crashes on a drive with errors.
+- Security test: 495 checks, now including plugin installs (bad links, links to the server itself, zip path tricks, changed checksums) and showing the Cloudflare token.
+
 ## 0.6.8-alpha (server)
 - **Let its phone app in, safer:** if making the key fails halfway (for example, your Cloudflare token doesn't have the new permission yet), the address goes offline instead of losing its route, and an older key keeps working. Pick who can open it again to bring it back.
 - **Free up:** the Trash is no longer ticked by default (those files are gone for good), and Nova's own audit and alert history are never removed.

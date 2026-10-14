@@ -47,3 +47,30 @@ See `plugins/examples/system-tools/` for a complete one.
 Status pages for your own scripts, maintenance tasks (`docker system df`, `apt list --upgradable`),
 links to every web UI on your network, game-server controls, home-automation scenes. If you make
 one others would like, open a pull request adding it under `plugins/`.
+
+## Installing from the app (Store → Plugins)
+
+The App store has a **Plugins** tab with three ways in:
+
+- **Community plugins** — the list in [`plugins/index.json`](../plugins/index.json). Entries marked *reviewed*
+  were read through by the Nova project; the rest are listed as-is, and Nova says so.
+- **Install from a link** — an `https://` link to a `plugin.json`, or to a `.zip` holding one (at the top, or
+  in one folder).
+- **Install from a file** — the same `.zip` or `plugin.json`, from your phone or computer.
+
+Either way Nova shows you what the plugin adds first — every app, and the exact command each tool runs —
+and installing asks for your fingerprint. The server downloads and reads the plugin as its normal
+(unprivileged) account; only then does root write the checked `plugin.json` to `/etc/nova/plugins/<id>/`.
+Nothing in a plugin runs while it's being installed. Plugins are at most 256 KB, and a link to this
+server itself is refused (use a file instead).
+
+### Listing yours
+
+Open a pull request that adds an entry to `plugins/index.json`:
+
+```json
+{"id": "my-plugin", "name": "My plugin", "author": "you", "description": "What it adds, in a sentence.",
+ "url": "https://raw.githubusercontent.com/you/my-plugin/main/plugin.json"}
+```
+
+The `id` must match the one in your `plugin.json`. New entries start unreviewed.

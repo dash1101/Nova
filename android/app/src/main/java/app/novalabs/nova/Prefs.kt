@@ -7,6 +7,7 @@ import android.hardware.biometrics.BiometricPrompt
 import android.os.CancellationSignal
 import android.view.WindowManager
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -15,7 +16,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.Icon
-import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -60,6 +60,10 @@ object AppPrefs {
     var wallV by mutableStateOf(0L); private set                           // your own wallpaper (files/wallpaper.jpg): when it was set, 0 = none
     var wallBlur by mutableStateOf(16); private set                        // its blur (0–40)
     var wallDim by mutableStateOf(35); private set                         // and how much it's dimmed (0–90 %)
+    var solid by mutableStateOf(false); private set                        // Reduce transparency: solid surfaces, no glass
+    var lang by mutableStateOf("auto"); private set                        // Appearance → Language: auto (the phone's) or a code (I18n.kt)
+    var glass by mutableStateOf(60); private set                           // Liquid Glass / Fluent: how clear the glass is (0–100)
+    var round by mutableStateOf(100); private set                          // Liquid Glass / Fluent / Breeze: corner roundness (25–150 %)
     /** Worked out once at start: an older or low-memory phone, where the live blur and 60 fps animations cost too much. */
     var slowDevice = false; private set
 
@@ -75,6 +79,8 @@ object AppPrefs {
         lite = sp.getString("lite", "auto")!!
         accent = sp.getString("accent", "")!!; tint = sp.getString("tint", "50")!!.toIntOrNull() ?: 50
         wallV = sp.getString("wall_v", "0")!!.toLongOrNull() ?: 0L; wallBlur = sp.getString("wall_blur", "16")!!.toIntOrNull() ?: 16; wallDim = sp.getString("wall_dim", "35")!!.toIntOrNull() ?: 35
+        lang = sp.getString("lang", "auto")!!; I18n.load(ctx, lang)
+        solid = sp.getBoolean("solid", false); glass = sp.getString("glass", "60")!!.toIntOrNull() ?: 60; round = sp.getString("round", "100")!!.toIntOrNull() ?: 100
         theme = sp.getString("theme", "system")!!; style = sp.getString("style", "auto")!!; reduceMotion = sp.getBoolean("reduce_motion", false)
         appLock = sp.getBoolean("app_lock", false); hideInRecents = sp.getBoolean("hide_recents", false)
         homeHero = sp.getBoolean("home_hero", true); homeShortcuts = sp.getBoolean("home_shortcuts", true); homeStats = sp.getBoolean("home_stats", true)
@@ -95,6 +101,8 @@ object AppPrefs {
         when (key) {
             "accent" -> accent = v as String; "tint" -> tint = (v as Number).toInt(); "wall_v" -> wallV = (v as Number).toLong()
             "wall_blur" -> wallBlur = (v as Number).toInt(); "wall_dim" -> wallDim = (v as Number).toInt()
+            "lang" -> lang = v as String
+            "solid" -> solid = v as Boolean; "glass" -> glass = (v as Number).toInt(); "round" -> round = (v as Number).toInt()
             "lite" -> lite = v as String; "theme" -> theme = v as String; "style" -> style = v as String; "reduce_motion" -> reduceMotion = v as Boolean; "app_lock" -> appLock = v as Boolean
             "hide_recents" -> hideInRecents = v as Boolean; "home_hero" -> homeHero = v as Boolean
             "home_shortcuts" -> homeShortcuts = v as Boolean; "home_stats" -> homeStats = v as Boolean
@@ -119,7 +127,11 @@ object AppPrefs {
  *  Nothing, Sony, OnePlus…) gets Material You Expressive, so Nova matches the rest of the phone. */
 private val DEFAULT_LOOK_MAKERS = setOf("samsung", "xiaomi", "redmi", "poco", "huawei", "honor", "vivo", "iqoo", "oppo", "realme", "meizu")
 fun autoMaterial(): Boolean = android.os.Build.MANUFACTURER.lowercase() !in DEFAULT_LOOK_MAKERS && android.os.Build.BRAND.lowercase() !in DEFAULT_LOOK_MAKERS
-fun materialStyle(): Boolean = when (AppPrefs.style) { "material" -> true; "default" -> false; else -> autoMaterial() }
+fun materialStyle(): Boolean = when (AppPrefs.style) { "material" -> true; "default", "liquid", "fluent", "breeze" -> false; else -> autoMaterial() }
+/** Liquid Glass, Fluent or Breeze (Appearance → Style), "" for Default / Material You. */
+fun presetStyle(): String = AppPrefs.style.takeIf { it in setOf("liquid", "fluent", "breeze") } ?: ""
+/** Reduce transparency (Appearance): solid surfaces everywhere, no blur or bending. */
+fun solidGlass(): Boolean = AppPrefs.solid
 
 /** Honor both the app setting and Android's "remove animations". */
 fun reduceMotion(): Boolean = AppPrefs.reduceMotion
@@ -169,15 +181,28 @@ object AppLock {
             val autoName = if (autoMaterial()) "Material You" else "Default"
             listOf("auto" to ("Automatic" to "$autoName — picked to suit this ${DeviceForm.noun}"),
                    "default" to ("Default" to "Nova's own look: frosted glass and a soft glow"),
-                   "material" to ("Material You" to "Google's Material 3 Expressive: colors from your wallpaper, bolder shapes, springy motion"))
+                   "material" to ("Material You" to "Google's Material 3 Expressive: colors from your wallpaper, bolder shapes, springy motion"),
+                   "liquid" to ("Liquid Glass" to "Apple's look: clear glass that bends the light behind it at its edges" + if (android.os.Build.VERSION.SDK_INT < 33) " (the bending needs Android 13)" else ""),
+                   "fluent" to ("Fluent" to "Windows 11: Mica and acrylic, small corners"),
+                   "breeze" to ("Breeze" to "KDE Plasma: flat and tidy, a thin frame, the accent as the focus color"))
                 .forEachIndexed { i, (k, l) ->
                     if (i > 0) RowDivider()
                     Row1(l.first, l.second, onClick = { AppPrefs.set("style", k) }) { OneRadio(AppPrefs.style == k) }
                 }
         }
+        if (presetStyle().isNotEmpty()) Group {
+            Column(Modifier.padding(horizontal = 22.dp, vertical = 12.dp)) {
+                if (presetStyle() != "breeze") {
+                    Row { Text("Glass clarity", color = N.sub, fontSize = 14.sp, modifier = Modifier.weight(1f)); Text("${AppPrefs.glass}%", color = N.sub, fontSize = 14.sp) }
+                    OneSlider(AppPrefs.glass.toFloat(), { AppPrefs.set("glass", it.toInt()) }, 0f..100f)
+                }
+                Row { Text("Corner roundness", color = N.sub, fontSize = 14.sp, modifier = Modifier.weight(1f)); Text("${AppPrefs.round}%", color = N.sub, fontSize = 14.sp) }
+                OneSlider(AppPrefs.round.toFloat(), { AppPrefs.set("round", it.toInt()) }, 25f..150f)
+            }
+        }
         SectionLabel("Theme")
         Group {
-            val look = if (materialStyle()) "Material" else "Default"
+            val look = if (materialStyle()) "Material" else mapOf("liquid" to "Liquid Glass", "fluent" to "Fluent", "breeze" to "Breeze")[presetStyle()] ?: "Default"
             listOf("system" to "Same as the ${DeviceForm.noun}", "light" to "$look light", "dark" to "$look dark").forEachIndexed { i, (k, l) ->
                 if (i > 0) RowDivider()
                 Row1(l, null, onClick = { AppPrefs.set("theme", k) }) { OneRadio(AppPrefs.theme == k) }
@@ -185,8 +210,11 @@ object AppLock {
         }
         Group {
             SwitchRow("Reduce motion", "Simple fades instead of slides and bounces, and no back-gesture animation", AppPrefs.reduceMotion) { AppPrefs.set("reduce_motion", it) }
+            RowDivider()
+            SwitchRow("Reduce transparency", "Solid surfaces instead of glass — easier to read, lighter to draw", AppPrefs.solid) { AppPrefs.set("solid", it) }
         }
         ColorsAndWallpaper()
+        LanguageRow()
         SectionLabel("Lighter effects")
         Segmented(listOf("Automatic", "On", "Off"), listOf("auto", "on", "off").indexOf(AppPrefs.lite).let { if (it < 0) 0 else it }) { AppPrefs.set("lite", listOf("auto", "on", "off")[it]) }
         Note("No frosted-glass blur or soft shadows, and calmer animations — much smoother on older phones. Automatic turns it on for this phone ${if (AppPrefs.slowDevice) "(it's on now)" else "only if it's an older or low-memory one (it's off now)"}.", 13.sp, 4.dp)
@@ -280,4 +308,23 @@ private val MY_ACCENTS = listOf("#3e91ff", "#5e5ce6", "#bf5af2", "#ff2d55", "#ff
         } else Row1("Choose a picture", "Behind every screen, blurred and dimmed as you like. Kept on this ${DeviceForm.noun} only.", true, Icons.Rounded.Image, onClick = { pick.launch("image/*") })
     }
     if (picking) ColorPickerDialog(AppPrefs.accent.ifEmpty { "#3e91ff" }, { picking = false }) { AppPrefs.set("accent", it); picking = false }
+}
+
+
+/** Appearance → Language: the phone's own, or one of Nova's. Translations are made by machine. */
+@Composable private fun LanguageRow() {
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    var pick by remember { mutableStateOf(false) }
+    SectionLabel("Language")
+    Group { Row1("Language", if (AppPrefs.lang == "auto") "Same as this ${DeviceForm.noun} (${I18n.LANGS.first { it.first == I18n.pick("auto") }.second})"
+            else I18n.LANGS.firstOrNull { it.first == AppPrefs.lang }?.second ?: AppPrefs.lang, true, Icons.Rounded.Translate, onClick = { pick = true }) }
+    Note("Nova's own words are translated (by machine, so some may read oddly — tell us on GitHub). Messages written by the server, like alert details, stay in English for now.", 13.sp, 4.dp)
+    if (pick) OneDialog({ pick = false }, "Language") {
+        Column(Modifier.heightIn(max = 460.dp).verticalScroll(androidx.compose.foundation.rememberScrollState())) {
+            (listOf("auto" to "Same as this ${DeviceForm.noun}") + I18n.LANGS).forEach { (k, n) ->
+                DialogChoice(n, selected = AppPrefs.lang == k) { pick = false
+                    if (k != AppPrefs.lang) { AppPrefs.set("lang", k); I18n.load(ctx, k); (ctx as? android.app.Activity)?.recreate() } }
+            }
+        }
+    }
 }

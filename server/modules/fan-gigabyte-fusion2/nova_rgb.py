@@ -558,7 +558,7 @@ def status_override(st):
     except Exception:
         return None
     bright = max(st["brightness"], 25)
-    if lvl == "critical": return {"on": True, "effect": "pulse", "color": "#ff2020", "brightness": bright, "speed": 70}
+    if lvl == "critical": return {"on": True, "effect": "pulse", "color": "#ff2020", "brightness": bright, "speed": 45}   # a calm pulse (about 1.8 s)
     if lvl == "warning":  return {"on": True, "effect": "static", "color": "#ffa000", "brightness": bright}
     return None
 

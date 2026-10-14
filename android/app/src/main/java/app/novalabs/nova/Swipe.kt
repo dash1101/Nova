@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.Icon
-import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
@@ -127,14 +126,14 @@ fun dismissAlert(app: AppState, a: JSONObject, done: () -> Unit = {}) {
         val key = a.optString("key")
         OneDialog({ menu = null }, cleanAlertTitle(a.optString("title")), a.optString("detail").ifEmpty { null },
             buttons = listOf(DialogButton("Close") { menu = null })) {
-            if (key.startsWith("mount:")) DialogChoice("Mount it now", "If the drive is plugged in, Nova mounts it from /etc/fstab", false) {
+            if (key.startsWith("mount:")) DialogChoice("Mount it now", "If the drive is plugged in, Nova mounts it from /etc/fstab", false, action = true) {
                 menu = null
                 app.act("Mounted") { app.api.post("/api/v1/mounts/mount", JSONObject().put("mount", key.removePrefix("mount:"))); app.refresh() }
             }
             DialogChoice(if (key.startsWith("drive:")) "Removed on purpose" else "Ignore until it clears",
                 if (key.startsWith("drive:")) "Stop reporting this drive as missing" else "No more alerts for this until it's fixed and comes back", false) {
                 menu = null; dismissAlert(app, a) }
-            if (key.startsWith("drive:") || key.startsWith("smart:") || key.startsWith("temp:")) DialogChoice("Storage & hardware", null, false) { menu = null; app.go(Route.Hardware) }
+            if (key.startsWith("drive:") || key.startsWith("smart:") || key.startsWith("temp:")) DialogChoice("Storage & hardware", null, false, action = true) { menu = null; app.go(Route.Hardware) }
         }
     }
 }

@@ -113,8 +113,21 @@ function drawServer(c, w, h, look, t, spin, status, drives, reverse) {
   if (look.on) { const g0 = glow(look, t, reverse), rg = c.createRadialGradient(fx, fy, 0, fx, fy, cw * .6); rg.addColorStop(0, rgbA(g0, .18 + .22 * look.brightness)); rg.addColorStop(1, rgbA(g0, 0));
     c.fillStyle = rg; c.beginPath(); c.arc(fx, fy, cw * .6, 0, 7); c.fill(); }
   ring(c, fx, fy, cw * .29, look, t, spin, isDark, reverse);
-  c.fillStyle = "#26262c"; rr(c, left + cw * .16, top + ch * .62, cw * .68, ch * .07, 8); c.fill();
-  c.fillStyle = "#1f1f25"; rr(c, left + cw * .16, top + ch * .72, cw * .68, ch * .05, 8); c.fill();
+  // the two bars under the fan: plain, or your LED strips (Lighting → your lights), showing what they show
+  const strips = (S.fan?.zones || []).filter(z => z.shape === "strip").slice(0, 2);
+  [[ch * .62, ch * .07, "#26262c"], [ch * .72, ch * .05, "#1f1f25"]].forEach(([y, hh, base], k) => {
+    const bx = left + cw * .16, by = top + y, bw = cw * .68;
+    c.fillStyle = base; rr(c, bx, by, bw, hh, 8); c.fill();
+    const z = strips[k]; if (!z || z.on === false) return;
+    const zl = fanLook(z), n = Math.max(6, Math.min(30, z.led_count || 20)), seg = (bw - 8) / n;
+    c.save(); rr(c, bx, by, bw, hh, 8); c.clip();
+    for (let j = 0; j < n; j++) {
+      const [col, a] = ledColor(zl, j, n, t, false), al = Math.max(.15, a) * (.35 + .65 * zl.brightness);
+      const gx = bx + 4 + seg * (j + .5), gg = c.createRadialGradient(gx, by + hh / 2, 0, gx, by + hh / 2, seg * 1.3);
+      gg.addColorStop(0, rgbA(col, al)); gg.addColorStop(1, rgbA(col, 0)); c.fillStyle = gg; c.fillRect(gx - seg * 1.3, by, seg * 2.6, hh);
+    }
+    c.restore();
+  });
   // one LED per drive (boot drive included): green + activity, amber = worn/hot, red pulsing = missing/failing
   const list = drives && drives.length ? drives : null, n = list ? list.length : 6;
   const step = n > 1 ? Math.min(cw * .09, cw * .62 / (n - 1)) : 0, x0 = left + cw / 2 - step * (n - 1) / 2, ly = top + ch * .83;
@@ -122,7 +135,7 @@ function drawServer(c, w, h, look, t, spin, status, drives, reverse) {
   for (let i = 0; i < n; i++) {
     const lvl = list ? list[i].level : "ok";
     const io = list && S.lastNow?.disks ? S.lastNow.disks[list[i].name] : null;
-    const [col, a] = lvl === "critical" ? [[255, 64, 64], .35 + .65 * (.5 + .5 * Math.sin(t / 1000 * 2 * Math.PI))] : lvl === "warning" ? [[255, 176, 32], .9] : [[62, 207, 110], .38 + .62 * activity(i, t, blinkRate(io))];
+    const [col, a] = lvl === "critical" ? [[255, 64, 64], .35 + .65 * (.5 + .5 * Math.sin(t / 1800 * 2 * Math.PI))] : lvl === "warning" ? [[255, 176, 32], .9] : [[62, 207, 110], .38 + .62 * activity(i, t, blinkRate(io))];
     if (a > .5) { c.fillStyle = rgbA(col, (a - .5) * .6); c.beginPath(); c.arc(x0 + i * step, ly, lr * 2.6, 0, 7); c.fill(); }
     c.fillStyle = rgbA(col, a); c.beginPath(); c.arc(x0 + i * step, ly, lr, 0, 7); c.fill();
   }
@@ -130,6 +143,18 @@ function drawServer(c, w, h, look, t, spin, status, drives, reverse) {
   c.fillStyle = g; c.fillRect(left + gp, top + gp, cw * .42, ch * .55);
   c.fillStyle = status; c.globalAlpha = .35; c.beginPath(); c.arc(left + cw * .5, top + ch * .935, cw * .03, 0, 7); c.fill();
   c.globalAlpha = 1; c.beginPath(); c.arc(left + cw * .5, top + ch * .935, cw * .016, 0, 7); c.fill();
+}
+
+/** What's under a click on the home picture: "drives" (the drive lights), "power" (the power button), "fan", or null. */
+export function heroHit(canvas, ev) {
+  const r = canvas.getBoundingClientRect(), x = ev.clientX - r.left, y = ev.clientY - r.top, w = r.width, h = r.height;
+  const cw = Math.min(w * .56, h * .62), ch = cw * 1.42, left = (w - cw) / 2, top = (h - ch) / 2;
+  const d = (ax, ay) => Math.hypot(x - ax, y - ay);
+  if (d(left + cw * .5, top + ch * .935) < cw * .07) return "power";
+  if (Math.abs(y - (top + ch * .83)) < ch * .045 && x > left + cw * .12 && x < left + cw * .88) return "drives";
+  if (d(left + cw / 2, top + ch * .33) < cw * .36) return "fan";
+  if (y > top + ch * .6 && y < top + ch * .78 && x > left + cw * .14 && x < left + cw * .86) return "fan";        // the light strips
+  return null;
 }
 
 function drawFan(c, w, h, look, t, spin, reverse) {

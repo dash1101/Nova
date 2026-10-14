@@ -1027,7 +1027,9 @@ export async function cloudflare(ctx) {
     const nova = st.nova_host, mine = (st.hostnames || []).filter(h => h !== nova);
     ctx.show(`${st.error ? `<div class="rcheck open">${I("warn")}<span>${esc(st.error)}</span></div>` : st.token ? `<div class="rcheck protected">${I("shield")}<span>Connected — new app addresses are protected by “${esc(st.access_app || "?")}”, the same login as Nova.</span></div>` : ""}
       ${sec("API token")}${group(row(st.token ? "Change the API token" : "Add an API token", { sub: "Kept on the server, readable only by root. Saving it asks for your fingerprint.", blue: true, icon: "key", click: "token" })
+        + (st.token && isAdmin() ? row("Show the token", { sub: "To use the same token on another Nova server. Asks for your fingerprint.", icon: "eye", click: "showtoken" }) : "")
         + (st.token ? row("Remove the token", { icon: "del", tint: "var(--red)", click: "untoken" }) : ""))}
+      ${st.token && st.me ? note(`Several Nova servers can share one token: what each adds is signed with its name (this one is “${esc(st.me)}”), and each only takes off its own.`) : ""}
       ${sec("Making the token")}<ol class="note cfsteps">
         <li>Go to <b>dash.cloudflare.com</b> → your profile icon (top right) → <b>My Profile</b> → <b>API Tokens</b>, and select <b>Create Token</b>.</li>
         <li>Next to “Create Custom Token”, select <b>Get started</b>. Name it something like Nova.</li>
@@ -1044,6 +1046,7 @@ export async function cloudflare(ctx) {
           icon: h === nova ? "dns" : "cloud", tint: prot || h === nova ? "var(--green)" : "var(--amber)",
           // only what Nova did can be undone here; everything else stays as you set it up
           end: kind && isAdmin() ? `<button class="rmbtn press" data-act="unpub:${esc(h)}" aria-label="Take it off" title="Take it off">${I("del")}</button>` : "" }); }).join("")) || row("Nothing yet", { sub: "Apps → hold an app → From anywhere…" })) : ""}
+      ${(st.others || []).length ? sec("Added by your other Nova servers") + group(st.others.map(o => row(o.host, { sub: `By ${o.server} — change it there`, icon: "dns" })).join("")) : ""}
       ${note("To put an app online: Apps → hold (or right-click) an app → From anywhere… → Set it up for me.")}`, { title: "Cloudflare" });
   };
   ctx.handlers({
@@ -1052,6 +1055,11 @@ export async function cloudflare(ctx) {
       $("#cft").oninput = e => v = e.target.value.trim(); $("#cft").focus();
       if ((await p) !== "save" || !v) return;
       try { await post("/api/v1/cloudflare/token", { token: v }); toast("Saved"); } catch (e) { toast(e.message); } load(); },
+    showtoken: async () => { let r; try { r = await post("/api/v1/cloudflare/token/show", {}); } catch (e) { return toast(e.message); }
+      if (!r?.token) return;
+      const p = dialog("Cloudflare API token", "Paste it in Settings → Cloudflare on the other server. Anyone with it can change your Cloudflare setup, so keep it private.",
+        [{ label: "Close", value: null }, { label: "Copy", color: "var(--blue)", value: "copy" }], `<div class="pad"><code class="cftok">${esc(r.token)}</code></div>`);
+      if ((await p) === "copy") { try { await navigator.clipboard.writeText(r.token); toast("Copied"); } catch { toast("Select the token and copy it"); } } },
     untoken: async () => { if (!(await confirm("Remove the API token?", "Addresses already set up keep working; Nova just can't add or remove them any more.", "Remove"))) return;
       try { await post("/api/v1/cloudflare/token", { token: "" }); } catch (e) { toast(e.message); } load(); },
     unpub: async h => { const pub = (st.nova_added || {})[h] === "protected";

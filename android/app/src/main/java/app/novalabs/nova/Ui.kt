@@ -40,6 +40,8 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.layout.positionInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.draw.blur
@@ -60,6 +62,8 @@ data class NovaColors(
     val divider: Color, val green: Color, val amber: Color, val red: Color, val dark: Boolean,
     /** Material You Expressive style (Settings → Appearance → Style) instead of the default One UI-like look. */
     val material: Boolean = false, val onBlue: Color = Color.White, val blueContainer: Color = Color(0x333E91FF), val onBlueContainer: Color = Color(0xFF3E91FF),
+    /** Liquid Glass, Fluent or Breeze (Liquid.kt), "" otherwise. */
+    val preset: String = "",
 )
 val DarkTokens = NovaColors(Color.Black, Color(0xFF2E2560), Color(0xFF1A2550), Color(0xFF1E1E22), Color(0xFF2A2A2F),
     Color(0xFF242428), Color(0xFF3A3A40), Color.White, Color(0xFF9E9EA4), Color(0xFF3E91FF), Color(0xFF6E9DFF),
@@ -118,7 +122,7 @@ private fun tinted(c: ColorScheme, strength: Int): ColorScheme {
     val dyn0 = if (!material) null else if (seed != null) seedScheme(seed, dark) else if (Compat.S) (if (dark) dynamicDarkColorScheme(ctx) else dynamicLightColorScheme(ctx))
               else (if (dark) androidx.compose.material3.darkColorScheme() else androidx.compose.material3.lightColorScheme())
     val dyn = dyn0?.let { tinted(it, AppPrefs.tint) }
-    val t = if (dyn != null) materialTokens(dyn, dark) else if (dark) DarkTokens else LightTokens
+    val t = if (dyn != null) materialTokens(dyn, dark) else presetTokens(presetStyle(), dark, seed) ?: if (dark) DarkTokens else LightTokens
     val view = androidx.compose.ui.platform.LocalView.current
     if (!view.isInEditMode) SideEffect {                // status/nav bar icons follow the app's theme, not just the phone's
         (view.context as? android.app.Activity)?.window?.let { w ->
@@ -128,6 +132,9 @@ private fun tinted(c: ColorScheme, strength: Int): ColorScheme {
     }
     val scheme = dyn ?: if (t.dark) darkColorScheme(primary = t.blue, background = t.bg, surface = t.card, onSurface = t.text)
                  else lightColorScheme(primary = t.blue, background = t.bg, surface = t.card, onSurface = t.text)
+    // "Match my accent color" (Appearance → App icon): the launcher icon follows the colors
+    val iconColor = if (material) t.blue else seed ?: t.blue
+    LaunchedEffect(iconColor, dark) { if (!view.isInEditMode) runCatching { AppIcon.follow(ctx, iconColor.toArgb(), dark) } }
     CompositionLocalProvider(LocalNova provides t) { MaterialTheme(colorScheme = scheme, content = content) }
 }
 
@@ -153,12 +160,17 @@ fun levelColor(level: String, t: NovaColors) = when (level) {
 @Composable fun GlowLayer() {
     val t = N
     if (AppPrefs.wallV > 0L) { WallpaperLayer(); return }
-    if (t.material) { Box(Modifier.fillMaxSize().background(t.bg)); return }
-    Canvas(Modifier.fillMaxSize().background(t.bg)) {
+    if (t.material || t.glow == Color.Transparent) { Box(Modifier.fillMaxSize().background(t.bg)); return }
+    // drawn in screen coordinates: every layer (a page, the pane beside it, the strip behind the side pill)
+    // shows its own part of one glow, so there's never a seam between them
+    var origin by remember { mutableStateOf(Offset.Zero) }
+    val win = androidx.compose.ui.platform.LocalWindowInfo.current.containerSize
+    Canvas(Modifier.fillMaxSize().background(t.bg).onGloballyPositioned { origin = it.positionInWindow() }) {
+        val W = if (win.width > 0) win.width.toFloat() else size.width; val H = if (win.height > 0) win.height.toFloat() else size.height
         drawRect(Brush.radialGradient(listOf(t.glow.copy(alpha = if (t.dark) 0.9f else 0.8f), Color.Transparent),
-            center = Offset(size.width * 0.85f, size.height * 0.18f), radius = size.width * 0.95f))
+            center = Offset(W * 0.85f, H * 0.18f) - origin, radius = W * 0.95f))
         drawRect(Brush.radialGradient(listOf(t.glow2.copy(alpha = 0.6f), Color.Transparent),
-            center = Offset(size.width * 0.1f, size.height * 0.35f), radius = size.width * 0.8f))
+            center = Offset(W * 0.1f, H * 0.35f) - origin, radius = W * 0.8f))
     }
 }
 
@@ -170,7 +182,7 @@ fun levelColor(level: String, t: NovaColors) = when (level) {
 // ── Group cards ───────────────────────────────────────────────────────────────────
 @Composable fun Group(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
     Column(modifier.fillMaxWidth().padding(horizontal = Space.gutter, vertical = 6.dp)
-        .glassCard(RoundedCornerShape(if (N.material) 24.dp else 26.dp)), content = content)
+        .glassCard(RoundedCornerShape(if (N.material) 24.dp else cardRadius(26.dp))), content = content)
 }
 
 /** Default: a hairline. Material You: a small gap, so a group reads as Android 16's segmented list. */
@@ -252,11 +264,13 @@ fun levelColor(level: String, t: NovaColors) = when (level) {
 val LocalCompactHeight = staticCompositionLocalOf { false }
 
 @Composable fun BottomScrim(modifier: Modifier = Modifier) {
+    if (LocalCompactHeight.current) return                 // a phone on its side: no room for fades
     Box(modifier.fillMaxWidth().windowInsetsBottomHeight(WindowInsets.navigationBars.add(WindowInsets(bottom = if (LocalCompactHeight.current) 16.dp else 56.dp)))
         .background(Brush.verticalGradient(listOf(Color.Transparent, N.bg.copy(alpha = 0.85f), N.bg))))
 }
 
 @Composable fun StatusBarScrim(modifier: Modifier = Modifier) {
+    if (LocalCompactHeight.current) return
     Box(modifier.fillMaxWidth().windowInsetsTopHeight(WindowInsets.statusBars.add(WindowInsets(top = 14.dp)))
         .background(Brush.verticalGradient(listOf(N.bg, N.bg.copy(alpha = 0.85f), Color.Transparent))))
 }
@@ -690,17 +704,18 @@ fun bytesHuman(b: Long): String {
     val ctx = androidx.compose.ui.platform.LocalContext.current
     val blur = AppPrefs.wallBlur
     // a soft blur that works on every Android version: the picture is drawn from a much smaller copy, then scaled up smoothly
-    val bmp = remember(AppPrefs.wallV, blur) {
-        runCatching {
-            val f = java.io.File(ctx.filesDir, "wallpaper.jpg")
-            val full = android.graphics.BitmapFactory.decodeFile(f.path) ?: return@runCatching null
-            val k = 1f / (1f + blur / 3f)
-            android.graphics.Bitmap.createScaledBitmap(full, (full.width * k).toInt().coerceAtLeast(8), (full.height * k).toInt().coerceAtLeast(8), true).asImageBitmap()
-        }.getOrNull()
-    }
-    Box(Modifier.fillMaxSize().background(t.bg)) {
-        bmp?.let { androidx.compose.foundation.Image(it, null, Modifier.fillMaxSize().then(if (Compat.S && blur > 0) Modifier.blur((blur / 2).dp) else Modifier),
-            contentScale = androidx.compose.ui.layout.ContentScale.Crop, filterQuality = androidx.compose.ui.graphics.FilterQuality.High) }
+    val bmp = remember(AppPrefs.wallV, blur) { Backdrop.wallpaper(ctx) }          // made once, shared with Liquid Glass cards
+    // in screen coordinates too, so it continues seamlessly from a page to the strip behind the side pill
+    var origin by remember { mutableStateOf(Offset.Zero) }
+    val win = androidx.compose.ui.platform.LocalWindowInfo.current.containerSize
+    Box(Modifier.fillMaxSize().background(t.bg).onGloballyPositioned { origin = it.positionInWindow() }) {
+        bmp?.let { img -> Canvas(Modifier.fillMaxSize().then(if (Compat.S && blur > 0) Modifier.blur((blur / 2).dp) else Modifier)) {
+            val W = if (win.width > 0) win.width.toFloat() else size.width; val H = if (win.height > 0) win.height.toFloat() else size.height
+            val k = maxOf(W / img.width, H / img.height)                     // "cover" the whole window
+            val dw = img.width * k; val dh = img.height * k
+            drawImage(img, dstOffset = androidx.compose.ui.unit.IntOffset(((W - dw) / 2 - origin.x).toInt(), ((H - dh) / 2 - origin.y).toInt()),
+                dstSize = androidx.compose.ui.unit.IntSize(dw.toInt(), dh.toInt()), filterQuality = androidx.compose.ui.graphics.FilterQuality.High)
+        } }
         Box(Modifier.fillMaxSize().background(t.bg.copy(alpha = AppPrefs.wallDim / 100f)))
     }
 }

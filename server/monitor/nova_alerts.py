@@ -178,6 +178,14 @@ def disk_of(mp):
     except (OSError, StopIteration):
         return ""
 
+def drive_life(nv, norm, rpm):
+    """How much of an SSD's rated life is left, as the drive itself reports it (None for spinning drives)."""
+    if nv.get("percentage_used") is not None: return max(0, 100 - int(nv["percentage_used"]))
+    for a in (231, 202, 233, 177, 169):          # SSD_Life_Left · Percent_Lifetime_Remain · Media_Wearout · Wear_Leveling · Remaining_Life
+        v = norm.get(a)
+        if isinstance(v, int) and 0 < v <= 100 and not rpm: return v
+    return None
+
 def readable(path, timeout=8):
     """True if the folder can be listed, False on an I/O error, None if it didn't answer in time (a stuck drive)."""
     import threading
@@ -186,7 +194,7 @@ def readable(path, timeout=8):
         try: os.listdir(path); res["ok"] = True
         except OSError as e: res["ok"] = False if e.errno in (5, 117, 19, 6) else True    # EIO, EUCLEAN, ENODEV, ENXIO
     t = threading.Thread(target=go, daemon=True); t.start(); t.join(timeout)
-    return res.get("ok", False if t.is_alive() else None)
+    return res.get("ok")              # (still waiting after the timeout: None — a sleeping or busy drive isn't a dead one)
 
 class Monitor:
     def __init__(self):
@@ -334,7 +342,9 @@ class Monitor:
         for dev, n in disk_errs.items():
             key = port_dev.get(dev, dev)
             merged[key] = merged.get(key, 0) + n
+        io_at = self.st["counters"].setdefault("io_err_at", {})
         for dev, n in merged.items():
+            io_at[dev] = now()                                   # the drive light pulses red for a while after errors
             port = next((p for p, d in port_dev.items() if d == dev), "")
             self.event("critical", f"Disk errors on {dev}" + (f" ({port})" if port else ""),
                        f"{n} error line(s) in the kernel log this minute — check cables/power.", "disk")
@@ -425,18 +435,32 @@ class Monitor:
         if spc == "auto":
             br = mergerfs_branches(); spc = ["/"] + [m for m, *_ in auto if m != "/" and m not in br]
         names, storage = self.cfg.get("mount_names") or {}, []
+        srcs = {m: src for m, _, src, _ in auto}
+        def present(src):                    # is the drive behind this fstab line connected right now?
+            m = re.match(r"(UUID|LABEL|PARTUUID|PARTLABEL)=(.+)", src or "")
+            if m: return os.path.exists(f"/dev/disk/by-{m.group(1).lower()}/{m.group(2)}")
+            return os.path.exists(src) if (src or "").startswith("/dev/") else None
         for mp in req:
             if mp in quiet: continue
-            self.condition(f"mount:{mp}", mp not in mounted, "critical", f"Not mounted: {mp}",
-                           f"{mount_name(mp, names)} isn't available — a drive dropped out or wasn't there at boot.")
+            here = present(srcs.get(mp)) if mp not in mounted else None
+            # connected but not mounted: almost always on purpose (unmounted in a terminal, a clone or repair running)
+            self.condition(f"mount:{mp}", mp not in mounted, "info" if here else "critical",
+                           f"Not mounted: {mp}" if here else f"Drive missing: {mount_name(mp, names)}",
+                           f"{mount_name(mp, names)} is connected but not mounted — if you unmounted it (or are copying or repairing it), that's fine. Mount it again from Storage when you're done."
+                           if here else f"{mount_name(mp, names)} isn't connected — a drive dropped out (cable, power) or wasn't there at boot.")
         # Mounted isn't the same as working: a drive that died stays "mounted" but can't be read.
         dead = set()
         for mp in req:
             if mp in quiet or mp not in mounted: continue
             ok = readable(mp)
-            if ok is False: dead.add(mp)
-            dk = disk_of(mp) if ok is False else ""
-            self.condition(f"dead:{mp}", ok is False, "critical", f"Drive not responding: {mount_name(mp, names)}" + (f" — {dk}" if dk else ""),
+            fc = self.st["counters"].setdefault("dead_fails", {})
+            if ok is None:                     # no answer yet: keep whatever we said last time
+                ok = False if f"dead:{mp}" in self.st["conditions"] else True
+            else: fc[mp] = fc.get(mp, 0) + 1 if ok is False else 0
+            bad = ok is False and fc.get(mp, 0) >= 2          # two failed checks in a row, not one hiccup
+            if bad: dead.add(mp)
+            dk = disk_of(mp) if bad else ""
+            self.condition(f"dead:{mp}", bad, "critical", f"Drive not responding: {mount_name(mp, names)}" + (f" — {dk}" if dk else ""),
                            f"{mp}{f' on {dk}' if dk else ''} is mounted but can't be read (I/O errors) — the drive has likely failed or come loose. "
                            "Don't write to it; check its cable and power, and copy off anything you still need.")
         for mp in spc:
@@ -489,8 +513,16 @@ class Monitor:
             for serial, d in now_set.items():
                 rc, out = sh(["smartctl", "-H", "-A", "-j", f"/dev/{d['name']}"], timeout=60)
                 try: j = json.loads(out)
-                except Exception: continue
-                attrs = {a["id"]: a["raw"]["value"] for a in j.get("ata_smart_attributes", {}).get("table", [])}
+                except Exception: j = {}
+                recent_io = now() - self.st["counters"].get("io_err_at", {}).get(d["name"], 0) < 3600   # struggling: don't poke it more (a rescue copy may be running)
+                if not j.get("ata_smart_attributes") and not j.get("nvme_smart_health_information_log") and d.get("tran") == "usb" and not recent_io:
+                    rc, out = sh(["smartctl", "-d", "sat", "-H", "-A", "-j", f"/dev/{d['name']}"], timeout=60)   # USB adapters: talk ATA through them
+                    try: j = json.loads(out)
+                    except Exception: j = {}
+                if not j: continue
+                table = j.get("ata_smart_attributes", {}).get("table", [])
+                attrs = {a["id"]: a["raw"]["value"] for a in table}
+                norm = {a["id"]: a.get("value") for a in table}
                 nv = j.get("nvme_smart_health_information_log", {})
                 cache[serial] = {
                     "name": d["name"], "model": d.get("model"),
@@ -498,6 +530,7 @@ class Monitor:
                     "temp": j.get("temperature", {}).get("current"),
                     "realloc": attrs.get(5), "pending": attrs.get(197), "uncorrect": attrs.get(187),
                     "crc": attrs.get(199), "media_errors": nv.get("media_errors"), "t": now(),
+                    "life": drive_life(nv, norm, j.get("rotation_rate")), "hours": (j.get("power_on_time") or {}).get("hours"),
                 }
         t = self.cfg["thresholds"]
         base = self.st["counters"].setdefault("smart_baseline", {})
@@ -531,8 +564,12 @@ class Monitor:
         conds, states = self.st["conditions"], []
         for serial, d in known.items():
             sm = cache.get(serial, {}); lvl, why = "ok", ""
+            io_at = self.st["counters"].get("io_err_at", {}).get(d.get("name") or "", 0)
+            dead_here = any(k.startswith("dead:") and d.get("name") and disk_of(k[5:]).split(" ")[0] == d.get("name") for k in conds)
             if f"drive:{serial}" in conds: lvl, why = "critical", "missing"
             elif sm.get("passed") is False: lvl, why = "critical", "SMART failed"
+            elif dead_here: lvl, why = "critical", "not responding"
+            elif now() - io_at < 600: lvl, why = "critical", "read/write errors"
             elif f"temp:{serial}" in conds: lvl, why = conds[f"temp:{serial}"]["level"], "hot"
             elif any((sm.get(k) or 0) > 0 for k in ("realloc", "pending", "uncorrect", "media_errors")): lvl, why = "warning", "worn"
             states.append({"name": d.get("name"), "model": d.get("model"), "serial": serial, "level": lvl, "why": why,
@@ -624,8 +661,17 @@ class Monitor:
             first_run_pending = page is None and bm and os.path.exists(bm) and now() - os.path.getmtime(bm) < 2 * 86400
             running = sh(["systemctl", "is-active", "nova-backup.service"])[1].strip() in ("active", "activating")
             if running: self.metrics["data_backup"] = "running now"
-            self.condition("backup:data", not running and not first_run_pending and (page is None or page > t * 3600), "warning",
-                           "Data backup is stale", f"Last success: {self.metrics['data_backup']}. See /var/log/nova-backup.log")
+            failed = sh(["systemctl", "is-failed", "nova-backup.service"])[1].strip() == "failed"
+            last = ""
+            if failed:                          # the last run failed: say that (and why), not just "stale"
+                try: last = next((l.strip() for l in reversed(open("/var/log/nova-backup.log", errors="replace").read().splitlines()[-200:])
+                                  if re.search(r"CRASHED|ERROR|error|failed", l)), "")
+                except OSError: pass
+            stale = not running and not first_run_pending and (page is None or page > t * 3600)
+            self.condition("backup:data", stale, "warning",
+                           "Data backup failed" if failed else "Data backup is stale",
+                           (f"The last run failed{': ' + last[-160:] if last else ''}. Last success: {self.metrics['data_backup']}." if failed
+                            else f"Last success: {self.metrics['data_backup']}.") + " See /var/log/nova-backup.log")
             st = load_json("/var/lib/nova-backup/backup_status.json", {})
             sets = st.get("sets", {})
             if sets:
@@ -741,7 +787,7 @@ class Monitor:
             except Exception as e:   # one broken check must never stop the others
                 self._record("warning", f"Monitor check failed: {fn.__name__}", repr(e)[:200], "monitor")
         # conditions checked this run that are no longer true → resolved
-        self.resolve_unseen(["temp:", "load:", "mem:", "mount:", "space:", "inodes:", "drive:", "smart:",
+        self.resolve_unseen(["temp:", "load:", "mem:", "mount:", "dead:", "space:", "inodes:", "drive:", "smart:",
                              "svc:", "ctr:", "web:", "backup:", "sys:"])
         for k in list(self.st["dismissed"]):       # cleared since you dismissed it → alert again next time
             if k not in self.seen_dismissed: self.st["dismissed"].pop(k, None)

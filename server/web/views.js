@@ -4,8 +4,10 @@ import { S, $, $$, esc, get, post, del, api, loadNodes, serverHost, sleep, prefs
          serverName, uptime, hm, refresh, changeFan, waitJob, kv, archiveMerge, archiveAll, archiveClear, archiveUnmark } from "./core.js";
 import { I, row, group, sec, note, sw, radio, switchRow, links, expand, slider, segmented, bar, usageColor,
          toast, dialog, confirm, choose, ask, sheet, closeSheet, wireCommon, reorderable, onHold, spark, swipeable, colorPicker } from "./ui.js";
-import { animate } from "./hero.js";
+import { animate, heroHit } from "./hero.js";
 import * as ST from "./storage.js";
+import { LANGS, pickLang } from "./i18n.js";
+import { canRefract } from "./glass.js";
 import * as SV from "./servers.js";
 import { favoriteTiles, favoritesLink } from "./start.js";
 
@@ -174,11 +176,24 @@ export async function home(ctx) {
       <div class="statusline" data-act="go:status"><span style="color:${S.error || S.reconnecting ? "var(--sub)" : levelColor(lvl)};display:flex">${I(icon)}</span>${esc(head)}${cs ? `<span class="sep"></span>${cs.running}/${cs.total} running` : ""}${tasksChip()}</div>
       <div style="height:14px"></div>${topBanner()}${S.serverUpdate && localStorage.getItem("nova.dismissedUpdate") !== S.serverUpdate ? `<div class="upnote glass"><span style="color:var(--blue);display:flex">${I("update")}</span><b data-act="go:updates" style="flex:1;cursor:pointer">Nova ${esc(S.serverUpdate)} is ready to install</b><button class="xbtn" data-act="upx" aria-label="Not now">${I("close")}</button></div>` : ""}`;
     const order = homeOrder().filter(id => prefs[HOME_SECTIONS.find(s => s[0] === id)?.[3]] && (id !== "servers" || serverStrip()));
-    const block = id => id === "hero" ? `<canvas class="hero" id="hero" data-act="${has("lighting") ? "go:lighting" : ""}"></canvas>` : id === "shortcuts" ? pills() : id === "servers" ? serverStrip() : stats();
+    const block = id => id === "hero" ? `<canvas class="hero" id="hero" data-act="herotap" title="Tap the fan, the drive lights or the power button"></canvas>` : id === "shortcuts" ? pills() : id === "servers" ? serverStrip() : stats();
     const wide = innerWidth >= 1100;
     ctx.show(wide
       ? `<div class="home-wide"><div>${top}${prefs.homeHero ? block("hero") : ""}</div><div>${order.filter(x => x !== "hero").map(id => `<div class="block">${block(id)}</div>`).join("")}</div></div>`
       : `${top}${order.map(id => `<div class="block">${block(id)}</div>`).join("")}`, { tabroot: true, noHeader: true });
+    const hero = $("#hero");
+    if (hero) hero.onclick = async ev => {                  // the picture works: fan → Lighting, drive lights → Storage, power button → power
+      ev.stopPropagation();
+      const hit = heroHit(hero, ev);
+      if (hit === "fan" && has("lighting")) return ctx.go("lighting");
+      if (hit === "drives") return ctx.go("hardware");
+      if (hit === "power") {
+        if (!isAdmin()) return viewOnly();
+        const v = await choose("Power", [["reboot", "Restart server", "Everything goes offline for about 2 minutes"], ["poweroff", "Shut down server", "You'll need to press the power button to turn it back on"]], null);
+        if (!v || !(await confirm(v === "reboot" ? "Restart the server?" : "Shut down the server?", "Everything running on it will be unavailable until it's back. Your phone confirms it.", v === "reboot" ? "Restart" : "Shut down"))) return;
+        try { const r = await post(`/api/v1/power/${v}`); toast(`Done — the server will ${v === "reboot" ? "restart" : "shut down"} in ${r.in_seconds || 8} seconds`); } catch (e) { toast(e.message); }
+      }
+    };
     animate($("#hero"), "server", () => S.error ? "#9e9ea4" : getComputedStyle(document.documentElement).getPropertyValue(lvl === "ok" ? "--green" : lvl === "warning" ? "--amber" : "--red").trim());
     onHold($("#chips"), () => ctx.go("edit-shortcuts"));
   };
@@ -187,6 +202,7 @@ export async function home(ctx) {
     post("/api/v1/server/update/check", { quiet: true }).then(u => { if (u?.state === "available") { S.serverUpdate = String(u.available || "").replace("~", "-"); if (ctx.alive()) draw(); } }).catch(() => {}); }
   ctx.handlers({
     upx: () => { try { localStorage.setItem("nova.dismissedUpdate", S.serverUpdate); } catch {} draw(); },
+    herotap: () => {},                                     // (the picture's own click handler decides; see draw)
     srv: async id => { if (await SV.control(id === "here" ? "" : id) === false) ctx.go("servers"); },
     refresh: async () => { await refresh(); await fetchNow(); draw(); toast("Up to date"); },
     disconnected: async () => { if (await showDisconnected()) draw(); },
@@ -483,17 +499,52 @@ export async function store(ctx) {
         + group(hub === null ? row(hubBusy ? "Searching Docker Hub…" : `Search Docker Hub for “${esc(q.trim())}”`, { sub: "Any public image — you set its ports and folders", icon: "search", blue: true, click: isAdmin() && !hubBusy ? "hub" : "" })
           : !hub.length ? row(`Nothing on Docker Hub for “${esc(q.trim())}”`) : hub.map(r => row(r.image + (r.official ? "  ·  official" : ""), { sub: [r.description, "★ " + r.stars].filter(Boolean).join(" · "), icon: "box", click: "use:" + encodeURIComponent(r.image) })).join(""));
     }
+    if (tab === 2) return pluginsBody(ql);
     if (ql.length >= 2) return sec("Programs") + group(found === null ? row("Searching…") : !found.length ? row(`Nothing called “${esc(q.trim())}”`) : found.map(progRow).join(""));
     const cats = {}; (S.cache["/api/v1/programs"]?.items || []).forEach(p => (cats[p.category] ||= []).push(p));
     return (isAdmin() ? note("Type to search everything your package manager offers. These are our picks:") : "") + Object.entries(cats).map(([c, xs]) => sec(c) + group(xs.map(progRow).join(""))).join("") + (S.cache["/api/v1/programs"] ? "" : note("Loading…"));
   };
+  // ── Plugins: the community list, what's installed, and installing your own ──
+  let cat = null, mine = null;
+  const pluginsBody = ql => {
+    const inst = new Set((mine || []).map(p => p.id)), list = (cat?.plugins || []).filter(p => !ql || [p.name, p.description, p.author].some(x => (x || "").toLowerCase().includes(ql)));
+    return `<div class="rcheck open" style="margin:4px var(--gutter) 8px">${I("warn")}<span>Plugins come from other people. A plugin's tools run commands on your server as your normal account (never as root) — install only ones you trust, and read what each tool runs before you say yes.</span></div>`
+      + ((mine || []).length ? sec("Installed") + group(mine.map(p => row(`${p.name} ${p.version}`, { sub: [p.description, p.on ? "" : "switched off"].filter(Boolean).join(" · "), icon: "widgets",
+          end: isAdmin() ? `<button class="pillbtn press red" data-act="plrm:${esc(p.id)}">Remove</button>` : "" })).join("")) : "")
+      + sec("Community plugins") + group(!cat ? row("Loading…") : cat.error && !cat.plugins.length ? row("Couldn't load the list", { sub: cat.error, icon: "warn", tint: "var(--amber)" })
+          : !list.length ? row(ql ? `No plugin matches “${esc(ql)}”` : "None listed yet")
+          : list.map(p => row(p.name, { sub: [p.description, (p.author ? "by " + p.author : ""), p.reviewed ? "✓ Reviewed by Nova" : "Not reviewed — listed as-is"].filter(Boolean).join(" · "), icon: p.reviewed ? "shield" : "widgets",
+              tint: p.reviewed ? "var(--green)" : "var(--amber)", end: inst.has(p.id) ? `<span class="end">Installed</span>` : isAdmin() ? `<button class="pillbtn press" data-act="plget:${esc(p.id)}">Get</button>` : "" })).join(""))
+      + (isAdmin() ? sec("Your own") + group(row("Install from a link", { sub: "An https:// link to a plugin.json or a .zip", icon: "cloud", blue: true, click: "plurl" })
+          + row("Install from a file", { sub: "A .zip (or plugin.json) on this device", icon: "up", blue: true, click: "plfile" })) : "")
+      + note("Make one: a folder with a plugin.json — see docs/PLUGINS.md. Share it by adding it to plugins/index.json on GitHub.");
+  };
+  const loadPlugins = async () => {
+    const [c, m] = await Promise.all([get("/api/v1/plugins/catalog").catch(e => ({ plugins: [], error: e.message })), get("/api/v1/plugins").catch(() => ({ plugins: [] }))]);
+    cat = c; mine = m.plugins || []; if (ctx.alive() && tab === 2) paint();
+  };
+  /** Look first (what it adds, the exact commands), then install — your phone confirms with a fingerprint. */
+  const installPlugin = async (src, reviewed) => {
+    let pv; try { pv = await post("/api/v1/plugins/preview", src); } catch (e) { return toast(e.message); }
+    const p = pv.plugin;
+    const what = [...p.apps.map(a => `<li><b>App:</b> ${esc(a.name)} — ${esc(a.url || ":" + a.port + (a.path || ""))}</li>`),
+      ...p.commands.map(c => `<li><b>Tool:</b> ${esc(c.name)}${c.confirm ? " (asks first)" : ""}<code class="cftok" style="margin-top:4px">${esc(c.command)}</code></li>`)].join("");
+    const ok = await dialog(`${pv.installed ? "Update" : "Install"} ${p.name}${p.version ? " " + p.version : ""}?`,
+      `${p.author ? "By " + p.author + ". " : ""}${reviewed ? "Reviewed by the Nova project." : "Not reviewed by anyone at Nova — check what it runs."}${pv.installed ? ` Replaces version ${pv.installed_version || "?"}.` : ""}`,
+      [{ label: "Cancel", value: null }, { label: pv.installed ? "Update" : "Install", color: "var(--blue)", value: "ok" }],
+      `<div class="pad"><p class="note" style="margin:0 0 6px">${esc(p.description)}</p><ul class="plwhat">${what || "<li>Nothing to add</li>"}</ul></div>`);
+    if (ok !== "ok") return;
+    try { await post("/api/v1/plugins/install", { ...src, sha256: pv.sha256 }); toast(`${p.name} installed — its apps and tools are in Apps`); await get("/api/v1/apps").catch(() => {}); }
+    catch (e) { toast(e.message); }
+    loadPlugins();
+  };
   const paint = () => { const el = $("#sres"); if (el) el.innerHTML = body(); };
   const draw = () => {
-    ctx.show(`<p class="note" style="font-size:15px;margin:0 26px 10px" id="sintro">${tab === 0 ? "Containers run in Docker, each in its own box with its own folder in /opt." : "Programs install straight onto the server with its package manager (apt), no Docker needed."}</p>
-      ${segmented(["Containers", "Programs"], tab, "tab")}
-      <div class="searchbox glass" style="margin:10px var(--gutter)">${I("search")}<input id="sq" class="sq" value="${esc(q)}" placeholder="${tab === 0 ? "Search containers" : "Search every program"}" autocomplete="off" autocapitalize="off" spellcheck="false"></div>
+    ctx.show(`<p class="note" style="font-size:15px;margin:0 26px 10px" id="sintro">${tab === 0 ? "Containers run in Docker, each in its own box with its own folder in /opt." : tab === 1 ? "Programs install straight onto the server with its package manager (apt), no Docker needed." : "Plugins add apps and one-tap tools to Nova."}</p>
+      ${segmented(["Containers", "Programs", "Plugins"], tab, "tab")}
+      <div class="searchbox glass" style="margin:10px var(--gutter)">${I("search")}<input id="sq" class="sq" value="${esc(q)}" placeholder="${["Search containers", "Search every program", "Search plugins"][tab]}" autocomplete="off" autocapitalize="off" spellcheck="false"></div>
       <div id="sres">${body()}</div>`, { title: "App store", root: true, tabroot: true });
-    wireCommon(ctx.root, { onSeg: (_, i) => { tab = i; q = ""; hub = null; found = null; draw(); if (i === 1 && !S.cache["/api/v1/programs"]) get("/api/v1/programs").then(() => ctx.alive() && paint()).catch(() => {}); } });
+    wireCommon(ctx.root, { onSeg: (_, i) => { tab = i; q = ""; hub = null; found = null; draw(); if (i === 1 && !S.cache["/api/v1/programs"]) get("/api/v1/programs").then(() => ctx.alive() && paint()).catch(() => {}); if (i === 2) loadPlugins(); } });
     const inp = $("#sq");
     inp.oninput = () => { q = inp.value; hub = null; found = null; paint(); clearTimeout(timer);
       if (tab === 1 && q.trim().length >= 2) timer = setTimeout(async () => { const t = q; try { const r = await get(`/api/v1/programs/search?q=${encodeURIComponent(t.trim())}`); if (t === q) { found = r.items || []; paint(); } } catch (e) { toast(e.message); } }, 350); };
@@ -502,6 +553,16 @@ export async function store(ctx) {
     open: id => ctx.go("store/" + encodeURIComponent(id)),
     hub: async () => { hubBusy = true; paint(); try { hub = (await get(`/api/v1/store/hub?q=${encodeURIComponent(q.trim())}`)).results || []; } catch (e) { toast(e.message); } hubBusy = false; paint(); },
     use: img => { ctx.go("container-new/" + img); },
+    plget: id => { const p = cat?.plugins?.find(x => x.id === id); if (p) installPlugin({ url: p.url }, p.reviewed); },
+    plurl: async () => { const u = await ask("Install from a link", "https://…/plugin.json or .zip", "", "Look at it", 1000); if (u) installPlugin({ url: u.trim() }, false); },
+    plfile: () => { const inp = document.createElement("input"); inp.type = "file"; inp.accept = ".zip,.json,application/zip,application/json";
+      inp.onchange = async () => { const f = inp.files?.[0]; if (!f) return; if (f.size > 256 * 1024) return toast("That's too big for a plugin (256 KB at most)");
+        const b = new Uint8Array(await f.arrayBuffer()); let bin = ""; for (let i = 0; i < b.length; i += 8192) bin += String.fromCharCode(...b.subarray(i, i + 8192));
+        installPlugin({ zip: btoa(bin) }, false); };
+      inp.click(); },
+    plrm: async id => { const p = mine.find(x => x.id === id); if (!p) return;
+      if (!(await confirm(`Remove ${p.name}?`, "Its apps and tools leave Nova. You can install it again any time.", "Remove", "var(--red)"))) return;
+      try { await post("/api/v1/plugins/remove", { id }); toast("Removed"); await get("/api/v1/apps").catch(() => {}); } catch (e) { toast(e.message); } loadPlugins(); },
     prog: async pkg => {
       const p = (found || []).find(x => x.pkg === pkg) || S.cache["/api/v1/programs"]?.items?.find(x => x.pkg === pkg) || (pkg === "docker.io" ? { pkg, name: "Docker", installed: false } : null); if (!p) return;
       if (!(await confirm(`${p.installed ? "Remove" : "Install"} ${p.name || pkg}?`, "Your phone will ask you to confirm with your fingerprint.", p.installed ? "Remove" : "Install", p.installed ? "var(--red)" : "var(--blue)"))) return;
@@ -599,6 +660,7 @@ const dayOf = e => { const d = new Date(e.t * 1000), now = new Date(), y = new D
   return d.toDateString() === now.toDateString() ? "Today" : d.toDateString() === y.toDateString() ? "Yesterday" : d.toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" }); };
 export async function inbox(ctx) {
   let filter = 0, picked = new Set(), last = null;
+  const openEv = new Set();                  // events whose full details are shown (click the text)
   // live progress: every 2 s while something runs, else every 15 s
   const liveSwipe = el => swipeable(el, { onRight: hideLive, onLeft: hideLive });
   const hideLive = key => { liveHidden.add(String(key).replace(/^live:/, "")); const el = $("#live"); if (el) { el.innerHTML = el.dataset.h = liveHtml(); liveSwipe(el); } };
@@ -620,8 +682,8 @@ export async function inbox(ctx) {
       ${Object.entries(days).map(([d, l]) => `<div class="sechead dayhead">${sec(d)}${mouse || picked.size ? `<button class="pillbtn press dayall" data-act="pickday:${esc(encodeURIComponent(d))}">${l.every(e => picked.has(String(e.t))) ? "Unselect day" : "Select day"}</button>` : ""}</div>` + group(l.map(e => { const k = String(e.t), on = picked.has(k);
           return `<div class="swipe fadeok${mouse ? " mouse" : ""}${on ? " picked" : ""}" data-key="${e.t}" data-left="Archive" data-right="Archive" tabindex="0"><div class="swbg"></div><div class="swfg"><div class="row" style="align-items:flex-start">
             ${mouse ? `<button class="tick fadeok${on ? " on" : ""}" data-act="pick:${k}" aria-label="Select" aria-pressed="${on}">${I("check")}</button>` : `<span class="dot" style="margin-top:7px;background:${levelColor(e.level)}"></span>`}
-            <div class="t">${mouse ? `<span class="dot" style="display:inline-block;margin-right:8px;background:${levelColor(e.level)}"></span>` : ""}<b style="font-size:16px;display:inline">${esc(cleanTitle(e.title))}</b>${e.detail ? `<small>${esc(e.detail)}</small>` : ""}</div>
-            <span class="end" style="font-size:13px">${hm(e.t)}</span><button class="xbtn" data-act="del:${e.t}" aria-label="Archive" title="Archive">${I("down")}</button></div></div></div>`; }).join(""))).join("")
+            <div class="t evt" data-act="evx:${k}">${mouse ? `<span class="dot" style="display:inline-block;margin-right:8px;background:${levelColor(e.level)}"></span>` : ""}<b style="font-size:16px;display:inline">${esc(cleanTitle(e.title))}</b>${e.detail ? `<small class="evd${openEv.has(k) ? " open" : ""}">${esc(e.detail)}</small>` : ""}</div>
+            <span class="end" style="font-size:13px">${hm(e.t)}</span><button class="xbtn" data-act="del:${e.t}" aria-label="Archive" title="Archive">${I("archive")}</button></div></div></div>`; }).join(""))).join("")
         || note(all ? "Nothing here — all quiet." : "Loading…")}`,
       { title: "Inbox", actions: [{ icon: "book", label: "Archive", act: "go:archive" }, { icon: "del", label: "Archive everything", act: "clear" }, { icon: "gear", label: "Notification settings", act: "go:notify" }] });
     wireCommon(ctx.root, { onSeg: (_, i) => { filter = i; picked.clear(); draw(); } });
@@ -634,6 +696,7 @@ export async function inbox(ctx) {
       const t = el.querySelector(".tick"); if (t) { t.classList.toggle("on", on); t.setAttribute("aria-pressed", on); } });
     const bar = $("#selbar"); if (!bar) return;
     if (picked.size) { $("#selcount").textContent = `${picked.size} selected`; $("#selnum").textContent = picked.size; }
+    const sa = $("[data-act=selall]", ctx.root); if (sa) sa.textContent = shown().length && shown().every(e => picked.has(String(e.t))) ? "Select none" : "Select all";
     bar.classList.toggle("show", picked.size > 0);
   };
   const remove = async ts => {
@@ -661,7 +724,10 @@ export async function inbox(ctx) {
     alert: (...a) => alertMenu(keyOf(a), draw), ignore: (...a) => dismissAlert(keyOf(a), draw), del: t => remove([+t]),
     ignfold: () => { ignoredOpen = !ignoredOpen; $(".expand.ign", ctx.root)?.classList.toggle("open", ignoredOpen); },
     unignore: (...a) => undismissAlert(keyOf(a), draw),
-    pick: (k, el) => toggle(k, lastClickShift), selall: () => { shown().forEach(e => picked.add(String(e.t))); updateSel(); }, selnone: () => { picked.clear(); updateSel(); },
+    evx: k => { openEv.has(k) ? openEv.delete(k) : openEv.add(k); $(`.swipe[data-key="${k}"] .evd`, ctx.root)?.classList.toggle("open", openEv.has(k)); },
+    pick: (k, el) => toggle(k, lastClickShift),
+    selall: () => { const all = shown().map(e => String(e.t)); if (all.every(k => picked.has(k))) picked.clear(); else all.forEach(k => picked.add(k)); updateSel(); },
+    selnone: () => { picked.clear(); updateSel(); },
     pickday: d => { d = decodeURIComponent(d); const l = shown().filter(e => dayOf(e) === d).map(e => String(e.t)), all = l.every(k => picked.has(k));
       l.forEach(k => all ? picked.delete(k) : picked.add(k)); draw(); },
     archsel: () => remove([...picked].map(Number)),
@@ -1150,7 +1216,8 @@ const driveName = d => { const m = d.model || "", gbn = Math.round(d.size / 1e9)
     ["KINGSTON", "Kingston"], ["TOSHIBA", "Toshiba"], ["INTEL", "Intel"], ["Micron", "Micron"], ["HGST", "HGST"]].find(([p]) => m.startsWith(p))?.[1];
   const kind = d.bus === "nvme" || (d.name || "").startsWith("nvme") ? "NVMe" : d.ssd ? "SSD" : "HDD";
   return !m ? d.name : brand ? `${brand} ${kind} ${gb}` : `${m} ${gb}`; };
-const health = d => d.smart_passed === false ? ["Failing", "critical"] : (d.realloc > 0 || d.uncorrect > 0 || d.pending > 0) ? ["Worn — keep an eye on it", "warning"] : d.crc > 50 ? ["Healthy*", "ok"] : ["Healthy", "ok"];
+const health = d => { const p = d.health != null ? ` · ${d.health}%` : "";
+  return d.smart_passed === false ? ["Failing" + p, "critical"] : (d.realloc > 0 || d.uncorrect > 0 || d.pending > 0) ? ["Worn — keep an eye on it" + p, "warning"] : d.crc > 50 ? ["Healthy*" + p, "ok"] : ["Healthy" + p, "ok"]; };
 export async function hardware(ctx) {
   const [serial] = ctx.args;
   if (serial) return drive(ctx, serial);
@@ -1187,12 +1254,16 @@ async function drive(ctx, serial) {
       + row("Full surface scan", { sub: `${t.long_minutes ? `About ${dur(t.long_minutes)} · ` : ""}reads every sector — best for second-hand drives`, blue: true, icon: "disk", click: "test:long", dis: testBusy }) + log);
   };
   const draw = () => {
-    const d = (S.cache["/api/v1/hardware"]?.drives || []).find(x => x.serial === serial);
-    if (!d) return ctx.show(note("Loading…"), { title: "Drive" });
+    const d0 = (S.cache["/api/v1/hardware"]?.drives || []).find(x => x.serial === serial);
+    if (!d0) return ctx.show(note("Loading…"), { title: "Drive" });
+    const fresh = S.cache[tp]?.attrs || {};            // read just now (the list is refreshed every 30 minutes)
+    const d = { ...d0, ...Object.fromEntries(Object.entries({ smart_passed: fresh.passed, temp: fresh.temp, realloc: fresh.realloc, pending: fresh.pending, uncorrect: fresh.uncorrect, crc: fresh.crc }).filter(([, v]) => v != null)) };
     const [h, lv] = health(d), mounted = (d.mounts || []).length > 0;
     ctx.show(`<div class="center" style="padding:16px 0"><div style="color:${levelColor(lv)}">${I(d.ssd ? "ssd" : "disk").replace('class="i ', 'style="width:90px;height:90px" class="i ')}</div>
         <div style="color:${levelColor(lv)};font-size:18px;font-weight:700">${h}</div><div class="muted">${esc(d.role || "")} · /dev/${esc(d.name)}</div></div>
-      ${sec("Health (SMART)")}${group(row("Overall", { sub: d.smart_passed === false ? "FAILED" : "Passed" }) + row("Temperature", { sub: d.temp ? d.temp + "°C" : "—" })
+      ${sec("Health (SMART)")}${group((d.health != null ? row("Estimated health", { sub: `${d.health}%${d.life != null ? ` · ${d.life}% of its rated wear left` : ""} — a guide from its SMART data, not a promise` }) : "")
+        + (d.hours ? row("Powered on", { sub: `${d.hours.toLocaleString()} hours (${(d.hours / 8766).toFixed(1)} years)` }) : "")
+        + row("Overall", { sub: d.smart_passed == null ? "Not read yet — run a quick test" : d.smart_passed === false ? "FAILED" : "Passed" }) + row("Temperature", { sub: d.temp ? d.temp + "°C" : "—" })
         + row("Reallocated sectors", { sub: String(d.realloc ?? "—") }) + row("Unreadable (pending)", { sub: String(d.pending ?? "—") }) + row("Uncorrectable errors", { sub: String(d.uncorrect ?? "—") })
         + row("Cable errors (all-time) *", { sub: `${d.crc ?? "—"} · if this keeps rising, check the cable` }))}
       ${testsHtml()}
@@ -1317,12 +1388,19 @@ export async function serverSettings(ctx) {
 }
 export async function appearance(ctx) {
   const draw = () => {
-    const t = prefs.theme, st = prefs.style, mat = document.documentElement.classList.contains("material"), look = mat ? "Material" : "Default";
+    const t = prefs.theme, st = prefs.style, mat = document.documentElement.classList.contains("material"), look = mat ? "Material" : ({ liquid: "Liquid Glass", fluent: "Fluent", breeze: "Breeze" })[st] || "Default";
     const autoMat = /Android/i.test(navigator.userAgent) && !/SamsungBrowser|SM-[A-Z0-9]|Xiaomi|Redmi|POCO|HUAWEI|HONOR|vivo|OPPO|realme/i.test(navigator.userAgent);
     ctx.show(`${sec("Style")}${group([["auto", "Automatic", `${autoMat ? "Material You" : "Default"} — picked to suit this device`], ["default", "Default", "Nova's own look: frosted glass and a soft glow"],
-        ["material", "Material You", "Google's Material 3 Expressive: tonal colors from the accent, bolder shapes, springy motion"]].map(([k, l, d]) => row(l, { sub: d, end: radio(st === k), click: "style:" + k })).join(""))}
+        ["material", "Material You", "Google's Material 3 Expressive: tonal colors from the accent, bolder shapes, springy motion"],
+        ["liquid", "Liquid Glass", "Apple's look: clear glass that bends the light behind it at its edges"],
+        ["fluent", "Fluent", "Windows 11: Mica and acrylic, small corners, Segoe UI"],
+        ["breeze", "Breeze", "KDE Plasma: flat and tidy, a thin frame, the accent as the focus color"]].map(([k, l, d]) => row(l, { sub: d, end: radio(st === k), click: "style:" + k })).join(""))}
+      ${["liquid", "fluent", "breeze"].includes(st) ? group((st !== "breeze" ? `<div class="range-row"><div class="h"><span>Glass clarity</span><span id="glassl">${prefs.glass ?? 60}%</span></div><input type="range" min="0" max="100" value="${prefs.glass ?? 60}" data-range="glass" style="--p:${prefs.glass ?? 60}%"></div>` : "")
+        + `<div class="range-row"><div class="h"><span>Corner roundness</span><span id="roundl">${prefs.round ?? 100}%</span></div><input type="range" min="25" max="150" value="${prefs.round ?? 100}" data-range="round" style="--p:${((prefs.round ?? 100) - 25) / 125 * 100}%"></div>`) : ""}
+      ${st === "liquid" && !canRefract() ? note("This browser shows Liquid Glass frosted, without the bending at the edges — that part needs Chrome, Edge or another Chromium browser.") : ""}
       ${sec("Theme")}${group([["system", "Same as this device"], ["light", `${look} light`], ["dark", `${look} dark`]].map(([k, l]) => row(l, { end: radio(t === k), click: "theme:" + k })).join(""))}
-      ${group(switchRow("Reduce motion", "Simple fades instead of slides and bounces", prefs.reduceMotion, "motion", { blue: false }))}
+      ${group(switchRow("Reduce motion", "Simple fades instead of slides and bounces", prefs.reduceMotion, "motion", { blue: false })
+        + switchRow("Reduce transparency", "Solid surfaces instead of glass — easier to read, lighter to draw", !!prefs.reduceTransparency, "solid", { blue: false }))}
       ${sec("Colors")}${group(row("Accent color", { sub: prefs.accentLocal ? "This browser's own color" : `The server's color${S.overview?.server?.accent ? "" : " (Nova blue)"} — tap to pick your own`, blue: !!prefs.accentLocal,
             end: `<span class="swatch" style="background:${esc(prefs.accentLocal || S.overview?.server?.accent || "#3e91ff")}"></span>`, click: "accent" })
           + `<div class="swatches pad">${ACCENTS.filter(Boolean).map(c => `<button class="swatch press${prefs.accentLocal === c ? " on" : ""}" style="background:${c}" data-act="acc:${c}" aria-label="${c}"></button>`).join("")}</div>`
@@ -1332,6 +1410,8 @@ export async function appearance(ctx) {
             <div class="range-row"><div class="h"><span>Dim</span><span id="diml">${prefs.wallDim ?? 35}%</span></div><input type="range" min="0" max="90" value="${prefs.wallDim ?? 35}" data-range="wallDim" style="--p:${(prefs.wallDim ?? 35) / 90 * 100}%"></div>`
             + row("Change the picture", { icon: "image", blue: true, click: "wall" }) + row("Remove the wallpaper", { icon: "del", tint: "var(--red)", click: "unwall" }))
           : group(row("Choose a picture", { sub: "Behind every page, blurred and dimmed as you like. Kept in this browser only.", icon: "image", blue: true, click: "wall" }))}
+      ${sec("Language")}${group(row("Language", { sub: prefs.lang && prefs.lang !== "auto" ? (LANGS.find(l => l[0] === prefs.lang)?.[1] || prefs.lang) : `Same as this browser (${LANGS.find(l => l[0] === pickLang("auto"))?.[1] || "English"})`, blue: true, icon: "article", click: "lang" }))}
+      ${note("Nova's own words are translated (by machine, so some may read oddly — tell us on GitHub). Messages written by the server, like alert details, stay in English for now.")}
       ${sec("Lighter effects")}${segmented(["Automatic", "On", "Off"], ["auto", "on", "off"].indexOf(prefs.lite || "auto"), "lite")}
       ${note("No frosted-glass blur or soft shadows — much smoother on older computers and phones. Automatic turns it on when this device looks slow.")}
       ${sec("Home")}${group(row("Home layout", { sub: homeOrder().filter(id => prefs[HOME_SECTIONS.find(s => s[0] === id)[3]]).map(id => HOME_SECTIONS.find(s => s[0] === id)[1]).join(" · ") || "Just the header", blue: true, icon: "dash", click: "go:edit-home" })
@@ -1342,7 +1422,7 @@ export async function appearance(ctx) {
     wireCommon(ctx.root, { onSeg: (k, i) => { if (k === "lite") { prefs.lite = ["auto", "on", "off"][i]; ctx.applyTheme(); draw(); } },
       onRangeInput: (k, v) => {                                   // live while dragging
         prefs[k] = v; ctx.applyTheme();
-        const l = { tint: ["tintl", "%"], wallBlur: ["blurl", "px"], wallDim: ["diml", "%"] }[k]; if (l && $("#" + l[0])) $("#" + l[0]).textContent = v + l[1];
+        const l = { tint: ["tintl", "%"], wallBlur: ["blurl", "px"], wallDim: ["diml", "%"], glass: ["glassl", "%"], round: ["roundl", "%"] }[k]; if (l && $("#" + l[0])) $("#" + l[0]).textContent = v + l[1];
       } });
   };
   let wallHas = false;
@@ -1371,9 +1451,14 @@ export async function appearance(ctx) {
       inp.click();
     },
     unwall: async () => { await kv("wallpaper", null).catch(() => {}); ctx.applyTheme(); checkWall(); },
+    lang: async () => {
+      const v = await choose("Language", [["auto", "Same as this browser"], ...LANGS.map(([k, n]) => [k, n])], prefs.lang || "auto");
+      if (v && v !== (prefs.lang || "auto")) { prefs.lang = v; location.reload(); }
+    },
     theme: k => { prefs.theme = k; ctx.applyTheme(); draw(); },
     style: k => { prefs.style = k; ctx.applyTheme(); ctx.refreshNav(); draw(); },
     motion: () => { prefs.reduceMotion = !prefs.reduceMotion; ctx.applyTheme(); draw(); },
+    solid: () => { prefs.reduceTransparency = !prefs.reduceTransparency; ctx.applyTheme(); draw(); },
   });
   draw(); checkWall();
 }

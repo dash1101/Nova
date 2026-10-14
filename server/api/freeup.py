@@ -99,8 +99,9 @@ def scan():
             except ValueError: continue
             if d.get("Type") == "Build Cache":
                 add("buildcache", "Docker build cache", "Leftovers from building container images. Rebuilt when needed.", _bytes(str(d.get("Reclaimable", "0")).split(" ")[0]))
-    if os.path.isdir("/var/cache/apt/archives"):
-        add("apt", "Downloaded package files", "Installers apt keeps after installing updates. Not needed once installed.", du("/var/cache/apt/archives"))
+    import pkg
+    if pkg.cache_dir() and os.path.isdir(pkg.cache_dir()):
+        add("apt", "Downloaded package files", f"Installers {pkg.label()} keeps after installing updates. Not needed once installed.", du(pkg.cache_dir()))
     rc, so, _ = run(["journalctl", "--disk-usage"], 30)
     m = re.search(r"take up ([\d.]+[KMGT]?)", so)
     if m:
@@ -113,9 +114,8 @@ def scan():
     add("leftovers", "Old rotated logs and Nova's leftovers", "Archived log files (.gz, .1), old crash reports and app downloads Nova no longer needs.", left, True, len(logs))
     trash = sum(du(os.path.join(h, ".local/share/Trash")) for _, h in _people_homes())
     if trash: add("trash", "Trash", "Files you deleted in Nova's file manager (or a desktop). They're gone for good afterwards.", trash, False)
-    rc, so, _ = run(["apt-get", "-s", "autoremove"], 60)
-    n = len(re.findall(r"^Remv ", so, re.M))
-    if n: add("autoremove", "Packages nothing needs anymore", "Old kernels and libraries apt marks as no longer needed.", 0, False, n, unknown=True)
+    n = pkg.autoremove(dry=True)
+    if n: add("autoremove", "Packages nothing needs anymore", f"Old kernels and libraries {pkg.label()} marks as no longer needed.", 0, False, n, unknown=True)
     snaps = _old_snapshots()
     if snaps: add("snapshots", "Older backup snapshots", "Keeps the newest three of each backup and removes older ones. You can't restore from those afterwards.", 0, False, len(snaps), unknown=True)
     m = open("/proc/meminfo").read()
@@ -153,7 +153,7 @@ def run_freeup(spec, log=print, progress=lambda p, n="": None):
         elif w == "buildcache":
             log("Clearing Docker's build cache"); run(["docker", "builder", "prune", "-af"], 600)
         elif w == "apt":
-            log("Clearing downloaded package files"); run(["apt-get", "clean"], 300)
+            import pkg; log("Clearing downloaded package files"); pkg.clean()
         elif w == "journal":
             log("Trimming the system log to 200 MB"); run(["journalctl", f"--vacuum-size={JOURNAL_KEEP // (1024 * 1024)}M"], 300)
         elif w == "leftovers":
@@ -178,18 +178,17 @@ def run_freeup(spec, log=print, progress=lambda p, n="": None):
                         except Exception: pass
                 log(f"Emptied {user}'s Trash")
         elif w == "autoremove":
-            log("Removing packages nothing needs"); rc, so, se = run(["apt-get", "-y", "autoremove"], 1800)
-            if rc != 0: log("apt: " + (se or so).strip()[-300:])
+            import pkg; log("Removing packages nothing needs"); rc, so = pkg.autoremove(dry=False)
+            if rc != 0: log(f"{pkg.label()}: " + so.strip()[-300:])
         elif w == "snapshots":
             for p in _old_snapshots():
                 log(f"Removing old backup snapshot {os.path.basename(p)}"); shutil.rmtree(p, ignore_errors=True)
         elif w == "memory":
-            log("Freeing memory the system can let go of"); os.sync()
+            # Only the file cache the system can drop at once — no sync or memory compaction: on a busy server
+            # (lots of swap, a backup writing) those stall everything for minutes, apps and Nova included.
+            log("Freeing memory the system can let go of")
             try:
-                with open("/proc/sys/vm/drop_caches", "w") as f: f.write("3\n")
-            except OSError: pass
-            try:
-                with open("/proc/sys/vm/compact_memory", "w") as f: f.write("1\n")
+                with open("/proc/sys/vm/drop_caches", "w") as f: f.write("1\n")
             except OSError: pass
     freed = max(0, shutil.disk_usage("/").free - before)
     progress(100, "done"); log(f"Freed {freed / 1e9:.1f} GB on the system drive")

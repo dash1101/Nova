@@ -29,11 +29,12 @@ private fun driveName(d: JSONObject): String {
 }
 private fun health(d: JSONObject): Pair<String, String> {
     val bad = (d.optInt("realloc", 0) > 0) || (d.optInt("uncorrect", 0) > 0) || (d.optInt("pending", 0) > 0)
+    val p = if (d.has("health") && !d.isNull("health")) " · ${d.optInt("health")}%" else ""
     return when {
-        d.has("smart_passed") && !d.optBoolean("smart_passed", true) -> "Failing" to "critical"
-        bad -> "Worn — keep an eye on it" to "warning"
-        d.optInt("crc", 0) > 50 -> "Healthy*" to "ok"
-        else -> "Healthy" to "ok"
+        d.has("smart_passed") && !d.isNull("smart_passed") && !d.optBoolean("smart_passed", true) -> "Failing$p" to "critical"
+        bad -> "Worn — keep an eye on it$p" to "warning"
+        d.optInt("crc", 0) > 50 -> "Healthy*$p" to "ok"
+        else -> "Healthy$p" to "ok"
     }
 }
 
@@ -115,7 +116,10 @@ private fun health(d: JSONObject): Pair<String, String> {
         }
         SectionLabel("Health (SMART)")
         Group {
-            Row1("Overall", if (d.optBoolean("smart_passed", true)) "Passed" else "FAILED"); RowDivider()
+            if (d.has("health") && !d.isNull("health")) { Row1("Estimated health", "${d.optInt("health")}%" +
+                (if (d.has("life") && !d.isNull("life")) " · ${d.optInt("life")}% of its rated wear left" else "") + " — a guide from its SMART data, not a promise"); RowDivider() }
+            if (d.optLong("hours") > 0) { Row1("Powered on", "%,d hours (%.1f years)".format(d.optLong("hours"), d.optLong("hours") / 8766.0)); RowDivider() }
+            Row1("Overall", if (!d.has("smart_passed") || d.isNull("smart_passed")) "Not read yet — run a quick test" else if (d.optBoolean("smart_passed", true)) "Passed" else "FAILED"); RowDivider()
             Row1("Temperature", d.optInt("temp").takeIf { it > 0 }?.let { "$it°C" } ?: "—"); RowDivider()
             Row1("Reallocated sectors", d.optString("realloc", "—")); RowDivider()
             Row1("Unreadable (pending)", d.optString("pending", "—")); RowDivider()

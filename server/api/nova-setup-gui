@@ -1,0 +1,248 @@
+#!/usr/bin/python3
+"""
+nova-setup-gui — Nova's setup in a browser, for people who'd rather not use the shell.
+
+    sudo nova-setup --gui           (or: sudo nova-setup-gui)
+
+It prints one address with a one-time key in it (and opens it, if this computer has a desktop). Open it
+on this computer or any device on your home network. The page asks the same questions as nova-setup,
+then runs nova-setup with your answers and shows what it does, and finally the code to pair your phone.
+
+Only the address with the key works, only from this computer or your home network, and it stops when
+setup is done (or after an hour).
+"""
+import http.server, ipaddress, json, os, re, secrets, shutil, socket, subprocess, sys, tempfile, threading, time
+
+if os.geteuid() != 0: sys.exit("Run with sudo:  sudo nova-setup --gui")
+HERE = os.path.dirname(os.path.realpath(__file__))
+sys.path[:0] = ["/usr/lib/nova-api", HERE]
+SETUP = shutil.which("nova-setup") or os.path.join(HERE, "nova-setup")
+NOVA = shutil.which("nova") or os.path.join(HERE, "nova")
+KEY = secrets.token_urlsafe(18)
+STATE = {"lines": [], "done": False, "rc": None, "running": False, "pair": None}
+ANSI = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
+DEADLINE = time.time() + 3600
+
+
+def sh(*cmd):
+    try: r = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+    except (FileNotFoundError, subprocess.TimeoutExpired): return 127, ""
+    return r.returncode, r.stdout.strip()
+
+def lan_guess():
+    _, out = sh("ip", "-4", "route", "get", "1.1.1.1")
+    ip = re.search(r"src (\S+)", out); dev = re.search(r"dev (\S+)", out)
+    if not ip: return "", ""
+    _, a = sh("ip", "-4", "-o", "addr", "show", "dev", dev.group(1))
+    cidr = re.search(r"inet (\S+)", a)
+    return ip.group(1), str(ipaddress.ip_interface(cidr.group(1)).network) if cidr else ip.group(1) + "/32"
+
+def detect():
+    cfg = {}
+    try: cfg = json.load(open("/etc/nova-api/config.json"))
+    except Exception: pass
+    ip, net = lan_guess()
+    osname = ""
+    try: osname = re.search(r'^PRETTY_NAME="?([^"\n]+)', open("/etc/os-release").read(), re.M).group(1)
+    except Exception: pass
+    try: import pkg; pm = pkg.which()
+    except ImportError: pm = ""
+    try:
+        from storage import missing_packages, TOOLS
+        miss = missing_packages(list(TOOLS))
+    except ImportError: miss = []
+    rc, ts = sh("tailscale", "ip", "-4")
+    try: from nova_tz import tz_location; tzl = tz_location()
+    except ImportError: tzl = None
+    try: ac = json.load(open("/etc/nova-alerts/config.json"))
+    except Exception: ac = {}
+    return {"os": osname, "pm": pm, "hostname": socket.gethostname(), "configured": bool(cfg.get("lan_host")),
+            "lan_host": cfg.get("lan_host") or ip, "lan_subnet": cfg.get("lan_subnet") or net,
+            "tailscale": bool(shutil.which("tailscale")), "tailscale_ip": ts.splitlines()[0] if rc == 0 and ts else "",
+            "cloudflared": bool(shutil.which("cloudflared")),
+            "docker": bool(shutil.which("docker")), "missing_tools": miss,
+            "firewall": "ufw" if sh("ufw", "status")[1].startswith("Status: active") else "firewalld" if sh("firewall-cmd", "--state")[1] == "running" else "",
+            "ssh_user": cfg.get("ssh_user") or os.environ.get("SUDO_USER", ""), "discord": bool(ac.get("discord_webhook")),
+            "near": tzl["name"] if tzl else "", "remote_url": cfg.get("remote_url", "")}
+
+def run_setup(answers):
+    STATE.update(running=True, lines=[], done=False, rc=None)
+    fd, path = tempfile.mkstemp(prefix="nova-answers-", suffix=".json"); os.fchmod(fd, 0o600)
+    with os.fdopen(fd, "w") as f: json.dump(answers, f)
+    try:
+        p = subprocess.Popen([sys.executable, SETUP, "--yes", "--answers", path], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                             env={**os.environ, "TERM": "dumb"}, stdin=subprocess.DEVNULL)
+        for line in p.stdout:
+            line = ANSI.sub("", line.rstrip())
+            if line.strip(): STATE["lines"].append(line[:400])
+        STATE["rc"] = p.wait()
+    finally:
+        os.remove(path)
+    if STATE["rc"] == 0:
+        rc, out = sh(NOVA, "add", "--json")
+        try: STATE["pair"] = json.loads(out.splitlines()[-1])
+        except (ValueError, IndexError): STATE["pair"] = None
+    STATE.update(running=False, done=True)
+
+
+class H(http.server.BaseHTTPRequestHandler):
+    server_version = "nova-setup"; sys_version = ""
+    def log_message(self, *a): pass
+
+    def allowed(self):
+        try: ip = ipaddress.ip_address(self.client_address[0])
+        except ValueError: return False
+        if ip.is_loopback: return True
+        _, net = lan_guess()
+        return bool(net) and ip in ipaddress.ip_network(net, strict=False)       # this computer, or your home network
+
+    def reply(self, code, body, ctype="application/json"):
+        data = body if isinstance(body, bytes) else (json.dumps(body) if ctype == "application/json" else body).encode()
+        self.send_response(code)
+        for k, v in (("Content-Type", ctype + "; charset=utf-8"), ("Content-Length", str(len(data))), ("Cache-Control", "no-store"),
+                     ("X-Frame-Options", "DENY"), ("Referrer-Policy", "no-referrer"), ("X-Content-Type-Options", "nosniff"),
+                     ("Content-Security-Policy", "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'self'; base-uri 'none'; form-action 'none'")):
+            self.send_header(k, v)
+        self.end_headers(); self.wfile.write(data)
+
+    def route(self):
+        if not self.allowed() or time.time() > DEADLINE: return None
+        m = re.fullmatch(r"/setup/([A-Za-z0-9_-]{20,40})(/[a-z]*)?", self.path.split("?")[0])
+        if not m or not secrets.compare_digest(m.group(1), KEY): return None
+        return m.group(2) or "/"
+
+    def do_GET(self):
+        r = self.route()
+        if r is None: return self.reply(404, {"error": "not found"})
+        if r == "/": return self.reply(200, PAGE, "text/html")
+        if r == "/detect": return self.reply(200, detect())
+        if r == "/log":
+            n = int(re.search(r"from=(\d+)", self.path).group(1)) if "from=" in self.path else 0
+            return self.reply(200, {"lines": STATE["lines"][n:], "n": len(STATE["lines"]), "done": STATE["done"], "rc": STATE["rc"], "pair": STATE["pair"]})
+        self.reply(404, {"error": "not found"})
+
+    def do_POST(self):
+        r = self.route()
+        if r is None: return self.reply(404, {"error": "not found"})
+        if self.headers.get("Origin") and not self.headers["Origin"].endswith(f":{self.server.server_port}"): return self.reply(403, {"error": "wrong origin"})
+        n = int(self.headers.get("Content-Length") or 0)
+        if n > 64 * 1024: return self.reply(413, {"error": "too big"})
+        try: body = json.loads(self.rfile.read(n) or b"{}")
+        except ValueError: return self.reply(400, {"error": "bad request"})
+        if r == "/run":
+            if STATE["running"]: return self.reply(409, {"error": "setup is already running"})
+            ans = {k: v for k, v in (body.get("answers") or {}).items() if re.fullmatch(r"[a-z_]{2,30}", str(k)) and isinstance(v, (str, bool, int))}
+            threading.Thread(target=run_setup, args=(ans,), daemon=True).start()
+            return self.reply(200, {"ok": True})
+        if r == "/finish":
+            self.reply(200, {"ok": True}); threading.Thread(target=lambda: (time.sleep(1), os._exit(0)), daemon=True).start(); return
+        self.reply(404, {"error": "not found"})
+
+
+PAGE = r"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Nova setup</title><style>
+:root{--bg:#f4f3f8;--card:#fff;--text:#16161a;--sub:#6b6b74;--line:#e6e5ec;--blue:#2f7df6;--green:#1fa34f;--amber:#c27500;--red:#d33;color-scheme:light}
+@media(prefers-color-scheme:dark){:root{--bg:#0b0b0e;--card:#1b1b20;--text:#f2f2f5;--sub:#9d9da6;--line:#2c2c33;--blue:#5a9bff;--green:#3ecf6e;--amber:#ffb020;--red:#ff5a5a;color-scheme:dark}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:640px;margin:0 auto;padding:32px 16px 80px}h1{font-size:30px;margin:0 0 4px;letter-spacing:-.01em}h2{font-size:22px;margin:0 0 6px}
+.lead{color:var(--sub);margin:0 0 22px}.dots{display:flex;gap:6px;margin:0 0 22px}.dots i{height:4px;flex:1;border-radius:2px;background:var(--line)}.dots i.on{background:var(--blue)}
+.card{background:var(--card);border-radius:20px;padding:20px 22px;margin:0 0 14px;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+label{display:block;font-weight:600;margin:14px 0 6px}label:first-child{margin-top:0}.hint{color:var(--sub);font-size:14px;margin:4px 0 0}
+input[type=text],input[type=password]{width:100%;padding:12px 14px;border-radius:12px;border:1px solid var(--line);background:var(--bg);color:var(--text);font:inherit}
+.tog{display:flex;align-items:flex-start;gap:14px;font-weight:400;margin:0;padding:12px 0;border-top:1px solid var(--line)}.tog:first-child{border-top:0;padding-top:0}
+.tog input{width:22px;height:22px;margin:2px 0 0;accent-color:var(--blue);flex:none}.tog b{display:block;font-weight:600}.tog span{color:var(--sub);font-size:14px}
+.row{display:flex;gap:10px;justify-content:space-between;margin-top:22px}button{font:inherit;font-weight:700;border:0;border-radius:14px;padding:13px 22px;cursor:pointer}
+.go{background:var(--blue);color:#fff}.back{background:transparent;color:var(--blue)}.ok{color:var(--green)}.warn{color:var(--amber)}
+pre{background:var(--bg);border-radius:14px;padding:14px;max-height:50vh;overflow:auto;font:13px/1.45 ui-monospace,monospace;white-space:pre-wrap;margin:0}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:6px 16px}.kv dt{color:var(--sub)}.kv dd{margin:0;overflow-wrap:anywhere}
+.qr{display:flex;gap:22px;align-items:center;flex-wrap:wrap}.qr svg{width:220px;height:220px;background:#fff;border-radius:14px;padding:6px}
+.code{font:700 24px ui-monospace,monospace;letter-spacing:.06em}.badge{display:inline-block;padding:2px 10px;border-radius:10px;background:var(--bg);color:var(--sub);font-size:13px}
+</style></head><body><main id="app"><h1>Nova setup</h1><p class="lead">Looking at this server…</p></main>
+<script>
+const base = location.pathname.replace(/\/$/, ""), $ = s => document.querySelector(s), A = {};
+let D = {}, step = 0;
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[c]);
+const tog = (k, title, about, on) => { if (!(k in A)) A[k] = on; return `<label class="tog"><input type="checkbox" data-k="${k}" ${A[k] ? "checked" : ""}><div><b>${title}</b><span>${about}</span></div></label>`; };
+const field = (k, title, hint, val, secret) => { if (!(k in A)) A[k] = val ?? ""; return `<label for="${k}">${title}</label><input id="${k}" type="${secret ? "password" : "text"}" data-k="${k}" value="${esc(A[k])}" autocomplete="off" spellcheck="false">${hint ? `<p class="hint">${hint}</p>` : ""}`; };
+const STEPS = [
+  () => `<h2>Welcome</h2><p class="lead">This sets up Nova on <b>${esc(D.hostname)}</b>${D.os ? ` (${esc(D.os)})` : ""}. Five short steps — the suggestions are filled in, and you can change anything later.</p>
+    <div class="card"><dl class="kv"><dt>Package manager</dt><dd>${esc(D.pm || "not found")}</dd><dt>Docker</dt><dd>${D.docker ? "installed" : "not installed"}</dd>
+    <dt>Tailscale</dt><dd>${D.tailscale_ip ? "running (" + esc(D.tailscale_ip) + ")" : D.tailscale ? "installed" : "not installed"}</dd><dt>Firewall</dt><dd>${esc(D.firewall || "none active")}</dd></dl></div>
+    ${D.configured ? `<p class="hint warn">Nova is already set up here. Going through it again keeps what you don't change.</p>` : ""}`,
+  () => `<h2>Network</h2><p class="lead">How phones and browsers at home find this server. Only devices on your home network can pair.</p>
+    <div class="card">${field("lan_host", "This server's address at home", "Phones open Nova at https://this-address:8495", D.lan_host)}${field("lan_subnet", "Your home network", "Like 192.168.1.0/24", D.lan_subnet)}</div>`,
+  () => `<h2>Away from home</h2><p class="lead">Optional. Two ways to reach Nova when you're out — either, both, or neither.</p>
+    <div class="card">${D.tailscale ? tog("use_tailscale", "Let your Tailscale devices use Nova", D.tailscale_ip ? "This server is on your tailnet at " + esc(D.tailscale_ip) : "Sign in first: sudo tailscale up", !!D.tailscale_ip)
+      : tog("install_tailscale", "Install Tailscale", "A private network between your devices — nothing is open to the internet. You sign in with the link it shows.", false)}
+    ${D.cloudflared ? `<p class="hint">cloudflared is installed — Nova's address on your domain is set in docs/REMOTE.md.</p>` : tog("install_cloudflared", "Install Cloudflare Tunnel (cloudflared)", "Nova and your apps on your own domain, behind a login, with no open ports.", false)}
+    ${D.cloudflared ? "" : field("tunnel_token", "Tunnel token (optional)", "Cloudflare dashboard → Zero Trust → Networks → Tunnels → your tunnel → install", "", true)}</div>`,
+  () => `<h2>Notifications and tools</h2><p class="lead">Alerts always show in the Nova app. The rest is optional.</p>
+    <div class="card">${field("discord_webhook", D.discord ? "Discord webhook (leave empty to keep the current one)" : "Discord webhook (optional)", "A channel's settings → Integrations → Webhooks → Copy Webhook URL", "", true)}</div>
+    <div class="card">${D.docker ? `<p class="hint ok">✓ Docker is installed (containers and the app store)</p>` : tog("install_docker", "Install Docker", "For containers and Nova's app store.", true)}
+    ${D.missing_tools.length ? tog("install_tools", "Install the drive tools", "Pools, RAID, NAS backups and drive tests (" + D.missing_tools.length + " packages). Skipping is fine — Nova offers each when it's needed.", true) : `<p class="hint ok">✓ Drive tools are installed</p>`}</div>`,
+  () => `<h2>This server</h2><p class="lead">Small details. The suggestions are fine for most homes.</p>
+    <div class="card">${field("ssh_user", "Account the app's Terminal signs in as", "Your normal account on this server", D.ssh_user)}
+    ${field("location", "Location for sunrise and sunset (optional)", D.near ? "Empty: near " + esc(D.near) + ", from the time zone. Or latitude, longitude like 40.71, -74.01" : "Latitude, longitude, like 40.71, -74.01", "")}</div>
+    ${D.firewall ? `<div class="card">${tog("firewall", "Let your home network through the firewall", "Opens Nova's ports (8495 and 8496) to " + esc(A.lan_subnet || D.lan_subnet) + " only.", true)}</div>` : ""}`,
+  () => `<h2>Ready</h2><p class="lead">Here's what happens next:</p><div class="card"><dl class="kv">
+    <dt>Nova at</dt><dd>https://${esc(A.lan_host)}:8495</dd><dt>Home network</dt><dd>${esc(A.lan_subnet)}</dd>
+    <dt>Install</dt><dd>${["install_docker:Docker", "install_tools:drive tools", "install_tailscale:Tailscale", "install_cloudflared:cloudflared"].filter(x => A[x.split(":")[0]]).map(x => x.split(":")[1]).join(", ") || "nothing"}</dd>
+    <dt>Discord</dt><dd>${A.discord_webhook ? "set" : D.discord ? "kept" : "off"}</dd><dt>Terminal account</dt><dd>${esc(A.ssh_user || "—")}</dd></dl></div>
+    <p class="hint">Installing can take a few minutes. Keep this page open.</p>`,
+];
+function paint() {
+  const last = step === STEPS.length - 1;
+  $("#app").innerHTML = `<h1>Nova setup</h1><div class="dots">${STEPS.map((_, i) => `<i class="${i <= step ? "on" : ""}"></i>`).join("")}</div>${STEPS[step]()}
+    <div class="row">${step ? `<button class="back" id="back">Back</button>` : "<span></span>"}<button class="go" id="next">${last ? "Set up Nova" : step ? "Next" : "Start"}</button></div>`;
+  document.querySelectorAll("[data-k]").forEach(el => el.addEventListener(el.type === "checkbox" ? "change" : "input", () => A[el.dataset.k] = el.type === "checkbox" ? el.checked : el.value.trim()));
+  $("#back")?.addEventListener("click", () => { step--; paint(); });
+  $("#next").addEventListener("click", () => { if (step === 1 && !/^\d+\.\d+\.\d+\.\d+$/.test(A.lan_host || "")) return alert("That address doesn't look right — like 192.168.1.20"); last ? run() : (step++, paint()); });
+  scrollTo(0, 0);
+}
+async function run() {
+  const answers = { ...A }; if (!answers.discord_webhook) delete answers.discord_webhook; if (!answers.tunnel_token) delete answers.tunnel_token; if (!answers.location) delete answers.location;
+  $("#app").innerHTML = `<h1>Setting up Nova</h1><p class="lead" id="st">Working…</p><div class="card"><pre id="log"></pre></div><div id="end"></div>`;
+  await fetch(base + "/run", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ answers }) });
+  let n = 0;
+  const poll = async () => {
+    const r = await (await fetch(base + "/log?from=" + n)).json(); n = r.n;
+    const log = $("#log"); log.textContent += r.lines.map(l => l + "\n").join(""); log.scrollTop = log.scrollHeight;
+    if (!r.done) return setTimeout(poll, 700);
+    if (r.rc !== 0) { $("#st").innerHTML = `<span class="warn">Setup stopped — see the last lines above.</span> Fix it and run this again, or use <b>sudo nova-setup</b> in a terminal.`; return; }
+    $("#st").innerHTML = `<span class="ok">✓ Nova is running.</span>`;
+    const p = r.pair;
+    $("#end").innerHTML = p ? `<h2>Pair your phone</h2><div class="card qr">${p.svg}<div><p>Open the Nova app on your home Wi-Fi and scan this — or type it in:</p>
+      <p>Server <b>${esc(p.host)}</b><br>Code <span class="code">${esc(p.code)}</span><br><span class="badge">Certificate ${esc(p.pin)}</span></p><p class="hint">The code works once, for 10 minutes. Later: sudo nova add</p></div></div>
+      <div class="row"><span></span><button class="go" id="fin">Done</button></div>` : `<p>Pair your phone with <b>sudo nova add</b>.</p>`;
+    $("#fin")?.addEventListener("click", async () => { await fetch(base + "/finish", { method: "POST" }); $("#app").innerHTML = "<h1>All set</h1><p class='lead'>You can close this page. Browser: https://" + esc(A.lan_host) + ":8495/</p>"; });
+  };
+  poll();
+}
+(async () => { D = await (await fetch(base + "/detect")).json(); paint(); })();
+</script></body></html>"""
+
+
+def main():
+    sys.stdout.reconfigure(line_buffering=True)
+    port = next((p for p in range(8490, 8500) if socket.socket().connect_ex(("127.0.0.1", p)) != 0), 8490)
+    srv = http.server.ThreadingHTTPServer(("0.0.0.0", port), H)
+    ip, _ = lan_guess()
+    local, lan = f"http://localhost:{port}/setup/{KEY}", f"http://{ip}:{port}/setup/{KEY}" if ip else ""
+    print("\n  Nova setup is open in your browser:\n")
+    print(f"    On this computer:     {local}")
+    if lan: print(f"    From another device:  {lan}")
+    _, ufw = sh("ufw", "status"); _, net = lan_guess()
+    if lan and ufw.startswith("Status: active") and f"{port}" not in ufw:
+        print(f"\n  Your firewall (ufw) keeps other devices out. To use another device:  sudo ufw allow from {net} to any port {port} proto tcp")
+    print("\n  (The address has a one-time key in it. It stops when setup is done, or in an hour. Ctrl-C to stop.)\n")
+    if os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"):
+        u = os.environ.get("SUDO_USER")
+        opener = shutil.which("xdg-open")
+        if opener: subprocess.Popen((["runuser", "-u", u, "--"] if u else []) + [opener, local], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    threading.Thread(target=lambda: (time.sleep(max(0, DEADLINE - time.time())), os._exit(0)), daemon=True).start()
+    try: srv.serve_forever()
+    except KeyboardInterrupt: print("\n  Stopped.")
+
+
+if __name__ == "__main__":
+    main()

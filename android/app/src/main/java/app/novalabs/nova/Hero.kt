@@ -158,8 +158,22 @@ private fun activity(i: Int, tMs: Double, pct: Int = 9): Float {
         val fc = Offset(left + cw / 2, top + ch * 0.33f)
         if (look.on) drawCircle(Brush.radialGradient(listOf(ringGlow(look, t, reverse).copy(alpha = 0.18f + 0.22f * look.brightness), Color.Transparent), fc, cw * 0.6f), cw * 0.6f, fc)
         fanRing(fc, cw * 0.29f, look, t, spin, dark, reverse)
-        drawRoundRect(Color(0xFF26262C), Offset(left + cw * 0.16f, top + ch * 0.62f), Size(cw * 0.68f, ch * 0.07f), CornerRadius(8f))
-        drawRoundRect(Color(0xFF1F1F25), Offset(left + cw * 0.16f, top + ch * 0.72f), Size(cw * 0.68f, ch * 0.05f), CornerRadius(8f))
+        // the two bars under the fan: plain, or your LED strips (Lighting → your lights), showing what they show
+        val strips = fan?.optJSONArray("zones")?.let { a -> (0 until a.length()).map { a.getJSONObject(it) } }?.filter { it.optString("shape") == "strip" }?.take(2) ?: emptyList()
+        listOf(Triple(0.62f, 0.07f, Color(0xFF26262C)), Triple(0.72f, 0.05f, Color(0xFF1F1F25))).forEachIndexed { k, (yy, hh, base) ->
+            val bx = left + cw * 0.16f; val by = top + ch * yy; val bw = cw * 0.68f; val bh = ch * hh
+            drawRoundRect(base, Offset(bx, by), Size(bw, bh), CornerRadius(8f))
+            val z = strips.getOrNull(k)
+            if (z != null && z.optBoolean("on", true)) {
+                val zl = fanLook(z); val n = z.optInt("led_count", 20).coerceIn(6, 30); val seg = (bw - 8f) / n
+                for (j in 0 until n) {
+                    val (col, a) = ledColor(zl, j, n, t, false)
+                    val al = a.coerceAtLeast(0.15f) * (0.35f + 0.65f * zl.brightness)
+                    val c0 = Offset(bx + 4f + seg * (j + 0.5f), by + bh / 2)
+                    drawCircle(Brush.radialGradient(listOf(col.copy(alpha = al), Color.Transparent), c0, seg * 1.3f), seg * 1.3f, c0)
+                }
+            }
+        }
         // one LED per drive
         val list = drives?.takeIf { it.isNotEmpty() }
         val n = list?.size ?: 6
@@ -169,7 +183,7 @@ private fun activity(i: Int, tMs: Double, pct: Int = 9): Float {
             val lvl = list?.get(i)?.optString("level") ?: "ok"
             val p = Offset(x0 + i * step, y)
             val (col, a) = when (lvl) {
-                "critical" -> Color(0xFFFF4040) to (0.35f + 0.65f * (0.5f + 0.5f * sin(t / 1000.0 * 2 * PI).toFloat()))
+                "critical" -> Color(0xFFFF4040) to (0.35f + 0.65f * (0.5f + 0.5f * sin(t / 1800.0 * 2 * PI).toFloat()))
                 "warning" -> Color(0xFFFFB020) to 0.9f
                 else -> Color(0xFF3ECF6E) to (0.38f + 0.62f * activity(i, t, blinkRate(io?.optJSONArray(list?.get(i)?.optString("name") ?: ""))))
             }
@@ -192,5 +206,19 @@ private fun activity(i: Int, tMs: Double, pct: Int = 9): Float {
         val spin = if (reduceMotion()) 0f else ((t % 2200.0) / 2200.0 * 360).toFloat()
         if (look.on) drawCircle(Brush.radialGradient(listOf(ringGlow(look, t, reverse).copy(alpha = 0.2f + 0.25f * look.brightness), Color.Transparent), c, r * 1.9f), r * 1.9f, c)
         fanRing(c, r, look, t, spin, dark, reverse)
+    }
+}
+
+
+/** What's under a tap on the home picture: "drives" (the drive lights), "power" (the power button), "fan", or null. */
+fun heroHit(w: Float, h: Float, x: Float, y: Float): String? {
+    val cw = (w * 0.56f).coerceAtMost(h * 0.62f); val ch = cw * 1.42f; val left = (w - cw) / 2; val top = (h - ch) / 2
+    fun d(ax: Float, ay: Float) = kotlin.math.hypot(x - ax, y - ay)
+    return when {
+        d(left + cw * 0.5f, top + ch * 0.935f) < cw * 0.08f -> "power"
+        kotlin.math.abs(y - (top + ch * 0.83f)) < ch * 0.05f && x > left + cw * 0.12f && x < left + cw * 0.88f -> "drives"
+        d(left + cw / 2, top + ch * 0.33f) < cw * 0.36f -> "fan"
+        y > top + ch * 0.6f && y < top + ch * 0.78f && x > left + cw * 0.14f && x < left + cw * 0.86f -> "fan"
+        else -> null
     }
 }

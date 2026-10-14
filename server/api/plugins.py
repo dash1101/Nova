@@ -35,6 +35,13 @@ def load(pid):
         m = json.load(open(p))
     except Exception: return None
     if m.get("id") != pid: return None
+    return check(m)
+
+def check(m):
+    """A manifest, cleaned: only what Nova understands, within limits (None if it isn't a plugin.json)."""
+    if not isinstance(m, dict): return None
+    pid = str(m.get("id", ""))
+    if not re.fullmatch(ID_RE, pid) or "--" in pid: return None
     out = {"id": pid, "name": _clean(m.get("name"), 40) or pid, "version": _clean(m.get("version"), 20), "author": _clean(m.get("author"), 60),
            "description": _clean(m.get("description"), 300), "apps": [], "commands": []}
     for a in (m.get("apps") or [])[:20]:
@@ -68,3 +75,73 @@ def command(app_id):
     if m.group(1) in disabled(): return None
     p = load(m.group(1))
     return next((c for c in (p or {}).get("commands", []) if c["id"] == m.group(2)), None)
+
+
+# ── Installing from the app (Store → Plugins) ──────────────────────────────────────────
+# The API (an unprivileged account) downloads and reads the plugin; the root helper only writes a
+# manifest it checked again itself. Nothing in a plugin runs at install time.
+CATALOG = "https://raw.githubusercontent.com/dash1101/Nova/main/plugins/index.json"
+MAX = 256 * 1024
+
+def manifest_from(raw):
+    """plugin.json bytes from a .json file or a .zip holding one (at the top, or in one folder)."""
+    import io, zipfile
+    if raw[:2] == b"PK":
+        try: z = zipfile.ZipFile(io.BytesIO(raw))
+        except zipfile.BadZipFile: raise ValueError("that isn't a zip file")
+        names = [n for n in z.namelist() if n.rstrip("/").split("/")[-1] == "plugin.json" and n.count("/") <= 1 and ".." not in n and not n.startswith("/")]
+        if len(names) != 1: raise ValueError("the zip needs exactly one plugin.json (at the top, or in one folder)")
+        i = z.getinfo(names[0])
+        if i.file_size > 64 * 1024: raise ValueError("plugin.json is too big")
+        raw = z.read(i)
+    if len(raw) > 64 * 1024: raise ValueError("plugin.json is too big")
+    try: m = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, ValueError): raise ValueError("plugin.json isn't valid JSON")
+    if not check(m): raise ValueError("that plugin.json didn't check out — it needs an id (lowercase letters, digits, dashes) and apps or tools (see docs/PLUGINS.md)")
+    return raw
+
+def download(url):
+    import urllib.request
+    url = str(url).strip()
+    if not re.fullmatch(r"https://[A-Za-z0-9.-]{1,253}(:\d{1,5})?/[^\s\"'<>]{0,1000}", url): raise ValueError("give an https:// link to a plugin.json or a .zip")
+    import ipaddress, socket
+    host = re.match(r"https://([^/:]+)", url).group(1)
+    try: addrs = {ipaddress.ip_address(a[4][0]) for a in socket.getaddrinfo(host, 443)}
+    except (OSError, ValueError): raise ValueError(f"couldn't find {host}")
+    if any(a.is_loopback or a.is_link_local or a.is_unspecified or a.is_multicast for a in addrs): raise ValueError("that address is this server itself — use Install from a file instead")
+    req = urllib.request.Request(url, headers={"User-Agent": "Nova-plugins"})
+    try:
+        with urllib.request.urlopen(req, timeout=20) as r:
+            raw = r.read(MAX + 1)
+    except Exception as e: raise ValueError(f"couldn't download it: {str(e)[:120]}")
+    if len(raw) > MAX: raise ValueError("that's too big for a plugin (256 KB at most)")
+    return raw
+
+def preview(raw):
+    """What installing it would add — shown before you confirm (with the exact commands its tools run)."""
+    import hashlib
+    m = check(json.loads(raw.decode("utf-8")))
+    have = load(m["id"])
+    return {"plugin": m, "sha256": hashlib.sha256(raw).hexdigest(), "installed": bool(have), "installed_version": (have or {}).get("version", "")}
+
+def install_root(raw):
+    """(root) Write a checked plugin.json to /etc/nova/plugins/<id>/, root's and read-only for everyone else."""
+    m = json.loads(raw.decode("utf-8")); c = check(m)
+    if not c: raise ValueError("that plugin.json didn't check out")
+    d = os.path.join(DIR, c["id"])
+    os.makedirs(DIR, mode=0o755, exist_ok=True); os.chmod(DIR, 0o755)
+    if os.path.islink(d): raise ValueError("refusing a symlink")
+    os.makedirs(d, mode=0o755, exist_ok=True); os.chown(d, 0, 0); os.chmod(d, 0o755)
+    tmp = os.path.join(d, ".plugin.json.tmp")
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o644)
+    with os.fdopen(fd, "wb") as f: f.write(raw)
+    os.chown(tmp, 0, 0); os.chmod(tmp, 0o644); os.replace(tmp, os.path.join(d, "plugin.json"))
+    if not load(c["id"]): raise ValueError("installed, but it didn't load")
+    return c
+
+def remove_root(pid):
+    import shutil
+    if not re.fullmatch(ID_RE, str(pid)): raise ValueError("no such plugin")
+    d = os.path.join(DIR, pid)
+    if not os.path.isdir(d) or os.path.islink(d): raise ValueError("no such plugin")
+    shutil.rmtree(d)

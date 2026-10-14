@@ -29,14 +29,10 @@ def save(res):
     except KeyError: safeio.write_json(OUT, res, 0o644)
 
 def apt_list():
-    rc, so, _ = run(["apt", "list", "--upgradable"], timeout=120)
-    out = []
-    for l in so.splitlines():
-        m = re.match(r"([^/\s]+)/(\S+)\s+(\S+)\s+\S+\s+\[upgradable from: ([^\]]+)\]", l)
-        if m: out.append({"name": m.group(1), "origin": m.group(2), "to": m.group(3), "from": m.group(4), "security": "security" in m.group(2),
-                          "restarts": "docker" if m.group(1) in ("docker-ce", "containerd.io", "docker.io", "containerd", "runc") else
-                                      "server" if re.match(r"linux-image|systemd$|libc6$", m.group(1)) else ""})
-    return out
+    """System packages with a newer version (apt, dnf, pacman or zypper — pkg.py), with what restarting them means."""
+    import pkg
+    return [{**u, "restarts": "docker" if u["name"] in ("docker-ce", "containerd.io", "docker.io", "containerd", "runc", "moby-engine", "docker") else
+                              "server" if re.match(r"linux-image|linux$|kernel(-core)?$|systemd$|libc6$|glibc$", u["name"]) else ""} for u in pkg.upgradable()]
 
 def compose_containers():
     rc, ids, _ = run(["docker", "ps", "-q"], timeout=30)
@@ -62,7 +58,7 @@ def local_digests(image_id):
 def check(spec=None, log=print, progress=lambda p, n="": None):
     res = {"t": time.time(), "apt": [], "containers": [], "nova": {}}
     log("Refreshing the package lists…"); progress(5)
-    run(["apt-get", "update", "-qq"], timeout=600)
+    import pkg; pkg.refresh()
     res["apt"] = apt_list(); progress(30, f"{len(res['apt'])} packages")
     cs = compose_containers(); seen = {}
     for i, c in enumerate(cs):
@@ -85,22 +81,21 @@ def check(spec=None, log=print, progress=lambda p, n="": None):
     return {"count": n, "apt": len(res["apt"]), "containers": sum(1 for c in res["containers"] if c["status"] == "update"), "nova": res["nova"].get("update", False)}
 
 def apt_upgrade(spec, log=print, progress=lambda p, n="": None):
+    import pkg
     pk = spec.get("packages")
-    if pk == "all" or pk is None:
-        log("Upgrading every package…")
-        cmd = ["apt-get", "upgrade", "-y", "-o", "Dpkg::Options::=--force-confdef", "-o", "Dpkg::Options::=--force-confold"]
+    if pk == "all" or pk is None: log("Upgrading every package…"); names = None
     else:
-        names = [p for p in pk if re.fullmatch(r"[a-z0-9][a-z0-9+.-]{0,100}", str(p))]
+        names = [p for p in pk if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9+._-]{0,100}", str(p))]
         if not names or len(names) != len(pk): raise ValueError("bad package name")
         log(f"Upgrading {', '.join(names[:6])}{'…' if len(names) > 6 else ''}")
-        cmd = ["apt-get", "install", "--only-upgrade", "-y", "-o", "Dpkg::Options::=--force-confdef", "-o", "Dpkg::Options::=--force-confold", "--", *names]
     progress(10)
-    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=ENV)
     n = 0
-    for line in p.stdout:
-        line = line.strip()
-        if line.startswith(("Unpacking", "Setting up")): n += 1; progress(min(95, 10 + n * 3), line[:80]); log(line[:120])
-    if p.wait() != 0: raise RuntimeError("apt couldn't finish the upgrade — see the log, or run: sudo apt upgrade")
+    def line(l):
+        nonlocal n
+        l = l.strip()
+        if l.startswith(("Unpacking", "Setting up", "Upgrading", "upgrading", "Installing", "(")): n += 1; progress(min(95, 10 + n * 3), l[:80]); log(l[:120])
+    rc, _ = pkg.upgrade(names, on_line=line)
+    if rc != 0: raise RuntimeError(f"{pkg.label()} couldn't finish the upgrade — see the log")
     try: check(log=lambda m: None)
     except Exception: pass
     progress(100); log("Done."); return {"upgraded": n}

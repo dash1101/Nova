@@ -116,5 +116,151 @@
         <!-- In-app updater: receives the PackageInstaller result -->
         <receiver android:name=".UpdateReceiver" android:exported="false" />
         <receiver android:name=".ApprovalReceiver" android:exported="false" />
+        <!-- tone icons (tools/tone_icons.py) -->
+        <activity-alias android:name=".IconTl000" android:targetActivity=".MainActivity" android:exported="true" android:enabled="false"
+            android:icon="@mipmap/ic_launcher_tone_l000" android:roundIcon="@mipmap/ic_launcher_tone_l000">
+            <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
+        </activity-alias>
+        <activity-alias android:name=".IconTl020" android:targetActivity=".MainActivity" android:exported="true" android:enabled="false"
+            android:icon="@mipmap/ic_launcher_tone_l020" android:roundIcon="@mipmap/ic_launcher_tone_l020">
+            <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
+        </activity-alias>
+        <activity-alias android:name=".IconTl040" android:targetActivity=".MainActivity" android:exported="true" android:enabled="false"
+            android:icon="@mipmap/ic_launcher_tone_l040" android:roundIcon="@mipmap/ic_launcher_tone_l040">
+            <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
+        </activity-alias>
+        <activity-alias android:name=".IconTl060" android:targetActivity=".MainActivity" android:exported="true" android:enabled="false"
+            android:icon="@mipmap/ic_launcher_tone_l060" android:roundIcon="@mipmap/ic_launcher_tone_l060">
+            <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
+        </activity-alias>
+        <activity-alias android:name=".IconTl080" android:targetActivity=".MainActivity" android:exported="true" android:enabled="false"
+            android:icon="@mipmap/ic_launcher_tone_l080" android:roundIcon="@mipmap/ic_launcher_tone_l080">
+            <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
+        </activity-alias>
+        <activity-alias android:name=".IconTl100" android:targetActivity=".MainActivity" android:exported="true" android:enabled="false"
+            android:icon="@mipmap/ic_launcher_tone_l100" android:roundIcon="@mipmap/ic_launcher_tone_l100">
+            <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
+        </activity-alias>
+        <activity-alias android:name=".IconTl120" android:targetActivity=".MainActivity" android:exported="true" android:enabled="false"
+            android:icon="@mipmap/ic_launcher_tone_l120" android:roundIcon="@mipmap/ic_launcher_tone_l120">
+            <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
+        </activity-alias>
+        <activity-alias android:name=".IconTl140" android:targetActivity=".MainActivity" android:exported="true" android:enabled="false"
+            android:icon="@mipmap/ic_launcher_tone_l140" android:roundIcon="@mipmap/ic_launcher_tone_l140">
+            <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
+        </activity-alias>
+        <activity-alias android:name=".IconTl160" android:targetActivity=".MainActivity" android:exported="true" android:enabled="false"
+            android:icon="@mipmap/ic_launcher_tone_l160" android:roundIcon="@mipmap/ic_launcher_tone_l160">
+            <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
+        </activity-alias>
+        <activity-alias android:name=".IconTl180" android:targetActivity=".MainActivity" android:exported="true" android:enabled="false"
+            android:icon="@mipmap/ic_launcher_tone_l180" android:roundIcon="@mipmap/ic_launcher_tone_l180">
+            <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
+        </activity-alias>
+        <activity-alias android:name=".IconTl200" android:targetActivity=".MainActivity" android:exported="true" android:enabled="false"
+            android:icon="@mipmap/ic_launcher_tone_l200" android:roundIcon="@mipmap/ic_launcher_tone_l200">
+            <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
+        </activity-alias>
+        <activity-alias android:name=".IconTl220" android:targetActivity=".MainActivity" android:exported="true" android:enabled="false"
+            android:icon="@mipmap/ic_launcher_tone_l220" android:roundIcon="@mipmap/ic_launcher_tone_l220">
+            <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
+        </activity-alias>
+        <activity-alias android:name=".IconTl240" android:targetActivity=".MainActivity" android:exported="true" android:enabled="false"
+            android:icon="@mipmap/ic_launcher_tone_l240" android:roundIcon="@mipmap/ic_launcher_tone_l240">
+            <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
+        </activity-alias>
+        <activity-alias android:name=".IconTl260" android:targetActivity=".MainActivity" android:exported="true" android:enabled="false"
+            android:icon="@mipmap/ic_launcher_tone_l260" android:roundIcon="@mipmap/ic_launcher_tone_l260">
+            <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
+        </activity-alias>
+        <activity-alias android:name=".IconTl280" android:targetActivity=".MainActivity" android:exported="true" android:enabled="false"
+            android:icon="@mipmap/ic_launcher_tone_l280" android:roundIcon="@mipmap/ic_launcher_tone_l280">
+            <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
+        </activity-alias>
+        <activity-alias android:name=".IconTl300" android:targetActivity=".MainActivity" android:exported="true" android:enabled="false"
+            android:icon="@mipmap/ic_launcher_tone_l300" android:roundIcon="@mipmap/ic_launcher_tone_l300">
+            <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
+        </activity-alias>
+        <activity-alias android:name=".IconTl320" android:targetActivity=".MainActivity" android:exported="true" android:enabled="false"
+            android:icon="@mipmap/ic_launcher_tone_l320" android:roundIcon="@mipmap/ic_launcher_tone_l320">
+            <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
+        </activity-alias>
+        <activity-alias android:name=".IconTl340" android:targetActivity=".MainActivity" android:exported="true" android:enabled="false"
+            android:icon="@mipmap/ic_launcher_tone_l340" android:roundIcon="@mipmap/ic_launcher_tone_l340">
+            <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
+        </activity-alias>
+        <activity-alias android:name=".IconTd000" android:targetActivity=".MainActivity" android:exported="true" android:enabled="false"
+            android:icon="@mipmap/ic_launcher_tone_d000" android:roundIcon="@mipmap/ic_launcher_tone_d000">
+            <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
+        </activity-alias>
+        <activity-alias android:name=".IconTd020" android:targetActivity=".MainActivity" android:exported="true" android:enabled="false"
+            android:icon="@mipmap/ic_launcher_tone_d020" android:roundIcon="@mipmap/ic_launcher_tone_d020">
+            <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
+        </activity-alias>
+        <activity-alias android:name=".IconTd040" android:targetActivity=".MainActivity" android:exported="true" android:enabled="false"
+            android:icon="@mipmap/ic_launcher_tone_d040" android:roundIcon="@mipmap/ic_launcher_tone_d040">
+            <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
+        </activity-alias>
+        <activity-alias android:name=".IconTd060" android:targetActivity=".MainActivity" android:exported="true" android:enabled="false"
+            android:icon="@mipmap/ic_launcher_tone_d060" android:roundIcon="@mipmap/ic_launcher_tone_d060">
+            <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
+        </activity-alias>
+        <activity-alias android:name=".IconTd080" android:targetActivity=".MainActivity" android:exported="true" android:enabled="false"
+            android:icon="@mipmap/ic_launcher_tone_d080" android:roundIcon="@mipmap/ic_launcher_tone_d080">
+            <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
+        </activity-alias>
+        <activity-alias android:name=".IconTd100" android:targetActivity=".MainActivity" android:exported="true" android:enabled="false"
+            android:icon="@mipmap/ic_launcher_tone_d100" android:roundIcon="@mipmap/ic_launcher_tone_d100">
+            <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
+        </activity-alias>
+        <activity-alias android:name=".IconTd120" android:targetActivity=".MainActivity" android:exported="true" android:enabled="false"
+            android:icon="@mipmap/ic_launcher_tone_d120" android:roundIcon="@mipmap/ic_launcher_tone_d120">
+            <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
+        </activity-alias>
+        <activity-alias android:name=".IconTd140" android:targetActivity=".MainActivity" android:exported="true" android:enabled="false"
+            android:icon="@mipmap/ic_launcher_tone_d140" android:roundIcon="@mipmap/ic_launcher_tone_d140">
+            <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
+        </activity-alias>
+        <activity-alias android:name=".IconTd160" android:targetActivity=".MainActivity" android:exported="true" android:enabled="false"
+            android:icon="@mipmap/ic_launcher_tone_d160" android:roundIcon="@mipmap/ic_launcher_tone_d160">
+            <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
+        </activity-alias>
+        <activity-alias android:name=".IconTd180" android:targetActivity=".MainActivity" android:exported="true" android:enabled="false"
+            android:icon="@mipmap/ic_launcher_tone_d180" android:roundIcon="@mipmap/ic_launcher_tone_d180">
+            <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
+        </activity-alias>
+        <activity-alias android:name=".IconTd200" android:targetActivity=".MainActivity" android:exported="true" android:enabled="false"
+            android:icon="@mipmap/ic_launcher_tone_d200" android:roundIcon="@mipmap/ic_launcher_tone_d200">
+            <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
+        </activity-alias>
+        <activity-alias android:name=".IconTd220" android:targetActivity=".MainActivity" android:exported="true" android:enabled="false"
+            android:icon="@mipmap/ic_launcher_tone_d220" android:roundIcon="@mipmap/ic_launcher_tone_d220">
+            <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
+        </activity-alias>
+        <activity-alias android:name=".IconTd240" android:targetActivity=".MainActivity" android:exported="true" android:enabled="false"
+            android:icon="@mipmap/ic_launcher_tone_d240" android:roundIcon="@mipmap/ic_launcher_tone_d240">
+            <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
+        </activity-alias>
+        <activity-alias android:name=".IconTd260" android:targetActivity=".MainActivity" android:exported="true" android:enabled="false"
+            android:icon="@mipmap/ic_launcher_tone_d260" android:roundIcon="@mipmap/ic_launcher_tone_d260">
+            <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
+        </activity-alias>
+        <activity-alias android:name=".IconTd280" android:targetActivity=".MainActivity" android:exported="true" android:enabled="false"
+            android:icon="@mipmap/ic_launcher_tone_d280" android:roundIcon="@mipmap/ic_launcher_tone_d280">
+            <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
+        </activity-alias>
+        <activity-alias android:name=".IconTd300" android:targetActivity=".MainActivity" android:exported="true" android:enabled="false"
+            android:icon="@mipmap/ic_launcher_tone_d300" android:roundIcon="@mipmap/ic_launcher_tone_d300">
+            <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
+        </activity-alias>
+        <activity-alias android:name=".IconTd320" android:targetActivity=".MainActivity" android:exported="true" android:enabled="false"
+            android:icon="@mipmap/ic_launcher_tone_d320" android:roundIcon="@mipmap/ic_launcher_tone_d320">
+            <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
+        </activity-alias>
+        <activity-alias android:name=".IconTd340" android:targetActivity=".MainActivity" android:exported="true" android:enabled="false"
+            android:icon="@mipmap/ic_launcher_tone_d340" android:roundIcon="@mipmap/ic_launcher_tone_d340">
+            <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
+        </activity-alias>
+        <!-- /tone icons -->
     </application>
 </manifest>

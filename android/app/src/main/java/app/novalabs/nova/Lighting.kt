@@ -314,10 +314,10 @@ private fun lookOf(f: JSONObject?): JSONObject = JSONObject().also { o ->
     picker?.let { (initial, put) -> ColorPickerDialog(initial, { picker = null }) { picker = null; put(it) } }
     presetMenu?.let { p ->
         OneDialog({ presetMenu = null }, p.optString("name"), buttons = listOf(DialogButton("Close") { presetMenu = null })) {
-            DialogChoice("Update with the current look", null, false) { presetMenu = null
+            DialogChoice("Update with the current look", null, false, action = true) { presetMenu = null
                 savePresets(app, presets.map { if (it.optString("id") == p.optString("id")) JSONObject(it.toString()).put("set", lookOf(f)) else it }); app.toast("Updated") }
-            DialogChoice("Rename", null, false) { presetMenu = null; naming = JSONObject(p.toString()) }
-            DialogChoice("Delete", null, false) { presetMenu = null; savePresets(app, presets.filter { it.optString("id") != p.optString("id") }) }
+            DialogChoice("Rename", null, false, action = true) { presetMenu = null; naming = JSONObject(p.toString()) }
+            DialogChoice("Delete", null, false, action = true) { presetMenu = null; savePresets(app, presets.filter { it.optString("id") != p.optString("id") }) }
         }
     }
     naming?.let { p ->
@@ -428,15 +428,15 @@ private fun actionText(s: JSONObject, presets: List<JSONObject>): String =
         val s = sch.optJSONObject(i) ?: return@let
         OneDialog({ menu = null }, whenText(s.optString("trigger", "time"), s.optString("time"), s.optInt("offset")), actionText(s, presets),
             buttons = listOf(DialogButton("Close") { menu = null })) {
-            DialogChoice("Edit", null, false) { menu = null; app.go(Route.EditSchedule(i)) }
-            DialogChoice(if (s.optBoolean("skip_next")) "Don't skip next time" else "Skip next time", "Runs again after that", false) { menu = null
+            DialogChoice("Edit", null, false, action = true) { menu = null; app.go(Route.EditSchedule(i)) }
+            DialogChoice(if (s.optBoolean("skip_next")) "Don't skip next time" else "Skip next time", "Runs again after that", false, action = true) { menu = null
                 val all = JSONArray(sch.toString()); all.getJSONObject(i).put("skip_next", !s.optBoolean("skip_next")); putAll(all) }
-            DialogChoice("Run it now", "Apply what it does right away", false) { menu = null
+            DialogChoice("Run it now", "Apply what it does right away", false, action = true) { menu = null
                 val set = s.optString("preset").takeIf { it.isNotEmpty() }?.let { id -> presets.firstOrNull { it.optString("id") == id }?.optJSONObject("set") } ?: s.optJSONObject("set")
                 set?.let { app.changeFan(JSONObject(it.toString())) } }
-            DialogChoice("Duplicate", null, false) { menu = null
+            DialogChoice("Duplicate", null, false, action = true) { menu = null
                 val all = JSONArray(sch.toString()); all.put(JSONObject(s.toString()).also { it.remove("id") }); putAll(all) }
-            DialogChoice("Delete", null, false) { menu = null; val all = JSONArray(sch.toString()); all.remove(i); putAll(all) }
+            DialogChoice("Delete", null, false, action = true) { menu = null; val all = JSONArray(sch.toString()); all.remove(i); putAll(all) }
         }
     }
     if (locating) ServerLocationDialog(app, f?.optJSONObject("location")) { locating = false }
@@ -625,12 +625,12 @@ private val SHAPE_CHOICES = listOf("fan" to "A fan (a ring of LEDs)", "strip" to
     }
     menu?.let { z -> val id = z.optString("id"); val rgb = tgt(z.optString("target"))?.optString("kind") == "rgb"
         OneDialog({ menu = null }, z.optString("name"), buttons = listOf(DialogButton("Close") { menu = null })) {
-            DialogChoice("Change its look", null, false) { menu = null; app.lightCur = id; app.go(Route.Lighting) }
-            DialogChoice("Rename", null, false) { menu = null; edit = "name" to z }
-            DialogChoice("Where it's plugged in", tgt(z.optString("target"))?.optString("label"), false) { menu = null; edit = "target" to z }
-            DialogChoice("What it is", SHAPE_NAMES[z.optString("shape")], false) { menu = null; edit = "shape" to z }
-            if (!rgb) DialogChoice("Number of LEDs", "${z.optInt("led_count")}", false) { menu = null; edit = "leds" to z }
-            if (id != "main") DialogChoice("Remove", null, false) { menu = null; edit = "rm" to z }
+            DialogChoice("Change its look", null, false, action = true) { menu = null; app.lightCur = id; app.go(Route.Lighting) }
+            DialogChoice("Rename", null, false, action = true) { menu = null; edit = "name" to z }
+            DialogChoice("Where it's plugged in", tgt(z.optString("target"))?.optString("label"), false, action = true) { menu = null; edit = "target" to z }
+            DialogChoice("What it is", SHAPE_NAMES[z.optString("shape")], false, action = true) { menu = null; edit = "shape" to z }
+            if (!rgb) DialogChoice("Number of LEDs", "${z.optInt("led_count")}", false, action = true) { menu = null; edit = "leds" to z }
+            if (id != "main") DialogChoice("Remove", null, false, action = true) { menu = null; edit = "rm" to z }
         } }
     edit?.let { (k, z) -> val id = z.optString("id"); val path = "/api/v1/lights/$id/setup"
         when (k) {

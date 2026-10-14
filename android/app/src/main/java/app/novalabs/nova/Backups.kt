@@ -9,7 +9,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
-import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -391,13 +390,13 @@ fun kotlinx.coroutines.CoroutineScope.launchCatching(onError: (String) -> Unit, 
     }
     pick?.let { p ->
         OneDialog({ pick = null }, "Restore ${p.substringAfterLast('/')}?", "From the snapshot of ${r.snap.replace('_', ' ')}.") {
-            DialogChoice("Put it back where it was", "Files already there are left alone — nothing newer is overwritten", false) {
+            DialogChoice("Put it back where it was", "Files already there are left alone — nothing newer is overwritten", false, action = true) {
                 pick = null; app.act { val t = app.stepUp("Restore ${p.substringAfterLast('/')}", "POST", "/api/v1/backups/${r.id}/restore",
                     JSONObject().put("snapshot", r.snap).put("path", p).put("to", "original")); app.go(Route.Task(t.optString("id"))) } }
-            DialogChoice("Next to the original", "In a restored-${r.snap.take(10)} folder beside it, to compare first", false) {
+            DialogChoice("Next to the original", "In a restored-${r.snap.take(10)} folder beside it, to compare first", false, action = true) {
                 pick = null; app.act { val t = app.stepUp("Restore ${p.substringAfterLast('/')}", "POST", "/api/v1/backups/${r.id}/restore",
                     JSONObject().put("snapshot", r.snap).put("path", p).put("to", "beside")); app.go(Route.Task(t.optString("id"))) } }
-            DialogChoice("Cancel", null, false) { pick = null }
+            DialogChoice("Cancel", null, false, action = true) { pick = null }
         }
     }
 }

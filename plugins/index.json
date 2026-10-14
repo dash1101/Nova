@@ -1,0 +1,11 @@
+{
+ "about": "Nova's community plugin list (Store → Plugins). Add yours with a pull request: an entry here, and a link to your plugin.json or .zip. Entries marked reviewed were read through by the Nova project; the rest are listed as-is.",
+ "plugins": [
+  {"id": "system-tools", "name": "System tools", "author": "Nova", "reviewed": true,
+   "description": "One-tap checks: temperatures, disk space, the busiest processes and who's logged in.",
+   "url": "https://raw.githubusercontent.com/dash1101/Nova/main/plugins/examples/system-tools/plugin.json"},
+  {"id": "docker-tools", "name": "Docker tools", "author": "Nova", "reviewed": true,
+   "description": "Docker disk use, the containers using the most memory, and recent restarts.",
+   "url": "https://raw.githubusercontent.com/dash1101/Nova/main/plugins/examples/docker-tools/plugin.json"}
+ ]
+}

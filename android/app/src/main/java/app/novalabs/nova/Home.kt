@@ -8,6 +8,8 @@ import androidx.compose.foundation.background
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -108,11 +110,24 @@ import org.json.JSONObject
             backupRunning -> Banner(backup?.let { backupLine(it) } ?: "Backing up…", N.blue) { app.go(Route.QuickPanel) }
         }
     }
-    // Hero: the server with the live fan (tap it for Lighting)
+    // Hero: the server with the live fan — tap the fan for Lighting, the drive lights for Storage, the power button for power
+    var powerMenu by remember { mutableStateOf(false) }
+    if (powerMenu) OneDialog({ powerMenu = false }, "Power", null, listOf(DialogButton("Cancel") { powerMenu = false })) {
+        DialogChoice("Restart server", "Everything goes offline for about 2 minutes", false, action = true) { powerMenu = false
+            app.act { app.stepUp("Restart the server", "POST", "/api/v1/power/reboot"); app.toast("The server will restart in a few seconds") } }
+        DialogChoice("Shut down server", "You'll need to press the power button to turn it back on", false, action = true) { powerMenu = false
+            app.act { app.stepUp("Shut down the server", "POST", "/api/v1/power/poweroff"); app.toast("The server will shut down in a few seconds") } }
+    }
     val hero: @Composable (androidx.compose.ui.unit.Dp) -> Unit = { h ->
-        Box(Modifier.fillMaxWidth().height(h).then(if (app.has("lighting"))
-            Modifier.clickable(interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }, indication = null) { app.go(Route.Lighting) }
-            else Modifier)) {
+        Box(Modifier.fillMaxWidth().height(h).pointerInput(Unit) {
+            detectTapGestures { o ->
+                when (heroHit(size.width.toFloat(), size.height.toFloat(), o.x, o.y)) {
+                    "fan" -> if (app.has("lighting")) app.go(Route.Lighting)
+                    "drives" -> app.go(Route.Hardware)
+                    "power" -> if (app.isAdmin) powerMenu = true else app.toast("This ${DeviceForm.noun} has view-only access")
+                }
+            }
+        }) {
             val drives = st?.optJSONObject("metrics")?.optJSONArray("drive_states")?.let { a -> (0 until a.length()).map { a.getJSONObject(it) } }
             ServerHero(app.fan, levelColor(level, N), drives, app.clockSkew, Modifier.fillMaxSize(), io = app.lastNow?.optJSONObject("disks"))
         }

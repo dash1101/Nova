@@ -37,6 +37,29 @@ API = "https://api.cloudflare.com/client/v4"
 HOST_RE = r"(?=.{4,253}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}"
 
 
+def _me():
+    """This server's name, as it signs what it adds to Cloudflare (so several Nova servers can share one token)."""
+    try: n = json.load(open("/var/lib/nova-api/settings.json")).get("display_name") or ""
+    except Exception: n = ""
+    return re.sub(r"[^\w .-]", "", n or __import__("socket").gethostname())[:40] or "server"
+
+def _iid():
+    """A short id for this server, made once — what Nova matches its own records by (the name can change)."""
+    f = "/etc/nova-api/instance-id"
+    try: v = open(f).read().strip()
+    except OSError: v = ""
+    if not re.fullmatch(r"[0-9a-f]{8}", v):
+        v = os.urandom(4).hex()
+        try:
+            with open(f, "w") as fh: fh.write(v + "\n")
+            os.chmod(f, 0o600)
+        except OSError: pass
+    return v
+
+def _tag(): return f"Added by Nova · {_me()[:60]} · {_iid()}"
+
+def _ours(c): return c == "Added by Nova" or (c.startswith("Added by Nova · ") and c.endswith(f" · {_iid()}"))
+
 def _site():
     try: return json.load(open("/etc/nova-api/config.json"))
     except Exception: return {}
@@ -120,6 +143,16 @@ def status():
             if rec: led[h] = {**rec, "service": next((r.get("service") for r in (cfg.get("config") or {}).get("ingress", []) if r.get("hostname") == h), None), "legacy": True}; new = True
         if new: _save_ledger(led)
         out["nova_added"] = {h: ("protected" if r.get("protected_existing") else "added") for h, r in led.items()}   # only these can be taken off from Nova
+        # the same token on other Nova servers: what they added (signed with their name), so it's clear whose is whose
+        others = []
+        try:
+            for z in (call("GET", "/zones?per_page=50") or [])[:20]:
+                for r in call("GET", f"/zones/{z['id']}/dns_records?comment.startswith=Added%20by%20Nova&per_page=100") or []:
+                    c = r.get("comment") or ""
+                    if c.startswith("Added by Nova · ") and not _ours(c):
+                        others.append({"host": r.get("name"), "server": c[len("Added by Nova · "):].rsplit(" · ", 1)[0]})
+        except ValueError: pass
+        out["me"], out["others"] = _me(), others
         out["nova"] = {h: {"kind": r.get("kind") or ("protected" if r.get("protected_existing") else "existing" if r.get("existing") else "added"),
                            "mode": r.get("mode") or ("me" if r.get("access") else "public"), "guests": r.get("guests", []), "session": r.get("session"),
                            "for_host": r.get("for_host"), "service": r.get("service"), "existing": bool(r.get("existing")),
@@ -272,7 +305,7 @@ def apply(host, service, no_tls_verify=False, mode="me", guests=None, session="2
         _protect(acct, host, rec, mode, guests, session)
         # 2. name
         r = call("POST", f"/zones/{zid}/dns_records", {"type": "CNAME", "name": host, "content": f"{tun}.cfargotunnel.com", "proxied": True,
-                                                       "comment": "Added by Nova"})
+                                                       "comment": _tag()})
         rec["dns_id"] = (r or {}).get("id")
         # 3. route (read-modify-write: every existing rule stays, in order; the catch-all stays last)
         cur = (call("GET", f"/accounts/{acct}/cfd_tunnel/{tun}/configurations") or {}).get("config") or {}
@@ -442,7 +475,7 @@ def app_key_remove(host):
 def _legacy(host, acct, tun):
     """An address published by an older Nova (before the record): its DNS record carries "Added by Nova"."""
     zid, _ = zone_for(host)
-    mine = [r for r in call("GET", f"/zones/{zid}/dns_records?name={host}") or [] if r.get("comment") == "Added by Nova" and r.get("type") == "CNAME"]
+    mine = [r for r in call("GET", f"/zones/{zid}/dns_records?name={host}") or [] if _ours(r.get("comment") or "") and r.get("type") == "CNAME"]
     if not mine: return None
     return {"zone": zid, "dns_id": mine[0]["id"], "route": True, "access": True}
 

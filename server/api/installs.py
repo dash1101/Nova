@@ -241,9 +241,26 @@ def _apt(cmd, log, progress, lo=10, hi=98):
 # installed together: Docker is only useful with Compose (Nova's containers are Compose stacks)
 WITH = {"docker.io": ["docker-compose", "docker-compose-v2"]}
 
+def _other(action, pk, log, progress):
+    """dnf, pacman or zypper (pkg.py): their output as the log, progress by line."""
+    import pkg
+    n = 0
+    def line(l):
+        nonlocal n
+        if l.strip(): n += 1; progress(min(95, 10 + n), l.strip()[:80]); log(l.strip()[:140])
+    rc, out = (pkg.install if action == "install" else pkg.remove)(pk, on_line=line)
+    if rc != 0: raise RuntimeError(f"{pkg.label()} couldn't finish: {out.strip()[-300:]}")
+
 def program_install(spec, log, progress):
     pk = str(spec.get("pkg", ""))
     if not re.fullmatch(PKG_RE, pk): raise ValueError("bad package name")
+    import pkg
+    if pkg.which() != "apt":
+        log("Refreshing the package lists…"); progress(3); pkg.refresh()
+        names = [pk, *WITH.get(pk, [])[:1]]
+        _other("install", names, log, progress)
+        if pk == "docker.io": run(["systemctl", "enable", "--now", "docker"], timeout=120)
+        changelog(f"Installed program {' '.join(names)} (from the Nova app)"); progress(100); return {"ok": True, "pkg": pk}
     log("Refreshing the package lists…"); progress(3)
     run(["apt-get", "update", "-qq"], timeout=600)
     rc, so, _ = run(["apt-cache", "policy", pk], timeout=60)
@@ -259,6 +276,10 @@ def program_remove(spec, log, progress):
     pk = str(spec.get("pkg", ""))
     if not re.fullmatch(PKG_RE, pk): raise ValueError("bad package name")
     if pk in ESSENTIAL: raise ValueError(f"{pk} keeps the server running, so it can't be removed from Nova")
+    import pkg
+    if pkg.which() != "apt":
+        _other("remove", [pk], log, progress)
+        changelog(f"Removed program {pk} (from the Nova app)"); progress(100); return {"ok": True, "pkg": pk, "removed": [pk]}
     rc, so, _ = run(["apt-get", "-s", "remove", "--", pk], timeout=120)              # what else would go with it?
     gone = re.findall(r"^Remv (\S+)", so, re.M)
     hit = sorted(set(gone) & ESSENTIAL)
@@ -271,6 +292,13 @@ def search_programs(q, limit=40):
     """apt-cache search, with whether each one is installed. (Read-only.)"""
     q = str(q).strip().lower()[:60]
     if len(q) < 2 or not re.fullmatch(r"[a-z0-9+.\- ]+", q): return []
+    import pkg
+    if pkg.which() != "apt":
+        out = [{"pkg": n, "description": d[:160]} for n, d in pkg.search(q, 80)]
+        out.sort(key=lambda p: (not p["pkg"].startswith(q), p["pkg"] != q, len(p["pkg"]))); out = out[:limit]
+        inst = pkg.installed([p["pkg"] for p in out])
+        for p in out: p["installed"] = inst.get(p["pkg"], False); p["essential"] = p["pkg"] in ESSENTIAL
+        return out
     rc, so, _ = run(["apt-cache", "search", "--names-only", q], timeout=30)
     rc2, so2, _ = run(["apt-cache", "search", q], timeout=30)
     seen, out = set(), []

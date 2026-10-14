@@ -37,12 +37,15 @@ object Space {
     val section = 22.dp         // before a section label
 }
 
-@Composable fun glassStyle(): HazeStyle = HazeStyle(
-    backgroundColor = N.bg,
-    tints = listOf(HazeTint((if (N.dark) Color(0xFF26262B) else Color.White).copy(alpha = if (N.dark) 0.45f else 0.55f))),
-    blurRadius = 26.dp,
-    noiseFactor = 0.05f,
-)
+@Composable fun glassStyle(): HazeStyle = when (N.preset) {
+    // Liquid Glass: clear — a little blur, a light tint; Fluent: acrylic (more blur, a bit of grain)
+    "liquid" -> HazeStyle(backgroundColor = N.bg, tints = listOf(HazeTint((if (N.dark) Color(0xFF1A1A20) else Color.White).copy(alpha = (if (N.dark) .42f else .5f) - AppPrefs.glass / 100f * .3f))),
+        blurRadius = 8.dp, noiseFactor = 0f)
+    "fluent" -> HazeStyle(backgroundColor = N.bg, tints = listOf(HazeTint(N.nav.copy(alpha = .78f))), blurRadius = 30.dp, noiseFactor = 0.08f)
+    else -> HazeStyle(backgroundColor = N.bg,
+        tints = listOf(HazeTint((if (N.dark) Color(0xFF26262B) else Color.White).copy(alpha = if (N.dark) 0.45f else 0.55f))),
+        blurRadius = 26.dp, noiseFactor = 0.05f)
+}
 
 /** Soft top-edge highlight — the "light catching the glass" line. */
 @Composable private fun edge(): Brush = Brush.verticalGradient(
@@ -50,7 +53,7 @@ object Space {
 
 /** Real frosted glass (backdrop blur) for floating elements. Falls back to a translucent fill. */
 @Composable fun Modifier.frosted(state: HazeState?, shape: Shape, elevation: Dp = 14.dp, alpha: Float = 1f): Modifier {
-    if (N.material)                      // Material You: solid tonal surfaces with a soft shadow, no glass
+    if (N.material || N.preset == "breeze" || solidGlass())    // Material You, Breeze, Reduce transparency: solid surfaces with a soft shadow, no glass
         return this.then(if (elevation > 0.dp && alpha > 0.01f) Modifier.shadow(elevation * 0.5f * alpha, shape) else Modifier).clip(shape)
             .background(N.nav.copy(alpha = alpha))
     val light = lite()                    // older phones: no live blur and a smaller shadow (by far the costliest parts)
@@ -58,12 +61,16 @@ object Space {
         ambientColor = Color.Black.copy(alpha = 0.35f), spotColor = Color.Black.copy(alpha = 0.45f)) else Modifier).clip(shape)
     val glass = if (state != null && !light) base.hazeEffect(state, glassStyle()) { this.alpha = alpha }
                 else base.background((if (N.dark) Color(0xFF26262B) else Color.White).copy(alpha = 0.86f * alpha))
-    return if (alpha > 0.01f) glass.border(0.8.dp, edge(), shape) else glass
+    return if (alpha <= 0.01f) glass else if (N.preset == "liquid") glass.liquidRim(shape) else if (N.preset == "fluent") glass.border(1.dp, if (N.dark) Color(0x14FFFFFF) else Color(0x0F000000), shape)
+        else glass.border(0.8.dp, edge(), shape)
 }
 
 /** Glass card for content inside a page: translucent, highlighted edge, soft shadow. */
 @Composable fun Modifier.glassCard(shape: Shape, elevation: Dp = 6.dp): Modifier =
-    if (N.material) this.clip(shape).background(N.card) else this.shadow(if (lite()) 0.dp else elevation, shape, ambientColor = Color.Black.copy(alpha = 0.25f), spotColor = Color.Black.copy(alpha = 0.3f))
+    if (N.material) this.clip(shape).background(N.card)
+    else if (N.preset == "liquid") { val r = cardRadius(26.dp); this.liquidCard(androidx.compose.foundation.shape.RoundedCornerShape(r), r, elevation) }
+    else if (N.preset.isNotEmpty()) this.presetCard(androidx.compose.foundation.shape.RoundedCornerShape(cardRadius(8.dp)))
+    else this.shadow(if (lite()) 0.dp else elevation, shape, ambientColor = Color.Black.copy(alpha = 0.25f), spotColor = Color.Black.copy(alpha = 0.3f))
         .clip(shape)
         // Solid fill (a see-through one lets the shadow show as a gray box inside the card), lit
         // slightly from the top so it reads as a raised pane of glass.

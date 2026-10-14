@@ -39,7 +39,7 @@ try:                       # optional module: fan/case lighting (modules/fan-gig
 except ImportError:
     nova_rgb = None
 
-API_VERSION = "0.6.8-alpha"
+API_VERSION = "0.7.0-alpha"
 CONFIG = "/etc/nova-api/config.json"
 DATA = "/var/lib/nova-api"
 DEVICES = f"{DATA}/devices.json"
@@ -270,6 +270,7 @@ if os.path.exists(CONFIG) and not os.access(CONFIG, os.R_OK):
     # Running with an empty config would silently break remote access and auth checks.
     sys.exit(f"cannot read {CONFIG} — it must be root:nova-api, mode 640 (sudo chown root:nova-api {CONFIG}; sudo chmod 640 {CONFIG})")
 CFG = load_json(CONFIG, {})
+PLUGIN_CAT = {}                                   # Store → Plugins: the community list, cached
 # Everything site-specific comes from config.json (defaults match the original install).
 # No config yet (fresh install before `nova-setup`): only localhost, nothing on the network.
 LAN = ipaddress.ip_network(CFG.get("lan_subnet") or "127.0.0.1/32")
@@ -505,6 +506,9 @@ def describe_action(a):
     if len(p) == 3 and p[0] == "apps" and p[2] == "sharing": return f"Turn on public share links at {a.get('data', {}).get('share_host', '?')}"
     if len(p) == 3 and p[0] == "apps" and p[2] == "public-fix": return f"Change one setting in {p[1]} so it works at its public address (a backup is kept; it restarts)"
     if p == ["cloudflare", "token"]: return "Save a Cloudflare API token on the server"
+    if p == ["plugins", "install"]: return "Install a plugin — its tools run as your normal account"
+    if p == ["plugins", "remove"]: return "Remove a plugin"
+    if p == ["cloudflare", "token", "show"]: return "Show the server's Cloudflare API token (to copy it to another server)"
     if p == ["freeup"]: return "Free up space: remove " + ", ".join(str(x) for x in (a.get("data", {}).get("items") or []))[:200]
     if p == ["cloudflare", "app-key"]: return f"Make a key that lets an app's own phone app open {a.get('data', {}).get('host', '?')} (it replaces an older key)"
     if p == ["cloudflare", "app-key", "remove"]: return f"Remove the app key for {a.get('data', {}).get('host', '?')}"
@@ -610,13 +614,14 @@ def needs_stepup(method, parts):
     if parts == ["terminal"]: return True                                   # server terminal: fingerprint
     if parts == ["apps", "command"]: return True                           # what a command app runs: fingerprint
     if parts in (["cloudflare", "token"], ["cloudflare", "publish"], ["cloudflare", "remove"], ["cloudflare", "protect"], ["cloudflare", "access"],
-                 ["cloudflare", "app-key"], ["cloudflare", "app-key", "remove"]): return True
+                 ["cloudflare", "app-key"], ["cloudflare", "app-key", "remove"], ["cloudflare", "token", "show"]): return True
     if method == "POST" and len(parts) == 3 and parts[0] == "apps" and parts[2] == "sharing": return True     # changes your Cloudflare account
     if method == "POST" and len(parts) == 3 and parts[0] == "apps" and parts[2] == "public-fix": return True  # edits one of your app's settings
     if method == "POST" and parts == ["freeup"]: return True                                                  # removes things for good
     if parts[:1] == ["containers"] and parts[-1:] == ["remove-custom"]: return True
     if parts == ["features"]: return True                                 # switching parts of Nova on/off: fingerprint
     if parts == ["plugins"]: return True                                  # turning a plugin on runs its tools as you: fingerprint
+    if parts in (["plugins", "install"], ["plugins", "remove"]): return True # adding tools that run as you / taking them away
     if parts == ["labs", "images", "clean"]: return True                    # deletes images: fingerprint
     if parts == ["notify", "discord"]: return True                         # where alerts get sent: fingerprint
     if parts[:1] == ["backups"] and len(parts) == 3 and parts[2] == "restore": return True
@@ -1100,6 +1105,35 @@ class Handler(BaseHTTPRequestHandler):
         if parts == ["terminal"] and not feat_on("terminal"): return 403, {"error": "the server terminal is turned off (Settings → Features)"}
         if parts[:1] in (["fan"], ["lights"]) and nova_rgb and not feat_on("lighting") and method != "GET":
             return 409, {"error": "Nova isn't controlling the lights (Settings → Features)"}
+        if parts == ["plugins", "catalog"]:          # Store → Plugins: the community list (cached an hour)
+            now = time.time()
+            if now - PLUGIN_CAT.get("t", 0) > 3600 or not PLUGIN_CAT.get("d"):
+                try:
+                    cat = json.loads(plugins.download(CFG.get("plugin_catalog") or plugins.CATALOG).decode("utf-8"))
+                    items = []
+                    for e in (cat.get("plugins") if isinstance(cat, dict) else [])[:200]:
+                        if not isinstance(e, dict) or not re.fullmatch(plugins.ID_RE, str(e.get("id", ""))) or not str(e.get("url", "")).startswith("https://"): continue
+                        items.append({"id": e["id"], "name": plugins._clean(e.get("name"), 40) or e["id"], "description": plugins._clean(e.get("description"), 300),
+                                      "author": plugins._clean(e.get("author"), 60), "url": str(e["url"])[:1000], "reviewed": e.get("reviewed") is True,
+                                      "homepage": str(e.get("homepage", ""))[:300] if str(e.get("homepage", "")).startswith("https://") else ""})
+                    PLUGIN_CAT.update(t=now, d=items, err="")
+                except (ValueError, AttributeError, UnicodeDecodeError) as e: PLUGIN_CAT.update(t=now - 3300, err=str(e)[:200])
+            have = {p["id"]: p["version"] for p in plugins.all_plugins()}
+            return 200, {"plugins": [{**e, "installed": e["id"] in have} for e in PLUGIN_CAT.get("d") or []], "error": PLUGIN_CAT.get("err", "")}
+        if parts in (["plugins", "preview"], ["plugins", "install"]) and method == "POST":
+            if role_of(dev) != "admin": return 403, {"error": "admins only"}
+            try:
+                raw = plugins.manifest_from(base64.b64decode(str(data.get("zip", "")), validate=True) if data.get("zip") else plugins.download(data.get("url", "")))
+                pv = plugins.preview(raw)
+            except (ValueError, base64.binascii.Error) as e: return 400, {"error": str(e)[:300]}
+            if parts[1] == "preview": return 200, pv
+            if str(data.get("sha256", "")) != pv["sha256"]: return 409, {"error": "the plugin changed since you looked at it — check it again"}
+            rc, res = helper("plugin-install", timeout=30, data=raw)
+            return (200 if rc == 0 else 400), res
+        if parts == ["plugins", "remove"] and method == "POST":
+            if role_of(dev) != "admin": return 403, {"error": "admins only"}
+            rc, res = helper("plugin-remove", str(data.get("id", ""))[:40], timeout=30)
+            return (200 if rc == 0 else 400), res
         if parts == ["plugins"]:
             if method == "POST":
                 if role_of(dev) != "admin": return 403, {"error": "admins only"}
@@ -1592,6 +1626,7 @@ class Handler(BaseHTTPRequestHandler):
             if not load_json(SETTINGS, {}).get("labs", {}).get("cloudflare_sync"): return 403, {"error": "turn on Cloudflare auto-setup in Settings → Labs first"}
             if method == "GET" and parts == ["cloudflare"]: rc, res = helper("cf-status", timeout=60); return (200 if rc == 0 else 400), res
             if method == "POST" and parts == ["cloudflare", "token"]: rc, res = helper("cf-token", str(data.get("token", ""))[:200], timeout=60); return (200 if rc == 0 else 400), res
+            if method == "POST" and parts == ["cloudflare", "token", "show"]: rc, res = helper("cf-token-show", timeout=30); return (200 if rc == 0 else 400), res
             if method == "POST" and parts[1:] in (["plan"], ["publish"]):
                 spec = json.dumps({"host": str(data.get("host", ""))[:253], "service": str(data.get("service", ""))[:200], "no_tls_verify": bool(data.get("no_tls_verify")),
                                    "mode": str(data.get("mode") or "me"), "guests": [str(g)[:254] for g in (data.get("guests") or [])][:60],

@@ -7,11 +7,12 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"; D="$ROOT/dist"
 KEY="${NOVA_RELEASE_KEY:-$HOME/.nova-release/release-ed25519.pem}"
 [[ -f "$KEY" ]] || { echo "no release key at $KEY"; exit 1; }
 bash "$ROOT/packaging/build-deb.sh"
+bash "$ROOT/packaging/build-tar.sh"            # any Linux: the tarball and the one-file installer
 VER="$(grep -oP 'API_VERSION = "\K[^"]+' "$ROOT/server/api/server.py")"
 cd "$D"
 ls nova-*.apk >/dev/null 2>&1 || echo "note: no APKs in dist/ — this release only updates the server"
 rm -f SHA256SUMS SHA256SUMS.sig
-sha256sum nova-server_*.deb $(ls nova-*.apk 2>/dev/null) > SHA256SUMS
+sha256sum nova-server_*.deb nova-server_*.tar.gz nova-installer.run $(ls nova-*.apk 2>/dev/null) > SHA256SUMS
 python3 - "$KEY" <<'PY'
 import base64, sys
 from cryptography.hazmat.primitives import serialization

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Install Nova from a source checkout (Debian / Ubuntu).
+# Install Nova from a source checkout (Debian/Ubuntu: as a .deb; any other Linux with systemd: as the tarball).
 #
 #   sudo ./install.sh                  build the package, install it, run the setup wizard
 #   sudo ./install.sh --with lighting  …and turn on the Gigabyte RGB Fusion 2 lighting module
@@ -18,7 +18,17 @@ for a in "$@"; do
     esac
 done
 [[ $EUID -eq 0 ]] || { echo "run with sudo" >&2; exit 1; }
-command -v dpkg-deb >/dev/null || { echo "this installer needs Debian or Ubuntu (dpkg)" >&2; exit 1; }
+if ! command -v dpkg-deb >/dev/null; then              # Fedora, Arch, openSUSE…: the same files, installed by install.sh
+    echo "==> Building the tarball"
+    VERSION="$(grep -oP 'API_VERSION = "\K[^"]+' "$ROOT/server/api/server.py" | sed 's/-/~/')"
+    bash "$ROOT/packaging/build-tar.sh"
+    T="$(mktemp -d)"; trap 'rm -rf "$T"' EXIT
+    tar -xzf "$ROOT/dist/nova-server_${VERSION}.tar.gz" -C "$T"
+    sh "$T/nova-server-${VERSION}/install.sh" --upgrade
+    nova-setup "${SETUP_ARGS[@]}"
+    [[ $LIGHTING -eq 1 ]] && nova-setup-lighting
+    exit 0
+fi
 
 echo "==> Building the package"
 bash "$ROOT/packaging/build-deb.sh"

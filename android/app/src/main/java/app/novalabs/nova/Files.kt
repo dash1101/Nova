@@ -20,7 +20,6 @@ import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -121,6 +120,22 @@ private fun whenOf(t: Long): String { val d = java.util.Date(t * 1000); val toda
         if (!app.isAdmin) { Text("Only admins can use the file manager.", color = N.sub, modifier = Modifier.padding(30.dp)); return@Page }
         err?.let { Text(it, color = N.sub, modifier = Modifier.padding(30.dp)) }
         if (dd == null) { if (err == null) Text("Loading…", color = N.sub, modifier = Modifier.padding(30.dp)); return@Page }
+        // your drives, one tap away (instead of finding /mnt/… by hand)
+        val drv = app.overview?.optJSONObject("status")?.optJSONObject("metrics")?.optJSONArray("storage")?.let { a -> (0 until a.length()).map { a.getJSONObject(it) } }
+            ?.filter { it.optString("mount").let { m -> m.isNotEmpty() && m != "/" } } ?: emptyList()
+        if (drv.isNotEmpty()) Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = Space.gutter, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            val cur = dd.optString("path")
+            (listOf(Triple("Home", dd.optString("home"), -1L)) + drv.map { Triple(it.optString("name"), it.optString("mount"), it.optLong("free", -1)) }).forEach { (name, mount, free) ->
+                val on = cur == mount || (free >= 0 && cur.startsWith("$mount/"))
+                Row(Modifier.clip(RoundedCornerShape(50)).background(if (on) N.blue.copy(alpha = 0.16f) else N.pill).clickable { if (cur != mount) app.go(Route.Files(mount)) }
+                    .padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(if (free < 0) Icons.Rounded.Home else Icons.Rounded.Storage, null, tint = if (on) N.blue else N.sub, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text(name, color = if (on) N.blue else N.text, fontSize = 14.sp)
+                    if (free >= 0) Text("  ${sizeText(free)} free", color = N.sub, fontSize = 12.sp)
+                }
+            }
+        }
         // where you are
         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = Space.gutter, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             val parts = dd.optString("path").split('/').filter { it.isNotEmpty() }

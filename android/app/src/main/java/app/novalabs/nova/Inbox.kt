@@ -19,6 +19,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
@@ -89,7 +91,7 @@ import java.util.*
                 .padding(start = 18.dp, end = 8.dp, top = 6.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("${picked.size} selected", color = N.text, fontWeight = FontWeight.Bold, fontSize = 16.sp, modifier = Modifier.weight(1f))
                 val all = picked.size == shown.size
-                TextButton({ picked = if (all) emptySet() else shown.map { it.optDouble("t") }.toSet() }) { Text(if (all) "Clear" else "Select all", color = N.blue, fontWeight = FontWeight.SemiBold) }
+                TextButton({ picked = if (all) emptySet() else shown.map { it.optDouble("t") }.toSet() }) { Text(if (all) "Select none" else "Select all", color = N.blue, fontWeight = FontWeight.SemiBold) }
                 TextButton({ val ts = picked.toList(); picked = emptySet(); archive(ts) }) {
                     Icon(Icons.Rounded.Inventory2, null, tint = N.blue, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(6.dp))
                     Text("Archive", color = N.blue, fontWeight = FontWeight.SemiBold)
@@ -138,7 +140,7 @@ import java.util.*
                         Spacer(Modifier.width(14.dp))
                         Column(Modifier.weight(1f)) {
                             Text(e.optString("title").replace(Regex("^[^\\p{L}\\p{N}]+\\s*"), ""), color = N.text, fontSize = 16.sp)
-                            e.optString("detail").takeIf { it.isNotEmpty() }?.let { Text(it, color = N.sub, fontSize = 13.sp, maxLines = 4) }
+                            e.optString("detail").takeIf { it.isNotEmpty() }?.let { ExpandableSub(it, N.sub, lines = 3, size = 13.sp) }     // the arrow opens the full text
                         }
                         Text(hm.format(Date((e.optDouble("t") * 1000).toLong())), color = N.sub, fontSize = 13.sp)
                     }
@@ -593,7 +595,7 @@ fun appForHost(h: String, service: String = ""): String {
 val CF_STEPS = listOf(
     "Go to dash.cloudflare.com → your profile icon (top right) → My Profile → API Tokens, and select Create Token.",
     "Next to “Create Custom Token”, select Get started. Name it something like Nova.",
-    "Under Permissions, add four rows: Account · Cloudflare Tunnel · Edit (newer dashboards may call it “Cloudflare One Connector: cloudflared”), Account · Access: Apps and Policies · Edit, Zone · DNS · Edit, and Zone · Zone · Read.",
+    "Under Permissions, add five rows: Account · Cloudflare Tunnel · Edit (newer dashboards may call it “Cloudflare One Connector: cloudflared”), Account · Access: Apps and Policies · Edit, Account · Access: Service Tokens · Edit (for app keys), Zone · DNS · Edit, and Zone · Zone · Read.",
     "Account Resources: Include → your account. Zone Resources: Include → Specific zone → your domain.",
     "Select Continue to summary → Create Token, copy it (Cloudflare shows it only once) and paste it here with Add an API token.")
 
@@ -602,6 +604,12 @@ val CF_STEPS = listOf(
     var st by remember { mutableStateOf<JSONObject?>(null) }; var err by remember { mutableStateOf<String?>(null) }
     var round by remember { mutableIntStateOf(0) }
     var tokenAsk by remember { mutableStateOf(false) }
+    var shown by remember { mutableStateOf<String?>(null) }
+    val ctx = LocalContext.current
+    shown?.let { tok -> OneDialog({ shown = null }, "Cloudflare API token", "Paste it in Settings → Cloudflare on the other server. Anyone with it can change your Cloudflare setup, so keep it private.",
+        listOf(DialogButton("Close") { shown = null }, DialogButton("Copy", N.blue) { shown = null
+            ctx.getSystemService(android.content.ClipboardManager::class.java)?.setPrimaryClip(android.content.ClipData.newPlainText("Cloudflare token", tok)); app.toast("Copied") })) {
+        Text(tok, color = N.text, fontSize = 13.sp, fontFamily = FontFamily.Monospace, modifier = Modifier.padding(horizontal = 22.dp)) } }
     var undo by remember { mutableStateOf<Pair<String, String>?>(null) }
     undo?.let { (h, kind) -> val pub = kind == "protected"
         OneDialog({ undo = null }, if (pub) "Take the login off $h?" else "Take $h off?",
@@ -622,6 +630,8 @@ val CF_STEPS = listOf(
                 Row1(if (ok) "Connected" else if (!s.optBoolean("token")) "Add an API token to start" else "Not working", if (ok) "New app addresses get the login of “${s.optString("access_app")}”" else s.optString("error").ifEmpty { "Nova needs a Cloudflare API token to make changes for you." },
                     false, if (ok) Icons.Rounded.Shield else Icons.Rounded.Cloud, if (ok) N.green else N.amber)
                 if (app.isAdmin) { RowDivider(); Row1(if (s.optBoolean("token")) "Change the API token" else "Add an API token", "Kept on the server, readable only by root", true, Icons.Rounded.Key, onClick = { tokenAsk = true }) }
+                if (app.isAdmin && s.optBoolean("token")) { RowDivider(); Row1("Show the token", "To use the same token on another Nova server", false, Icons.Rounded.Visibility,
+                    onClick = { app.act { shown = app.stepUp("Show the Cloudflare API token", "POST", "/api/v1/cloudflare/token/show", JSONObject()).optString("token").ifEmpty { null } } }) }
                 val mine = s.optJSONObject("nova_added") ?: JSONObject(); val prot = s.optJSONArray("protected").let { p -> (0 until (p?.length() ?: 0)).map { p!!.getString(it) }.toSet() }
                 s.optJSONArray("hostnames")?.let { hs -> for (i in 0 until hs.length()) { val h = hs.getString(i); RowDivider()
                     val kind = mine.optString(h)
@@ -634,6 +644,11 @@ val CF_STEPS = listOf(
             }
         }
     }
+    st?.optJSONArray("others").objs().takeIf { it.isNotEmpty() }?.let { os ->
+        SectionLabel("Added by your other Nova servers")
+        Group { os.forEachIndexed { i, o -> if (i > 0) RowDivider(); Row1(o.optString("host"), "By ${o.optString("server")} — change it there", icon = Icons.Rounded.Dns) } } }
+    if (st?.optBoolean("token") == true && st?.optString("me").orEmpty().isNotEmpty())
+        Note("Several Nova servers can share one token: what each adds is signed with its name (this one is “${st!!.optString("me")}”), and each only takes off its own.", 13.sp, 4.dp)
     // once it's connected, the steps fold away behind a link
     val connected = st?.optBoolean("token") == true && st?.optString("error").isNullOrEmpty()
     var showSteps by remember { mutableStateOf(false) }

@@ -7,40 +7,54 @@ Nova has two parts: the **server package** on the Linux machine you want to cont
 
 ## 1. Install the server package
 
-Requirements: Debian 12+ or Ubuntu 22.04+, systemd, Python 3.11+. Nothing else: Docker, Tailscale
-and cloudflared are optional, and `nova-setup` offers to install each one that's missing (Docker for
-containers and the container store; Tailscale to reach Nova and your apps from anywhere privately;
-cloudflared for a Cloudflare Tunnel on your own domain). Without Docker, Containers says so and the
-store's Programs tab (apt) still works.
+Requirements: Linux with systemd and Python 3.11+ — Debian 12+, Ubuntu 22.04+, Fedora 39+, RHEL/Rocky/Alma 9+,
+Arch, openSUSE. Nothing else: Docker, Tailscale and cloudflared are optional, and the setup offers to install
+each one that's missing (Docker for containers and the container store; Tailscale to reach Nova and your apps
+from anywhere privately; cloudflared for a Cloudflare Tunnel on your own domain). Without Docker, Containers
+says so and the store's Programs tab still works — with apt, dnf, pacman or zypper, whichever your Linux has.
+
+The easiest way, on any of them — one file from the [latest release](https://github.com/dash1101/Nova/releases/latest):
 
 ```bash
-# from a release:
-sudo apt install ./nova-server_<version>_all.deb
-
-# or from source:
-git clone https://github.com/<you>/nova && cd nova
-sudo ./server/install.sh               # builds the package, installs it, runs the wizard
+sudo sh nova-installer.run          # installs, then asks: set up in this terminal, or in a browser
 ```
 
-## 2. Run the setup wizard
+Or pick the package for your system:
 
 ```bash
-sudo nova-setup
+sudo apt install ./nova-server_<version>_all.deb        # Debian, Ubuntu, Mint, Raspberry Pi OS
+
+tar xzf nova-server_<version>.tar.gz                     # any other Linux
+sudo sh nova-server-<version>/install.sh
 ```
 
-It asks a few questions. Press Enter to accept the suggested answer.
+Every file in a release is listed in `SHA256SUMS`, signed with Nova's release key (`SHA256SUMS.sig`), and
+Nova's own updates check both before installing anything.
+
+## 2. Set it up
+
+```bash
+sudo nova-setup          # in the terminal
+sudo nova-setup --gui    # in a browser — on this computer, or a phone or laptop on your home network
+```
+
+The browser setup prints an address with a one-time key in it (and opens it, if the server has a desktop).
+It only answers this computer and your home network, and stops when setup is done or after an hour.
+If the server's firewall is on, it tells you the one command to let another device reach it.
+
+Both ask the same few questions, with the suggestions filled in:
 
 | Step | What it means |
 |---|---|
-| Home network | The address phones use, and the network that's allowed to pair new devices. |
-| Tailscale | If it's running, you can let your Tailscale devices use Nova too. Optional. |
-| Terminal | The account the in-app SSH terminal logs in to. |
-| Remote access | Cloudflare Access, so Nova works away from home without a VPN. You can skip this and do it later (see [REMOTE.md](REMOTE.md)). |
-| Storage safety | Mounts that can never be unmounted from the app. |
-| Firewall | Opens Nova's port (tcp 8495) and discovery (udp 8496) to your home network only, if `ufw` is active. |
+| Network | The address phones use, and the network that's allowed to pair new devices. |
+| Away from home | Tailscale (a private network between your devices) and/or a Cloudflare Tunnel. Both optional — see [REMOTE.md](REMOTE.md). |
+| Notifications | Alerts always show in the app; Discord is an optional extra copy. |
+| Tools | Docker and the drive tools (pools, RAID, NAS backups, tests). Optional — Nova offers each one when a feature needs it. |
+| This server | The account the in-app terminal signs in as, your location for sunrise/sunset light schedules, and (advanced) protected mounts and where updates come from. |
+| Start | Saves everything, opens Nova's ports (tcp 8495, udp 8496) to your home network only if `ufw` or `firewalld` is on, and starts Nova. |
 
-Run `sudo nova-setup` again whenever you want to change something. Your current answers are the
-defaults.
+Run `sudo nova-setup` again whenever you want to change something: it asks which part, and your current
+answers are the defaults. For unattended installs: `sudo nova-setup --yes`, or `--answers answers.json --yes`.
 
 ## 3. Pair your phone
 

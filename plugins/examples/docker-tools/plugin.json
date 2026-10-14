@@ -1,0 +1,12 @@
+{
+ "id": "docker-tools",
+ "name": "Docker tools",
+ "version": "1.0",
+ "author": "Nova",
+ "description": "Quick looks at Docker: disk use, the containers using the most memory, and recent restarts.",
+ "commands": [
+  {"id": "df", "name": "Docker disk use", "description": "Images, containers, volumes and build cache", "command": "docker system df", "timeout": 60, "icon": "docker"},
+  {"id": "stats", "name": "Container memory", "description": "Every running container, biggest first", "command": "docker stats --no-stream --format 'table {{.Name}}\\t{{.MemUsage}}\\t{{.CPUPerc}}' | sort -k2 -h -r", "timeout": 60, "icon": "docker"},
+  {"id": "restarts", "name": "Recent restarts", "description": "Containers that restarted, and how often", "command": "docker ps -a --format '{{.Names}}' | while read n; do c=$(docker inspect -f '{{.RestartCount}}' \"$n\"); [ \"$c\" != 0 ] && echo \"$n: $c\"; done; echo done", "timeout": 60, "icon": "docker"}
+ ]
+}

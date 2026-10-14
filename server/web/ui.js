@@ -77,6 +77,7 @@ const P = {
   traffic: "M20 10h-3V8.86c1.72-.45 3-2 3-3.86h-3V4c0-.55-.45-1-1-1H8c-.55 0-1 .45-1 1v1H4c0 1.86 1.28 3.41 3 3.86V10H4c0 1.86 1.28 3.41 3 3.86V15H4c0 1.86 1.28 3.41 3 3.86V20c0 .55.45 1 1 1h8c.55 0 1-.45 1-1v-1.14c1.72-.45 3-2 3-3.86h-3v-1.14c1.72-.45 3-2 3-3.86zm-8 9a2 2 0 1 1 0-4 2 2 0 0 1 0 4zm0-5a2 2 0 1 1 0-4 2 2 0 0 1 0 4zm0-5a2 2 0 0 1-2-2c0-1.11.89-2 2-2a2 2 0 1 1 0 4z",
   book: "M18 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zM6 4h5v8l-2.5-1.5L6 12V4z",
   cloud: "M19.35 10.04A7.49 7.49 0 0 0 12 4C9.11 4 6.6 5.64 5.35 8.04A5.994 5.994 0 0 0 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96z",
+  archive: "M20.54 5.23l-1.39-1.68C18.88 3.21 18.47 3 18 3H6c-.47 0-.88.21-1.16.55L3.46 5.23C3.17 5.57 3 6.02 3 6.5V19c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V6.5c0-.48-.17-.93-.46-1.27zM12 17.5L6.5 12H10v-2h4v2h3.5L12 17.5zM5.12 5l.81-1h12l.94 1H5.12z",
   open: "M19 19H5V5h7V3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14c1.1 0 2-.9 2-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z",
 };
 export const I = (n, c = "") => `<svg class="i ${c}" viewBox="0 0 24 24" aria-hidden="true"><path d="${P[n] || ""}"/></svg>`;
@@ -141,15 +142,17 @@ export const confirm = (title, text, ok, color = "var(--red)") => dialog(title, 
 /** Pick one option. options: [[value, label, sub]] */
 export function choose(title, options, current) {
   return new Promise(res => {
-    const box = sheet(`<h2>${esc(title)}</h2><div class="body">${options.map(([v, l, s], i) => `<button class="choice" data-c="${i}"><span class="t">${esc(l)}${s ? `<small>${esc(s)}</small>` : ""}</span>${radio(v === current)}</button>`).join("")}</div>${acts([{ label: "Cancel" }])}`, () => res(null));
+    // a menu (nothing chosen yet) gets arrows; picking one value gets radio buttons
+    const menu = current === null || current === undefined;
+    const box = sheet(`<h2>${esc(title)}</h2><div class="body">${options.map(([v, l, s], i) => `<button class="choice" data-c="${i}"><span class="t">${esc(l)}${s ? `<small>${esc(s)}</small>` : ""}</span>${menu ? `<span class="chev-r">${I("back")}</span>` : radio(v === current)}</button>`).join("")}</div>${acts([{ label: "Cancel" }])}`, () => res(null));
     $$("[data-c]", box).forEach(b => b.onclick = () => { closeSheet(); res(options[+b.dataset.c][0]); });
     $("[data-b]", box).onclick = () => { closeSheet(); res(null); };
   });
 }
 /** Ask for a line of text. */
-export function ask(title, placeholder, value = "", ok = "Save") {
+export function ask(title, placeholder, value = "", ok = "Save", max = 40) {
   return new Promise(res => {
-    const box = sheet(`<h2>${esc(title)}</h2><div class="pad"><input class="field" id="askv" placeholder="${esc(placeholder)}" value="${esc(value)}" maxlength="40"></div>${acts([{ label: "Cancel" }, { label: ok, color: "var(--blue)" }])}`, () => res(null));
+    const box = sheet(`<h2>${esc(title)}</h2><div class="pad"><input class="field" id="askv" placeholder="${esc(placeholder)}" value="${esc(value)}" maxlength="${max}"></div>${acts([{ label: "Cancel" }, { label: ok, color: "var(--blue)" }])}`, () => res(null));
     const inp = $("#askv", box); inp.focus(); inp.select();
     const done = v => { closeSheet(); res(v); };
     $$("[data-b]", box).forEach(b => b.onclick = () => done(b.dataset.b === "1" ? inp.value.trim() : null));
