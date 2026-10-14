@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.7.2-alpha (server, Nova web, app and watch)
+- **Home Assistant light** (Lighting → Automation): any light Home Assistant knows — a Govee strip, a Hue bulb — shows the server's status too: amber for a warning, red for something critical, then back exactly to how it was. Nova only changes it when the status changes, so your own switches and automations keep working. It needs your HA address and a long-lived access token (saving it needs your fingerprint).
+- **Lights look right:** colors are gamma-corrected and brightness follows how bright it looks, so the status light's red stays red (no more pink at high brightness) and lower brightness really is dimmer. You may want to raise your brightness a little after updating.
+- **Glass on Android:** popups now bend the real page behind them (cards, text) instead of only the wallpaper, every edge catches a little light, and the glass is cheaper to draw (no live blur) so scrolling stays smooth. Over a wallpaper, Nova dims it and thickens the glass automatically where text would be hard to read.
+- **Popups and tips animate** in and out (Android and web).
+- **Icon styles** show what each style looks like right in the list. The drive and help icons are clearer.
+- **Rotating the phone** no longer jumps to the Inbox, and the default background keeps its glow in landscape. The fade at the bottom of the screen is lighter.
+- **Running tasks** (repairs, clones, installs, backups) show up as live notifications right away, even with the app closed, and a repair or clone that's refused or fails is always in the Inbox.
+- **Fixed:** a drive repair could fail as "not started" after it had run, when the repair tool printed text that wasn't valid UTF-8. Every tool's output is now read safely.
+
 ## 0.7.1-alpha (server, Nova web, app and watch)
 - **Glass, Mica and Breeze, reworked** (the looks are renamed, without brand names). Glass now really bends the light behind dialogs, menus and notifications too, with a smooth edge, and gets alerts with capsule buttons, menus with checkmarks, grouped lists and switches in the same style. Mica gets its tinted base, content dialogs and Windows-style buttons and fields; Breeze its framed buttons and window-style dialogs. Every corner in a style now matches — favorites, tiles, chips and the navigation bar — and the Glass side bar sits where it should. Selectors slide between options.
 - **Icon styles** (Appearance → Icons): tonal, tiles, circles, outline, symbols only or monochrome, for the icons throughout the app and Nova web.

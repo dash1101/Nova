@@ -169,9 +169,9 @@ fun levelColor(level: String, t: NovaColors) = when (level) {
     Canvas(Modifier.fillMaxSize().background(t.bg).onGloballyPositioned { origin = it.positionInWindow() }) {
         val W = if (win.width > 0) win.width.toFloat() else size.width; val H = if (win.height > 0) win.height.toFloat() else size.height
         drawRect(Brush.radialGradient(listOf(t.glow.copy(alpha = if (t.dark) 0.9f else 0.8f), Color.Transparent),
-            center = Offset(W * 0.85f, H * 0.18f) - origin, radius = minOf(W, H) * 0.95f))
+            center = Offset(W * 0.85f, H * 0.18f) - origin, radius = if (W < H) W * 0.95f else H * 1.25f))
         drawRect(Brush.radialGradient(listOf(t.glow2.copy(alpha = 0.6f), Color.Transparent),
-            center = Offset(W * 0.1f, H * 0.35f) - origin, radius = minOf(W, H) * 0.8f))
+            center = Offset(W * 0.1f, H * 0.35f) - origin, radius = if (W < H) W * 0.8f else H * 1.1f))
     }
 }
 

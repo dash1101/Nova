@@ -75,6 +75,9 @@ object Backdrop {
     }
     /** How bright the wallpaper is on average (0 dark … 1 bright), so text on it can stay readable. */
     var lum = .5f; private set
+    /** The wallpaper's darker and brighter quarters (where dark text, or light text, gets lost). */
+    var dark = .5f; private set
+    var bright = .5f; private set
     fun wallpaper(ctx: android.content.Context): ImageBitmap? {
         val k = "${AppPrefs.wallV}:${AppPrefs.wallBlur}"
         if (AppPrefs.wallV <= 0L) return null
@@ -84,9 +87,10 @@ object Backdrop {
                 val full = android.graphics.BitmapFactory.decodeFile(java.io.File(ctx.filesDir, "wallpaper.jpg").path) ?: return@runCatching null
                 val s = 1f / (1f + AppPrefs.wallBlur / 3f)
                 val tiny = android.graphics.Bitmap.createScaledBitmap(full, 16, 16, true)
-                var sum = 0f; for (y in 0 until 16) for (x in 0 until 16) { val c = tiny.getPixel(x, y)
-                    sum += (.2126f * ((c shr 16) and 255) + .7152f * ((c shr 8) and 255) + .0722f * (c and 255)) / 255f }
-                lum = sum / 256f
+                val ls = FloatArray(256); var i = 0
+                for (y in 0 until 16) for (x in 0 until 16) { val c = tiny.getPixel(x, y)
+                    ls[i++] = (.2126f * ((c shr 16) and 255) + .7152f * ((c shr 8) and 255) + .0722f * (c and 255)) / 255f }
+                ls.sort(); lum = ls.average().toFloat(); dark = ls[64]; bright = ls[191]      // also its darker and brighter quarters
                 android.graphics.Bitmap.createScaledBitmap(full, (full.width * s).toInt().coerceAtLeast(8), (full.height * s).toInt().coerceAtLeast(8), true).asImageBitmap()
             }.getOrNull()
         }
@@ -97,8 +101,9 @@ object Backdrop {
 /** How much of the theme's background to lay over the wallpaper: your Dim setting, but at least enough that the page's
  *  text stays readable — a bright wallpaper under dark mode (or a dark one under light mode) gets dimmed further. */
 fun wallScrim(t: NovaColors): Float {
-    val clash = if (t.dark) Backdrop.lum else 1f - Backdrop.lum
-    return maxOf(AppPrefs.wallDim / 100f, (clash - .35f).coerceAtLeast(0f) * .9f).coerceAtMost(.85f)
+    // light mode loses its dark text over the wallpaper's dark parts, dark mode its light text over the bright parts
+    val clash = if (t.dark) Backdrop.bright else 1f - Backdrop.dark
+    return maxOf(AppPrefs.wallDim / 100f, (clash - .3f).coerceAtLeast(0f) * .95f).coerceAtMost(.8f)
 }
 
 /** What's behind everything at this spot: the wallpaper (cover-fit to the window) or the glow, dimmed as set. */
@@ -111,8 +116,8 @@ fun DrawScope.drawBackdrop(t: NovaColors, origin: Offset, win: IntSize, wall: Im
             dstSize = IntSize(dw.toInt(), dh.toInt()), filterQuality = FilterQuality.Medium)
         drawRect(t.bg.copy(alpha = wallScrim(t)))
     } else if (!t.material && t.glow != Color.Transparent) {
-        drawRect(Brush.radialGradient(listOf(t.glow.copy(alpha = if (t.dark) 0.9f else 0.8f), Color.Transparent), center = Offset(W * 0.85f, H * 0.18f) - origin, radius = minOf(W, H) * 0.95f))
-        drawRect(Brush.radialGradient(listOf(t.glow2.copy(alpha = 0.6f), Color.Transparent), center = Offset(W * 0.1f, H * 0.35f) - origin, radius = minOf(W, H) * 0.8f))
+        drawRect(Brush.radialGradient(listOf(t.glow.copy(alpha = if (t.dark) 0.9f else 0.8f), Color.Transparent), center = Offset(W * 0.85f, H * 0.18f) - origin, radius = if (W < H) W * 0.95f else H * 1.25f))
+        drawRect(Brush.radialGradient(listOf(t.glow2.copy(alpha = 0.6f), Color.Transparent), center = Offset(W * 0.1f, H * 0.35f) - origin, radius = if (W < H) W * 0.8f else H * 1.1f))
     }
 }
 
@@ -193,7 +198,7 @@ private fun lensEffect(w: Float, h: Float, radius: Float, blurPx: Float): Render
     val clear = AppPrefs.glass.coerceIn(0, 100) / 100f
     // the tint thins out with Glass clarity, but over a wallpaper that clashes with the theme (bright under dark mode, dark
     // under light) it keeps enough body that the text on the card stays easy to read
-    val clash = if (wall == null) 0f else if (t.dark) Backdrop.lum else 1f - Backdrop.lum
+    val clash = if (wall == null) 0f else if (t.dark) Backdrop.bright else 1f - Backdrop.dark
     val tint = (if (t.dark) Color(0xFF16161C) else Color(0xFFFAFAFC)).copy(alpha = maxOf((if (t.dark) .55f else .72f) - clear * .45f, .30f + clash * .45f).coerceAtMost(.9f))
     val hi = Color.White
     if (solidGlass() || lite()) return this.shadow(if (lite()) 0.dp else elevation, shape).clip(shape).background(t.card)
