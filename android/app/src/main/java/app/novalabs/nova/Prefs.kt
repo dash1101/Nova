@@ -54,6 +54,7 @@ object AppPrefs {
     var shakeLast by mutableStateOf("report"); private set                // what to go back to when shake is switched on again
     var shakeAction by mutableStateOf("report"); private set              // what a shake does: report | none | search | quick | lights | home | inbox
 
+    var iconTheme by mutableStateOf("style"); private set                  // in-app icons: style | tonal | tiles | circles | outline | glyph | mono
     var lite by mutableStateOf("auto"); private set                        // lighter effects: auto | on | off
     var accent by mutableStateOf(""); private set                          // this phone's own accent (#rrggbb), "" = the server's / the wallpaper's
     var tint by mutableStateOf(50); private set                            // Material You: how strongly the accent tints surfaces (0–100)
@@ -76,7 +77,7 @@ object AppPrefs {
             slowDevice = am.isLowRamDevice || mem.totalMem < 3L * 1024 * 1024 * 1024 || android.os.Build.VERSION.SDK_INT < 29 ||
                 Runtime.getRuntime().availableProcessors() <= 4
         }
-        lite = sp.getString("lite", "auto")!!
+        lite = sp.getString("lite", "auto")!!; iconTheme = sp.getString("icon_theme", "style")!!
         accent = sp.getString("accent", "")!!; tint = sp.getString("tint", "50")!!.toIntOrNull() ?: 50
         wallV = sp.getString("wall_v", "0")!!.toLongOrNull() ?: 0L; wallBlur = sp.getString("wall_blur", "16")!!.toIntOrNull() ?: 16; wallDim = sp.getString("wall_dim", "35")!!.toIntOrNull() ?: 35
         lang = sp.getString("lang", "auto")!!; I18n.load(ctx, lang)
@@ -103,7 +104,7 @@ object AppPrefs {
             "wall_blur" -> wallBlur = (v as Number).toInt(); "wall_dim" -> wallDim = (v as Number).toInt()
             "lang" -> lang = v as String
             "solid" -> solid = v as Boolean; "glass" -> glass = (v as Number).toInt(); "round" -> round = (v as Number).toInt()
-            "lite" -> lite = v as String; "theme" -> theme = v as String; "style" -> style = v as String; "reduce_motion" -> reduceMotion = v as Boolean; "app_lock" -> appLock = v as Boolean
+            "lite" -> lite = v as String; "icon_theme" -> iconTheme = v as String; "theme" -> theme = v as String; "style" -> style = v as String; "reduce_motion" -> reduceMotion = v as Boolean; "app_lock" -> appLock = v as Boolean
             "hide_recents" -> hideInRecents = v as Boolean; "home_hero" -> homeHero = v as Boolean
             "home_shortcuts" -> homeShortcuts = v as Boolean; "home_stats" -> homeStats = v as Boolean
             "home_order" -> homeOrder = (v as String).split(",")
@@ -215,6 +216,7 @@ object AppLock {
         }
         ColorsAndWallpaper()
         LanguageRow()
+        IconThemePicker()
         EffectsCheck()
         SectionLabel("Lighter effects")
         Segmented(listOf("Automatic", "On", "Off"), listOf("auto", "on", "off").indexOf(AppPrefs.lite).let { if (it < 0) 0 else it }) { AppPrefs.set("lite", listOf("auto", "on", "off")[it]) }
@@ -352,5 +354,18 @@ private val MY_ACCENTS = listOf("#3e91ff", "#5e5ce6", "#bf5af2", "#ff2d55", "#ff
             if (saver) Text("Open battery settings", color = N.blue, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.padding(top = 10.dp).clickable { runCatching { ctx.startActivity(android.content.Intent(android.provider.Settings.ACTION_BATTERY_SAVER_SETTINGS).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) } })
         }
+    }
+}
+
+
+val ICON_THEMES = listOf("style" to "Matches the style", "tonal" to "Tonal", "tiles" to "Tiles", "circles" to "Circles", "outline" to "Outline", "glyph" to "Symbols only", "mono" to "Monochrome")
+@Composable fun IconThemePicker() {
+    var open by remember { mutableStateOf(false) }
+    SectionLabel("Icons")
+    Group { Row1("Icon style", ICON_THEMES.firstOrNull { it.first == AppPrefs.iconTheme }?.second ?: "Matches the style", false,
+        androidx.compose.material.icons.Icons.Rounded.Palette, N.blue, onClick = { open = true }) }
+    if (open) OneDialog({ open = false }, "Icon style", null, listOf(DialogButton("Done") { open = false })) {
+        ICON_THEMES.forEach { (k, l) -> Row1(l, null, false, androidx.compose.material.icons.Icons.Rounded.Dns, N.blue, onClick = { AppPrefs.set("icon_theme", k) },
+            trailing = { OneRadio(AppPrefs.iconTheme == k) }) }
     }
 }

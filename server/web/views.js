@@ -1414,6 +1414,8 @@ export async function serverSettings(ctx) {
     loc: async () => { await locationDialog(S.cache["/api/v1/settings"]?.location); if (ctx.alive()) draw(); } });
   draw(); try { await get("/api/v1/settings"); if (ctx.alive()) draw(); } catch (e) { toast(e.message); }
 }
+const ICON_THEMES = [["style", "Matches the style", "Each style's own icons"], ["tonal", "Tonal", "Colored symbols on a soft circle"], ["tiles", "Tiles", "White symbols on colored rounded squares"],
+  ["circles", "Circles", "White symbols on colored circles"], ["outline", "Outline", "Colored symbols in a thin ring"], ["glyph", "Symbols only", "Just the colored symbol"], ["mono", "Monochrome", "Plain symbols in the text color"]];
 export async function appearance(ctx) {
   const draw = () => {
     const t = prefs.theme, st = prefs.style, mat = document.documentElement.classList.contains("material"), look = mat ? "Material" : ({ liquid: "Glass", fluent: "Mica", breeze: "Breeze" })[st] || "Default";
@@ -1443,6 +1445,7 @@ export async function appearance(ctx) {
       ${(() => { const g = gpuInfo(); if (!g.software && g.blur) return "";
         return `<div class="hint" style="margin:10px var(--gutter);border:1px solid color-mix(in srgb,var(--amber) 50%,transparent)"><b style="color:var(--amber)">${g.software ? "This browser isn't using the graphics card" : "This browser can't blur"}</b>
           <p class="muted" style="margin:6px 0 0">${g.software ? "Glass, blur and the live graphs are drawn by the processor instead, so they can stutter and use more power. Turn on hardware acceleration and restart the browser — Chrome or Edge: Settings → System → “Use graphics acceleration when available”. Firefox: Settings → Performance. Until then, Lighter effects is on automatically." : "Frosted glass shows as plain, see-through surfaces here. Update the browser, or turn on Reduce transparency for solid surfaces."}</p></div>`; })()}
+      ${sec("Icons")}${group(row("Icon style", { sub: ICON_THEMES.find(t => t[0] === (prefs.iconTheme || "style"))?.[1] || "Matches the style", icon: "palette", click: "icons" }))}
       ${sec("Lighter effects")}${segmented(["Automatic", "On", "Off"], ["auto", "on", "off"].indexOf(prefs.lite || "auto"), "lite")}
       ${note("No frosted-glass blur or soft shadows — much smoother on older computers and phones. Automatic turns it on when this device looks slow.")}
       ${sec("Home")}${group(row("Home layout", { sub: homeOrder().filter(id => prefs[HOME_SECTIONS.find(s => s[0] === id)[3]]).map(id => HOME_SECTIONS.find(s => s[0] === id)[1]).join(" · ") || "Just the header", blue: true, icon: "dash", click: "go:edit-home" })
@@ -1465,6 +1468,11 @@ export async function appearance(ctx) {
     ctx.applyTheme(); draw();
   };
   ctx.handlers({
+    icons: async () => {
+      const preview = id => { document.documentElement.dataset.icons = id; };
+      const v = await choose("Icon style", ICON_THEMES, prefs.iconTheme || "style");
+      if (v) { prefs.iconTheme = v; } ctx.applyTheme(); draw();
+    },
     accent: async () => { const c = await colorPicker(prefs.accentLocal || S.overview?.server?.accent || "#3e91ff"); if (c) setAccent(c); },
     acc: c => setAccent(c && /^#[0-9a-f]{6}$/i.test(c) ? c : ""),
     wall: () => {

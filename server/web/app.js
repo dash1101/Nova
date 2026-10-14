@@ -27,6 +27,7 @@ function slowMachine() {
 function applyTheme() {
   const t = prefs.theme, root = document.documentElement;
   if (t === "system") delete root.dataset.theme; else root.dataset.theme = t;
+  if (prefs.iconTheme && prefs.iconTheme !== "style") root.dataset.icons = prefs.iconTheme; else delete root.dataset.icons;
   root.classList.toggle("reduce", prefs.reduceMotion || matchMedia("(prefers-reduced-motion: reduce)").matches);
   // Lighter effects: no frosted blur or soft shadows (the costly parts on older computers and phones).
   // "auto" turns it on for slow machines — few cores or little memory, or a choppy first second (measured once).

@@ -227,13 +227,14 @@ fun levelColor(level: String, t: NovaColors) = when (level) {
     Row(Modifier.fillMaxWidth().then(if (onClick != null && enabled) Modifier.clickable(onClick = onClick) else Modifier)
         .padding(horizontal = 22.dp, vertical = 17.dp), verticalAlignment = Alignment.CenterVertically) {
         if (icon != null) {
-            when (t.preset) {
-                // Glass: a colored tile with a white symbol; Mica and Breeze: just the symbol, in its color
-                "liquid" -> Box(Modifier.size(30.dp).clip(RoundedCornerShape(8.dp)).background(iconTint ?: t.blue), contentAlignment = Alignment.Center) {
-                    Icon(icon, null, tint = Color.White, modifier = Modifier.size(19.dp)) }
-                "fluent", "breeze" -> Box(Modifier.size(28.dp), contentAlignment = Alignment.Center) { Icon(icon, null, tint = iconTint ?: t.blue, modifier = Modifier.size(22.dp)) }
-                else -> Box(Modifier.size(36.dp).clip(CircleShape).background((iconTint ?: t.blue).copy(alpha = 0.16f)),
-                    contentAlignment = Alignment.Center) { Icon(icon, null, tint = iconTint ?: t.blue, modifier = Modifier.size(20.dp)) }
+            val c = iconTint ?: t.blue
+            when (AppPrefs.iconTheme.takeIf { it != "style" } ?: when (t.preset) { "liquid" -> "tiles"; "fluent", "breeze" -> "glyph"; else -> "tonal" }) {
+                "tiles" -> Box(Modifier.size(30.dp).clip(RoundedCornerShape(cardRadius(8.dp))).background(c), contentAlignment = Alignment.Center) { Icon(icon, null, tint = Color.White, modifier = Modifier.size(19.dp)) }
+                "circles" -> Box(Modifier.size(34.dp).clip(CircleShape).background(c), contentAlignment = Alignment.Center) { Icon(icon, null, tint = Color.White, modifier = Modifier.size(19.dp)) }
+                "outline" -> Box(Modifier.size(34.dp).border(1.5.dp, c, CircleShape), contentAlignment = Alignment.Center) { Icon(icon, null, tint = c, modifier = Modifier.size(18.dp)) }
+                "glyph" -> Box(Modifier.size(28.dp), contentAlignment = Alignment.Center) { Icon(icon, null, tint = c, modifier = Modifier.size(22.dp)) }
+                "mono" -> Box(Modifier.size(28.dp), contentAlignment = Alignment.Center) { Icon(icon, null, tint = t.text, modifier = Modifier.size(22.dp)) }
+                else -> Box(Modifier.size(36.dp).clip(CircleShape).background(c.copy(alpha = 0.16f)), contentAlignment = Alignment.Center) { Icon(icon, null, tint = c, modifier = Modifier.size(20.dp)) }
             }
             Spacer(Modifier.width(14.dp))
         }
