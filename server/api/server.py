@@ -1399,14 +1399,18 @@ class Handler(BaseHTTPRequestHandler):
             # `since` is written (nova-alerts runs every minute), or empty after `timeout` s.
             since = float(q.get("since", "0") or 0); end = time.time() + min(55, max(5, int(q.get("timeout", "50") or 50)))
             seen = set(str(q.get("seen", "")).split(",")); wait_started = time.time()
+            first = None                                       # which tasks were running / how, when this wait began
             while True:
                 ev = [e for e in load_json(EVENTS, {}).get("events", []) if e.get("t", 0) > since]
                 ap = [{"id": a["id"], "what": describe_action(a), "device_name": a["device_name"], "user": a.get("user", "")}
                       for a in approvals.values() if a["state"] == "pending" and role_of(dev) == "admin"
                       and dev.get("type") != "browser" and time.time() - a["created"] < 600]
                 tk = live_tasks()
-                if any(t["state"] == "running" for t in tk): end = min(end, wait_started + 20)  # progress for the notification, without waking the phone too often
-                if ev or ("seen" in q and [a for a in ap if a["id"] not in seen]) or time.time() >= end:
+                now_tasks = {t["id"]: t["state"] for t in tk}
+                if first is None: first = now_tasks
+                changed = now_tasks != first                   # a task started, finished or failed: tell the phone now (its live notification)
+                if any(t["state"] == "running" for t in tk): end = min(end, wait_started + 10)  # progress for the notification, without waking the phone too often
+                if ev or changed or ("seen" in q and [a for a in ap if a["id"] not in seen]) or time.time() >= end:
                     return 200, {"events": ev[:50], "approvals": ap, "tasks": tk}
                 time.sleep(2)
         if method == "GET" and parts == ["archive"]:

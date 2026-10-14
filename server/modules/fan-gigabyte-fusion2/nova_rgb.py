@@ -214,8 +214,19 @@ def new_zone(st, setup):
     st.setdefault("zones", []).append(z)
     return z
 
+# LEDs are linear and eyes aren't: without correction a little green and blue in a red (#ff2020) shows up as pink,
+# and 25% brightness still looks nearly full. So every color goes out gamma-corrected, and brightness follows a
+# perceptual curve — 50% looks half as bright, and red stays red at any brightness.
+GAMMA = 2.2
+def _lin(c): return round(255 * (max(0, min(255, c)) / 255) ** GAMMA)
+def _level(pct): return (max(0, min(100, pct)) / 100) ** 1.6
 def _scaled(rgb, pct):
-    return tuple(round(c * pct / 100) for c in rgb)
+    k = _level(pct)
+    # (the main channel of a color never rounds down to nothing while the light is on)
+    return tuple(max(1, v) if v == 0 and c >= 128 and pct > 0 else v for c in rgb for v in [round(_lin(c) * k)])
+def _hw(color_hex, pct):
+    """A controller effect's color and brightness byte, corrected the same way."""
+    return tuple(_lin(c) for c in hex_rgb(color_hex)), (max(1, round(255 * _level(pct))) if pct > 0 else 0)
 
 def hands_off():
     """Settings → Features → "Nova controls the lights" turned off: another program (the board maker's
@@ -314,8 +325,8 @@ def apply(st, override=None):
             t = TARGETS[eff["target"]]; hdr = t["header"]
             if t["kind"] == "rgb":         # one color: the controller's own effects only
                 e = eff["effect"] if eff["effect"] in RGB_EFFECTS else "static"
-                f.set_effect(hdr, e if eff["on"] else "off", hex_rgb(eff["color"]), round(255 * eff["brightness"] / 100) if eff["on"] else 0,
-                             eff["speed"], eff.get("rainbow", True))
+                col, lv = _hw(eff["color"], eff["brightness"])
+                f.set_effect(hdr, e if eff["on"] else "off", col, lv if eff["on"] else 0, eff["speed"], eff.get("rainbow", True))
                 continue
             anim = bool(eff["on"]) and is_software(eff)
             if not eff["on"]:
@@ -323,7 +334,8 @@ def apply(st, override=None):
             elif anim or eff["effect"] == "gradient":
                 direct.append((hdr, eff, anim))
             else:
-                f.set_effect(hdr, eff["effect"], hex_rgb(eff["color"]), round(255 * eff["brightness"] / 100), eff["speed"], eff.get("rainbow", True))
+                col, lv = _hw(eff["color"], eff["brightness"])
+                f.set_effect(hdr, eff["effect"], col, lv, eff["speed"], eff.get("rainbow", True))
         if direct:
             hs = tuple(h for h, _, _ in direct); orders = f.direct_setup(hs)
             if len(hs) == 1: orders = {hs[0]: orders}
@@ -510,7 +522,7 @@ def goodbye(f, zones, fade=1.2, pulse=4.5, fps=40):
     ease = lambda x: x * x * (3 - 2 * x)
     while (el := time.time() - t0) < fade + pulse:
         for h in hdrs:
-            w = round(255 * white[h] / 100)
+            w = round(255 * _level(white[h]))
             if el < fade:                                                  # 1) everything eases into white
                 k = ease(el / fade)
                 cols = [tuple(round(c[i] + (w - c[i]) * k) for i in range(3)) for c in start[h]]
@@ -558,7 +570,7 @@ def status_override(st):
     except Exception:
         return None
     bright = max(st["brightness"], 25)
-    if lvl == "critical": return {"on": True, "effect": "pulse", "color": "#ff2020", "brightness": bright, "speed": 45}   # a calm pulse (about 1.8 s)
+    if lvl == "critical": return {"on": True, "effect": "pulse", "color": "#ff0000", "brightness": bright, "speed": 45}   # a calm pulse (about 1.8 s)
     if lvl == "warning":  return {"on": True, "effect": "static", "color": "#ffa000", "brightness": bright}
     return None
 

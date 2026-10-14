@@ -80,7 +80,8 @@ import java.util.*
         AttentionList(app)
         IgnoredList(app)
         Segmented(listOf("All", "Issues", "Critical", "Logins"), filter) { filter = it }
-        if (shown.isEmpty()) Text(if (data == null) "Loading…" else "Nothing here — all quiet.", color = N.sub, modifier = Modifier.padding(30.dp))
+        if (shown.isEmpty()) Text(if (data == null) "Loading…" else "Nothing here — all quiet.", color = N.sub, textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            modifier = Modifier.fillMaxWidth().padding(vertical = 30.dp, horizontal = 24.dp))
         if (shown.isNotEmpty()) Text(if (selecting) "Tap to add or remove · back to stop selecting" else "Swipe left to archive, or hold to select several — they move to the Archive (kept on the server, for every device).",
             color = N.sub, fontSize = 12.sp, modifier = Modifier.padding(start = 30.dp, end = 24.dp, top = 4.dp))
         // selection bar: slides in while selecting
