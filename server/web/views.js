@@ -989,6 +989,37 @@ const chip = (label, act, on, icon) => `<button class="chip" style="font-family:
 // Which light the Lighting page is showing ("main" = the one the rest of Nova calls the fan light).
 let litCur = "main";
 const zoneOf = id => (S.lights?.zones || []).find(z => z.id === id);
+/** The status light on a Home Assistant light: connect, pick the light, switch it on. */
+export async function haLight(ctx) {
+  let found = null, busy = false;
+  const v = { url: "", token: "", entity: "", name: "", enabled: true, loaded: false };
+  const draw = () => {
+    const c = S.cache["/api/v1/lights/ha"];
+    if (c && !v.loaded) Object.assign(v, { loaded: true, url: c.url || "http://homeassistant.local:8123", entity: c.entity, name: c.name, enabled: c.has_token ? c.enabled : true });
+    const lvName = { ok: "your own setting", warning: "amber (a warning)", critical: "red (critical)" };
+    ctx.show(note("When the server needs attention, this light turns amber for a warning and red for something critical. When it's fine again, it goes back exactly to how it was. Nova only changes it when the status changes, so your own automations and switches keep working.")
+      + (c?.has_token && c.entity ? group(row(c.enabled ? `Showing ${lvName[c.shown] || "your own setting"}` : "Off", { sub: `${c.name || c.entity}${c.error ? " · " + c.error : ""}`, icon: c.error ? "err" : "bulb", tint: c.error ? "var(--red)" : c.enabled ? "#41bdf5" : "var(--sub)" })) : "")
+      + sec("Connect") + group(`<div style="padding:16px;display:grid;gap:10px">
+          <input class="field" id="hu" placeholder="Home Assistant's address, like http://homeassistant.local:8123" value="${esc(v.url)}" autocomplete="off">
+          <input class="field" id="ht" type="password" placeholder="${c?.has_token ? "Access token (leave empty to keep it)" : "Long-lived access token"}" value="${esc(v.token)}" autocomplete="off">
+          <small class="muted">In Home Assistant: your profile (bottom left) → Security → Long-lived access tokens → Create token.</small>
+          <div><button class="pillbtn press" data-act="find" ${busy ? "disabled" : ""}>${busy ? "Looking…" : "Find its lights"}</button></div></div>`)
+      + (found ? sec("Which light") + group(found.length ? found.map((l, i) => row(l.name, { sub: `${l.entity} · ${l.state}`, icon: "bulb", tint: "#41bdf5", end: radio(v.entity === l.entity), click: `pick:${i}` })).join("") : row("No lights in Home Assistant", { dis: true }))
+        : v.entity ? sec("Which light") + group(row(v.name || v.entity, { sub: v.entity, icon: "bulb", tint: "#41bdf5", end: radio(true) })) : "")
+      + group(switchRow("Show the server's status", "Amber for warnings, red for critical", v.enabled, "en"))
+      + `<div style="display:flex;gap:12px;padding:18px 22px"><button class="btn" style="flex:1" data-act="save" ${v.entity ? "" : "disabled"}>Save</button></div>`
+      + (c?.has_token ? links([["Disconnect Home Assistant", "rm"]]) : ""), { title: "Home Assistant light" });
+    for (const [id, k] of [["hu", "url"], ["ht", "token"]]) { const el = $("#" + id); if (el) el.oninput = e => { v[k] = e.target.value.trim(); }; }
+  };
+  ctx.handlers({
+    find: async () => { busy = true; draw(); try { found = (await post("/api/v1/lights/ha/lights", { url: v.url, token: v.token })).lights; } catch (e) { toast(e.message); } finally { busy = false; if (ctx.alive()) draw(); } },
+    pick: i => { const l = found[+i]; v.entity = l.entity; v.name = l.name; draw(); },
+    en: () => { v.enabled = !v.enabled; draw(); },
+    save: async () => { try { await post("/api/v1/lights/ha", { url: v.url, ...(v.token ? { token: v.token } : {}), entity: v.entity, name: v.name, enabled: v.enabled }); v.token = ""; await get("/api/v1/lights/ha"); toast("Saved"); if (ctx.alive()) draw(); } catch (e) { toast(e.message); } },
+    rm: async () => { if (await confirm("Disconnect Home Assistant?", "The light goes back to how it was, and Nova forgets the token.", "Disconnect")) { try { await del("/api/v1/lights/ha"); await get("/api/v1/lights/ha"); v.loaded = false; found = null; draw(); } catch (e) { toast(e.message); } } },
+  });
+  draw(); try { await get("/api/v1/lights/ha"); } catch {} if (ctx.alive()) draw();
+}
 export async function lighting(ctx) {
   const draw = () => {
     const zs = S.lights?.zones || [], z = litCur === "main" ? null : zoneOf(litCur);
@@ -1026,6 +1057,7 @@ export async function lighting(ctx) {
         + `<p class="note" style="margin:0 22px 14px">${shape === "fan" ? "Match this to your fan so the effect fits the ring exactly (most 120 mm fans have 8–18)." : "Count the LEDs (or check the box) so effects fit the whole length."}</p>`
         + (shape !== "fan" ? "" : switchRow("Picture spins the other way", "If the effect here goes round the opposite way to your fan", localStorage.getItem("nova.fanReverse") === "true", "rev", { blue: false }))) : ""}
       ${main ? sec("Automation") + group(switchRow("Status light", "Turns amber for warnings and pulses red for critical alerts, then goes back to your color", !!f.status_light, isAdmin() ? "set:status_light" : "", { blue: false, dis: !isAdmin() })
+        + row("Home Assistant light", { sub: S.cache["/api/v1/lights/ha"]?.enabled ? `${S.cache["/api/v1/lights/ha"].name || S.cache["/api/v1/lights/ha"].entity} shows the server's status` : "A light in Home Assistant (like a Govee strip) shows the server's status too", icon: "bulb", tint: "#41bdf5", click: "go:ha-light" })
         + row("Schedules", { sub: f.schedules_paused ? "Paused" : nsch ? `${nsch} schedule${nsch > 1 ? "s" : ""}` : "Wake up gently, dim at sunset, off while you sleep…", blue: nsch > 0, click: "go:schedules" })) : ""}
       ${links([["Your lights", "go:lights"], ["Notifications", "go:notify"], ["Storage & hardware", "go:hardware"]])}`, { title: "Lighting" });
     if ($("#fh")) animate($("#fh"), "fan");
@@ -1075,6 +1107,7 @@ export async function lighting(ctx) {
   });
   draw(); try { S.fan = await get("/api/v1/fan"); if (ctx.alive()) draw(); } catch (e) { toast(e.message); }
   try { S.lights = await get("/api/v1/lights"); if (ctx.alive()) draw(); } catch {}      // older servers: just the one light
+  get("/api/v1/lights/ha").then(() => ctx.alive() && draw()).catch(() => {});
 }
 // Lighting → Your lights: what's plugged in where (a fan ring, a strip, a 12 V header…), each with its own look.
 const SHAPE_NAME = { fan: "Fan", strip: "LED strip", other: "Something else" };

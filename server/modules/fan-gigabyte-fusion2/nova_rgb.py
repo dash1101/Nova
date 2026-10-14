@@ -641,6 +641,13 @@ def _lerp_hex(a, b, k):
     x, y = hex_rgb(a), hex_rgb(b); return "#%02x%02x%02x" % tuple(round(x[i] + (y[i] - x[i]) * k) for i in range(3))
 
 def tick():
+    try:                                          # the status light on a Home Assistant light too (independent of the fan)
+        import ha_light; ha_light.sync()
+    except Exception as e:
+        try:
+            import ha_light; c = ha_light.load()
+            if c: c["error"] = str(e)[:200]; ha_light.save(c)
+        except Exception: pass
     if hands_off(): return
     st = load(); changed = False
     now_t = time.time(); now = time.localtime(now_t); minute = now.tm_hour * 60 + now.tm_min

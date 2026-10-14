@@ -568,6 +568,7 @@ def describe_action(a):
                 "clone": "Clone a drive (erases the drive it copies to)"}.get(p[2], "Change storage")
     if p == ["updates", "packages"]: return "Update system packages"
     if p == ["notify", "discord"]: return "Change where Discord alerts go"
+    if p == ["lights", "ha"]: return "Connect a Home Assistant light to the server's status"
     if p == ["updates", "containers"]: return "Update containers"
     if p == ["backups", "legacy", "script"]: return "Change your backup script (it runs as root)"
     if p[:1] == ["backups"] and p[-1:] == ["restore"]: return f"Restore {a.get('data', {}).get('path', 'files')} from a backup"
@@ -655,6 +656,7 @@ def needs_stepup(method, parts):
     if parts in (["plugins", "install"], ["plugins", "remove"]): return True # adding tools that run as you / taking them away
     if parts == ["labs", "images", "clean"]: return True                    # deletes images: fingerprint
     if parts == ["notify", "discord"]: return True                         # where alerts get sent: fingerprint
+    if parts == ["lights", "ha"]: return True                              # a token for your Home Assistant: fingerprint
     if parts[:1] == ["backups"] and len(parts) == 3 and parts[2] == "restore": return True
     if parts == ["backups", "legacy", "script"]: return True                 # the script runs as root: fingerprint
     return False
@@ -1135,7 +1137,7 @@ class Handler(BaseHTTPRequestHandler):
         parts = [p for p in path.split("/") if p][2:]       # after /api/v1
         if parts[:1] == ["files"] and not feat_on("files"): return 403, {"error": "the file manager is turned off (Settings → Features)"}
         if parts == ["terminal"] and not feat_on("terminal"): return 403, {"error": "the server terminal is turned off (Settings → Features)"}
-        if parts[:1] in (["fan"], ["lights"]) and nova_rgb and not feat_on("lighting") and method != "GET":
+        if parts[:1] in (["fan"], ["lights"]) and parts[1:2] != ["ha"] and nova_rgb and not feat_on("lighting") and method != "GET":
             return 409, {"error": "Nova isn't controlling the lights (Settings → Features)"}
         if parts == ["plugins", "catalog"]:          # Store → Plugins: the community list (cached an hour)
             now = time.time()
@@ -1461,6 +1463,20 @@ class Handler(BaseHTTPRequestHandler):
             return 200, {**(base if rc == 0 else {}), **app}
 
         # ── lights: the main one (same as /fan) and any extra ones, each with its own look ──
+        if parts[:2] == ["lights", "ha"]:                    # the status light on a Home Assistant light
+            try: import ha_light
+            except ImportError: return 404, {"error": "this server has no lighting module"}
+            if method == "GET" and len(parts) == 2: return 200, ha_light.view()
+            if role_of(dev) != "admin" or dev.get("type") == "watch": return 403, {"error": "admins only"}
+            if method == "POST" and parts[2:] == ["lights"]:      # what lights HA has (with the address/token being set up, or the saved ones)
+                c = {**ha_light.load()}
+                if data.get("url"): c["url"] = ha_light.check_url(data["url"])
+                if data.get("token"): c["token"] = str(data["token"]).strip()
+                if not c.get("url") or not c.get("token"): raise ValueError("Home Assistant's address and an access token first")
+                return 200, {"lights": ha_light.lights(c)}
+            if method == "POST" and len(parts) == 2: return 200, ha_light.configure(data)
+            if method == "DELETE" and len(parts) == 2: return 200, ha_light.remove()
+            return 404, {"error": "no such endpoint"}
         if parts[:1] == ["lights"]:
             if not nova_rgb or not hasattr(nova_rgb, "all_zones"): return 404, {"error": "this server has no lighting module"}
             if parts[1:] == ["main"] and method == "POST": parts = ["fan"]             # the main light's look: exactly /fan

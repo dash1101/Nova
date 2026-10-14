@@ -294,6 +294,9 @@ private fun lookOf(f: JSONObject?): JSONObject = JSONObject().also { o ->
             val sl = f?.optBoolean("status_light") ?: false
             SwitchRow("Status light", "Turns amber for warnings and pulses red for critical alerts, then goes back to your color",
                 sl) { set(JSONObject().put("status_light", it)) }
+            val ha by live(app, "/api/v1/lights/ha", 30_000)
+            RowDivider(); Row1("Home Assistant light", if (ha?.optBoolean("enabled") == true) "${ha?.optString("name")?.ifEmpty { null } ?: ha?.optString("entity")} shows the server's status"
+                else "A light in Home Assistant (like a Govee strip) shows the server's status too", ha?.optBoolean("enabled") == true, Icons.Rounded.Lightbulb, Color(0xFF41BDF5), onClick = { app.go(Route.HaLight) })
             val ls = app.lights?.optJSONArray("zones").objs()
             if (sl && ls.size > 1) {                          // more than one light: which one shows the server's health
                 var pick by remember { mutableStateOf(false) }
@@ -648,4 +651,51 @@ private val SHAPE_CHOICES = listOf("fan" to "A fan (a ring of LEDs)", "strip" to
                 listOf(DialogButton("Cancel") { edit = null }, DialogButton("Remove", N.red) { edit = null; if (app.lightCur == id) app.lightCur = "main"
                     app.act { app.lights = app.api.delete("/api/v1/lights/$id") } }))
         } }
+}
+
+
+/** The status light on a Home Assistant light: connect, pick the light, switch it on. */
+@Composable fun HaLightScreen(app: AppState) {
+    val cfg = live(app, "/api/v1/lights/ha")
+    val c = cfg.value
+    var url by remember { mutableStateOf("") }; var token by remember { mutableStateOf("") }
+    var entity by remember { mutableStateOf("") }; var name by remember { mutableStateOf("") }; var enabled by remember { mutableStateOf(true) }
+    var loaded by remember { mutableStateOf(false) }; var found by remember { mutableStateOf<List<JSONObject>?>(null) }; var busy by remember { mutableStateOf(false) }
+    var confirmRm by remember { mutableStateOf(false) }
+    LaunchedEffect(c) { if (c != null && !loaded) { loaded = true; url = c.optString("url").ifEmpty { "http://homeassistant.local:8123" }; entity = c.optString("entity"); name = c.optString("name")
+        enabled = if (c.optBoolean("has_token")) c.optBoolean("enabled") else true } }
+    Page("Home Assistant light", app::back) {
+        Note("When the server needs attention, this light turns amber for a warning and red for something critical. When it's fine again, it goes back exactly to how it was. Nova only changes it when the status changes, so your own automations keep working.", 13.sp, 4.dp)
+        if (c?.optBoolean("has_token") == true && c.optString("entity").isNotEmpty()) Group {
+            val err = c.optString("error").takeIf { !c.isNull("error") && it.isNotEmpty() }
+            Row1(if (!c.optBoolean("enabled")) "Off" else when (c.optString("shown")) { "critical" -> "Showing red (critical)"; "warning" -> "Showing amber (a warning)"; else -> "Showing your own setting" },
+                (c.optString("name").ifEmpty { c.optString("entity") }) + (err?.let { " · $it" } ?: ""), false, if (err != null) Icons.Rounded.Error else Icons.Rounded.Lightbulb, if (err != null) N.red else Color(0xFF41BDF5))
+        }
+        SectionLabel("Connect")
+        Group { Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            OneTextField(url, { url = it.trim() }, "Home Assistant's address, like http://homeassistant.local:8123", Modifier.fillMaxWidth())
+            OneTextField(token, { token = it.trim() }, if (c?.optBoolean("has_token") == true) "Access token (leave empty to keep it)" else "Long-lived access token", Modifier.fillMaxWidth(),
+                visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation())
+            Text("In Home Assistant: your profile → Security → Long-lived access tokens → Create token.", color = N.sub, fontSize = 12.sp)
+            PillButton(if (busy) "Looking…" else "Find its lights", enabled = !busy) { busy = true; app.act { try {
+                found = app.api.post("/api/v1/lights/ha/lights", JSONObject().put("url", url).put("token", token)).optJSONArray("lights").objs() } finally { busy = false } } }
+        } }
+        val list = found
+        if (list != null || entity.isNotEmpty()) { SectionLabel("Which light"); Group {
+            if (list == null) Row1(name.ifEmpty { entity }, entity, false, Icons.Rounded.Lightbulb, Color(0xFF41BDF5), trailing = { OneRadio(true) })
+            else if (list.isEmpty()) Row1("No lights in Home Assistant", enabled = false)
+            else list.forEachIndexed { i, l -> if (i > 0) RowDivider()
+                Row1(l.optString("name"), "${l.optString("entity")} · ${l.optString("state")}", false, Icons.Rounded.Lightbulb, Color(0xFF41BDF5),
+                    onClick = { entity = l.optString("entity"); name = l.optString("name") }, trailing = { OneRadio(entity == l.optString("entity")) }) }
+        } }
+        Group { SwitchRow("Show the server's status", "Amber for warnings, red for critical", enabled) { enabled = it } }
+        Box(Modifier.fillMaxWidth().padding(22.dp)) {
+            PrimaryButton("Save", Modifier.fillMaxWidth(), entity.isNotEmpty()) { app.act {
+                val body = JSONObject().put("url", url).put("entity", entity).put("name", name).put("enabled", enabled).apply { if (token.isNotEmpty()) put("token", token) }
+                cfg.value = app.stepUp("Connect a Home Assistant light", "POST", "/api/v1/lights/ha", body); token = ""; app.toast("Saved") } }
+        }
+        if (c?.optBoolean("has_token") == true) Group { Row1("Disconnect Home Assistant", "The light goes back to how it was, and Nova forgets the token", false, Icons.Rounded.LinkOff, N.red, onClick = { confirmRm = true }) }
+    }
+    if (confirmRm) OneDialog({ confirmRm = false }, "Disconnect Home Assistant?", "The light goes back to how it was, and Nova forgets the token.",
+        listOf(DialogButton("Cancel") { confirmRm = false }, DialogButton("Disconnect", N.red) { confirmRm = false; app.act { cfg.value = app.api.delete("/api/v1/lights/ha"); loaded = false; found = null } }))
 }

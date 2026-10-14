@@ -43,7 +43,7 @@ import org.json.JSONObject
 /** Every screen in the app. */
 sealed class Route {
     data object Home : Route(); data object Store : Route(); data object Menu : Route()
-    data object Lighting : Route(); data object Schedules : Route()
+    data object Lighting : Route(); data object Schedules : Route(); data object HaLight : Route()
     data class EditSchedule(val index: Int) : Route()
     data object Containers : Route(); data class Container(val name: String) : Route()
     data class Logs(val name: String) : Route(); data class Shell(val name: String) : Route()
@@ -545,6 +545,7 @@ private fun Modifier.paneTouch(app: AppState, left: Boolean) = pointerInput(left
         Route.Menu -> MenuScreen(app)
         Route.Lighting -> LightingScreen(app)
         Route.Schedules -> SchedulesScreen(app)
+        Route.HaLight -> HaLightScreen(app)
         is Route.EditSchedule -> EditScheduleScreen(app, r.index)
         Route.Containers -> ContainersScreen(app)
         is Route.Container -> ContainerScreen(app, r.name)
