@@ -21,14 +21,14 @@ ENV = {**os.environ, "DEBIAN_FRONTEND": "noninteractive", "LC_ALL": "C"}
 
 # Debian's name → the same thing elsewhere (None: not packaged there; Nova says so instead of failing oddly)
 NAMES = {
-    "dnf":    {"docker.io": "moby-engine", "docker-compose-v2": "docker-compose", "docker-compose": "docker-compose", "openssh-server": "openssh-server",
+    "dnf":    {"gddrescue": "ddrescue", "gdisk": "gdisk", "dosfstools": "dosfstools", "ntfs-3g": "ntfs-3g", "docker.io": "moby-engine", "docker-compose-v2": "docker-compose", "docker-compose": "docker-compose", "openssh-server": "openssh-server",
                "cifs-utils": "cifs-utils", "nfs-common": "nfs-utils", "mdadm": "mdadm", "btrfs-progs": "btrfs-progs", "smartmontools": "smartmontools",
                "lm-sensors": "lm_sensors", "fio": "fio", "stress-ng": "stress-ng", "rsync": "rsync", "mergerfs": "mergerfs", "zfsutils-linux": None,
                "python3-cryptography": "python3-cryptography", "sshpass": "sshpass", "nvme-cli": "nvme-cli", "hdparm": "hdparm"},
-    "pacman": {"docker.io": "docker", "docker-compose-v2": "docker-compose", "docker-compose": "docker-compose", "openssh-server": "openssh",
+    "pacman": {"gddrescue": "ddrescue", "gdisk": "gptfdisk", "dosfstools": "dosfstools", "ntfs-3g": "ntfs-3g", "docker.io": "docker", "docker-compose-v2": "docker-compose", "docker-compose": "docker-compose", "openssh-server": "openssh",
                "nfs-common": "nfs-utils", "lm-sensors": "lm_sensors", "zfsutils-linux": None, "python3-cryptography": "python-cryptography",
                "btrfs-progs": "btrfs-progs", "cifs-utils": "cifs-utils"},
-    "zypper": {"docker.io": "docker", "docker-compose-v2": "docker-compose", "docker-compose": "docker-compose", "nfs-common": "nfs-client",
+    "zypper": {"gddrescue": "gddrescue", "gdisk": "gptfdisk", "dosfstools": "dosfstools", "ntfs-3g": "ntfs-3g", "docker.io": "docker", "docker-compose-v2": "docker-compose", "docker-compose": "docker-compose", "nfs-common": "nfs-client",
                "lm-sensors": "sensors", "zfsutils-linux": None, "python3-cryptography": "python3-cryptography"},
 }
 

@@ -47,7 +47,7 @@ const f1 = x => x == null || isNaN(x) ? "—" : x >= 100 ? Math.round(x) : (+x).
 const lvColor = l => l === "critical" ? "var(--red)" : l === "warning" ? "var(--amber)" : l === "ok" ? "var(--green)" : "var(--blue)";
 const chip = (label, act, on) => `<button class="chip" style="font-family:inherit;font-size:14px;white-space:nowrap;flex:none;${on ? "background:var(--blue);color:#fff" : ""}" data-act="${act}">${esc(label)}</button>`;
 
-async function startTask(ctx, path, body) {
+export async function startTask(ctx, path, body) {
   try {
     const t = await post(path, body);
     if (t?.id) ctx.go("task/" + t.id); else if (t?.error) toast(t.error);

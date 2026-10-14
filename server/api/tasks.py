@@ -18,14 +18,14 @@ import fcntl, json, os, re, secrets, subprocess, sys, time
 HERE = os.path.dirname(os.path.realpath(__file__))
 sys.path.insert(0, HERE)
 DIR = "/run/nova-tasks"
-STORAGE_KINDS = {"format", "combine", "raid", "pool-remove", "pool-add", "fstab-nofail", "fstab-add"}
+STORAGE_KINDS = {"format", "combine", "raid", "pool-remove", "pool-add", "fstab-nofail", "fstab-add", "repair", "clone"}
 DIAG_KINDS = {"net-internet", "disk-speed", "cpu-stress", "mem-test"}
 BACKUP_KINDS = {"backup-run", "restore", "tools"}
 UPDATE_KINDS = {"updates-check", "apt-upgrade", "containers-update"}
 LABS_KINDS = {"images-prune", "freeup"}
 INSTALL_KINDS = {"run-command", "store-install", "store-uninstall", "custom-install", "custom-uninstall", "program-install", "program-remove", "share-setup"}
 KINDS = STORAGE_KINDS | DIAG_KINDS | BACKUP_KINDS | UPDATE_KINDS | INSTALL_KINDS | LABS_KINDS
-TITLES = {"format": "Set up a drive", "combine": "Combine drives", "raid": "Create a RAID array", "pool-remove": "Remove a pool",
+TITLES = {"repair": "Repair a drive", "clone": "Clone a drive", "format": "Set up a drive", "combine": "Combine drives", "raid": "Create a RAID array", "pool-remove": "Remove a pool",
           "pool-add": "Add a drive", "fstab-nofail": "Boot without missing drives", "fstab-add": "Keep a drive mounted",
           "net-internet": "Internet speed test", "disk-speed": "Drive speed test", "cpu-stress": "CPU stress test", "mem-test": "Memory test",
           "backup-run": "Backup", "restore": "Restore from backup", "tools": "Install tools",
@@ -198,7 +198,7 @@ def execute(tid):
 def stop(tid):
     t = load(tid)
     if not t or t["state"] != "running": raise ValueError("not running")
-    if t["kind"] in ("format", "combine", "raid", "pool-remove", "pool-add"): raise ValueError("drive setup can't be stopped halfway — it finishes in a moment")
+    if t["kind"] in ("format", "combine", "raid", "pool-remove", "pool-add", "repair"): raise ValueError("drive setup can't be stopped halfway — it finishes in a moment")
     subprocess.run(["systemctl", "stop", f"nova-task-{tid}.service"], capture_output=True, timeout=60)
     t.update(state="stopped", step="Stopped", finished=time.time()); save(t)
     return t

@@ -104,6 +104,9 @@ private fun health(d: JSONObject): Pair<String, String> {
     val hw = hwLive.value
     var busy by remember { mutableStateOf(false) }
     var confirm by remember { mutableStateOf(false) }
+    var repairAsk by remember { mutableStateOf(false) }
+    var targets by remember { mutableStateOf<List<JSONObject>?>(null) }
+    var cloneTo by remember { mutableStateOf<JSONObject?>(null) }
     suspend fun reload() { hwLive.value = app.api.get("/api/v1/hardware") }
     val d = hw?.optJSONArray("drives")?.let { a -> (0 until a.length()).map { a.getJSONObject(it) }.firstOrNull { it.optString("serial") == serial } } ?: return
     val mounted = (d.optJSONArray("mounts")?.length() ?: 0) > 0
@@ -146,6 +149,38 @@ private fun health(d: JSONObject): Pair<String, String> {
                     try { app.api.post("/api/v1/drives/$serial/mount"); app.toast("Mounted"); reload() } finally { busy = false } }
             }
         }
+        if (app.isAdmin && !d.optBoolean("protected")) {
+            SectionLabel("Fix and copy")
+            Group {
+                Row1("Repair", "Checks every filesystem on it and fixes what it can, then runs the drive's quick self-test. It's unmounted for a few minutes while that happens.",
+                    false, Icons.Rounded.Build, N.amber, onClick = { repairAsk = true }); RowDivider()
+                Row1("Clone to another drive", "Copies everything onto a spare drive (which is erased). Bigger: an exact copy that grows to fill it. Smaller: the files are copied if they fit.",
+                    false, Icons.Rounded.ContentCopy, N.blue, onClick = { app.act { val st = app.api.get("/api/v1/storage")
+                        targets = st.optJSONArray("drives")?.let { a -> (0 until a.length()).map { a.getJSONObject(it) } }.orEmpty().filter { it.optString("serial") != serial && it.optBoolean("erasable") } } })
+            }
+        }
+    }
+    if (repairAsk) OneDialog({ repairAsk = false }, "Repair ${driveName(d)}?",
+        (if (mounted) "It's unmounted while it's checked — apps using it lose it for a few minutes, then it's mounted again. " else "") + "Nothing is erased.",
+        listOf(DialogButton("Cancel") { repairAsk = false }, DialogButton("Repair", N.blue) { repairAsk = false; app.act {
+            val r = app.stepUp("Repair ${driveName(d)}", "POST", "/api/v1/storage/task/repair",
+                JSONObject().put("spec", JSONObject().put("drives", JSONArray(listOf(serial))).put("confirm", JSONArray(listOf(serial)))))
+            app.go(Route.Task(r.optString("id"))) } }))
+    targets?.let { ts ->
+        OneDialog({ targets = null }, "Copy onto which drive?", if (ts.isEmpty()) "Plug in the drive to copy onto. It has to be unmounted and not part of a pool or array — Nova never offers the system drive." else null,
+            listOf(DialogButton("Cancel") { targets = null })) {
+            ts.forEach { t -> Row1("${t.optString("size_text")} ${t.optString("model").ifEmpty { t.optString("name") }}",
+                if (t.optLong("size") >= d.optLong("size")) "Exact copy" + (if (t.optLong("size") > d.optLong("size") * 1.01) ", then it grows to use the extra space" else "")
+                else "Smaller — the files are copied if they fit", false, Icons.Rounded.Storage, N.blue, onClick = { targets = null; cloneTo = t }) }
+        }
+    }
+    cloneTo?.let { t ->
+        val tn = "${t.optString("size_text")} ${t.optString("model").ifEmpty { t.optString("name") }}"
+        OneDialog({ cloneTo = null }, "Erase $tn?", "Everything on it is replaced by a copy of ${driveName(d)}." + (if (mounted) " The drive you're copying is unmounted while it's copied, so nothing changes halfway." else "") + " This can't be undone.",
+            listOf(DialogButton("Cancel") { cloneTo = null }, DialogButton("Erase and clone", N.red) { cloneTo = null; app.act {
+                val r = app.stepUp("Clone ${driveName(d)} onto $tn", "POST", "/api/v1/storage/task/clone",
+                    JSONObject().put("spec", JSONObject().put("drives", JSONArray(listOf(serial, t.optString("serial")))).put("confirm", JSONArray(listOf(t.optString("serial"))))))
+                app.go(Route.Task(r.optString("id"))) } }))
     }
     if (confirm) OneDialog({ confirm = false }, "Unmount ${driveName(d)}?",
         "Anything using it (shares, backups) loses access until it's mounted again. USB drives are powered down so you can unplug them.",

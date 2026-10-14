@@ -1274,9 +1274,29 @@ async function drive(ctx, serial) {
       ${testsHtml()}
       ${sec("Details")}${group(row("Size", { sub: bytes(d.size) }) + row("Connection", { sub: (d.bus || "").toUpperCase() }) + row("Serial", { sub: d.serial }) + row("Mounted at", { sub: (d.mounts || []).join(", ") || "Not mounted" }))}
       ${!isAdmin() ? note("View-only access: an admin can mount or unmount drives.") : d.protected ? note(`This drive is in use by the server (${d.role}) and can't be unmounted from the app.`)
-        : `<button class="btn block" data-act="mount" ${busy ? "disabled" : ""}>${busy ? "Working…" : mounted ? "Safely unmount" : "Mount"}</button>`}`, { title: driveName(d) });
+        : `<button class="btn block" data-act="mount" ${busy ? "disabled" : ""}>${busy ? "Working…" : mounted ? "Safely unmount" : "Mount"}</button>`}
+      ${isAdmin() && !d.protected ? sec("Fix and copy") + group(row("Repair", { sub: "Checks every filesystem on it and fixes what it can, then runs the drive's quick self-test. It's unmounted for a few minutes while that happens.", icon: "build", tint: "var(--amber)", click: "repair" })
+          + row("Clone to another drive", { sub: "Copies everything onto a spare drive (which is erased). Bigger: an exact copy that grows to fill it. Smaller: the files are copied if they fit.", icon: "copy", tint: "var(--blue)", click: "clone" })) : ""}`, { title: driveName(d) });
   };
   ctx.handlers({
+    repair: async () => {
+      const d = (S.cache["/api/v1/hardware"]?.drives || []).find(x => x.serial === serial); if (!d) return;
+      if (!(await confirm(`Repair ${driveName(d)}?`, `${(d.mounts || []).length ? `It's unmounted while it's checked (${d.mounts.join(", ")}) — apps using it lose it for a few minutes, then it's mounted again. ` : ""}Nothing is erased. Your phone confirms it.`, "Repair", "var(--blue)"))) return;
+      ST.startTask(ctx, "/api/v1/storage/task/repair", { spec: { drives: [serial], confirm: [serial] } });
+    },
+    clone: async () => {
+      const d = (S.cache["/api/v1/hardware"]?.drives || []).find(x => x.serial === serial); if (!d) return;
+      const st = S.cache["/api/v1/storage"] || await get("/api/v1/storage").catch(e => (toast(e.message), null)); if (!st) return;
+      const me = st.drives.find(x => x.serial === serial), used = (me?.partitions || []).reduce((a, p) => a + (p.usage?.used || 0), 0);
+      const targets = st.drives.filter(x => x.serial !== serial && x.erasable);
+      if (!targets.length) return dialog("No spare drive", "Plug in the drive to copy onto. It has to be unmounted and not part of a pool or array — Nova never offers the system drive.", [{ label: "OK" }]);
+      const pick = await choose("Copy onto which drive?", targets.map(x => [x.serial, `${x.size_text} ${x.model || x.name}`,
+        x.size >= (me?.size || d.size) ? `Exact copy${x.size > (me?.size || d.size) * 1.01 ? ", then it grows to use the extra space" : ""}` : used && used * 1.05 < x.size ? `Smaller — the files (${bytes(used)}) are copied, the filesystems made to fit` : "Smaller — Nova checks whether the files fit"]), null);
+      if (!pick) return;
+      const t = targets.find(x => x.serial === pick);
+      if (!(await confirm(`Erase ${t.size_text} ${t.model || t.name}?`, `Everything on it is replaced by a copy of ${driveName(d)}. ${(d.mounts || []).length ? "The drive you're copying is unmounted while it's copied, so nothing changes halfway. " : ""}This can't be undone — your phone confirms it.`, "Erase and clone"))) return;
+      ST.startTask(ctx, "/api/v1/storage/task/clone", { spec: { drives: [serial, pick], confirm: [pick] } });
+    },
     test: async kind => {
       if (!isAdmin()) return viewOnly();
       testBusy = true; draw();

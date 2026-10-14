@@ -29,7 +29,8 @@ MIN_DRIVES = {"combine": 2, "raid0": 2, "raid1": 2, "raid5": 3, "raid6": 4, "rai
 TOOLS = {"mergerfs": "mergerfs", "mdadm": "mdadm", "mkfs.xfs": "xfsprogs", "mkfs.btrfs": "btrfs-progs",
          "mkfs.exfat": "exfatprogs", "parted": "parted", "wipefs": "util-linux", "mount.nfs": "nfs-common",
          "mount.cifs": "cifs-utils", "rsync": "rsync", "fio": "fio", "stress-ng": "stress-ng",
-         "smartctl": "smartmontools", "tracepath": "iputils-tracepath", "setfattr": "attr"}
+         "smartctl": "smartmontools", "tracepath": "iputils-tracepath", "setfattr": "attr",
+         "mkfs.vfat": "dosfstools", "ddrescue": "gddrescue", "sgdisk": "gdisk"}
 
 
 def run(cmd, timeout=600, check=False, **kw):
@@ -666,6 +667,246 @@ def op_fstab_add(spec, log, progress):
         log(f"{m} now comes back after a restart")
     reload_systemd(); progress(100); return {}
 
+# ── repair and clone ─────────────────────────────────────────────────────────────────────
+def device_users(d):
+    """Programs (other than the kernel's own mounts) that have this drive or one of its partitions open —
+    a running dd/ddrescue clone, a disk tool… Repair and clone refuse to touch a drive someone else is using."""
+    names = {os.path.basename(p["path"]) for p in d["partitions"]} | {d["name"]}
+    out = []
+    for pid in os.listdir("/proc"):
+        if not pid.isdigit() or int(pid) == os.getpid(): continue
+        try:
+            for fd in os.listdir(f"/proc/{pid}/fd"):
+                try: t = os.readlink(f"/proc/{pid}/fd/{fd}")
+                except OSError: continue
+                if t.startswith("/dev/") and os.path.basename(t) in names:
+                    out.append(f"{open(f'/proc/{pid}/comm').read().strip()} (pid {pid})"); break
+        except OSError: continue
+    for n in names:
+        if glob.glob(f"/sys/class/block/{n}/holders/*"): out.append(f"{n} is held by {', '.join(os.path.basename(h) for h in glob.glob(f'/sys/class/block/{n}/holders/*'))}")
+    return out
+
+def check_touchable(d, what):
+    if d["system"]: raise ValueError(f"{d['model'] or d['name']} is the system drive — Nova won't {what} the drive the server is running from")
+    if d["pool"]: raise ValueError(f"{d['model'] or d['name']} is part of an array — repair or replace it from the array's page instead")
+    if any("pool-member" in r for r in d["roles"]): raise ValueError(f"{d['model'] or d['name']} is part of a pool — take it out of the pool first")
+    busy = device_users(d)
+    if busy: raise ValueError(f"{d['model'] or d['name']} is in use by {', '.join(busy[:3])} — wait for that to finish (or stop it) first")
+
+def unmount_all(d, log):
+    """Unmount every filesystem on the drive; returns the mount points so they can be put back."""
+    was = []
+    for p in d["partitions"]:
+        for m in p["mounts"]:
+            if m in PROTECTED: raise ValueError(f"{m} is a protected location")
+            log(f"Unmounting {m}…")
+            rc, _, err = run(["umount", m], timeout=120)
+            if rc != 0:
+                remount(was, log)
+                raise ValueError(f"{m} is busy ({err.strip()[-120:] or 'in use'}) — stop the apps using it, then try again")
+            was.append((p["path"], m))
+    return was
+
+def remount(mps, log):
+    for dev, m in mps:
+        rc, _, err = run(["mount", m], timeout=120) if any(e["mount"] == m for e in fstab_entries()) else run(["mount", dev, m], timeout=120)
+        log(f"Mounted {m} again" if rc == 0 else f"Couldn't mount {m} again: {err.strip()[-160:]}")
+
+FSCK = {"ext2": ["e2fsck", "-f", "-y"], "ext3": ["e2fsck", "-f", "-y"], "ext4": ["e2fsck", "-f", "-y"], "xfs": ["xfs_repair"],
+        "vfat": ["fsck.vfat", "-a", "-w"], "exfat": ["fsck.exfat", "-y"], "ntfs": ["ntfsfix", "-d"], "btrfs": ["btrfs", "check", "--readonly"]}
+FSCK_PKG = {"e2fsck": "e2fsprogs", "xfs_repair": "xfsprogs", "fsck.vfat": "dosfstools", "fsck.exfat": "exfatprogs", "ntfsfix": "ntfs-3g", "btrfs": "btrfs-progs"}
+
+def repair_fs(dev, fs, log):
+    """Check one filesystem and fix what can be fixed. Returns (ok, note)."""
+    cmd = FSCK.get(fs)
+    if not cmd: return True, f"{fs or 'no filesystem'} — nothing to check"
+    TOOLS.setdefault(cmd[0], FSCK_PKG[cmd[0]]); ensure_tools([cmd[0]], log)
+    log(f"Checking {dev} ({fs})…")
+    rc, so, se = run(cmd + [dev], timeout=6 * 3600)
+    out = (so + se).strip()
+    if fs == "xfs" and rc != 0 and "mount the filesystem" in out:            # a dirty log: replaying it by mounting is the safe way
+        tmp = f"/run/nova-repair-{os.path.basename(dev)}"; os.makedirs(tmp, exist_ok=True)
+        if run(["mount", "-t", "xfs", dev, tmp], timeout=300)[0] == 0: run(["umount", tmp], timeout=300)
+        os.rmdir(tmp); rc, so, se = run(cmd + [dev], timeout=6 * 3600); out = (so + se).strip()
+    if fs.startswith("ext"): ok = rc in (0, 1, 2); fixed = rc in (1, 2)          # e2fsck: 1 = fixed, 2 = fixed, reboot advised; 4+ = left unfixed
+    elif fs == "btrfs": ok = rc == 0; fixed = False
+    else: ok = rc == 0; fixed = ok and bool(re.search(r"fix|correct|repair|recover", out, re.I))
+    last = out.splitlines()[-1][:200] if out else ""
+    if not ok and fs == "btrfs": return False, "Btrfs reports problems. Nova doesn't run its risky --repair; copy the files off (Clone) and set the drive up again"
+    return ok, ("fixed problems" if fixed else "no problems found") if ok else f"couldn't fix everything: {last}"
+
+def op_repair(spec, log, progress):
+    """Unmount, check and fix every filesystem on the drive, mount it back, then ask the drive to test itself."""
+    d = find_drive(spec["drives"][0]) if spec.get("drives") else None
+    if not d: raise ValueError("pick a drive")
+    if sorted(spec.get("confirm") or []) != [d["serial"]]: raise ValueError("the drive changed since you confirmed — start again")
+    check_touchable(d, "repair")
+    parts = [p for p in d["partitions"] if p["fstype"] and not p["swap"]]
+    if not parts: raise ValueError("there's no filesystem on this drive to repair")
+    progress(5); was = unmount_all(d, log); results = []
+    try:
+        for i, p in enumerate(parts):
+            progress(10 + 75 * i / len(parts))
+            ok, note = repair_fs(p["path"], p["fstype"], log); results.append({"part": p["path"], "fs": p["fstype"], "ok": ok, "note": note})
+            log(f"{p['path']}: {note}")
+    finally:
+        progress(88); remount(was, log)
+    if have("smartctl") and not d["name"].startswith(("loop", "md")):
+        rc, _, _ = run(["smartctl", "-t", "short", d["path"]], timeout=60)
+        if rc in (0, 4): log("Started the drive's own 2-minute self-test — the result shows on the drive's page")
+    progress(100)
+    bad = [r for r in results if not r["ok"]]
+    log(f"Done — {'some problems are left: ' + bad[0]['note'] if bad else 'every filesystem checked and fixed where needed'}.")
+    return {"results": results}
+
+def used_bytes(p):
+    """How much is stored on a partition (mounting it read-only for a moment if it isn't mounted)."""
+    if p["usage"]: return p["usage"]["used"]
+    tmp = f"/run/nova-clone-src-{os.path.basename(p['path'])}"; os.makedirs(tmp, exist_ok=True)
+    try:
+        if run(["mount", "-o", "ro", p["path"], tmp], timeout=120)[0] != 0: return None
+        try: return usage(tmp)["used"]
+        finally: run(["umount", tmp], timeout=120)
+    finally:
+        try: os.rmdir(tmp)
+        except OSError: pass
+
+def new_ids(dev, fs, log):
+    """A clone must not share filesystem UUIDs with its source, or fstab would mount the wrong one."""
+    cmd = {"ext2": ["tune2fs", "-U", "random"], "ext3": ["tune2fs", "-U", "random"], "ext4": ["tune2fs", "-U", "random"], "xfs": ["xfs_admin", "-U", "generate"],
+           "btrfs": ["btrfstune", "-f", "-u"]}.get(fs)
+    if not cmd: return
+    if fs.startswith("ext"): run(["e2fsck", "-f", "-p", dev], timeout=3600)
+    rc, _, err = run(cmd + [dev], timeout=3600)
+    if rc != 0: log(f"Couldn't give {dev} a new ID: {err.strip()[-120:]}")
+
+def grow_last(dst, fs_by_n, log):
+    """After an exact copy to a bigger drive: move the partition table's backup copy to the real end, then let the
+    last partition and its filesystem use the extra space."""
+    if have("sgdisk"): run(["sgdisk", "-e", dst["path"]], timeout=60)
+    else: subprocess.run(["parted", "---pretend-input-tty", dst["path"], "print"], input="Fix\n", capture_output=True, text=True, timeout=60)
+    run(["partprobe", dst["path"]], timeout=60); settle()
+    rc, so, _ = run(["lsblk", "-J", "-b", "-o", "NAME,PATH,FSTYPE,TYPE", dst["path"]], timeout=30)
+    kids = [c for c in (json.loads(so)["blockdevices"][0].get("children") or []) if c["type"] == "part"] if rc == 0 else []
+    if not kids: return
+    last = kids[-1]; n = re.search(r"(\d+)$", last["name"]).group(1); fs = last.get("fstype") or ""
+    if fs not in ("ext2", "ext3", "ext4", "xfs", "btrfs"): log("The copy is exact; the extra space is left free (that filesystem can't be grown here)"); return
+    log("Using the extra space…")
+    if run(["parted", "-s", dst["path"], "resizepart", n, "100%"], timeout=120)[0] != 0: log("Couldn't grow the last partition — the extra space is left free"); return
+    run(["partprobe", dst["path"]], timeout=60); settle()
+    if fs.startswith("ext"): run(["e2fsck", "-f", "-p", last["path"]], timeout=3600); run(["resize2fs", last["path"]], timeout=3600)
+    else:
+        tmp = f"/run/nova-clone-grow"; os.makedirs(tmp, exist_ok=True)
+        if run(["mount", last["path"], tmp], timeout=120)[0] == 0:
+            run(["xfs_growfs", tmp] if fs == "xfs" else ["btrfs", "filesystem", "resize", "max", tmp], timeout=3600); run(["umount", tmp], timeout=120)
+        os.rmdir(tmp)
+
+def op_clone(spec, log, progress):
+    """Copy one drive onto another (which is erased). Same size or bigger: an exact copy, then the last partition grows
+    into the extra space. Smaller: if the files fit, each filesystem is recreated at a fitting size and the files copied in."""
+    sv = spec.get("drives") or []
+    if len(sv) != 2 or sv[0] == sv[1]: raise ValueError("pick the drive to copy and a different drive to copy it to")
+    smap = storage_map(); src = find_drive(sv[0], smap)
+    (dst,) = check_erasable([sv[1]], spec.get("confirm"))
+    check_touchable(src, "clone"); check_touchable(dst, "erase")
+    parts = [p for p in src["partitions"] if not p["swap"]]
+    if not parts: raise ValueError("the drive you're copying is empty")
+    was = []
+    try:
+        progress(2); was = unmount_all(src, log)                                     # nothing changes on it while it's copied
+        if dst["size"] >= src["size"]:
+            ensure_tools(["parted"], log)
+            gpt = run(["lsblk", "-dno", "PTTYPE", src["path"]], timeout=30)[1].strip() == "gpt"
+            rescue = have("ddrescue")
+            log(f"Copying {src['size_text']} {src['model'] or src['name']} onto {dst['size_text']} {dst['model'] or dst['name']} — every sector, exactly…")
+            run(["wipefs", "-a", "-f", *[p["path"] for p in dst["partitions"] if p["path"] != dst["path"]], dst["path"]], timeout=120)
+            mapf = f"/run/nova-clone-{src['name']}-{dst['name']}.map"                 # a fresh map: an old one would make ddrescue skip everything
+            try: os.remove(mapf)
+            except OSError: pass
+            cmd = ["ddrescue", "-f", "-n", src["path"], dst["path"], mapf] if rescue else \
+                  ["dd", f"if={src['path']}", f"of={dst['path']}", "bs=16M", "conv=noerror,sync,fsync", "status=progress"]
+            pr = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)   # ddrescue reports on stdout, dd on stderr
+            buf, t0 = "", time.time()
+            for ch in iter(lambda: pr.stdout.read(1), ""):                          # dd/ddrescue redraw with \r
+                if ch in "\r\n":
+                    m = re.search(r"^(\d+) bytes", buf.strip()) or re.search(r"rescued:\s*([\d.]+)\s*([kMGT]?)B", buf)
+                    if m:
+                        done = int(m.group(1)) if m.re.pattern.startswith("^") else float(m.group(1)) * {"": 1, "k": 1e3, "M": 1e6, "G": 1e9, "T": 1e12}[m.group(2)]
+                        el = max(1, time.time() - t0); pct = done / src["size"]
+                        progress(5 + 85 * pct, f"{human(done)} of {src['size_text']} · {human(done / el)}/s" + (f" · about {int((src['size'] - done) / max(1, done / el) / 60)} min left" if done else ""))
+                    buf = ""
+                else: buf += ch
+            rc = pr.wait()
+            if rescue:
+                try: os.remove(mapf)
+                except OSError: pass
+            if rc != 0: raise RuntimeError(f"{cmd[0]} stopped with an error — the drive you're copying may be failing" + (" (install gddrescue for a copy that skips bad spots)" if not rescue else ""))
+            run(["sync"], timeout=600); run(["partprobe", dst["path"]], timeout=60); settle()
+            if gpt and have("sgdisk"): run(["sgdisk", "-G", dst["path"]], timeout=60)  # new partition-table IDs too
+            progress(92)
+            for p in parts: new_ids(part_path(dst["path"], int(re.search(r"(\d+)$", p["name"]).group(1))) if p["path"] != src["path"] else dst["path"], p["fstype"], log)
+            if dst["size"] > src["size"] * 1.01 and gpt: grow_last(dst, {}, log)
+            elif dst["size"] > src["size"] * 1.01: log("The copy is exact; the extra space is left free (only GPT drives are grown automatically)")
+            mode = "exact"
+        else:
+            # Smaller target: rebuild each filesystem at a size that fits, then copy the files
+            ensure_tools(["parted", "wipefs", "rsync"], log)
+            need = []
+            for p in parts:
+                if p["fstype"] not in FILESYSTEMS + ("ext2", "ext3", "vfat"): raise ValueError(f"{p['path']} ({p['fstype'] or 'no filesystem'}) can only be copied exactly — that needs a drive at least {src['size_text']}")
+                u = used_bytes(p)
+                if u is None: raise ValueError(f"couldn't read {p['path']} to see how much is on it")
+                need.append(u)
+            room = dst["size"] - 64 * 2**20
+            if sum(need) * 1.05 > room: raise ValueError(f"{dst['size_text']} is too small: the files take {human(sum(need))} (plus a little room)")
+            spare = room - sum(n * 1.05 for n in need)                                 # share what's left by each partition's original size
+            sizes = [n * 1.05 + spare * p["size"] / sum(q["size"] for q in parts) for n, p in zip(need, parts)]
+            log(f"{dst['size_text']} is smaller than {src['size_text']}, but the files ({human(sum(need))}) fit — copying them file by file")
+            run(["wipefs", "-a", "-f", *[p["path"] for p in dst["partitions"] if p["path"] != dst["path"]], dst["path"]], timeout=120, check=True)
+            cmd = ["parted", "-s", "-a", "optimal", dst["path"], "mklabel", "gpt"]; start = 1
+            for i, (p, sz) in enumerate(zip(parts, sizes)):
+                end = "100%" if i == len(parts) - 1 else f"{start + int(sz / 2**20)}MiB"
+                cmd += ["mkpart", (p["label"] or f"part{i + 1}")[:30], f"{start}MiB", end]; start += int(sz / 2**20)
+            run(cmd, timeout=120, check=True); run(["partprobe", dst["path"]], timeout=60); settle(); time.sleep(1)
+            done_bytes = 0
+            for i, p in enumerate(parts):
+                tp = part_path(dst["path"], i + 1); fs = p["fstype"]
+                if fs in ("ext2", "ext3"): fs = "ext4"
+                if fs == "vfat":
+                    ensure_tools(["mkfs.vfat"], log); run(["mkfs.vfat", "-F", "32", "-n", (p["label"] or "NOVA")[:11].upper(), tp], timeout=600, check=True)
+                else: mkfs(tp, fs, p["label"] or f"clone{i + 1}", log)
+                a, b = f"/run/nova-clone-a{i}", f"/run/nova-clone-b{i}"; os.makedirs(a, exist_ok=True); os.makedirs(b, exist_ok=True)
+                run(["mount", "-o", "ro", p["path"], a], timeout=120, check=True)
+                try:
+                    run(["mount", tp, b], timeout=120, check=True)
+                    try:
+                        log(f"Copying the files from {p['path']}…")
+                        pr = subprocess.Popen(["rsync", "-aHAX", "--numeric-ids", "--info=progress2", "--no-inc-recursive", a + "/", b + "/"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1)
+                        buf = ""
+                        for ch in iter(lambda: pr.stdout.read(1), ""):
+                            if ch in "\r\n":
+                                m = re.search(r"^\s*([\d,]+)\s+(\d+)%", buf)
+                                if m:
+                                    cur = done_bytes + int(m.group(1).replace(",", ""))
+                                    progress(5 + 88 * cur / max(1, sum(need)), f"{human(cur)} of {human(sum(need))}")
+                                buf = ""
+                            else: buf += ch
+                        rc = pr.wait()
+                        if rc not in (0, 24): raise RuntimeError(f"copying {p['path']} failed: {pr.stderr.read().strip()[-200:]}" + (" — some files couldn't be read; the drive may be failing" if rc == 23 else ""))
+                    finally: run(["umount", b], timeout=300)
+                finally:
+                    run(["umount", a], timeout=300); os.rmdir(a); os.rmdir(b)
+                done_bytes += need[i]
+            mode = "files"
+        progress(97)
+    finally:
+        remount(was, log)
+    log(f"Done — {dst['size_text']} {dst['model'] or dst['name']} is now a copy of {src['model'] or src['name']}"
+        + (" (exact copy)" if mode == "exact" else " (files copied; the filesystems were made to fit)") + ". It isn't mounted — set it up from Storage when you want to use it.")
+    progress(100)
+    return {"mode": mode}
+
+
 OPS = {"format": op_format, "combine": op_combine, "raid": op_raid, "pool-remove": op_pool_remove, "pool-add": op_pool_add,
-       "fstab-nofail": op_fstab_nofail, "fstab-add": op_fstab_add}
-DESTRUCTIVE = {"format", "combine", "raid", "pool-remove", "pool-add"}
+       "fstab-nofail": op_fstab_nofail, "fstab-add": op_fstab_add, "repair": op_repair, "clone": op_clone}
+DESTRUCTIVE = {"format", "combine", "raid", "pool-remove", "pool-add", "repair", "clone"}

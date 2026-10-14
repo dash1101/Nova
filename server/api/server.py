@@ -564,7 +564,8 @@ def describe_action(a):
         d = a.get("data", {}).get("spec", {}); n = len(d.get("drives") or [])
         return {"format": f"Erase and set up {n} drive", "combine": f"Combine drives into “{d.get('name', '')}”" + (f" (erases {n})" if n else ""),
                 "raid": f"Create {str(d.get('level', 'RAID')).upper()} “{d.get('name', '')}” (erases {n} drives)", "pool-remove": "Remove a storage pool" + (" and erase its drives" if d.get("erase") else ""),
-                "pool-add": "Add a drive to a pool (erases it)"}.get(p[2], "Change storage")
+                "pool-add": "Add a drive to a pool (erases it)", "repair": "Repair a drive (unmounts it while it's checked)",
+                "clone": "Clone a drive (erases the drive it copies to)"}.get(p[2], "Change storage")
     if p == ["updates", "packages"]: return "Update system packages"
     if p == ["notify", "discord"]: return "Change where Discord alerts go"
     if p == ["updates", "containers"]: return "Update containers"
@@ -583,7 +584,7 @@ def browser_forbidden(method, parts, dev):
     if parts[:1] == ["devices"] and method != "GET" and parts != ["devices", dev.get("id")]: return True
     return False
 
-STORAGE_DESTRUCTIVE = ("format", "combine", "raid", "pool-remove", "pool-add")
+STORAGE_DESTRUCTIVE = ("format", "combine", "raid", "pool-remove", "pool-add", "repair", "clone")
 ROLES = ("admin", "viewer")
 FORMS = ("phone", "tablet", "desktop", "watch")
 def role_of(d): return d.get("role") if d.get("role") in ROLES else "admin"     # devices from before roles: admin
