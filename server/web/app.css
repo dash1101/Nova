@@ -629,11 +629,13 @@ html.liquid.l-light { --lg-tint: 252, 252, 254; --lg-a: calc(var(--ga) + .2); --
   --lg-fill2: rgba(120,120,128,.10); --lg-text2: rgba(60,60,67,.6); --blue: #007aff; --green: #34c759; --red: #ff3b30; --amber: #ff9500; }
 html.liquid .sub, html.liquid .row .t small, html.liquid .note, html.liquid .sec { color: var(--lg-text2); }
 
+/* the rim needs a positioned box; :where() keeps this from overriding fixed bars like the nav pill and toast */
+:where(html.liquid) :where(.glass, .frost, #sheet .box, .alertcard, .sugg) { position: relative; }
 /* the material: tint + a soft sheen + a smooth, light-catching rim (blurred a hair so it's never jagged) */
 html.liquid .glass, html.liquid .frost, html.liquid #sheet .box, html.liquid .alertcard, html.liquid .sugg {
   background: radial-gradient(120% 90% at 20% 0%, rgba(var(--lg-hi), .10), rgba(var(--lg-hi), 0) 60%), rgba(var(--lg-tint), var(--lg-a, var(--ga)));
   backdrop-filter: blur(var(--lg-blur)) saturate(1.8); -webkit-backdrop-filter: blur(var(--lg-blur)) saturate(1.8);
-  border: 0; background-clip: border-box; position: relative; isolation: isolate;
+  border: 0; background-clip: border-box; isolation: isolate;
   box-shadow: 0 12px 34px rgba(0,0,0,.22), 0 2px 6px rgba(0,0,0,.10), inset 0 0 0 .5px rgba(var(--lg-hi), .10);
 }
 html.liquid.l-light .glass, html.liquid.l-light .frost, html.liquid.l-light #sheet .box, html.liquid.l-light .alertcard, html.liquid.l-light .sugg {
@@ -745,7 +747,7 @@ html.fluent .group, html.fluent .card { border-radius: calc(8px * var(--rk, 1));
 html.fluent #sheet .box { border-radius: calc(8px * var(--rk, 1)); }
 html.fluent #sheet .acts button { border-radius: 4px; }
 html.fluent .nav { border-radius: calc(8px * var(--rk, 1)); }
-html.fluent .nav .bead, html.fluent .nav button { border-radius: 4px; }
+html.fluent .nav .bead, html.fluent .nav button, html.fluent .nav .nscroll { border-radius: 4px; }
 html.fluent .nav .bead { background: var(--navSel); backdrop-filter: none; box-shadow: none; }
 html.fluent .nav .bead::after { content: ""; position: absolute; left: 50%; bottom: 6px; width: 16px; height: 3px; margin-left: -8px; border-radius: 2px; background: var(--blue); }
 html.fluent .nav.vertical .bead::after { left: 4px; top: 50%; bottom: auto; width: 3px; height: 16px; margin: -8px 0 0; }
@@ -774,7 +776,7 @@ html.breeze .frost, html.breeze #sheet .box { background: var(--frost); box-shad
 html.breeze .glass::after, html.breeze .frost::after { display: none; }
 html.breeze .group, html.breeze .card, html.breeze #sheet .box { border-radius: calc(7px * var(--rk, 1)); }
 html.breeze .nav { border-radius: calc(7px * var(--rk, 1)); }
-html.breeze .nav .bead, html.breeze .nav button { border-radius: 4px; }
+html.breeze .nav .bead, html.breeze .nav button, html.breeze .nav .nscroll { border-radius: 4px; }
 html.breeze .nav .bead { background: var(--navSel); backdrop-filter: none; box-shadow: inset 0 0 0 1px var(--blue); }
 html.breeze .row.click:hover { background: color-mix(in srgb, var(--blue) 12%, transparent); }
 html.breeze .sec { color: var(--text); font-weight: 600; }
@@ -875,3 +877,17 @@ html.solid #wall { filter: blur(var(--wblur, 16px)) brightness(.6); }
 html.fluent .alertcard, html.fluent .stat, html.fluent .hint, html.fluent .statusline { border-radius: calc(8px * var(--rk, 1)); }
 html.breeze .alertcard, html.breeze .stat, html.breeze .hint, html.breeze .statusline { border-radius: calc(7px * var(--rk, 1)); }
 .plwhat { margin: 4px 0 0; padding-left: 18px; display: grid; gap: 8px; font-size: 14px; } .plwhat code.cftok { font-size: 12px; }
+
+/* one corner scale per style, so every surface matches: large = cards, tiles, groups, fields; medium = icons, chips, small buttons */
+html.liquid { --rL: calc(24px * var(--rk, 1)); --rM: calc(14px * var(--rk, 1)); }
+html.fluent { --rL: calc(8px * var(--rk, 1)); --rM: 4px; }
+html.breeze { --rL: calc(7px * var(--rk, 1)); --rM: 3px; }
+:is(html.liquid, html.fluent, html.breeze) :is(.group, .links, .banner, .stat, .card, .tile, .slidetile, .term, .selbar, .srv, .taskbar, .editor, .mtile, .alertcard,
+  .nudge, .stile, .sugg, .fsel, .vtbox, .hint, .upnote, .srvchip, .statusline, .code-block) { border-radius: var(--rL); }
+:is(html.liquid, html.fluent, html.breeze) :is(.appicon, .appcell, .appic, .eng, .pinbox, .cmdcopy, .sugg button, .ctlbar button, .help, .cftok) { border-radius: var(--rM); }
+:is(html.fluent, html.breeze) :is(.field, .searchbox, .chip, .crumb, .pillbar, .pillbar button, .seg, .seg .bead, .seg button, .badge:not(:empty), .rcheck, .linkbtn, #toast) { border-radius: var(--rM); }
+:is(html.fluent, html.breeze) .rl .row.lift { border-radius: var(--rL); }
+:is(.mapps, .srvstrip, .fdrives, .hfade).fs { -webkit-mask-image: linear-gradient(90deg, transparent, #000 40px); mask-image: linear-gradient(90deg, transparent, #000 40px); }
+:is(.mapps, .srvstrip, .fdrives, .hfade).fe { -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 40px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 40px), transparent); }
+:is(.mapps, .srvstrip, .fdrives, .hfade).fs.fe { -webkit-mask-image: linear-gradient(90deg, transparent, #000 40px, #000 calc(100% - 40px), transparent); mask-image: linear-gradient(90deg, transparent, #000 40px, #000 calc(100% - 40px), transparent); }
+.grid.four > .card:last-child:nth-child(odd) { grid-column: span 2; }

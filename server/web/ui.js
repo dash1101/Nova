@@ -273,6 +273,8 @@ export function spark(canvas, vals, color, { max = null, window = 0, tick = 0, a
   if (!canvas) return;
   let g = graphs.get(canvas);
   if (!g) { g = { t0: 0, tick: null, top: null, hx: null }; graphs.set(canvas, g); scrubbable(canvas, g, scrub); }
+  // while someone is reading a point the graph holds still; the new samples wait and it catches up when they let go
+  if (g.hx != null) { g.held = { vals, times, tick, added: (g.held?.added || 0) + (g.tick !== tick ? added : 0) }; return; }
   if (g.tick !== tick) { g.tick = tick; g.t0 = performance.now(); g.added = Math.max(1, Math.min(5, added)); }
   g.vals = vals; g.color = css(color); g.max = max; g.window = window; g.times = times; g.fmt = fmt;
   if (g.running) return; g.running = true;
@@ -317,7 +319,8 @@ export { css };
 // Point at a graph (or drag a finger along a large one) to read the value at that moment
 function scrubbable(canvas, g, mode) {
   const at = e => { const r = canvas.getBoundingClientRect(); g.hx = e.clientX - r.left; };
-  const off = () => { g.hx = null; canvas.parentElement?.querySelector(".gtip")?.remove(); };
+  const off = () => { g.hx = null; canvas.parentElement?.querySelector(".gtip")?.remove();
+    const h = g.held; g.held = null; if (h) { g.vals = h.vals; g.times = h.times; if (g.tick !== h.tick) { g.tick = h.tick; g.t0 = performance.now(); g.added = Math.max(1, Math.min(5, h.added || 1)); } } };
   canvas.addEventListener("pointermove", e => { if (mode === "all" || e.pointerType === "mouse") at(e); });
   canvas.addEventListener("pointerdown", e => { if (mode === "all") { at(e); canvas.setPointerCapture?.(e.pointerId); } });
   canvas.addEventListener("pointerleave", e => { if (e.pointerType === "mouse") off(); });

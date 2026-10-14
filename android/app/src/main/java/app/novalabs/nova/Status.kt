@@ -83,9 +83,14 @@ private fun LiveStats.load(j: JSONObject) {
  * through the samples (no overshoot above 100% or below 0), and when a new sample arrives ([tick])
  * the whole line glides left by one step instead of jumping. [window] = how many steps are visible.
  */
-@Composable fun Sparkline(values: List<Float>, color: Color, modifier: Modifier = Modifier, max: Float? = null,
-                          tick: Int = 0, window: Int = 0, added: Int = 1, times: List<Long>? = null, fmt: ((Float) -> String)? = null, scrub: Boolean = false) {
+@Composable fun Sparkline(values0: List<Float>, color: Color, modifier: Modifier = Modifier, max: Float? = null,
+                          tick0: Int = 0, window: Int = 0, added0: Int = 1, times0: List<Long>? = null, fmt: ((Float) -> String)? = null, scrub: Boolean = false) {
     var hx by remember { mutableStateOf<Float?>(null) }          // where the finger is (scrub = true): read the value there
+    // while a finger reads a point the graph holds still; it catches up when the finger lifts
+    class Held(val v: List<Float>, val t: List<Long>?, val tick: Int, val added: Int)
+    var held by remember { mutableStateOf<Held?>(null) }
+    val cur by androidx.compose.runtime.rememberUpdatedState(Held(values0, times0, tick0, added0))
+    val values = held?.v ?: values0; val times = held?.t ?: times0; val tick = held?.tick ?: tick0; val added = held?.added ?: added0
     val measurer = androidx.compose.ui.text.rememberTextMeasurer()
     val tipBg = N.card; val tipInk = N.text; val tipSub = N.sub
     // The glide is timed from the composition that brought the new values (not from an effect that
@@ -98,13 +103,13 @@ private fun LiveStats.load(j: JSONObject) {
     val top by androidx.compose.animation.core.animateFloatAsState(peak, label = "scale")
     val touch = if (!scrub) Modifier else Modifier.pointerInput(Unit) {
         awaitEachGesture {
-            val down = awaitFirstDown(); hx = down.position.x; down.consume()
+            val down = awaitFirstDown(); held = cur; hx = down.position.x; down.consume()
             while (true) {
                 val e = awaitPointerEvent(); val c = e.changes.firstOrNull() ?: break
                 if (!c.pressed) break
                 hx = c.position.x; c.consume()
             }
-            hx = null
+            hx = null; held = null
         }
     }
     Canvas(modifier.clipToBounds().then(touch)) {
@@ -245,6 +250,17 @@ private fun uptime(s: Long) = "${s / 86400}d ${s % 86400 / 3600}h ${s % 3600 / 6
                 MetricCard("Network", now?.let { "↓ ${rate(it.optDouble("rx"))}" } ?: "—", now?.let { "↑ ${rate(it.optDouble("tx"))}" } ?: "",
                     N.green, series("rx").zip(series("tx")) { a, b -> a + b }, null, Modifier.weight(1f), tick, window, ls.added, times, { rate(it.toDouble()) }, live)
             }
+            val hasGpu = now != null && !now.isNull("gpu") && now.has("gpu")
+            Row(horizontalArrangement = Arrangement.spacedBy(Space.gap)) {
+                if (hasGpu) MetricCard("Graphics", "%.0f%%".format(now!!.optDouble("gpu")), "GPU busy",
+                    N.red, series("gpu"), 100f, Modifier.weight(1f), tick, window, ls.added, times, pctF, live)
+                MetricCard("Swap", now?.let { "%.0f%%".format(it.optDouble("swap", 0.0)) } ?: "—", "of swap in use",
+                    Color(0xFFFF9F0A), series("swap"), 100f, Modifier.weight(1f), tick, window, ls.added, times, pctF, live)
+                if (!hasGpu) MetricCard("Disk I/O", now?.let { rate(it.optDouble("io", 0.0)) } ?: "—", "read + write, all drives",
+                    Color(0xFF64D2FF), series("io"), null, Modifier.weight(1f), tick, window, ls.added, times, { rate(it.toDouble()) }, live)
+            }
+            if (hasGpu) MetricCard("Disk I/O", rate(now!!.optDouble("io", 0.0)), "read + write, all drives",
+                Color(0xFF64D2FF), series("io"), null, Modifier.fillMaxWidth(), tick, window, ls.added, times, { rate(it.toDouble()) }, live)
             if (pts.size < 3 || (!hourView && !live)) Text(if (hourView) "Graphs fill in over the next few minutes." else "Connecting to the live feed…", color = N.sub, fontSize = 13.sp, modifier = Modifier.padding(start = 8.dp))
         }
         // Storage

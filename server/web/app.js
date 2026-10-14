@@ -399,3 +399,12 @@ addEventListener("keydown", e => {
   if (/INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName) || $("#sheet:not([hidden])")) return;
   if (e.key === "/" || ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k")) { e.preventDefault(); if (parse()[0] !== "search") go("search"); }
 });
+
+// sideways rows (apps in Menu, chips…) fade at the edge that has more to scroll to, instead of cutting off hard
+{
+  const SEL = ".mapps, .srvstrip, .fdrives, .hfade", edges = sc => { const max = sc.scrollWidth - sc.clientWidth; sc.classList.toggle("fs", sc.scrollLeft > 2); sc.classList.toggle("fe", sc.scrollLeft < max - 2); };
+  document.addEventListener("scroll", e => { if (e.target.matches?.(SEL)) edges(e.target); }, true);
+  let q = 0; const all = () => { q = 0; document.querySelectorAll(SEL).forEach(edges); };
+  new MutationObserver(() => { if (!q) q = requestAnimationFrame(all); }).observe(document.body, { childList: true, subtree: true });
+  addEventListener("resize", all);
+}

@@ -30,6 +30,12 @@
 ]
 },
 {
+"en": "+ kind :",
+"in": [
+"web"
+]
+},
+{
 "en": "+ sizeText(total) else",
 "in": [
 "app"
@@ -348,7 +354,7 @@
 ]
 },
 {
-"en": ".liquid .glass, .liquid .frost, .liquid #sheet .box",
+"en": ".liquid .glass, .liquid .frost, .liquid #sheet .box, .liquid .alertcard, .liquid .sugg",
 "in": [
 "web"
 ]
@@ -357,6 +363,12 @@
 "en": ".MainActivity",
 "in": [
 "app"
+]
+},
+{
+"en": ".nav, #toast",
+"in": [
+"web"
 ]
 },
 {
@@ -730,6 +742,13 @@
 {
 "en": "A shell inside any running container — open Containers, pick one, tap Shell (approved on your phone)",
 "in": [
+"web"
+]
+},
+{
+"en": "A soft, tinted base with frosted menus and crisp, small corners",
+"in": [
+"app",
 "web"
 ]
 },
@@ -1176,6 +1195,12 @@
 "en": "Alert",
 "in": [
 "wear"
+]
+},
+{
+"en": "alert form",
+"in": [
+"web"
 ]
 },
 {
@@ -1663,13 +1688,6 @@
 {
 "en": "Appears as /mnt/{0}",
 "in": [
-"web"
-]
-},
-{
-"en": "Apple's look: clear glass that bends the light behind it at its edges",
-"in": [
-"app",
 "web"
 ]
 },
@@ -2335,12 +2353,6 @@
 ]
 },
 {
-"en": "box glass",
-"in": [
-"web"
-]
-},
-{
 "en": "Brave",
 "in": [
 "app",
@@ -2919,6 +2931,13 @@
 },
 {
 "en": "Clear",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "Clear glass that bends the light behind it at its edges",
 "in": [
 "app",
 "web"
@@ -3715,6 +3734,12 @@
 },
 {
 "en": "Ctrl-Z",
+"in": [
+"web"
+]
+},
+{
+"en": "cubic-bezier(.34,1.36,.64,1)",
 "in": [
 "web"
 ]
@@ -5242,7 +5267,7 @@
 ]
 },
 {
-"en": "Fluent",
+"en": "Flat and tidy: a thin frame, gentle corners, the accent as the focus color",
 "in": [
 "app",
 "web"
@@ -5599,7 +5624,8 @@
 {
 "en": "Glass",
 "in": [
-"app"
+"app",
+"web"
 ]
 },
 {
@@ -5748,18 +5774,6 @@
 "en": "Google",
 "in": [
 "app",
-"web"
-]
-},
-{
-"en": "Google's Material 3 Expressive: colors from your wallpaper, bolder shapes, springy motion",
-"in": [
-"app"
-]
-},
-{
-"en": "Google's Material 3 Expressive: tonal colors from the accent, bolder shapes, springy motion",
-"in": [
 "web"
 ]
 },
@@ -7148,13 +7162,6 @@
 ]
 },
 {
-"en": "KDE Plasma: flat and tidy, a thin frame, the accent as the focus color",
-"in": [
-"app",
-"web"
-]
-},
-{
 "en": "Keep",
 "in": [
 "app",
@@ -7542,13 +7549,6 @@
 {
 "en": "Linux",
 "in": [
-"web"
-]
-},
-{
-"en": "Liquid Glass",
-"in": [
-"app",
 "web"
 ]
 },
@@ -8030,6 +8030,18 @@
 ]
 },
 {
+"en": "Material 3 Expressive: colors from your wallpaper, bolder shapes, springy motion",
+"in": [
+"app"
+]
+},
+{
+"en": "Material 3 Expressive: tonal colors from the accent, bolder shapes, springy motion",
+"in": [
+"web"
+]
+},
+{
 "en": "Material You",
 "in": [
 "app",
@@ -8138,6 +8150,13 @@
 },
 {
 "en": "MHz",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "Mica",
 "in": [
 "app",
 "web"
@@ -13332,15 +13351,15 @@
 ]
 },
 {
-"en": "shut down",
+"en": "Shut down",
 "in": [
+"app",
 "web"
 ]
 },
 {
-"en": "Shut down",
+"en": "shut down",
 "in": [
-"app",
 "web"
 ]
 },
@@ -14258,14 +14277,14 @@
 ]
 },
 {
-"en": "system drive",
+"en": "System drive",
 "in": [
 "app",
 "web"
 ]
 },
 {
-"en": "System drive",
+"en": "system drive",
 "in": [
 "app",
 "web"
@@ -15096,7 +15115,7 @@
 ]
 },
 {
-"en": "This browser shows Liquid Glass frosted, without the bending at the edges — that part needs Chrome, Edge or another Chromium browser.",
+"en": "This browser shows Glass frosted, without the bending at the edges — that part needs a Chromium-based browser.",
 "in": [
 "web"
 ]
@@ -16822,18 +16841,6 @@
 ]
 },
 {
-"en": "Windows 11: Mica and acrylic, small corners",
-"in": [
-"app"
-]
-},
-{
-"en": "Windows 11: Mica and acrylic, small corners, Segoe UI",
-"in": [
-"web"
-]
-},
-{
 "en": "Wipes the RAID data so they can be reused",
 "in": [
 "app"
@@ -17128,14 +17135,14 @@
 ]
 },
 {
-"en": "your backup script",
+"en": "Your backup script",
 "in": [
 "app",
 "web"
 ]
 },
 {
-"en": "Your backup script",
+"en": "your backup script",
 "in": [
 "app",
 "web"

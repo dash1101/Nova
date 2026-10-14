@@ -386,6 +386,32 @@ def _disks():
     except (OSError, ValueError): pass
     return out
 
+_GPU_FILES = None
+_NV = {"v": None}
+def _nv_loop():
+    """NVIDIA has no cheap file to read: ask nvidia-smi every few seconds in the background."""
+    while True:
+        try:
+            r = subprocess.run(["nvidia-smi", "--query-gpu=utilization.gpu", "--format=csv,noheader,nounits"], capture_output=True, text=True, timeout=5)
+            vals = [float(x) for x in r.stdout.split() if x.replace(".", "", 1).isdigit()]
+            _NV["v"] = round(sum(vals) / len(vals), 1) if vals else None
+        except Exception: _NV["v"] = None
+        time.sleep(3)
+def _gpu():
+    """Graphics busy %, or None when the server has no GPU Nova can read (AMD and Intel Arc via sysfs, NVIDIA via nvidia-smi)."""
+    global _GPU_FILES
+    if _GPU_FILES is None:
+        import glob, shutil
+        _GPU_FILES = sorted(glob.glob("/sys/class/drm/card[0-9]*/device/gpu_busy_percent"))
+        if not _GPU_FILES and shutil.which("nvidia-smi"): threading.Thread(target=_nv_loop, daemon=True).start()
+    if _GPU_FILES:
+        vals = []
+        for f in _GPU_FILES:
+            try: vals.append(int(open(f).read()))
+            except (OSError, ValueError): pass
+        return round(sum(vals) / len(vals), 1) if vals else None
+    return _NV["v"]
+
 def stats_sampler():
     iface = _default_iface()
     prev_cpu, prev_net, prev_t = _cpu_times(), _net(iface), time.time()
@@ -411,12 +437,15 @@ def stats_sampler():
             disk = _disks(); dt = max(0.2, t - prev_t)
             now["disks"] = {d: [round(min(1.0, max(0.0, (v[1] - prev_disk[d][1]) / (dt * 1000))), 2), round((v[0] - prev_disk[d][0]) * 512 / dt)]
                             for d, v in disk.items() if d in prev_disk}
+            now["gpu"] = _gpu()
+            now["io"] = sum(v[1] for v in now["disks"].values())            # bytes/s read + written, every drive
             STATS["now"] = now
-            point = {k: now[k] for k in ("t", "cpu", "mem", "temp", "rx", "tx")}
+            point = {k: now[k] for k in ("t", "cpu", "mem", "temp", "rx", "tx", "swap", "io", "gpu")}
             STATS["recent"] = (STATS["recent"] + [point])[-RECENT_N:]
             if n % HISTORY_EVERY == 1:                    # one averaged point per 15 s for the hour view
                 last = STATS["recent"][-HISTORY_EVERY:]
-                avg = {k: round(sum((p[k] or 0) for p in last) / len(last), 1) for k in ("cpu", "mem", "rx", "tx")}
+                avg = {k: round(sum((p[k] or 0) for p in last) / len(last), 1) for k in ("cpu", "mem", "rx", "tx", "swap", "io")}
+                avg["gpu"] = None if point["gpu"] is None else round(sum((p.get("gpu") or 0) for p in last) / len(last), 1)
                 avg["temp"] = point["temp"]; avg["t"] = int(t)
                 STATS["history"] = (STATS["history"] + [avg])[-HISTORY_N:]
             prev_cpu, prev_net, prev_t, prev_disk = cpu, net, t, disk

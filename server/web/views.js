@@ -268,7 +268,9 @@ export async function status(ctx) {
   const gcard = (label, id, v, sub) => `<div class="card glass" data-act="big:${id}" title="Click to enlarge"><div class="lbl">${esc(label)}</div><div class="val" id="${id}v">${esc(v)}</div><div class="sub" id="${id}s">${esc(sub)}</div><canvas id="${id}"></canvas></div>`;
   let big = null;                                    // the graph shown large (tap a card), drawn with the others
   const GRAPH = { c1: ["CPU", "--blue", x => +(x.cpu || 0), v => Math.round(v) + "%", 100], c2: ["Memory", "#bf5af2", x => +(x.mem || 0), v => Math.round(v) + "%", 100],
-                  c3: ["CPU temperature", "--amber", x => +(x.temp || 0), v => Math.round(v) + "°C", null], c4: ["Network", "--green", x => (x.rx || 0) + (x.tx || 0), v => rate(v), null] };
+                  c3: ["CPU temperature", "--amber", x => +(x.temp || 0), v => Math.round(v) + "°C", null], c4: ["Network", "--green", x => (x.rx || 0) + (x.tx || 0), v => rate(v), null],
+                  c5: ["Graphics", "--red", x => +(x.gpu || 0), v => Math.round(v) + "%", 100], c6: ["Swap", "#ff9f0a", x => +(x.swap || 0), v => Math.round(v) + "%", 100],
+                  c7: ["Disk I/O", "#64d2ff", x => +(x.io || 0), v => rate(v), null] };
   const draw = () => {
     const st = S.overview?.status || {}, m = st.metrics || {}, n = L.now || liveNow(), lvl = st.level || "ok";
     const active = (st.active || []).filter(a => a.level !== "ok");
@@ -288,6 +290,9 @@ export async function status(ctx) {
         ${gcard("Memory", "c2", n ? Math.round(n.mem) + "%" : "—", n ? `${n.mem_used_gb} of ${n.mem_total_gb} GB` : "")}
         ${gcard("CPU temperature", "c3", n?.temp ? Math.round(n.temp) + "°C" : m.cpu_temp || "—", n?.nvme_temp ? `NVMe ${Math.round(n.nvme_temp)}°C` : "")}
         ${gcard("Network", "c4", n ? "↓ " + rate(n.rx) : "—", n ? "↑ " + rate(n.tx) : "")}
+        ${n?.gpu != null ? gcard("Graphics", "c5", Math.round(n.gpu) + "%", "GPU busy") : ""}
+        ${gcard("Swap", "c6", n ? Math.round(n.swap || 0) + "%" : "—", "of swap in use")}
+        ${gcard("Disk I/O", "c7", n ? rate(n.io || 0) : "—", "read + write, all drives")}
       </div>
       <p class="note" id="gnote">${pts().length < 3 ? (hour ? "Graphs fill in over the next few minutes." : "Connecting to the live feed…") : ""}</p>
       ${sec("Storage")}${group(storage.map(x => { const p = x.pct / 100; return `<div class="row" style="display:block"><div style="display:flex"><span style="flex:1;font-size:16px">${esc(x.name)}</span><span class="muted" style="font-size:14px">${Math.round(x.pct)}% · ${esc(x.free)}</span></div><div style="margin-top:8px">${bar(p, usageColor(p))}</div></div>`; }).join("")
@@ -311,7 +316,7 @@ export async function status(ctx) {
     const set = (id, v) => { const e = $("#" + id); if (e) e.textContent = v; };
     set("c1v", Math.round(n.cpu) + "%"); set("c1s", `load ${n.load} · ${n.cores} cores`);
     set("c2v", Math.round(n.mem) + "%"); set("c2s", `${n.mem_used_gb} of ${n.mem_total_gb} GB`);
-    if (n.temp) set("c3v", Math.round(n.temp) + "°C"); set("c4v", "↓ " + rate(n.rx)); set("c4s", "↑ " + rate(n.tx));
+    if (n.temp) set("c3v", Math.round(n.temp) + "°C"); set("c4v", "↓ " + rate(n.rx)); set("c4s", "↑ " + rate(n.tx)); if (n.gpu != null) set("c5v", Math.round(n.gpu) + "%"); set("c6v", Math.round(n.swap || 0) + "%"); set("c7v", rate(n.io || 0));
   };
   const keyOf = a => { a.pop(); return a.join(":"); };          // keys contain ":" — rejoin the act arguments
   ctx.handlers({ alert: (...a) => alertMenu(keyOf(a), draw), ignore: (...a) => dismissAlert(keyOf(a), draw),
