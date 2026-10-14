@@ -214,6 +214,7 @@ data class DialogButton(val label: String, val color: Color? = null, val enabled
     val me = remember { Any().also { if (DialogStack.owners[key] == null) DialogStack.owners[key] = it } }
     DisposableEffect(key) { onDispose { if (DialogStack.owners[key] === me) DialogStack.owners.remove(key) } }
     if (DialogStack.owners[key] !== me) { if (DialogStack.owners[key] == null) SideEffect { DialogStack.owners.putIfAbsent(key, me) }; return }
+    if (N.preset.isNotEmpty()) { PresetDialog(onDismiss, title, text, buttons, content); return }
     if (N.material) {                       // M3 dialog: centered, 28dp corners, text buttons on the right
         Dialog(onDismiss, DialogProperties(usePlatformDefaultWidth = false)) {
             Column(Modifier.padding(horizontal = 24.dp).widthIn(max = 560.dp).fillMaxWidth().clip(RoundedCornerShape(28.dp))
@@ -272,6 +273,88 @@ data class DialogButton(val label: String, val color: Color? = null, val enabled
     }
 }
 
+/** A button's role in a dialog: red = destructive, any other color = the main action, none = cancel. */
+private fun DialogButton.role(t: NovaColors) = when { color == null -> "cancel"; color == t.red -> "destructive"; else -> "primary" }
+
+/**
+ * Dialogs in the Glass, Mica and Breeze styles.
+ *  Glass:  centered and round, title and message centered, capsule buttons side by side (stacked when 3+), on real glass.
+ *  Mica:   a content dialog — title and text on the left, the buttons on their own band at the bottom, the main one filled.
+ *  Breeze: a framed window — bold title on the left, buttons right-aligned, the main one outlined in the accent.
+ */
+@Composable private fun PresetDialog(onDismiss: () -> Unit, title: String?, text: String?, buttons: List<DialogButton>, content: (@Composable ColumnScope.() -> Unit)?) {
+    val t = N
+    Dialog(onDismiss, DialogProperties(usePlatformDefaultWidth = false)) {
+        when (t.preset) {
+            "liquid" -> {
+                val k = AppPrefs.round.coerceIn(25, 150) / 100f; val shape = RoundedCornerShape(34.dp * k)
+                Column(Modifier.padding(horizontal = 28.dp).widthIn(max = if (content != null) 440.dp else 320.dp).fillMaxWidth()
+                    .liquidCard(shape, 34.dp * k, 18.dp).padding(start = 16.dp, end = 16.dp, top = 22.dp, bottom = 16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally) {
+                    DialogToasts()
+                    if (title != null) Text(title, color = t.text, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, textAlign = androidx.compose.ui.text.style.TextAlign.Center, modifier = Modifier.padding(horizontal = 8.dp))
+                    if (text != null) Text(text, color = t.text.copy(alpha = .82f), fontSize = 14.sp, lineHeight = 19.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                        modifier = Modifier.padding(start = 8.dp, end = 8.dp, top = 6.dp))
+                    if (content != null) Column(Modifier.fillMaxWidth().padding(top = 10.dp)) { content() }
+                    val fill = if (t.dark) Color(0x29787880) else Color(0x1A787880)
+                    @Composable fun Capsule(b: DialogButton, m: Modifier) {
+                        val r = b.role(t)
+                        Box(m.height(46.dp).clip(RoundedCornerShape(50)).background(if (r == "primary") t.blue else fill).clickable(enabled = b.enabled, onClick = b.onClick)
+                            .padding(horizontal = 12.dp), contentAlignment = Alignment.Center) {
+                            Text(b.label, color = if (!b.enabled) t.sub else when (r) { "primary" -> Color.White; "destructive" -> t.red; else -> t.text },
+                                fontSize = 16.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                    }
+                    if (buttons.size >= 3) Column(Modifier.fillMaxWidth().padding(top = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) { buttons.forEach { Capsule(it, Modifier.fillMaxWidth()) } }
+                    else if (buttons.isNotEmpty()) Row(Modifier.fillMaxWidth().padding(top = 16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) { buttons.forEach { Capsule(it, Modifier.weight(1f)) } }
+                }
+            }
+            "fluent" -> {
+                val shape = RoundedCornerShape(8.dp)
+                Column(Modifier.padding(horizontal = 24.dp).widthIn(max = 480.dp).fillMaxWidth().shadow(24.dp, shape).clip(shape).background(t.card)
+                    .border(1.dp, if (t.dark) Color(0x1FFFFFFF) else Color(0x14000000), shape)) {
+                    Column(Modifier.padding(start = 24.dp, end = 24.dp, top = 22.dp, bottom = 20.dp)) {
+                        DialogToasts()
+                        if (title != null) Text(title, color = t.text, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
+                        if (text != null) Text(text, color = t.text, fontSize = 14.sp, lineHeight = 20.sp, modifier = Modifier.padding(top = if (title != null) 12.dp else 0.dp))
+                    }
+                    if (content != null) Column(Modifier.padding(bottom = 12.dp)) { content() }
+                    if (buttons.isNotEmpty()) Row(Modifier.fillMaxWidth().background(if (t.dark) Color(0xFF202020) else Color(0xFFF3F3F3)).padding(24.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        buttons.forEach { b -> val r = b.role(t); val bs = RoundedCornerShape(4.dp)
+                            Box(Modifier.weight(1f).height(32.dp).clip(bs).background(if (r == "primary") t.blue else if (t.dark) Color(0x0FFFFFFF) else Color(0xB3FFFFFF))
+                                .border(1.dp, if (r == "primary") Color.Transparent else if (t.dark) Color(0x17FFFFFF) else Color(0x29000000), bs)
+                                .clickable(enabled = b.enabled, onClick = b.onClick), contentAlignment = Alignment.Center) {
+                                Text(b.label, color = if (!b.enabled) t.sub else if (r == "primary") (if (t.dark) Color.Black else Color.White) else if (r == "destructive") t.red else t.text,
+                                    fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                        }
+                    }
+                }
+            }
+            else -> {   // breeze
+                val shape = RoundedCornerShape(6.dp)
+                Column(Modifier.padding(horizontal = 24.dp).widthIn(max = 480.dp).fillMaxWidth().shadow(16.dp, shape).clip(shape).background(t.card)
+                    .border(1.dp, if (t.dark) Color(0x1AFFFFFF) else Color(0x24000000), shape).padding(start = 18.dp, end = 18.dp, top = 16.dp, bottom = 14.dp)) {
+                    DialogToasts()
+                    if (title != null) Text(title, color = t.text, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    if (text != null) Text(text, color = t.text, fontSize = 14.sp, lineHeight = 20.sp, modifier = Modifier.padding(top = if (title != null) 8.dp else 0.dp))
+                    if (content != null) Column(Modifier.padding(top = 8.dp)) { content() }
+                    if (buttons.isNotEmpty()) Row(Modifier.fillMaxWidth().padding(top = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)) {
+                        buttons.forEach { b -> val r = b.role(t); val bs = RoundedCornerShape(4.dp)
+                            Box(Modifier.heightIn(min = 34.dp).clip(bs).background(if (r == "primary") t.navSel else t.pill)
+                                .border(1.dp, if (r == "primary") t.blue else if (t.dark) Color(0x24FFFFFF) else Color(0x33000000), bs)
+                                .clickable(enabled = b.enabled, onClick = b.onClick).padding(horizontal = 14.dp, vertical = 7.dp), contentAlignment = Alignment.Center) {
+                                Text(b.label, color = if (!b.enabled) t.sub else if (r == "destructive") t.red else t.text, fontSize = 14.sp, maxLines = 1)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 /** Radio list inside a dialog (choose one). */
 /** A row in a dialog: a choice (radio) — or, with [action], something to do (an arrow, like a menu). */
 @Composable fun DialogChoice(label: String, sub: String? = null, selected: Boolean, action: Boolean = false, onClick: () -> Unit) {
@@ -303,6 +386,35 @@ data class DialogButton(val label: String, val color: Color? = null, val enabled
         androidx.compose.material3.Switch(checked, onChange, enabled = enabled, thumbContent = if (checked) { { Icon(Icons.Rounded.Check, null, Modifier.size(16.dp)) } } else null)
         return
     }
+    when (N.preset) {
+        "liquid" -> {     // a capsule: green when on, a round white knob with a soft shadow
+            val x by animateDpAsState(if (checked) 20.dp else 0.dp, spring(0.7f, 500f), label = "sw")
+            val track by animateColorAsState(if (checked) (if (N.dark) Color(0xFF30D158) else Color(0xFF34C759)) else (if (N.dark) Color(0x52787880) else Color(0x29787880)), label = "swc")
+            Box(Modifier.size(51.dp, 31.dp).graphicsLayer { alpha = if (enabled) 1f else 0.4f }.clip(CircleShape).background(track)
+                .toggleable(checked, enabled = enabled, role = Role.Switch, onValueChange = onChange).padding(2.dp)) {
+                Box(Modifier.offset(x = x).size(27.dp).shadow(3.dp, CircleShape).clip(CircleShape).background(Color.White))
+            }
+            return
+        }
+        "fluent" -> {     // an outlined pill when off, filled with the accent when on; the knob grows a little when on
+            val x by animateDpAsState(if (checked) 20.dp else 0.dp, spring(0.8f, 600f), label = "sw")
+            Box(Modifier.size(40.dp, 20.dp).graphicsLayer { alpha = if (enabled) 1f else 0.4f }.clip(CircleShape)
+                .background(if (checked) N.blue else Color.Transparent).border(1.dp, if (checked) N.blue else N.sub, CircleShape)
+                .toggleable(checked, enabled = enabled, role = Role.Switch, onValueChange = onChange).padding(4.dp), contentAlignment = Alignment.CenterStart) {
+                Box(Modifier.offset(x = x).size(12.dp).clip(CircleShape).background(if (checked) (if (N.dark) Color.Black else Color.White) else N.sub))
+            }
+            return
+        }
+        "breeze" -> {     // a small framed track; the knob carries a frame too
+            val x by animateDpAsState(if (checked) 18.dp else 0.dp, spring(0.85f, 600f), label = "sw")
+            Box(Modifier.size(36.dp, 18.dp).graphicsLayer { alpha = if (enabled) 1f else 0.4f }.clip(CircleShape)
+                .background(if (checked) N.blue else N.pill).border(1.dp, if (checked) N.blue else (if (N.dark) Color(0x33FFFFFF) else Color(0x33000000)), CircleShape)
+                .toggleable(checked, enabled = enabled, role = Role.Switch, onValueChange = onChange).padding(1.dp)) {
+                Box(Modifier.offset(x = x).size(16.dp).clip(CircleShape).background(Color.White).border(1.dp, Color(0x33000000), CircleShape))
+            }
+            return
+        }
+    }
     val x by animateDpAsState(if (checked) 22.dp else 0.dp, spring(stiffness = Spring.StiffnessMediumLow), label = "sw")
     val track by animateColorAsState(if (checked) N.blue else if (N.dark) Color(0xFF5A5A60) else Color(0xFFB9B9BF), label = "swc")
     Box(Modifier.size(50.dp, 28.dp).graphicsLayer { alpha = if (enabled) 1f else 0.4f }.clip(CircleShape).background(track)
@@ -313,6 +425,15 @@ data class DialogButton(val label: String, val color: Color? = null, val enabled
 
 @Composable fun OneRadio(selected: Boolean, enabled: Boolean = true) {
     if (N.material) { androidx.compose.material3.RadioButton(selected, null, enabled = enabled); return }
+    if (N.preset == "liquid") {       // Glass: a checkmark on the chosen one, nothing on the rest
+        Box(Modifier.size(24.dp), contentAlignment = Alignment.Center) { if (selected) Icon(Icons.Rounded.Check, null, tint = if (enabled) N.blue else N.sub, modifier = Modifier.size(22.dp)) }
+        return
+    }
+    if (N.preset == "fluent") {       // Mica: a ring that fills with the accent, a white dot inside
+        Box(Modifier.size(20.dp).clip(CircleShape).background(if (selected) N.blue else Color.Transparent).border(1.dp, if (selected) N.blue else N.sub, CircleShape), contentAlignment = Alignment.Center) {
+            if (selected) Box(Modifier.size(8.dp).clip(CircleShape).background(if (N.dark) Color.Black else Color.White)) }
+        return
+    }
     val c = if (!enabled) N.sub.copy(alpha = 0.5f) else if (selected) N.blue else N.sub
     Box(Modifier.size(24.dp).border(2.dp, c, CircleShape), contentAlignment = Alignment.Center) {
         if (selected) Box(Modifier.size(12.dp).clip(CircleShape).background(c))

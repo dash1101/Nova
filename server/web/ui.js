@@ -124,17 +124,20 @@ export function toast(m) {
   const t = $("#toast"); t.textContent = m; t.className = "frost on"; clearTimeout(toastT);
   toastT = setTimeout(() => t.className = "frost", 2800);
 }
-export function sheet(html, onClose) {
-  const s = $("#sheet"); s.innerHTML = `<div class="box glass">${html}</div>`; s.hidden = false;
+export function sheet(html, onClose, kind = "") {
+  // kind: "alert" (a question with buttons) or "menu" (pick one) — the Glass, Mica and Breeze styles lay each out their own way
+  const s = $("#sheet"); s.innerHTML = `<div class="box glass${kind ? " " + kind : ""}">${html}</div>`; s.hidden = false; s.dataset.kind = kind;
   s.onclick = e => { if (e.target === s) { closeSheet(); onClose?.(); } };
   return $(".box", s);
 }
 export function closeSheet() { const s = $("#sheet"); s.hidden = true; s.innerHTML = ""; }
-const acts = btns => `<div class="acts">${btns.map((b, i) => `${i ? "<i></i>" : ""}<button data-b="${i}" style="${b.color ? `color:${b.color}` : ""}" ${b.dis ? "disabled" : ""}>${esc(b.label)}</button>`).join("")}</div>`;
+// each button's role (cancel / primary / destructive) lets a style shape them: filled, tinted or plain
+const role = b => /red/.test(b.color || "") ? "destructive" : b.color ? "primary" : "cancel";
+const acts = btns => `<div class="acts" data-n="${btns.length}">${btns.map((b, i) => `${i ? "<i></i>" : ""}<button data-b="${i}" data-role="${role(b)}" style="${b.color ? `color:${b.color}` : ""}" ${b.dis ? "disabled" : ""}>${esc(b.label)}</button>`).join("")}</div>`;
 /** One UI dialog. buttons: [{label, color, value}] — resolves to the clicked value (or null). */
 export function dialog(title, text, buttons, body = "") {
   return new Promise(res => {
-    const box = sheet(`${title ? `<h2>${esc(title)}</h2>` : ""}${text ? `<p>${esc(text)}</p>` : ""}${body ? `<div class="body">${body}</div>` : ""}${acts(buttons)}`, () => res(null));
+    const box = sheet(`${title ? `<h2>${esc(title)}</h2>` : ""}${text ? `<p>${esc(text)}</p>` : ""}${body ? `<div class="body">${body}</div>` : ""}${acts(buttons)}`, () => res(null), body ? "alert form" : "alert");
     $$("[data-b]", box).forEach(b => b.onclick = () => { const v = buttons[+b.dataset.b].value; closeSheet(); res(v === undefined ? true : v); });
   });
 }
@@ -144,7 +147,7 @@ export function choose(title, options, current) {
   return new Promise(res => {
     // a menu (nothing chosen yet) gets arrows; picking one value gets radio buttons
     const menu = current === null || current === undefined;
-    const box = sheet(`<h2>${esc(title)}</h2><div class="body">${options.map(([v, l, s], i) => `<button class="choice" data-c="${i}"><span class="t">${esc(l)}${s ? `<small>${esc(s)}</small>` : ""}</span>${menu ? `<span class="chev-r">${I("back")}</span>` : radio(v === current)}</button>`).join("")}</div>${acts([{ label: "Cancel" }])}`, () => res(null));
+    const box = sheet(`<h2>${esc(title)}</h2><div class="body">${options.map(([v, l, s], i) => `<button class="choice" data-c="${i}"><span class="t">${esc(l)}${s ? `<small>${esc(s)}</small>` : ""}</span>${menu ? `<span class="chev-r">${I("back")}</span>` : radio(v === current)}</button>`).join("")}</div>${acts([{ label: "Cancel" }])}`, () => res(null), "menu");
     $$("[data-c]", box).forEach(b => b.onclick = () => { closeSheet(); res(options[+b.dataset.c][0]); });
     $("[data-b]", box).onclick = () => { closeSheet(); res(null); };
   });
@@ -152,7 +155,7 @@ export function choose(title, options, current) {
 /** Ask for a line of text. */
 export function ask(title, placeholder, value = "", ok = "Save", max = 40) {
   return new Promise(res => {
-    const box = sheet(`<h2>${esc(title)}</h2><div class="pad"><input class="field" id="askv" placeholder="${esc(placeholder)}" value="${esc(value)}" maxlength="${max}"></div>${acts([{ label: "Cancel" }, { label: ok, color: "var(--blue)" }])}`, () => res(null));
+    const box = sheet(`<h2>${esc(title)}</h2><div class="pad"><input class="field" id="askv" placeholder="${esc(placeholder)}" value="${esc(value)}" maxlength="${max}"></div>${acts([{ label: "Cancel" }, { label: ok, color: "var(--blue)" }])}`, () => res(null), "alert form");
     const inp = $("#askv", box); inp.focus(); inp.select();
     const done = v => { closeSheet(); res(v); };
     $$("[data-b]", box).forEach(b => b.onclick = () => done(b.dataset.b === "1" ? inp.value.trim() : null));
@@ -181,11 +184,23 @@ export async function waitApproval(id, get, code) {
 
 // ── wiring helpers ───────────────────────────────────────────────────────────────
 /** Expand rows, segmented controls (with sliding bead), ranges with a live label. */
+const segLast = new Map();          // segmented control → the option it showed last, so a redraw can glide from there
 export function wireCommon(root, { onSeg, onRange, onRangeInput } = {}) {
   $$("[data-expand]", root).forEach(r => r.onclick = () => r.parentElement.classList.toggle("open"));
+  // a screen that redraws after a tap gets a fresh control: start its bead where the old one was, then slide it over
+  $$("[data-seg]", root).forEach(s => {
+    const bead = $(".bead", s), on = $$("[data-segi]", s).findIndex(b => b.classList.contains("on")), was = segLast.get(s.dataset.seg);
+    if (bead && on >= 0 && was != null && was !== on && bead.animate) {
+      const calm = document.documentElement.classList.contains("reduce");
+      bead.animate([{ transform: `translateX(${was * 100}%)` }, { transform: `translateX(${on * 100}%)` }],
+        { duration: calm ? 180 : 420, easing: calm ? "ease-out" : "cubic-bezier(.34,1.36,.64,1)" });
+    }
+    if (on >= 0) segLast.set(s.dataset.seg, on);
+  });
   $$("[data-seg]", root).forEach(s => $$("[data-segi]", s).forEach(b => b.onclick = () => {
     const i = +b.dataset.segi; $(".bead", s).style.transform = `translateX(${i * 100}%)`;
     $$("[data-segi]", s).forEach(x => x.classList.toggle("on", x === b)); onSeg?.(s.dataset.seg, i);
+    setTimeout(() => segLast.set(s.dataset.seg, i), 400);          // after any redraw it caused, which glides from the old option
   }));
   $$("[data-range]", root).forEach(r => {
     const k = r.dataset.range, upd = () => { r.style.setProperty("--p", (r.value - r.min) / (r.max - r.min) * 100 + "%"); onRangeInput?.(k, +r.value); };

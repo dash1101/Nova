@@ -1388,16 +1388,16 @@ export async function serverSettings(ctx) {
 }
 export async function appearance(ctx) {
   const draw = () => {
-    const t = prefs.theme, st = prefs.style, mat = document.documentElement.classList.contains("material"), look = mat ? "Material" : ({ liquid: "Liquid Glass", fluent: "Fluent", breeze: "Breeze" })[st] || "Default";
+    const t = prefs.theme, st = prefs.style, mat = document.documentElement.classList.contains("material"), look = mat ? "Material" : ({ liquid: "Glass", fluent: "Mica", breeze: "Breeze" })[st] || "Default";
     const autoMat = /Android/i.test(navigator.userAgent) && !/SamsungBrowser|SM-[A-Z0-9]|Xiaomi|Redmi|POCO|HUAWEI|HONOR|vivo|OPPO|realme/i.test(navigator.userAgent);
     ctx.show(`${sec("Style")}${group([["auto", "Automatic", `${autoMat ? "Material You" : "Default"} — picked to suit this device`], ["default", "Default", "Nova's own look: frosted glass and a soft glow"],
-        ["material", "Material You", "Google's Material 3 Expressive: tonal colors from the accent, bolder shapes, springy motion"],
-        ["liquid", "Liquid Glass", "Apple's look: clear glass that bends the light behind it at its edges"],
-        ["fluent", "Fluent", "Windows 11: Mica and acrylic, small corners, Segoe UI"],
-        ["breeze", "Breeze", "KDE Plasma: flat and tidy, a thin frame, the accent as the focus color"]].map(([k, l, d]) => row(l, { sub: d, end: radio(st === k), click: "style:" + k })).join(""))}
+        ["material", "Material You", "Material 3 Expressive: tonal colors from the accent, bolder shapes, springy motion"],
+        ["liquid", "Glass", "Clear glass that bends the light behind it at its edges"],
+        ["fluent", "Mica", "A soft, tinted base with frosted menus and crisp, small corners"],
+        ["breeze", "Breeze", "Flat and tidy: a thin frame, gentle corners, the accent as the focus color"]].map(([k, l, d]) => row(l, { sub: d, end: radio(st === k), click: "style:" + k })).join(""))}
       ${["liquid", "fluent", "breeze"].includes(st) ? group((st !== "breeze" ? `<div class="range-row"><div class="h"><span>Glass clarity</span><span id="glassl">${prefs.glass ?? 60}%</span></div><input type="range" min="0" max="100" value="${prefs.glass ?? 60}" data-range="glass" style="--p:${prefs.glass ?? 60}%"></div>` : "")
         + `<div class="range-row"><div class="h"><span>Corner roundness</span><span id="roundl">${prefs.round ?? 100}%</span></div><input type="range" min="25" max="150" value="${prefs.round ?? 100}" data-range="round" style="--p:${((prefs.round ?? 100) - 25) / 125 * 100}%"></div>`) : ""}
-      ${st === "liquid" && !canRefract() ? note("This browser shows Liquid Glass frosted, without the bending at the edges — that part needs Chrome, Edge or another Chromium browser.") : ""}
+      ${st === "liquid" && !canRefract() ? note("This browser shows Glass frosted, without the bending at the edges — that part needs a Chromium-based browser.") : ""}
       ${sec("Theme")}${group([["system", "Same as this device"], ["light", `${look} light`], ["dark", `${look} dark`]].map(([k, l]) => row(l, { end: radio(t === k), click: "theme:" + k })).join(""))}
       ${group(switchRow("Reduce motion", "Simple fades instead of slides and bounces", prefs.reduceMotion, "motion", { blue: false })
         + switchRow("Reduce transparency", "Solid surfaces instead of glass — easier to read, lighter to draw", !!prefs.reduceTransparency, "solid", { blue: false }))}

@@ -46,6 +46,8 @@ svg.i.flip { transform: rotate(180deg); width: 22px; height: 22px; }
 .reduce *:not(.fadeok), .reduce *::before, .reduce *::after { transition-duration: .01ms !important; animation-duration: .01ms !important; }
 /* Reduce motion keeps short fades and color changes (.fadeok) — just no sliding or bouncing. */
 .reduce .fadeok { transition-property: opacity, background-color, box-shadow, color !important; }
+/* selectors still glide with Reduce motion on — short and plain, no bounce */
+.reduce .seg .bead, .reduce .nav .bead { transition: transform .18s ease-out !important; }
 
 /* ── glass ─────────────────────────────────────────────────────────────────────── */
 .glass { background: linear-gradient(var(--card-top), var(--card)); box-shadow: var(--shadow);
@@ -613,44 +615,118 @@ html.material.has-wall .glass { background: color-mix(in srgb, var(--card) 86%, 
 .fdrives .chip.on { background: color-mix(in srgb, var(--blue) 18%, var(--pill)); color: var(--blue); }
 .fdrives .chip small { margin-left: 4px; }
 
-/* ── Liquid Glass (Appearance → Style; Apple's look) ─────────────────────────────────────────
-   Thin, clear glass: what's behind shows through, blurred a little and bent at the rim (glass.js makes a
-   lens for each element's size). Light catches the top edge and fades round the sides — no thick outline.
-   --ga is how clear it is (Appearance → Glass), --rk how round (Corner roundness). */
-html.liquid { --ga: .32; font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", system-ui, sans-serif;
-  --lg-tint: 22, 22, 28; --lg-hi: 255, 255, 255; --lg-blur: 14px; --spring: cubic-bezier(.32,1.45,.5,1); }
-html.liquid.l-light { --lg-tint: 250, 250, 252; --lg-a: calc(var(--ga) + .18); }
-html.liquid .glass, html.liquid .frost, html.liquid #sheet .box {
-  background: linear-gradient(160deg, rgba(var(--lg-hi), .10), rgba(var(--lg-hi), 0) 38%), rgba(var(--lg-tint), var(--lg-a, var(--ga)));
-  backdrop-filter: blur(var(--lg-blur)) saturate(1.9) brightness(1.04); -webkit-backdrop-filter: blur(var(--lg-blur)) saturate(1.9) brightness(1.04);
-  border: 0; background-clip: border-box;
-  box-shadow: inset 0 .6px 0 rgba(var(--lg-hi), .55), inset 0 -.6px 0 rgba(var(--lg-hi), .10),
-              inset .6px 0 0 rgba(var(--lg-hi), .12), inset -.6px 0 0 rgba(var(--lg-hi), .12), 0 10px 32px rgba(0,0,0,.22);
-}
-html.liquid.l-light .glass, html.liquid.l-light .frost, html.liquid.l-light #sheet .box { box-shadow: inset 0 .6px 0 #fff, inset 0 -.6px 0 rgba(255,255,255,.5),
-  inset .6px 0 0 rgba(255,255,255,.5), inset -.6px 0 0 rgba(255,255,255,.5), 0 8px 26px rgba(30,30,60,.14); }
-/* the rim: a hairline that brightens where the light hits (top-left) and almost disappears elsewhere */
-html.liquid .glass::after, html.liquid .frost::after, html.liquid #sheet .box::after { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; border: 0; padding: .7px;
-  background: conic-gradient(from 210deg, rgba(var(--lg-hi), .75), rgba(var(--lg-hi), .06) 22%, rgba(var(--lg-hi), .03) 45%, rgba(var(--lg-hi), .35) 60%, rgba(var(--lg-hi), .05) 78%, rgba(var(--lg-hi), .75));
-  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; }
-html.liquid #sheet .box { position: relative; }
-/* where the browser can bend light: the lens comes first, then a lighter blur (refraction does the rest) */
-html.liquid.refract .glass, html.liquid.refract .frost, html.liquid.refract #sheet .box {
-  backdrop-filter: var(--lens, none) blur(calc(var(--lg-blur) * .6)) saturate(1.9) brightness(1.04); -webkit-backdrop-filter: var(--lens, none) blur(calc(var(--lg-blur) * .6)) saturate(1.9) brightness(1.04); }
-/* small controls are clearer (Apple's "clear" glass); content stays frosted enough to read over anything */
-html.liquid.refract .nav, html.liquid.refract #toast { backdrop-filter: var(--lens, none) blur(2px) saturate(1.9) brightness(1.06); -webkit-backdrop-filter: var(--lens, none) blur(2px) saturate(1.9) brightness(1.06); }
-html.liquid .group { border-radius: calc(28px * var(--rk, 1)); }
-html.liquid .card { border-radius: calc(26px * var(--rk, 1)); }
-html.liquid #sheet .box { border-radius: calc(34px * var(--rk, 1)); }
-html.liquid #sheet { background: rgba(0,0,0,.25); }
-html.liquid .nav { border-radius: calc(40px * var(--rk, 1)); }
-html.liquid .nav .bead { background: rgba(var(--lg-hi), .16); backdrop-filter: none; box-shadow: inset 0 .6px 0 rgba(var(--lg-hi), .6), inset 0 -.6px 0 rgba(var(--lg-hi), .15); }
-html.liquid .row + .row::before { border-top-color: rgba(var(--lg-hi), .08); }
-html.liquid .sw { background: rgba(120,120,128,.36); } html.liquid .sw.on { background: #34c759; }
-html.liquid #toast { border-radius: 22px; }
-html.liquid body::before { opacity: 1.0; filter: saturate(1.6); }
+/* ── Glass (Appearance → Style) ───────────────────────────────────────────────────────────
+   Thin, clear glass over whatever's behind: blurred a little, bent at the rim by a lens made for each
+   element's size (glass.js), and lit at the edge — a soft highlight that's brightest where the light hits
+   and fades round the sides. The parts follow the same language: centered alerts with capsule buttons,
+   inset grouped lists with colored icon tiles, capsule switches and segmented controls, large titles.
+   --ga is how clear it is (Glass clarity), --rk how round (Corner roundness). */
+html.liquid { --ga: .32; --lg-tint: 28, 28, 34; --lg-hi: 255, 255, 255; --lg-blur: 14px; --lg-sep: rgba(255,255,255,.10);
+  --lg-fill: rgba(120,120,128,.24); --lg-fill2: rgba(120,120,128,.16); --lg-text2: rgba(235,235,245,.6); --spring: cubic-bezier(.32,1.45,.5,1);
+  --blue: #0a84ff; --green: #30d158; --red: #ff453a; --amber: #ff9f0a;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", system-ui, sans-serif; letter-spacing: -.01em; }
+html.liquid.l-light { --lg-tint: 252, 252, 254; --lg-a: calc(var(--ga) + .2); --lg-sep: rgba(60,60,67,.14); --lg-fill: rgba(120,120,128,.16);
+  --lg-fill2: rgba(120,120,128,.10); --lg-text2: rgba(60,60,67,.6); --blue: #007aff; --green: #34c759; --red: #ff3b30; --amber: #ff9500; }
+html.liquid .sub, html.liquid .row .t small, html.liquid .note, html.liquid .sec { color: var(--lg-text2); }
 
-/* ── Fluent (Windows 11) ─────────────────────────────────────────────────────────────────────
+/* the material: tint + a soft sheen + a smooth, light-catching rim (blurred a hair so it's never jagged) */
+html.liquid .glass, html.liquid .frost, html.liquid #sheet .box, html.liquid .alertcard, html.liquid .sugg {
+  background: radial-gradient(120% 90% at 20% 0%, rgba(var(--lg-hi), .10), rgba(var(--lg-hi), 0) 60%), rgba(var(--lg-tint), var(--lg-a, var(--ga)));
+  backdrop-filter: blur(var(--lg-blur)) saturate(1.8); -webkit-backdrop-filter: blur(var(--lg-blur)) saturate(1.8);
+  border: 0; background-clip: border-box; position: relative; isolation: isolate;
+  box-shadow: 0 12px 34px rgba(0,0,0,.22), 0 2px 6px rgba(0,0,0,.10), inset 0 0 0 .5px rgba(var(--lg-hi), .10);
+}
+html.liquid.l-light .glass, html.liquid.l-light .frost, html.liquid.l-light #sheet .box, html.liquid.l-light .alertcard, html.liquid.l-light .sugg {
+  box-shadow: 0 10px 30px rgba(30,30,60,.14), 0 1px 4px rgba(30,30,60,.08), inset 0 0 0 .5px rgba(255,255,255,.6); }
+html.liquid .glass::after, html.liquid .frost::after, html.liquid #sheet .box::after, html.liquid .alertcard::after, html.liquid .sugg::after {
+  content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; display: block; padding: 1.2px; z-index: 2;
+  background: linear-gradient(140deg, rgba(var(--lg-hi), .70) 0%, rgba(var(--lg-hi), .16) 18%, rgba(var(--lg-hi), .02) 42%, rgba(var(--lg-hi), .02) 62%, rgba(var(--lg-hi), .22) 86%, rgba(var(--lg-hi), .42) 100%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude;
+  filter: blur(.45px); opacity: .9; }
+html.liquid.l-light .glass::after, html.liquid.l-light .frost::after, html.liquid.l-light #sheet .box::after { opacity: 1; }
+/* where the browser can bend light: the lens first, then a lighter blur (the bending does the rest) */
+/* where the browser can bend light: blur, then the lens (which also draws the rim light, so the CSS rim steps aside) */
+html.liquid.refract .glass, html.liquid.refract .frost, html.liquid.refract #sheet .box, html.liquid.refract .alertcard, html.liquid.refract .sugg {
+  backdrop-filter: saturate(1.8) var(--lens, none); -webkit-backdrop-filter: saturate(1.8) var(--lens, none); }
+html.liquid.refract .nav, html.liquid.refract #toast {
+  backdrop-filter: saturate(1.9) brightness(1.05) var(--lens, none); -webkit-backdrop-filter: saturate(1.9) brightness(1.05) var(--lens, none); }
+html.liquid.refract [style*="--lens"]::after { opacity: 0 !important; }
+
+/* type: large titles, small uppercase section labels */
+html.liquid .ph h1 { font-size: 34px; font-weight: 700; letter-spacing: -.025em; }
+html.liquid .sec { font-size: 13px; font-weight: 500; text-transform: uppercase; letter-spacing: .02em; margin: 22px calc(var(--gutter) + 18px) 7px; }
+html.liquid .note { font-size: 13px; margin-left: calc(var(--gutter) + 18px); margin-right: calc(var(--gutter) + 18px); }
+
+/* inset grouped lists: rounded groups, hairlines that start after the icon, colored icon tiles */
+html.liquid .group { border-radius: calc(26px * var(--rk, 1)); }
+html.liquid .card, html.liquid .stat { border-radius: calc(24px * var(--rk, 1)); }
+html.liquid .row { min-height: 52px; padding-top: 11px; padding-bottom: 11px; }
+html.liquid .row .ri { width: 30px; height: 30px; border-radius: 8px; background: currentColor !important; box-shadow: inset 0 0 0 .5px rgba(255,255,255,.18); }
+html.liquid .row .ri svg { width: 19px; height: 19px; fill: #fff !important; color: #fff !important; }
+html.liquid .row .ri svg * { fill: #fff !important; }
+html.liquid .row + .row::before, html.liquid .swipe + .swipe::before { border-top: .5px solid var(--lg-sep); left: 64px; right: 0; }
+html.liquid .row.click:active { background: rgba(var(--lg-hi), .08); }
+html.liquid.l-light .row.click:active { background: rgba(0,0,0,.05); }
+
+/* switches, segmented controls, sliders, buttons, fields */
+html.liquid .sw { width: 51px; height: 31px; border-radius: 16px; background: var(--lg-fill); box-shadow: none; transition: background .25s; }
+html.liquid .sw::after { top: 2px; left: 2px; width: 27px; height: 27px; background: #fff; box-shadow: 0 3px 8px rgba(0,0,0,.15), 0 3px 1px rgba(0,0,0,.06), 0 0 0 .5px rgba(0,0,0,.04);
+  transition: transform .32s var(--spring); }
+html.liquid .sw.on { background: var(--green); } html.liquid .sw.on::after { transform: translateX(20px); }
+html.liquid .seg { border-radius: 999px; padding: 3px; background: var(--lg-fill) !important; backdrop-filter: none !important; -webkit-backdrop-filter: none !important; box-shadow: none !important; }
+html.liquid .seg::after { display: none !important; }
+html.liquid .seg .bead { border-radius: 999px; background: rgba(255,255,255,.92); box-shadow: 0 3px 8px rgba(0,0,0,.12), 0 3px 1px rgba(0,0,0,.04); top: 3px; bottom: 3px; }
+html.liquid:not(.l-light) .seg .bead { background: rgba(99,99,102,.95); }
+html.liquid .seg button { font-size: 14px; font-weight: 600; min-height: 34px; position: relative; z-index: 1; }
+html.liquid.l-light .seg button.on { color: #000; }
+html.liquid input[type=range] { height: 4px; border-radius: 2px; background-color: var(--lg-fill); }
+html.liquid input[type=range]::-webkit-slider-thumb { width: 28px; height: 28px; box-shadow: 0 3px 8px rgba(0,0,0,.15), 0 3px 1px rgba(0,0,0,.06), 0 0 0 .5px rgba(0,0,0,.04); }
+html.liquid input[type=range]::-moz-range-thumb { width: 28px; height: 28px; box-shadow: 0 3px 8px rgba(0,0,0,.15), 0 0 0 .5px rgba(0,0,0,.04); }
+html.liquid .btn { border-radius: 999px; height: 50px; font-weight: 600; letter-spacing: -.01em; }
+html.liquid .pillbtn { border-radius: 999px; background: var(--lg-fill2); font-weight: 600; padding: 8px 16px; }
+html.liquid .field { border-radius: 12px; background: var(--lg-fill2); padding: 12px 14px; }
+html.liquid .field:focus { box-shadow: 0 0 0 3.5px color-mix(in srgb, var(--blue) 45%, transparent); }
+html.liquid .searchbox { border-radius: 999px; padding: 11px 16px; }
+html.liquid .radio { border: 0 !important; width: 22px; height: 22px; background: none !important; }
+html.liquid .radio.on::after { content: ""; width: 7px; height: 13px; border: solid var(--blue); border-width: 0 2.5px 2.5px 0; transform: translate(0, -2px) rotate(45deg); border-radius: 1px; background: none; display: block; }
+html.liquid .chev-r { opacity: .35; }
+
+/* alerts: centered, round, title and message centered, capsule buttons side by side (stacked when 3+) */
+html.liquid #sheet { background: rgba(0,0,0,.22); align-items: center; padding: 24px; }
+html.liquid.l-light #sheet { background: rgba(0,0,0,.14); }
+html.liquid #sheet .box { border-radius: calc(34px * var(--rk, 1)); animation: lg-pop .32s var(--spring); }
+@keyframes lg-pop { from { opacity: 0; transform: scale(1.12); } to { opacity: 1; transform: none; } }
+html.liquid #sheet .box.alert { width: min(310px, 100%); padding: 22px 16px 16px; text-align: center; }
+html.liquid #sheet .box.alert.form { width: min(440px, 100%); text-align: left; }
+html.liquid #sheet .box.alert h2 { font-size: 17px; font-weight: 600; margin: 0 8px 4px; text-align: center; }
+html.liquid #sheet .box.alert p { font-size: 14px; line-height: 1.38; margin: 4px 8px 6px; color: var(--text); opacity: .85; text-align: center; }
+html.liquid #sheet .box.alert.form .body, html.liquid #sheet .box.alert.form .pad { padding-left: 8px; padding-right: 8px; }
+html.liquid #sheet .acts { gap: 10px; margin-top: 16px; padding: 0 2px; }
+html.liquid #sheet .acts i { display: none; }
+html.liquid #sheet .acts button { border-radius: 999px; min-height: 46px; padding: 12px 14px; font-size: 16px; font-weight: 600; background: var(--lg-fill2); color: var(--text) !important; }
+html.liquid #sheet .acts button[data-role=primary] { background: var(--blue); color: #fff !important; }
+html.liquid #sheet .acts button[data-role=destructive] { color: var(--red) !important; }
+html.liquid #sheet .acts[data-n="3"], html.liquid #sheet .acts[data-n="4"] { flex-direction: column; }
+html.liquid #sheet .acts[data-n="3"] button, html.liquid #sheet .acts[data-n="4"] button { width: 100%; }
+/* menus: a list of choices with a checkmark on the current one, Cancel as its own capsule */
+html.liquid #sheet .box.menu { width: min(340px, 100%); padding: 16px 8px 10px; }
+html.liquid #sheet .box.menu h2 { font-size: 15px; font-weight: 600; text-align: center; opacity: .7; margin: 0 16px 8px; }
+html.liquid #sheet .box.menu .choice { border-radius: 16px; padding: 13px 16px; font-size: 17px; }
+html.liquid #sheet .box.menu .choice + .choice { box-shadow: 0 -.5px 0 var(--lg-sep); }
+html.liquid #sheet .box.menu .choice:hover { background: var(--lg-fill2); }
+html.liquid #sheet .box.menu .acts { padding: 0 8px; }
+
+/* toasts and the alert banner: capsules of clear glass */
+html.liquid #toast { border-radius: 999px; padding: 12px 22px; font-size: 15px; font-weight: 600; }
+html.liquid .alertcard { border-radius: calc(26px * var(--rk, 1)); }
+html.liquid .sugg { border-radius: 22px; }
+html.liquid .nav { border-radius: 999px; }
+html.liquid .nav .bead { border-radius: 999px; background: rgba(var(--lg-hi), .14); backdrop-filter: none; box-shadow: inset 0 0 0 .5px rgba(var(--lg-hi), .18); }
+html.liquid.l-light .nav .bead { background: rgba(0,0,0,.07); box-shadow: none; }
+html.liquid .nav button.on, html.liquid .nav button[aria-current] { color: var(--blue); }
+html.liquid body::before { filter: saturate(1.6); }
+
+/* ── Mica (Appearance → Style; stored as "fluent") ──────────────────────────────────────
    Mica underneath (the backdrop tinted by the accent), layered cards with a 1 px stroke, acrylic menus,
    small corners, Segoe UI Variable. */
 html.fluent { font-family: "Segoe UI Variable Text", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif; --ga: .70;
@@ -684,7 +760,7 @@ html.fluent .pillbtn { border-radius: 4px; }
 html.fluent #toast { border-radius: 8px; }
 html.fluent .ph h1 { font-weight: 600; }
 
-/* ── Breeze (KDE Plasma) ─────────────────────────────────────────────────────────────────────
+/* ── Breeze ──────────────────────────────────────────────────────────────────────────────
    Plasma's own: flat surfaces, a thin frame, gentle corners, the accent as the focus color. */
 html.breeze { font-family: "Noto Sans", "Inter", "Cantarell", system-ui, sans-serif;
   --bg: #141618; --card: #202326; --card-top: #202326; --pill: #292c30; --nav: #292c30; --navSel: color-mix(in srgb, var(--blue) 28%, #292c30);
@@ -708,6 +784,84 @@ html.breeze .sw::after { top: 1px; left: 1px; width: 16px; height: 16px; box-sha
 html.breeze .sw.on { background: var(--blue); } html.breeze .sw.on::after { transform: translateX(18px); }
 html.breeze .ph h1 { font-weight: 400; }
 html.breeze.has-wall .glass { background: color-mix(in srgb, var(--card) 90%, transparent); }
+
+/* Mica, more of it: the base is your wallpaper (or the accent) blurred far out and tinted, the way the real
+   material samples the desktop; menus, toasts and the nav are acrylic — frosted, with a fine grain. */
+html.fluent { --fl-noise: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 .5  0 0 0 0 .5  0 0 0 0 .5  0 0 0 .06 0'/></filter><rect width='120' height='120' filter='url(%23n)'/></svg>"); }
+html.fluent.has-wall #wall { filter: blur(70px) saturate(1.35); } html.fluent.has-wall #wall i { opacity: .78; }
+html.fluent .frost, html.fluent #sheet .box.menu, html.fluent .sugg, html.fluent #toast {
+  background: var(--fl-noise), color-mix(in srgb, var(--frost-solid) calc(var(--ga) * 100%), transparent); background-size: 120px, auto;
+  backdrop-filter: blur(30px) saturate(1.25); -webkit-backdrop-filter: blur(30px) saturate(1.25); border: 1px solid var(--fl-stroke); }
+html.fluent .ph h1 { font-size: 28px; font-weight: 600; letter-spacing: -.01em; }
+html.fluent .btn { border-radius: 4px; height: 36px; font-size: 14px; font-weight: 600; padding: 0 20px; box-shadow: inset 0 -1px 0 rgba(0,0,0,.25); }
+html.fluent .pillbtn { border-radius: 4px; padding: 6px 14px; font-weight: 400; font-size: 14px; color: var(--text); background: color-mix(in srgb, var(--text) 6%, transparent);
+  box-shadow: inset 0 0 0 1px var(--fl-stroke), inset 0 -1px 0 var(--fl-stroke2); }
+html.fluent .pillbtn.red { color: var(--red); }
+html.fluent .field, html.fluent .searchbox { border-radius: 4px; background: color-mix(in srgb, var(--text) 6%, transparent); box-shadow: inset 0 0 0 1px var(--fl-stroke), inset 0 -1px 0 var(--sub); }
+html.fluent .field:focus, html.fluent .searchbox:focus-within { box-shadow: inset 0 0 0 1px var(--fl-stroke), inset 0 -2px 0 var(--blue); }
+html.fluent :focus-visible { outline: 2px solid var(--text); outline-offset: 1px; border-radius: 4px; }
+html.fluent .row .ri { background: none !important; width: 28px; height: 28px; }
+html.fluent .row.click:active { background: color-mix(in srgb, var(--text) 3%, transparent); }
+html.fluent .radio { width: 20px; height: 20px; border-width: 1px; }
+html.fluent .radio.on { border: 5px solid var(--blue); } html.fluent .radio.on::after { display: none; }
+html.fluent input[type=range] { height: 4px; border-radius: 2px; }
+html.fluent input[type=range]::-webkit-slider-thumb { width: 20px; height: 20px; background: var(--card); box-shadow: 0 0 0 1px var(--fl-stroke), inset 0 0 0 5px var(--card), inset 0 0 0 10px var(--blue); }
+/* content dialog: title and text on the left, the buttons on their own band at the bottom, the main one filled */
+html.fluent #sheet { background: rgba(0,0,0,.3); align-items: center; padding: 24px; }
+html.fluent #sheet .box { animation: fl-in .2s cubic-bezier(.1,.9,.2,1); }
+@keyframes fl-in { from { opacity: 0; transform: scale(1.05); } to { opacity: 1; transform: none; } }
+html.fluent #sheet .box.alert { width: min(460px, 100%); padding: 0; overflow: hidden; background: var(--card); }
+html.fluent #sheet .box.alert h2 { margin: 24px 24px 0; font-size: 20px; font-weight: 600; }
+html.fluent #sheet .box.alert p { margin: 12px 24px 0; font-size: 14px; color: var(--text); }
+html.fluent #sheet .box.alert .body, html.fluent #sheet .box.alert .pad { padding: 10px 24px 0; }
+html.fluent #sheet .acts { margin-top: 24px; padding: 24px; gap: 8px; background: color-mix(in srgb, var(--bg) 70%, var(--card)); border-top: 1px solid var(--fl-stroke); }
+html.fluent #sheet .acts i { display: none; }
+html.fluent #sheet .acts button { height: 32px; padding: 0 12px; border-radius: 4px; font-size: 14px; font-weight: 400; color: var(--text) !important;
+  background: color-mix(in srgb, var(--text) 6%, transparent); box-shadow: inset 0 0 0 1px var(--fl-stroke), inset 0 -1px 0 var(--fl-stroke2); }
+html.fluent #sheet .acts button[data-role=primary] { background: var(--blue); color: #fff !important; box-shadow: inset 0 -1px 0 rgba(0,0,0,.3); }
+html.fluent:not(.l-light) #sheet .acts button[data-role=primary] { color: #000 !important; }
+html.fluent #sheet .acts button[data-role=destructive] { color: var(--red) !important; }
+html.fluent #sheet .box.menu { width: min(320px, 100%); padding: 6px 4px; }
+html.fluent #sheet .box.menu h2 { font-size: 14px; font-weight: 600; margin: 8px 12px; }
+html.fluent #sheet .box.menu .choice { border-radius: 4px; padding: 9px 12px; font-size: 14px; position: relative; }
+html.fluent #sheet .box.menu .choice:hover { background: color-mix(in srgb, var(--text) 6%, transparent); }
+html.fluent #sheet .box.menu .acts { background: none; border: 0; padding: 4px 6px; margin-top: 4px; }
+
+/* Breeze, more of it: framed push buttons that light up in the accent on hover and focus, list rows that
+   highlight with an accent frame, a window-like dialog with its buttons at the bottom right, a header rule. */
+html.breeze .ph { border-bottom: 1px solid var(--bz-frame); padding-bottom: 10px; }
+html.breeze .ph h1 { font-size: 24px; font-weight: 400; }
+html.breeze .btn { border-radius: 3px; height: 36px; font-size: 14px; font-weight: 400; padding: 0 16px; background: var(--navSel); color: var(--text); border: 1px solid var(--blue); }
+html.breeze .pillbtn { border-radius: 3px; padding: 6px 12px; font-weight: 400; font-size: 14px; color: var(--text); background: var(--pill); box-shadow: inset 0 0 0 1px var(--bz-frame); }
+html.breeze .pillbtn:hover, html.breeze .btn:hover { box-shadow: inset 0 0 0 1px var(--blue); }
+html.breeze .pillbtn.red { color: var(--red); }
+html.breeze .field, html.breeze .searchbox { border-radius: 3px; background: var(--card); box-shadow: inset 0 0 0 1px var(--bz-frame); }
+html.breeze .field:focus, html.breeze .searchbox:focus-within { box-shadow: inset 0 0 0 1px var(--blue); }
+html.breeze :focus-visible { outline: 1px solid var(--blue); outline-offset: 0; }
+html.breeze .row .ri { background: none !important; width: 28px; height: 28px; }
+html.breeze .row.click:hover { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--blue) 60%, transparent); }
+html.breeze .radio { width: 18px; height: 18px; border-width: 1px; border-color: var(--bz-frame); background: var(--card); }
+html.breeze .radio.on { border-color: var(--blue); } html.breeze .radio.on::after { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--blue); display: block; }
+html.breeze input[type=range] { height: 6px; border-radius: 3px; }
+html.breeze input[type=range]::-webkit-slider-thumb { width: 18px; height: 18px; box-shadow: 0 0 0 1px var(--bz-frame); }
+html.breeze #sheet { background: rgba(0,0,0,.35); align-items: center; padding: 24px; }
+html.breeze #sheet .box { animation: none; }
+html.breeze #sheet .box.alert, html.breeze #sheet .box.menu { background: var(--card); }
+html.breeze #sheet .box.alert { width: min(460px, 100%); padding: 16px 18px 14px; }
+html.breeze #sheet .box.alert h2 { margin: 0 0 8px; font-size: 16px; font-weight: 700; }
+html.breeze #sheet .box.alert p { margin: 0; font-size: 14px; color: var(--text); }
+html.breeze #sheet .box.alert .body, html.breeze #sheet .box.alert .pad { padding: 8px 0 0; }
+html.breeze #sheet .acts { margin-top: 16px; justify-content: flex-end; gap: 8px; }
+html.breeze #sheet .acts i { display: none; }
+html.breeze #sheet .acts button { flex: none; min-width: 84px; height: 32px; padding: 0 14px; border-radius: 3px; font-size: 14px; font-weight: 400; color: var(--text) !important;
+  background: var(--pill); box-shadow: inset 0 0 0 1px var(--bz-frame); }
+html.breeze #sheet .acts button[data-role=primary] { background: var(--navSel); box-shadow: inset 0 0 0 1px var(--blue); }
+html.breeze #sheet .acts button[data-role=destructive] { color: var(--red) !important; }
+html.breeze #sheet .acts button:hover { box-shadow: inset 0 0 0 1px var(--blue); }
+html.breeze #sheet .box.menu { width: min(340px, 100%); padding: 8px 4px; }
+html.breeze #sheet .box.menu h2 { font-size: 14px; font-weight: 700; margin: 4px 12px 6px; }
+html.breeze #sheet .box.menu .choice { border-radius: 3px; padding: 8px 12px; font-size: 14px; }
+html.breeze #sheet .box.menu .choice:hover { background: color-mix(in srgb, var(--blue) 18%, transparent); box-shadow: inset 0 0 0 1px var(--blue); }
 
 /* ── Reduce transparency (Appearance; also the system setting) ────────────────────────────────
    Every glass surface turns solid: no blur, no bending, nothing showing through. */

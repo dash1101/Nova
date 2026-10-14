@@ -17,16 +17,16 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.positionInWindow
+import androidx.compose.ui.layout.positionOnScreen
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 
 /**
- * Appearance → Style: Liquid Glass (Apple), Fluent (Windows 11) and Breeze (KDE Plasma).
+ * Appearance → Style: Glass, Mica and Breeze (stored as liquid / fluent / breeze).
  *
- * Liquid Glass cards are real glass over the background: each card paints its own part of the page
+ * Glass cards are real glass over the background: each card paints its own part of the page
  * background (your wallpaper, or Nova's glow — both drawn in window coordinates, so the part lines up
  * exactly with what's around the card), then bends it with a lens shader — flat in the middle, curving
  * more and more toward the rim, with a touch of color fringing — and blurs it lightly. On Android 13+
@@ -132,7 +132,7 @@ private fun lensEffect(w: Float, h: Float, radius: Float, blurPx: Float): Render
     return (if (blur != null) android.graphics.RenderEffect.createChainEffect(blur, lens) else lens).asComposeRenderEffect()   // bend first, then blur
 }
 
-/** A Liquid Glass card: the background behind it, bent and blurred, a thin tint, and light on the rim. */
+/** A Glass card: the background behind it, bent and blurred, a thin tint, and light on the rim. */
 @Composable fun Modifier.liquidCard(shape: Shape, corner: Dp, elevation: Dp = 6.dp): Modifier {
     val t = N
     val ctx = androidx.compose.ui.platform.LocalContext.current
@@ -143,7 +143,8 @@ private fun lensEffect(w: Float, h: Float, radius: Float, blurPx: Float): Render
     val tint = (if (t.dark) Color(0xFF16161C) else Color(0xFFFAFAFC)).copy(alpha = (if (t.dark) .55f else .72f) - clear * .45f)
     val hi = Color.White
     if (solidGlass() || lite()) return this.shadow(if (lite()) 0.dp else elevation, shape).clip(shape).background(t.card)
-    return this.onGloballyPositioned { origin = it.positionInWindow() }
+    // on-screen position: the same in the app's window and in a dialog's own window, so dialogs line up with the wallpaper too
+    return this.onGloballyPositioned { origin = it.positionOnScreen() }
         .shadow(elevation, shape, ambientColor = Color.Black.copy(alpha = .22f), spotColor = Color.Black.copy(alpha = .28f))
         .clip(shape)
         .drawWithCache {
@@ -165,7 +166,7 @@ private fun lensEffect(w: Float, h: Float, radius: Float, blurPx: Float): Render
         }
 }
 
-/** The rim light alone (for floating Liquid Glass: the nav pill and buttons, blurred by Haze). */
+/** The rim light alone (for floating Glass: the nav pill and buttons, blurred by Haze). */
 fun Modifier.liquidRim(shape: Shape): Modifier = this.drawWithCache {
     val hi = Color.White; val outline = shape.createOutline(size, layoutDirection, this)
     val rim = Brush.sweepGradient(0f to hi.copy(alpha = .08f), .35f to hi.copy(alpha = .35f), .5f to hi.copy(alpha = .08f), .62f to hi.copy(alpha = .8f),
