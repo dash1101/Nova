@@ -215,6 +215,7 @@ object AppLock {
         }
         ColorsAndWallpaper()
         LanguageRow()
+        EffectsCheck()
         SectionLabel("Lighter effects")
         Segmented(listOf("Automatic", "On", "Off"), listOf("auto", "on", "off").indexOf(AppPrefs.lite).let { if (it < 0) 0 else it }) { AppPrefs.set("lite", listOf("auto", "on", "off")[it]) }
         Note("No frosted-glass blur or soft shadows, and calmer animations — much smoother on older phones. Automatic turns it on for this phone ${if (AppPrefs.slowDevice) "(it's on now)" else "only if it's an older or low-memory one (it's off now)"}.", 13.sp, 4.dp)
@@ -325,6 +326,31 @@ private val MY_ACCENTS = listOf("#3e91ff", "#5e5ce6", "#bf5af2", "#ff2d55", "#ff
                 DialogChoice(n, selected = AppPrefs.lang == k) { pick = false
                     if (k != AppPrefs.lang) { AppPrefs.set("lang", k); I18n.load(ctx, k); (ctx as? android.app.Activity)?.recreate() } }
             }
+        }
+    }
+}
+
+
+/** Can this phone draw the chosen look? Live blur needs Android 12; Battery Saver and "remove animations" also change things.
+ *  Shown only when something's missing, with what to do about it. */
+@Composable fun EffectsCheck() {
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val view = androidx.compose.ui.platform.LocalView.current
+    val pm = remember { ctx.getSystemService(android.content.Context.POWER_SERVICE) as android.os.PowerManager }
+    val saver = pm.isPowerSaveMode
+    val glassy = !N.material && N.preset != "breeze" && !AppPrefs.solid
+    val issues = buildList {
+        if (!view.isHardwareAccelerated) add("This screen isn't drawn by the graphics chip, so effects are turned down.")
+        if (glassy && android.os.Build.VERSION.SDK_INT < 31) add("Live blur needs Android 12 or newer — on this phone glass shows as a tinted, see-through surface. Turn on Reduce transparency for solid ones.")
+        if (saver) add("Battery Saver is on, so Android may slow animations and the live graphs. Turn it off in Settings → Battery for the full effects.")
+    }
+    if (issues.isEmpty()) return
+    Group {
+        Column(Modifier.padding(horizontal = 18.dp, vertical = 14.dp)) {
+            Text("Some effects can't run fully here", color = N.amber, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+            issues.forEach { Text(it, color = N.sub, fontSize = 13.sp, modifier = Modifier.padding(top = 6.dp)) }
+            if (saver) Text("Open battery settings", color = N.blue, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(top = 10.dp).clickable { runCatching { ctx.startActivity(android.content.Intent(android.provider.Settings.ACTION_BATTERY_SAVER_SETTINGS).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) } })
         }
     }
 }

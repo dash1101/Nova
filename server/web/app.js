@@ -1,6 +1,6 @@
 // Nova web — entry: router (with back stack, scroll memory and slide transitions), the app shell
 // (the frosted nav pill: along the bottom on phones, down the left on wide screens), pairing, start-up.
-import { S, $, $$, esc, sleep, kv, pemOf, get, post, prefs, has, refresh, onApproval, ApiError, webForm, levelColor, cleanTitle, switchServer, savedTarget, loadNodes } from "./core.js";
+import { S, $, $$, esc, sleep, kv, pemOf, get, post, prefs, has, refresh, onApproval, ApiError, webForm, levelColor, cleanTitle, switchServer, savedTarget, loadNodes, gpuInfo } from "./core.js";
 import { I, logo, toast, waitApproval, closeSheet, copyCmd } from "./ui.js";
 import * as V from "./views.js";
 import { loadLang, watch } from "./i18n.js";
@@ -15,7 +15,7 @@ onApproval((id, code) => waitApproval(id, get, code));
 // ── theme ────────────────────────────────────────────────────────────────────────
 let measuredSlow = (() => { try { return sessionStorage.getItem("nova-slow") === "1"; } catch { return false; } })();
 function slowMachine() {
-  return measuredSlow || (navigator.hardwareConcurrency || 8) <= 2 || (navigator.deviceMemory || 8) <= 2;
+  return measuredSlow || gpuInfo().software || (navigator.hardwareConcurrency || 8) <= 2 || (navigator.deviceMemory || 8) <= 2;
 }
 // one quick look at the frame rate after start: if a second of frames averages under ~40 fps, go light
 (() => {

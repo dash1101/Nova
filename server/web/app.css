@@ -891,3 +891,10 @@ html.breeze { --rL: calc(7px * var(--rk, 1)); --rM: 3px; }
 :is(.mapps, .srvstrip, .fdrives, .hfade).fe { -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 40px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 40px), transparent); }
 :is(.mapps, .srvstrip, .fdrives, .hfade).fs.fe { -webkit-mask-image: linear-gradient(90deg, transparent, #000 40px, #000 calc(100% - 40px), transparent); mask-image: linear-gradient(90deg, transparent, #000 40px, #000 calc(100% - 40px), transparent); }
 .grid.four > .card:last-child:nth-child(odd) { grid-column: span 2; }
+/* dashboard options: text size, black or wallpaper background, plain tiles */
+.dash .dgrid { grid-auto-rows: calc(200px * var(--dscale, 1)); }
+.dash .card { font-size: calc(15px * var(--dscale, 1)); } .dash .card .val { zoom: var(--dscale, 1); } .dash .clock { zoom: var(--dscale, 1); }
+.dash.bg-black { background: #000; } .dash.bg-black::before { display: none; }
+.dash.bg-wallpaper { background: transparent; } .dash.bg-wallpaper::before { display: none; }
+.dash.plain .card { background: transparent !important; box-shadow: none !important; backdrop-filter: none !important; -webkit-backdrop-filter: none !important; border: 0 !important; }
+.dash.plain .card::after { display: none !important; }

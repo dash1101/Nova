@@ -47,6 +47,7 @@ val DASH_TILES = listOf(
     DashTile("fan", "Fan light", Icons.Rounded.Lightbulb, 2),
     DashTile("alerts", "Recent alerts", Icons.Rounded.Notifications, 2),
     DashTile("uptime", "Uptime", Icons.Rounded.Timer, 1),
+    DashTile("gpu", "Graphics graph", Icons.Rounded.Speed, 1), DashTile("swap", "Swap graph", Icons.Rounded.SwapHoriz, 1), DashTile("io", "Disk I/O graph", Icons.Rounded.Storage, 1),
 )
 val DEFAULT_DASH = listOf("clock", "health", "cpu", "mem", "temp", "net", "storage", "containers", "backup", "alerts")
 
@@ -165,6 +166,10 @@ class DashPrefs(ctx: android.content.Context, profile: String) {
             n?.optDouble("nvme_temp")?.takeIf { !it.isNaN() }?.let { "NVMe %.0f°C".format(it) }, series("temp"), null, tick, window, stats.added)
         "net" -> GraphTile("Network", Icons.Rounded.SwapVert, N.green, n?.let { "↓ ${rate(it.optDouble("rx"))}" }, n?.let { "↑ ${rate(it.optDouble("tx"))}" },
             series("rx").zip(series("tx")) { a, b -> a + b }, null, tick, window, stats.added)
+        "gpu" -> GraphTile("Graphics", Icons.Rounded.Speed, N.red, n?.takeIf { it.has("gpu") && !it.isNull("gpu") }?.let { "%.0f%%".format(it.optDouble("gpu")) } ?: "—",
+            if (n?.isNull("gpu") != false) "No graphics reading on this server" else "GPU busy", series("gpu"), 100f, tick, window, stats.added)
+        "swap" -> GraphTile("Swap", Icons.Rounded.SwapHoriz, N.amber, n?.let { "%.0f%%".format(it.optDouble("swap", 0.0)) }, "of swap in use", series("swap"), 100f, tick, window, stats.added)
+        "io" -> GraphTile("Disk I/O", Icons.Rounded.Storage, Color(0xFF64D2FF), n?.let { rate(it.optDouble("io", 0.0)) }, "read + write, all drives", series("io"), null, tick, window, stats.added)
         "storage" -> Tile("Storage", Icons.Rounded.Storage, N.green) {
             storageList(m).take(5).forEach { su ->
                     val p = su.pct

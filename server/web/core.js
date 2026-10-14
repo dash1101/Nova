@@ -164,6 +164,7 @@ const PREF_DEFAULTS = {
   quick: ["backup", "freeram", "fan", "dim", "status", "dashboard"],
   dashTiles: ["clock", "health", "cpu", "mem", "temp", "net", "storage", "containers", "backup", "alerts"],
   dashDim: true, dashFrom: 23, dashTo: 7,
+  dashCols: 0, dashSize: {}, dashClock24: null, dashSeconds: false, dashScale: 100, dashBg: "theme", dashPlain: false,
   lastEventSeen: 0,
 };
 export const prefs = new Proxy({}, {
@@ -266,3 +267,19 @@ export async function archiveUnmark(ts) {
 }
 export async function archiveAll() { return (await kv(AKEY()).catch(() => null)) || { events: [], archived: [] }; }
 export async function archiveClear() { await kv(AKEY(), null).catch(() => {}); }
+
+/** What this browser can draw: is the graphics card in use (or is it software rendering), and are blur/glass supported. */
+let _gpu;
+export function gpuInfo() {
+  if (_gpu) return _gpu;
+  let renderer = "", software = false, webgl = false;
+  try {
+    const c = document.createElement("canvas");
+    const gl = c.getContext("webgl", { failIfMajorPerformanceCaveat: true });
+    if (gl) { webgl = true; const ext = gl.getExtension("WEBGL_debug_renderer_info"); renderer = ext ? String(gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) || "") : ""; gl.getExtension("WEBGL_lose_context")?.loseContext(); }
+    else software = !!document.createElement("canvas").getContext("webgl");   // only works without the "must be fast" flag: software drawing
+  } catch {}
+  if (/swiftshader|llvmpipe|softpipe|software|basic render|mesa offscreen/i.test(renderer)) software = true;
+  const blur = CSS.supports("backdrop-filter", "blur(2px)") || CSS.supports("-webkit-backdrop-filter", "blur(2px)");
+  return (_gpu = { software, webgl, renderer, blur });
+}
