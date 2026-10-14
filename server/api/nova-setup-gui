@@ -230,7 +230,7 @@ async function run() {
 
 def main():
     sys.stdout.reconfigure(line_buffering=True)
-    port = next((p for p in range(8490, 8500) if socket.socket().connect_ex(("127.0.0.1", p)) != 0), 8490)
+    port = next((p for p in [*range(8490, 8495), *range(8497, 8500)] if socket.socket().connect_ex(("127.0.0.1", p)) != 0), 8490)
     srv = http.server.ThreadingHTTPServer(("0.0.0.0", port), H)
     ip, _ = lan_guess()
     local, lan = f"http://localhost:{port}/setup/{KEY}", f"http://{ip}:{port}/setup/{KEY}" if ip else ""

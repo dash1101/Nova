@@ -201,7 +201,9 @@ private fun lastText(j: JSONObject): Pair<String, String> {
             .put("guard_pct", if (guard) 20 else 0).put("notify", if (always) "always" else "failures").apply { existing?.let { put("id", it.optString("id")) } }
     }
     LaunchedEffect(step) {
-        if (step == 4 && name.isEmpty()) name = (srcList.firstOrNull { it.optString("path") in sources }?.optString("label") ?: sources.firstOrNull()?.substringAfterLast('/') ?: "Backup")
+        if (step == 4 && name.isEmpty()) name = (srcList.firstOrNull { it.optString("path") in sources && !it.optBoolean("default") }?.optString("label")
+            ?: sources.firstOrNull { p -> srcList.none { it.optString("path") == p && it.optBoolean("default") } }?.substringAfterLast('/')
+            ?: if (sources.isNotEmpty()) "Nova settings" else "Backup")
             .replaceFirstChar { it.uppercase() }.filter { it.isLetterOrDigit() || it in " -_" }.take(40)
     }
     val steps = listOf("What", "Where", "When", "Keep", "Name")

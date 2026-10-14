@@ -30,7 +30,7 @@ TOOLS = {"mergerfs": "mergerfs", "mdadm": "mdadm", "mkfs.xfs": "xfsprogs", "mkfs
          "mkfs.exfat": "exfatprogs", "parted": "parted", "wipefs": "util-linux", "mount.nfs": "nfs-common",
          "mount.cifs": "cifs-utils", "rsync": "rsync", "fio": "fio", "stress-ng": "stress-ng",
          "smartctl": "smartmontools", "tracepath": "iputils-tracepath", "setfattr": "attr",
-         "mkfs.vfat": "dosfstools", "ddrescue": "gddrescue", "sgdisk": "gdisk"}
+         "mkfs.vfat": "dosfstools", "ddrescue": "gddrescue", "sgdisk": "gdisk", "fatlabel": "dosfstools", "tune.exfat": "exfatprogs", "ntfslabel": "ntfs-3g"}
 
 
 def run(cmd, timeout=600, check=False, **kw):
@@ -708,8 +708,12 @@ def unmount_all(d, log):
     return was
 
 def remount(mps, log):
+    """Mount each one back from its own device — not through fstab's UUID=, which a fresh clone shares until its IDs change."""
+    fe = {e["mount"]: e for e in fstab_entries()}
     for dev, m in mps:
-        rc, _, err = run(["mount", m], timeout=120) if any(e["mount"] == m for e in fstab_entries()) else run(["mount", dev, m], timeout=120)
+        e = fe.get(m); opts = [o for o in (e or {}).get("opts", "").split(",") if o and o not in ("defaults", "nofail", "auto", "noauto") and not o.startswith("x-systemd")]
+        cmd = ["mount"] + (["-t", e["type"]] if e and e.get("type") not in (None, "", "auto") else []) + (["-o", ",".join(opts)] if opts else []) + [dev, m]
+        rc, _, err = run(cmd, timeout=120)
         log(f"Mounted {m} again" if rc == 0 else f"Couldn't mount {m} again: {err.strip()[-160:]}")
 
 FSCK = {"ext2": ["e2fsck", "-f", "-y"], "ext3": ["e2fsck", "-f", "-y"], "ext4": ["e2fsck", "-f", "-y"], "xfs": ["xfs_repair"],
@@ -773,10 +777,12 @@ def used_bytes(p):
 
 def new_ids(dev, fs, log):
     """A clone must not share filesystem UUIDs with its source, or fstab would mount the wrong one."""
+    rnd = os.urandom(4).hex()
     cmd = {"ext2": ["tune2fs", "-U", "random"], "ext3": ["tune2fs", "-U", "random"], "ext4": ["tune2fs", "-U", "random"], "xfs": ["xfs_admin", "-U", "generate"],
-           "btrfs": ["btrfstune", "-f", "-u"]}.get(fs)
+           "btrfs": ["btrfstune", "-f", "-u"], "vfat": ["fatlabel", "-i", "-r"], "exfat": ["tune.exfat", "-I", "0x" + rnd], "ntfs": ["ntfslabel", "--new-serial"]}.get(fs)
     if not cmd: return
     if fs.startswith("ext"): run(["e2fsck", "-f", "-p", dev], timeout=3600)
+    if not have(cmd[0]): log(f"Can't give {dev} a new ID ({cmd[0]} isn't installed)"); return
     rc, _, err = run(cmd + [dev], timeout=3600)
     if rc != 0: log(f"Couldn't give {dev} a new ID: {err.strip()[-120:]}")
 
@@ -815,8 +821,10 @@ def op_clone(spec, log, progress):
     try:
         progress(2); was = unmount_all(src, log)                                     # nothing changes on it while it's copied
         if dst["size"] >= src["size"]:
-            ensure_tools(["parted"], log)
             gpt = run(["lsblk", "-dno", "PTTYPE", src["path"]], timeout=30)[1].strip() == "gpt"
+            ensure_tools(["parted"] + (["sgdisk"] if gpt else []), log)
+            try: ensure_tools(["ddrescue"], log)                                       # skips bad spots and says exactly what couldn't be read
+            except RuntimeError as e: log(f"Couldn't install ddrescue ({e}) — copying with dd, which can't report unreadable spots")
             rescue = have("ddrescue")
             log(f"Copying {src['size_text']} {src['model'] or src['name']} onto {dst['size_text']} {dst['model'] or dst['name']} — every sector, exactly…")
             run(["wipefs", "-a", "-f", *[p["path"] for p in dst["partitions"] if p["path"] != dst["path"]], dst["path"]], timeout=120)
@@ -837,17 +845,26 @@ def op_clone(spec, log, progress):
                     buf = ""
                 else: buf += ch
             rc = pr.wait()
+            unreadable = 0
             if rescue:
+                try:                                                                 # map lines: pos size status — '-' bad, '*' '/' not read
+                    for line in open(mapf):
+                        f = line.split()
+                        if len(f) == 3 and not line.startswith("#") and f[2] in "-*/": unreadable += int(f[1], 16)
+                except (OSError, ValueError): pass
                 try: os.remove(mapf)
                 except OSError: pass
             if rc != 0: raise RuntimeError(f"{cmd[0]} stopped with an error — the drive you're copying may be failing" + (" (install gddrescue for a copy that skips bad spots)" if not rescue else ""))
             run(["sync"], timeout=600); run(["partprobe", dst["path"]], timeout=60); settle()
             if gpt and have("sgdisk"): run(["sgdisk", "-G", dst["path"]], timeout=60)  # new partition-table IDs too
+            elif not gpt and have("sfdisk"): run(["sfdisk", "--disk-id", dst["path"], "0x" + os.urandom(4).hex()], timeout=60)   # MBR: the disk id makes the PARTUUIDs
+            run(["partprobe", dst["path"]], timeout=60); settle()
             progress(92)
             for p in parts: new_ids(part_path(dst["path"], int(re.search(r"(\d+)$", p["name"]).group(1))) if p["path"] != src["path"] else dst["path"], p["fstype"], log)
             if dst["size"] > src["size"] * 1.01 and gpt: grow_last(dst, {}, log)
             elif dst["size"] > src["size"] * 1.01: log("The copy is exact; the extra space is left free (only GPT drives are grown automatically)")
             mode = "exact"
+            if unreadable: log(f"⚠ {human(unreadable)} of {src['model'] or src['name']} couldn't be read — those spots are empty on the copy. Files there may be damaged.")
         else:
             # Smaller target: rebuild each filesystem at a size that fits, then copy the files
             ensure_tools(["parted", "wipefs", "rsync"], log)
@@ -901,10 +918,20 @@ def op_clone(spec, log, progress):
         progress(97)
     finally:
         remount(was, log)
+    # the clone must not share IDs with the original, or the wrong one could be mounted (now or at the next boot)
+    settle()
+    def ids(dev):
+        rc, so, _ = run(["lsblk", "-rno", "UUID,PARTUUID", dev], timeout=30)
+        return {x for x in so.split() if x}
+    shared = ids(src["path"]) & ids(dst["path"])
+    if shared: log(f"⚠ The copy still shares an ID with the original ({', '.join(sorted(shared))[:80]}) — don't leave both plugged in at a restart, or change the copy's ID first")
+    if mode == "exact" and unreadable:
+        log(f"Done, with gaps — {dst['size_text']} {dst['model'] or dst['name']} has everything that could be read from {src['model'] or src['name']}; {human(unreadable)} couldn't be. It isn't mounted.")
+        progress(100); return {"mode": mode, "unreadable": unreadable, "shared_ids": sorted(shared)}
     log(f"Done — {dst['size_text']} {dst['model'] or dst['name']} is now a copy of {src['model'] or src['name']}"
         + (" (exact copy)" if mode == "exact" else " (files copied; the filesystems were made to fit)") + ". It isn't mounted — set it up from Storage when you want to use it.")
     progress(100)
-    return {"mode": mode}
+    return {"mode": mode, "unreadable": 0, "shared_ids": sorted(shared)}
 
 
 OPS = {"format": op_format, "combine": op_combine, "raid": op_raid, "pool-remove": op_pool_remove, "pool-add": op_pool_add,

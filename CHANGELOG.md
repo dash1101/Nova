@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.7.1-alpha (server, Nova web, app and watch)
+- **Glass, Mica and Breeze, reworked** (the looks are renamed, without brand names). Glass now really bends the light behind dialogs, menus and notifications too, with a smooth edge, and gets alerts with capsule buttons, menus with checkmarks, grouped lists and switches in the same style. Mica gets its tinted base, content dialogs and Windows-style buttons and fields; Breeze its framed buttons and window-style dialogs. Every corner in a style now matches — favorites, tiles, chips and the navigation bar — and the Glass side bar sits where it should. Selectors slide between options.
+- **Icon styles** (Appearance → Icons): tonal, tiles, circles, outline, symbols only or monochrome, for the icons throughout the app and Nova web.
+- **Status graphs** hold still while you point at (or touch) a moment, so the value you're reading doesn't slide away. New graphs for **graphics (GPU)**, **swap** and **disk I/O**, on Status and as dashboard tiles.
+- **Dashboard:** choose each tile's width, the number of columns, 12/24-hour time and seconds, text size, a black or wallpaper background, and plain tiles without glass.
+- **Repair a drive** (a drive's page → Fix and copy): checks every filesystem on it and fixes what it can, mounts it back, then runs the drive's own quick test.
+- **Clone a drive** onto another: an exact copy that grows into a bigger drive, or, onto a smaller drive, the files are copied if they fit. Copies from a failing drive skip the bad spots and say exactly how much couldn't be read. The copy gets new IDs, so the two are never mixed up. Both refuse a drive another program is using (like a copy already running).
+- **Backups:** edit your own backup script from the app (Nova checks it before saving and keeps the old version next to it; saving needs your fingerprint), and **Nova's own settings** are picked by default for a new backup.
+- **Effects check:** when a browser draws without the graphics card, can't blur, or the phone is in Battery Saver, Appearance says so and how to fix it — and lighter effects switch on by themselves.
+- **Safer setup:** setup first checks this machine — systemd, ports already taken, the clock, free space, the network and Docker — in the terminal and in the browser, and after starting checks that Nova answers on the home address. `sudo nova-setup --check` runs just the checks.
+- **Several servers on one Cloudflare account:** a name another Nova server uses is named as such (and never offered to take over), a tunnel that runs on two machines is refused before anything goes wrong, and changes to the tunnel and the login are checked and retried so two servers editing at once can't undo each other.
+- Edges fade where a row scrolls on (apps in Menu, servers, drives) instead of cutting off.
+- More of Nova is translated (about 57%).
+- Security test: new checks for repair, clone and the backup script editor.
+
 ## 0.7.0-alpha (server, Nova web, app, watch and website)
 - **Runs on more Linux:** besides Debian and Ubuntu, Nova now runs on Fedora, RHEL, Arch and openSUSE. Installing, searching for programs, updates and Free up use whichever package manager the server has (apt, dnf, pacman or zypper). Releases carry a tarball and a one-file **nova-installer.run**, and Nova updates itself from them on those systems.
 - **Set up in a browser:** `sudo nova-setup --gui` opens the setup as a web page (on the server or any device at home) behind a one-time key, and ends with the code to pair your phone. The terminal setup is tidier too: six clear steps, and running it again asks which part you want to change.
