@@ -18,6 +18,40 @@ on, how changes are made, and how a client and server that are different ages ke
 | Level | Nova    | Added |
 |-------|---------|-------|
 | 1     | 0.7.5   | The contract itself: `api_level`/`min_level`, `X-Nova-Api-Level`, `X-Nova-Client`, deprecation headers. Everything the server offered at 0.7.4 is part of level 1. |
+| 2     | 0.8.0   | `capabilities`; authenticator codes (`totp…`, `approvals/<id>/totp`, `browser/request/<id>/totp`); passkeys (`passkeys…`, `…/passkey/start|finish`); partitions (`drives/<serial>/partitions[/plan]`, `partition-apply`, `partition-restore`); mount points (`mount-set`, `mount-clear`); `swap-setup`; force unmount (`{"force": true}`); `recommendations[/snooze]`; `security/activity`. |
+
+## Capabilities: feature detection, not version guessing
+
+`GET /api/v1/capabilities` lists what this server can do, each with the level it arrived in:
+
+```json
+{"api_level": 2, "min_level": 1, "version": "0.8.0-alpha",
+ "capabilities": {"totp": 2, "passkeys": 2, "partitions": 2, "recommendations": 2, "…": 1},
+ "features_off": ["lighting"]}
+```
+
+A client shows a feature only when its name is listed (and not in `features_off`, the parts an admin switched off).
+That's what keeps Nova modular: a new feature is a new capability plus new endpoints, nothing else changes, and an
+older app simply doesn't show it. Plugins will add their capabilities the same way.
+
+## Toward the 1.0 freeze
+
+The alphas are where the API settles; 1.0 freezes it. Until then:
+
+- **Stable now — won't change incompatibly:** authentication and signing, step-up and browser approvals, errors,
+  tasks, `events`/`events/wait`, `stats`, `overview`, devices, containers, storage reads, backups, lights.
+- **Settling — may still change shape before 1.0** (listed in the changelog when they do): `recommendations`,
+  `partitions` plans, passkeys, `security/activity`, `capabilities` itself. Apps from the same release always match.
+- **The rules that hold for every endpoint, now and after 1.0:**
+  - nouns for things, `POST …/<verb>` for actions (`containers/<name>/restart`), `GET` never changes anything;
+  - anything that takes more than a few seconds is a **task** (`{"id"}`, then `tasks/<id>`), never a long request;
+  - lists can grow new fields, never lose them; new optional request fields only;
+  - errors are always `{"error": "a sentence"}` with the status code; machine-readable details go in extra fields
+    (`stepup_required`, `busy`, `update`);
+  - anything destructive or that widens access needs step-up, and says exactly what it does in its approval text.
+- **At 1.0:** every "settling" endpoint is either promoted to stable or kept out of the frozen list; `min_level` stays
+  1 for at least a year; after that, anything retired follows the deprecation steps above.
+
 
 ## Deprecation
 

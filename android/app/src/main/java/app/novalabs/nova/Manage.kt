@@ -160,9 +160,6 @@ fun roleLabel(r: String) = if (r == "viewer") "View only" else "Admin"
     var inviting by remember { mutableStateOf(false) }
     var invite by remember { mutableStateOf<JSONObject?>(null) }
     var approveBrowser by remember { mutableStateOf(false) }
-    val totpLive = if (app.isAdmin) live(app, "/api/v1/totp", 60_000) else null
-    var totpSetup by remember { mutableStateOf<JSONObject?>(null) }; var totpOff by remember { mutableStateOf(false) }
-    var totpCode by remember { mutableStateOf("") }; var totpErr by remember { mutableStateOf<String?>(null) }
     Page("Users & devices", app::back, if (app.isAdmin) listOf(TopAction(Icons.Rounded.PersonAdd, "Invite a phone") { inviting = true }) else emptyList()) {
         if (!app.isAdmin) Text("This ${DeviceForm.noun} has view-only access, so it can see the devices but not change them.",
             color = N.amber, fontSize = 14.sp, modifier = Modifier.padding(horizontal = 30.dp, vertical = 6.dp))
@@ -196,13 +193,7 @@ fun roleLabel(r: String) = if (r == "viewer") "View only" else "Admin"
                 Row1("Approvals", "Risky actions a browser is waiting on", true, Icons.Rounded.VerifiedUser, onClick = { app.go(Route.Approvals) })
             }
             SectionLabel("Without a phone")
-            Group {
-                val on = totpLive?.value?.optBoolean("enabled") == true
-                Row1("Authenticator codes", if (on) "On since ${totpLive?.value?.optString("since")} · a code approves a browser, or what a browser asks for"
-                    else "Off · lets a computer with no phone or SSH at hand be approved with a code from an authenticator app", true, Icons.Rounded.Key,
-                    onClick = { if (on) totpOff = true else app.act {
-                        totpSetup = app.stepUp("Set up authenticator-app codes", "POST", "/api/v1/totp/setup", JSONObject()); totpCode = ""; totpErr = null } })
-            }
+            Group { Row1("Security & privacy", "Authenticator codes, passkeys, recent security activity", true, Icons.Rounded.Shield, N.green, onClick = { app.go(Route.Security) }) }
             SectionLabel("Remove access")
             Group {
                 Row1("Remove all other devices", "Only this ${DeviceForm.noun} keeps access", false, Icons.Rounded.PhonelinkErase, N.amber,
@@ -244,28 +235,6 @@ fun roleLabel(r: String) = if (r == "viewer") "View only" else "Admin"
             OneTextField(v, { v = it.take(40) }, "Name", Modifier.fillMaxWidth().padding(horizontal = 22.dp))
         }
     }
-    totpSetup?.let { st ->
-        OneDialog({ totpSetup = null }, "Scan this in your authenticator app", "Any app works — Google Authenticator, Aegis, 1Password… Keep it on a device only you use: a code from it can add a browser to this server.",
-            listOf(DialogButton("Cancel") { totpSetup = null }, DialogButton("Turn on", N.blue) { app.act {
-                try { app.api.post("/api/v1/totp/confirm", JSONObject().put("code", totpCode.trim())); totpSetup = null; totpLive?.value = app.api.get("/api/v1/totp"); app.toast("Authenticator codes are on") }
-                catch (e: Exception) { totpErr = e.message } } })) {
-            Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                QrImage(st.optString("uri"), Modifier.size(200.dp))
-                Spacer(Modifier.height(8.dp))
-                Text("Or type this key into the app:", color = N.sub, fontSize = 13.sp)
-                androidx.compose.foundation.text.selection.SelectionContainer {
-                    Text(st.optString("secret").chunked(4).joinToString(" "), color = N.text, fontSize = 15.sp, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace) }
-                Spacer(Modifier.height(10.dp))
-                Text("Then type the code it shows, to check it works:", color = N.sub, fontSize = 13.sp)
-                OneTextField(totpCode, { totpCode = it.filter(Char::isDigit).take(6) }, "123456", Modifier.fillMaxWidth().padding(top = 6.dp), mono = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.NumberPassword))
-                totpErr?.let { Text(it, color = N.red, fontSize = 13.sp, modifier = Modifier.padding(top = 4.dp)) }
-            }
-        }
-    }
-    if (totpOff) OneDialog({ totpOff = false }, "Turn off authenticator codes?", "Codes from the app stop working. Browsers are approved here (or with sudo nova approve) again.",
-        listOf(DialogButton("Cancel") { totpOff = false }, DialogButton("Turn off", N.red) { totpOff = false; app.act {
-            app.stepUp("Turn off authenticator-app codes", "POST", "/api/v1/totp/remove", JSONObject()); totpLive?.value = app.api.get("/api/v1/totp"); app.toast("Authenticator codes are off") } }))
     if (inviting) {
         var user by remember { mutableStateOf("") }
         var role by remember { mutableStateOf("viewer") }
@@ -351,3 +320,37 @@ fun roleLabel(r: String) = if (r == "viewer") "View only" else "Admin"
     }
 }
 
+
+/** Authenticator codes (TOTP): the row, and the set up / turn off dialogs. On Security & privacy. */
+@Composable fun AuthenticatorCodes(app: AppState) {
+    val totpLive = live(app, "/api/v1/totp", 60_000)
+    var totpSetup by remember { mutableStateOf<JSONObject?>(null) }; var totpOff by remember { mutableStateOf(false) }
+    var totpCode by remember { mutableStateOf("") }; var totpErr by remember { mutableStateOf<String?>(null) }
+    val on = totpLive.value?.optBoolean("enabled") == true
+    Row1("Authenticator codes", if (on) "On since ${totpLive.value?.optString("since")} · a code approves a browser, or what a browser asks for"
+        else "Off · for a computer with no phone or SSH at hand", true, Icons.Rounded.Key,
+        onClick = { if (on) totpOff = true else app.act {
+            totpSetup = app.stepUp("Set up authenticator-app codes", "POST", "/api/v1/totp/setup", JSONObject()); totpCode = ""; totpErr = null } })
+    totpSetup?.let { st ->
+        OneDialog({ totpSetup = null }, "Scan this in your authenticator app", "Any app works — Google Authenticator, Aegis, 1Password… Keep it on a device only you use: a code from it can add a browser to this server.",
+            listOf(DialogButton("Cancel") { totpSetup = null }, DialogButton("Turn on", N.blue) { app.act {
+                try { app.api.post("/api/v1/totp/confirm", JSONObject().put("code", totpCode.trim())); totpSetup = null; totpLive.value = app.api.get("/api/v1/totp"); app.toast("Authenticator codes are on") }
+                catch (e: Exception) { totpErr = e.message } } })) {
+            Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                QrImage(st.optString("uri"), Modifier.size(200.dp))
+                Spacer(Modifier.height(8.dp))
+                Text("Or type this key into the app:", color = N.sub, fontSize = 13.sp)
+                androidx.compose.foundation.text.selection.SelectionContainer {
+                    Text(st.optString("secret").chunked(4).joinToString(" "), color = N.text, fontSize = 15.sp, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace) }
+                Spacer(Modifier.height(10.dp))
+                Text("Then type the code it shows, to check it works:", color = N.sub, fontSize = 13.sp)
+                OneTextField(totpCode, { totpCode = it.filter(Char::isDigit).take(6) }, "123456", Modifier.fillMaxWidth().padding(top = 6.dp), mono = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.NumberPassword))
+                totpErr?.let { Text(it, color = N.red, fontSize = 13.sp, modifier = Modifier.padding(top = 4.dp)) }
+            }
+        }
+    }
+    if (totpOff) OneDialog({ totpOff = false }, "Turn off authenticator codes?", "Codes from the app stop working. Browsers are approved here (or with sudo nova approve) again.",
+        listOf(DialogButton("Cancel") { totpOff = false }, DialogButton("Turn off", N.red) { totpOff = false; app.act {
+            app.stepUp("Turn off authenticator-app codes", "POST", "/api/v1/totp/remove", JSONObject()); totpLive.value = app.api.get("/api/v1/totp"); app.toast("Authenticator codes are off") } }))
+}

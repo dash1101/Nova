@@ -173,11 +173,12 @@ export function ask(title, placeholder, value = "", ok = "Save", max = 40) {
   });
 }
 /** "Approve on your phone": the server forwarded a risky action to an admin phone. */
-export async function waitApproval(id, get, code, totp = false, post = null) {
+export async function waitApproval(id, get, code, totp = false, post = null, pk = false) {
   let stop = false, viaCode = null;
   const until = Date.now() + 600000;
   const box = sheet(`<h2>Approve on your phone</h2><p>Nova sent this to ${S.target ? `${esc(S.target.name)}'s` : "your"} admin phone. Open the notification (or Nova → Menu → Users &amp; devices → Approvals) and confirm with your fingerprint.</p>
     ${code ? `<p>…or on ${S.target ? esc(S.target.name) : "the server"}:</p>${copyCmd("sudo nova approve " + code)}` : ""}
+    ${pk && post ? `<div class="pad"><button class="btn block" id="appk" style="margin:4px 0;width:100%">Approve with a passkey</button></div>` : ""}
     ${totp && post ? `<p>…or type a code from your authenticator app:</p><div class="pad" style="display:flex;gap:8px"><input class="field" id="aptotp" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="123456" style="flex:1;font-family:ui-monospace,monospace;letter-spacing:4px"><button class="pillbtn" id="aptotpgo">Approve</button></div><p class="muted" id="aptotperr" style="color:var(--red)"></p>` : ""}
     <p class="muted" id="apleft" style="text-align:center"></p>
     <div class="center" style="padding:14px"><div class="spinner" style="margin:auto"></div></div>${acts([{ label: "Stop waiting" }])}`, () => { stop = true; });
@@ -186,6 +187,14 @@ export async function waitApproval(id, get, code, totp = false, post = null) {
     const f = $("#aptotp", box), err = $("#aptotperr", box); if (!f || !/^\d{6}$/.test(f.value.trim())) { if (err) err.textContent = "Type the 6 digits the app shows"; return; }
     try { const r = await post(`/api/v1/approvals/${id}/totp`, { code: f.value.trim() }); viaCode = r?.result || {}; }
     catch (e) { if (err) err.textContent = e.message; f.select(); }
+  };
+  if ($("#appk", box)) $("#appk", box).onclick = async () => {
+    const err = $("#aptotperr", box);
+    try {
+      const SEC = await import("./sec.js");
+      const o = await post(`/api/v1/approvals/${id}/passkey/start`, {}); const ans = await SEC.passkeyAnswer(o);
+      const r = await post(`/api/v1/approvals/${id}/passkey/finish`, ans); viaCode = r?.result || {};
+    } catch (e) { toast(e.name === "NotAllowedError" ? "Cancelled" : e.message); if (err) err.textContent = ""; }
   };
   if ($("#aptotpgo", box)) { $("#aptotpgo", box).onclick = goCode; $("#aptotp", box).onkeydown = e => { if (e.key === "Enter") goCode(); }; setTimeout(() => $("#aptotp", box)?.focus(), 300); }
   const tick = setInterval(() => { const el = $("#apleft"), s = Math.max(0, Math.round((until - Date.now()) / 1000)); if (el) el.textContent = `Expires in ${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; if (stop || !el) clearInterval(tick); }, 1000);

@@ -35,7 +35,7 @@ const QUICK = [
   ["storage", "Storage", "disk", "Drives and temperatures"], ["store", "App store", "store", "Install apps"],
 ].map(([id, label, icon, hint]) => ({ id, label, icon, hint }));
 const quickDef = id => id.startsWith("restart:") ? { id, label: "Restart " + id.slice(8), icon: "restart", hint: "Approved on your phone" } : QUICK.find(q => q.id === id);
-const HOME_SECTIONS = [["hero", "Server picture", "dns", "homeHero"], ["servers", "Your servers", "dns", "homeServers"], ["shortcuts", "Shortcuts", "apps", "homeShortcuts"], ["stats", "At a glance", "speed", "homeStats"]];
+const HOME_SECTIONS = [["hero", "Server picture", "dns", "homeHero"], ["servers", "Your servers", "dns", "homeServers"], ["shortcuts", "Shortcuts", "apps", "homeShortcuts"], ["stats", "At a glance", "speed", "homeStats"], ["recs", "Recommended", "okc", "homeRecs"]];
 /** Home's sections in your order (a section added in a newer Nova goes in after the server picture). */
 function homeOrder() {
   const o = prefs.homeOrder.filter(id => HOME_SECTIONS.some(s => s[0] === id));
@@ -154,6 +154,32 @@ function serverStrip() {
       <small>${x.ok === false ? "Offline" : x.cpu === undefined ? "This server" : `CPU ${pc(x.cpu)} · RAM ${pc(x.mem)}${c.total != null ? ` · ${c.running}/${c.total}` : ""}`}</small></button>`; };
   return `<div class="srvstrip" id="srvstrip">${tile(cur, true)}${S.target ? tile({ id: "", name: S.homeName || "This server", level: "ok" }, false) : ""}${list.filter(x => x.id !== S.target?.id).map(x => tile(x, false)).join("")}</div>`;
 }
+// ── recommended actions: what's worth doing on the server now (worked out on the server) ──
+const REC_COLOR = { urgent: "var(--red)", warn: "var(--amber)", tip: "var(--blue)" };
+const REC_ICON = { urgent: "err", warn: "warn", tip: "info" };
+const recRow = (r, short = true) => row(r.title, { sub: r.detail, icon: REC_ICON[r.level] || "info", tint: REC_COLOR[r.level], click: r.action?.go ? "go:" + r.action.go : "",
+  end: short && r.action?.go ? I("back", "flip") : "" });
+/** Home: the top three, and a link to the rest (nothing at all when there's nothing to do). */
+function recsCard() {
+  const l = S.cache["/api/v1/recommendations"]?.recommendations || [];
+  if (!l.length) return "";
+  return sec("Recommended") + group(l.slice(0, 3).map(r => recRow(r)).join("") + (l.length > 3 ? row(`See all ${l.length}`, { blue: true, icon: "list", click: "go:recommended" }) : ""));
+}
+export async function recommended(ctx) {
+  const draw = () => {
+    const r = S.cache["/api/v1/recommendations"], l = r?.recommendations || [];
+    ctx.show(!r ? note("Looking at the server…") : `${l.length ? l.map(x => group(recRow(x, false) + (isAdmin() ? `<div style="display:flex;gap:8px;padding:0 16px 12px 66px">${x.action?.go ? `<button class="pillbtn press" data-act="go:${esc(x.action.go)}">${esc(x.action.label)}</button>` : ""}<button class="pillbtn plain press" data-act="snooze:${esc(x.id)}">Not now</button></div>` : ""))).join("") : note("Nothing to do — the server looks after itself right now.")}
+      ${r?.snoozed ? note(`${r.snoozed} hidden for now (Not now hides one for a month).`) : ""}
+      ${note("Nova works these out from what it already watches: space, memory, updates, drive health, backups, devices and more. Nothing changes until you tap a fix.")}`,
+      { title: "Recommended", actions: [{ act: "fresh", icon: "refresh", label: "Look again" }] });
+  };
+  ctx.handlers({
+    snooze: async (...a) => { try { await post("/api/v1/recommendations/snooze", { id: a.join(":") }); await get("/api/v1/recommendations"); draw(); } catch (e) { toast(e.message); } },
+    fresh: async () => { try { await get("/api/v1/recommendations?fresh=1"); draw(); } catch (e) { toast(e.message); } },
+  });
+  draw(); try { await get("/api/v1/recommendations"); } catch {} if (ctx.alive()) draw();
+}
+
 export async function home(ctx) {
   const statCard = (icon, label, value, sub, frac, color) => `<div class="stat glass press" data-act="go:status"><div class="lbl" style="color:${color}">${I(icon)}<span class="muted">${esc(label)}</span></div>
     <div class="val">${esc(value)}</div><div class="sub">${esc(sub)}</div><div style="margin-top:10px">${frac != null ? bar(frac, color) : ""}</div></div>`;
@@ -180,7 +206,7 @@ export async function home(ctx) {
       <div class="statusline" data-act="go:status"><span style="color:${S.error || S.reconnecting ? "var(--sub)" : levelColor(lvl)};display:flex">${I(icon)}</span>${esc(head)}${cs ? `<span class="sep"></span>${cs.running}/${cs.total} running${cs.stopped ? ` · ${cs.stopped} stopped` : ""}` : ""}${tasksChip()}</div>
       <div style="height:14px"></div>${topBanner()}${S.serverUpdate && localStorage.getItem("nova.dismissedUpdate") !== S.serverUpdate ? `<div class="upnote glass"><span style="color:var(--blue);display:flex">${I("update")}</span><b data-act="go:updates" style="flex:1;cursor:pointer">Nova ${esc(S.serverUpdate)} is ready to install</b><button class="xbtn" data-act="upx" aria-label="Not now">${I("close")}</button></div>` : ""}`;
     const order = homeOrder().filter(id => prefs[HOME_SECTIONS.find(s => s[0] === id)?.[3]] && (id !== "servers" || serverStrip()));
-    const block = id => id === "hero" ? `<canvas class="hero" id="hero" data-act="herotap" title="Tap the fan, the drive lights or the power button"></canvas>` : id === "shortcuts" ? pills() : id === "servers" ? serverStrip() : stats();
+    const block = id => id === "hero" ? `<canvas class="hero" id="hero" data-act="herotap" title="Tap the fan, the drive lights or the power button"></canvas>` : id === "shortcuts" ? pills() : id === "servers" ? serverStrip() : id === "recs" ? recsCard() : stats();
     const wide = innerWidth >= 1100;
     ctx.show(wide
       ? `<div class="home-wide"><div>${top}${prefs.homeHero ? block("hero") : ""}</div><div>${order.filter(x => x !== "hero").map(id => `<div class="block">${block(id)}</div>`).join("")}</div></div>`
@@ -216,6 +242,7 @@ export async function home(ctx) {
     },
   });
   draw();
+  if (prefs.homeRecs) get("/api/v1/recommendations").then(() => { if (ctx.alive()) draw(); }).catch(() => {});      // the server caches it for a minute
   ctx.every(15000, async () => { await refresh(); if ((S.overview?.status?.metrics?.data_backup || "").includes("running")) await get("/api/v1/backup").catch(() => {});
     if (prefs.homeServers) await loadNodes().catch(() => {}); draw(); }, true);
   ctx.every(3000, async () => { await fetchNow(); const s = $("#hstats"); if (s) s.outerHTML = stats(); }, true);
@@ -251,7 +278,7 @@ export async function menu(ctx) {
         + row("Dashboard mode", { sub: "Always-on screen for a tablet or spare screen", blue: true, icon: "dash", tint: "#64d2ff", click: "go:dashboard" }))}
       ${sec("Alerts")}${group(row("Inbox", { sub: S.unread ? `${S.unread} new` : "Alerts, logins and server events", blue: true, icon: "bell", tint: "#ff5a5a", click: "go:inbox" })
         + row("Notifications", { sub: "Discord, logins, USB", icon: "bell", click: "go:notify" }))}
-      ${sec("You and this browser")}${group(row("Users & devices", { sub: "Who can reach this server", blue: true, icon: "group", click: "go:devices" })
+      ${sec("You and this browser")}${group(row("Security & privacy", { sub: "Approvals, codes, passkeys, privacy", blue: true, icon: "shield", click: "go:security" }) + row("Users & devices", { sub: "Who can reach this server", blue: true, icon: "group", click: "go:devices" })
         + row("Appearance", { sub: "Look, theme, home layout", blue: true, icon: "palette", click: "go:appearance" })
         + row("Settings", { sub: "Labs, features, plugins", icon: "gear", tint: "var(--sub)", click: "go:settings" })
         + row("Questions", { sub: "Is it safe, what it connects to, how to undo things", icon: "help", tint: "var(--sub)", click: "go:faq" })
@@ -1384,31 +1411,13 @@ export async function devices(ctx) {
         sub: `${formLabel(d)} · ${d.role === "viewer" ? "View only" : "Admin"} · last seen ${d.last_seen || "never"}${d.via ? " via " + d.via : ""}${d.type === "browser" ? " · risky actions approved on a phone" : ""}`,
         icon: d.type === "head" ? "dns" : { tablet: "tablet", desktop: "computer" }[formOf(d)] || "phone", tint: d.current ? "var(--green)" : d.role === "viewer" ? "var(--sub)" : "var(--blue)",
         click: !d.current && isAdmin() ? "rm:" + d.id : "", end: !d.current && isAdmin() ? `<button class="rmbtn press" data-act="rm:${esc(d.id)}" aria-label="Remove ${esc(d.name)}" title="Remove">${I("del")}</button>` : "" })).join(""))).join("") || note("Loading…")}
-      ${isAdmin() ? sec("Without a phone") + group(row("Authenticator codes", { sub: S.cache["/api/v1/totp"]?.enabled ? `On since ${S.cache["/api/v1/totp"].since || "—"} · a code approves a browser, or what a browser asks for` : "Off · lets a computer with no phone or SSH at hand be approved with a code from an authenticator app", blue: true, icon: "key", click: "totp" })) : ""}
+      ${isAdmin() ? sec("Without a phone") + group(row("Security & privacy", { sub: "Authenticator codes, passkeys, recent security activity", blue: true, icon: "shield", click: "go:security" }) + row("Authenticator codes", { sub: S.cache["/api/v1/totp"]?.enabled ? `On since ${S.cache["/api/v1/totp"].since || "—"} · a code approves a browser, or what a browser asks for` : "Off · lets a computer with no phone or SSH at hand be approved with a code from an authenticator app", blue: true, icon: "key", click: "totp" })) : ""}
       ${group(row("Remove this browser", { sub: "Erases its key here and its access on the server", icon: "del", tint: "var(--red)", click: "forget" }))}
       ${note("Removing a device here is approved on an admin phone with your fingerprint. Inviting phones, approving browsers and changing roles happen in the Nova app on an admin phone (they need its fingerprint key). Admins can do everything; view-only devices see the same screens but can't change anything.")}`,
       { title: "Users & devices" });
   };
   ctx.handlers({ forget: () => forgetBrowser(),
-    totp: async () => {
-      try {
-        if (S.cache["/api/v1/totp"]?.enabled) {
-          if (!(await confirm("Turn off authenticator codes?", "Codes from the app stop working. Browsers are approved on an admin phone (or with sudo nova approve) again.", "Turn off", "var(--red)"))) return;
-          await post("/api/v1/totp/remove", {}); await get("/api/v1/totp"); draw(); return toast("Authenticator codes are off");
-        }
-        if (!(await confirm("Set up authenticator codes?", "Any authenticator app works (Google Authenticator, Aegis, 1Password…). Once it's on, a 6-digit code from it can add a browser to this server, or approve something a browser asks for — so keep it on a device only you use. Turning it on is approved on your phone.", "Set up"))) return;
-        const r = await post("/api/v1/totp/setup", {});
-        const box = sheet(`<h2>Scan this in your authenticator app</h2><div class="pad" style="text-align:center"><div style="display:inline-block;background:#fff;padding:10px;border-radius:12px;width:220px;max-width:100%">${r.qr_svg || ""}</div>
-          <p class="muted" style="margin:10px 0 4px">Or type this key into the app:</p>${copyCmd(r.secret.replace(/(.{4})/g, "$1 ").trim())}
-          <p style="margin:14px 0 6px">Then type the code it shows, to check it works:</p><input class="field" id="tcf" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="123456" style="font-family:ui-monospace,monospace;letter-spacing:4px;text-align:center">
-          <p class="muted" id="tcfe" style="color:var(--red)"></p></div><div class="acts"><button data-b="0" data-role="cancel">Cancel</button><i></i><button data-b="1" data-role="primary" style="color:var(--blue)">Turn on</button></div>`);
-        $$("[data-b]", box)[0].onclick = () => closeSheet();
-        $$("[data-b]", box)[1].onclick = async () => {
-          try { await post("/api/v1/totp/confirm", { code: $("#tcf", box).value.trim() }); closeSheet(); await get("/api/v1/totp"); draw(); toast("Authenticator codes are on"); }
-          catch (e) { $("#tcfe", box).textContent = e.message; }
-        };
-      } catch (e) { toast(e.message); }
-    },
+    totp: () => totpSetup(draw),
     rm: async id => {
       const d = (S.cache["/api/v1/devices"]?.devices || []).find(x => x.id === id); if (!d) return;
       if (!(await confirm(`Remove ${d.name}?`, `${d.name} loses access to this server${d.type === "watch" ? "" : " (and so does a watch paired with it)"}. You'll approve this on an admin phone with your fingerprint.`, "Remove"))) return;
@@ -1416,6 +1425,26 @@ export async function devices(ctx) {
       catch (e) { toast(e.message); }
     } });
   draw(); try { await Promise.all([get("/api/v1/devices"), isAdmin() ? get("/api/v1/totp").catch(() => {}) : null]); if (ctx.alive()) draw(); } catch (e) { toast(e.message); }
+}
+/** Authenticator codes: set up (QR + key + one code to check) or turn off. Used by Users & devices and Security & privacy. */
+export async function totpSetup(done = () => {}) {
+      try {
+    if (S.cache["/api/v1/totp"]?.enabled) {
+      if (!(await confirm("Turn off authenticator codes?", "Codes from the app stop working. Browsers are approved on an admin phone (or with sudo nova approve) again.", "Turn off", "var(--red)"))) return;
+      await post("/api/v1/totp/remove", {}); await get("/api/v1/totp"); done(); return toast("Authenticator codes are off");
+    }
+    if (!(await confirm("Set up authenticator codes?", "Any authenticator app works (Google Authenticator, Aegis, 1Password…). Once it's on, a 6-digit code from it can add a browser to this server, or approve something a browser asks for — so keep it on a device only you use. Turning it on is approved on your phone.", "Set up"))) return;
+    const r = await post("/api/v1/totp/setup", {});
+    const box = sheet(`<h2>Scan this in your authenticator app</h2><div class="pad" style="text-align:center"><div style="display:inline-block;background:#fff;padding:10px;border-radius:12px;width:220px;max-width:100%">${r.qr_svg || ""}</div>
+      <p class="muted" style="margin:10px 0 4px">Or type this key into the app:</p>${copyCmd(r.secret.replace(/(.{4})/g, "$1 ").trim())}
+      <p style="margin:14px 0 6px">Then type the code it shows, to check it works:</p><input class="field" id="tcf" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="123456" style="font-family:ui-monospace,monospace;letter-spacing:4px;text-align:center">
+      <p class="muted" id="tcfe" style="color:var(--red)"></p></div><div class="acts"><button data-b="0" data-role="cancel">Cancel</button><i></i><button data-b="1" data-role="primary" style="color:var(--blue)">Turn on</button></div>`);
+    $$("[data-b]", box)[0].onclick = () => closeSheet();
+    $$("[data-b]", box)[1].onclick = async () => {
+      try { await post("/api/v1/totp/confirm", { code: $("#tcf", box).value.trim() }); closeSheet(); await get("/api/v1/totp"); done(); toast("Authenticator codes are on"); }
+      catch (e) { $("#tcfe", box).textContent = e.message; }
+    };
+  } catch (e) { toast(e.message); }
 }
 export async function forgetBrowser() {
   if (!(await confirm("Remove this browser?", "It loses access and its key is erased. You can add it again from an admin phone.", "Remove"))) return;
@@ -1436,7 +1465,8 @@ export async function settings(ctx) {
         + expand("Risky actions", "Approved on your phone", "shield", "Stopping or restarting things, installs, unmounting, shells, restarting the server: the server holds them until you approve them on an admin phone with your fingerprint. A stolen browser key alone can't do any of them.", { blue: true })
         + expand("Connection", `${location.host} · ${location.protocol === "https:" ? "encrypted" : "not encrypted"}`, location.hostname.match(/^\d/) ? "wifi" : "cloud",
           location.hostname.match(/^\d/) ? "At home the browser talks to the server directly over HTTPS (Nova's own certificate)." : "Away from home Nova goes through Cloudflare Access: you log in to Cloudflare first, then the browser's own key signs every request."))}
-      ${group(row("Users & devices", { sub: (me.role === "viewer" ? "You have view-only access" : "Admin") + (me.user ? " · " + me.user : ""), blue: true, icon: "group", click: "go:devices" }))}
+      ${group(row("Security & privacy", { sub: "Approvals, authenticator codes, passkeys, privacy, recent activity", blue: true, icon: "shield", tint: "var(--green)", click: "go:security" })
+        + row("Users & devices", { sub: (me.role === "viewer" ? "You have view-only access" : "Admin") + (me.user ? " · " + me.user : ""), blue: true, icon: "group", click: "go:devices" }))}
       ${group(row("Notifications", { icon: "bell", click: "go:notify" }) + row("Appearance", { sub: "Theme, Home layout, shortcuts, bottom bar", blue: true, icon: "palette", click: "go:appearance" })
         + row("Setup guide", { sub: "Install Nova on a server, remote access, browsers", blue: true, icon: "book", click: "go:guide" }))}
       ${group(row("Remove this browser", { sub: "Erases its key", icon: "del", tint: "var(--red)", click: "forget" }))}

@@ -24,6 +24,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 import nodes
 import totp
+import passkeys
 import plugins
 
 from cryptography.exceptions import InvalidSignature
@@ -40,12 +41,12 @@ try:                       # optional module: fan/case lighting (modules/fan-gig
 except ImportError:
     nova_rgb = None
 
-API_VERSION = "0.7.9-alpha"
+API_VERSION = "0.8.0-alpha"
 # The API contract (docs/API.md). API_LEVEL only ever goes up: each new level adds endpoints or fields, never removes or
 # changes one. MIN_LEVEL is the oldest level this server still answers in full (old apps keep working back to it).
 # MIN_CLIENT: the oldest app builds still served, per platform — 0 = all of them. Raising it is the last resort, after
 # the endpoint has been deprecated (DEPRECATED below) for at least two releases and six months.
-API_LEVEL = 1
+API_LEVEL = 2
 MIN_LEVEL = 1
 MIN_CLIENT = {"android": 0, "wear": 0, "web": 0}
 DEPRECATED = {}                                   # "/api/v1/path" → "what to use instead" (sent as a Deprecation header)
@@ -245,6 +246,25 @@ def save_json(p, obj, mode=0o640):
     tmp = f"{p}.tmp{os.getpid()}"
     with open(tmp, "w") as f: json.dump(obj, f, indent=1)
     os.chmod(tmp, mode); os.replace(tmp, p)
+
+SECURITY_PATHS = re.compile(r"/api/v1/(browser|approvals|devices|device|totp|passkeys|ssh|terminal|nodes|power)")
+
+def security_activity(n=60):
+    """The latest security-relevant entries of the audit log: pairings, approvals, devices added or removed,
+    authenticator codes and passkeys, refused signatures."""
+    out = []
+    try:
+        with open(AUDIT, "rb") as f:
+            f.seek(0, 2); f.seek(max(0, f.tell() - 400_000)); lines = f.read().decode(errors="replace").splitlines()[1:]
+    except OSError: return []
+    for l in reversed(lines):
+        try: e = json.loads(l)
+        except ValueError: continue
+        # what matters: approvals, pairings, devices, codes and passkeys (they carry a reason), and anything refused
+        if (e.get("why") and SECURITY_PATHS.match(str(e.get("path", "")))) or e.get("result") in (401, 403) or "passkey" in str(e.get("why", "")) or "authenticator" in str(e.get("why", "")):
+            out.append({k: e.get(k) for k in ("t", "device", "path", "result", "why", "via") if e.get(k) is not None})
+            if len(out) >= n: break
+    return out
 
 def audit(**kw):
     kw["t"] = time.strftime("%Y-%m-%d %H:%M:%S")
@@ -482,6 +502,13 @@ def der_sig(raw):
     return raw
 
 # ── browsers: pairing requests (approved from a phone) and approvals for risky actions ──
+# Every capability an app can ask for (GET /api/v1/capabilities), with the API level it arrived in. A client checks for
+# the name instead of guessing from version numbers; a server that doesn't list one doesn't have it.
+CAPABILITIES = {"devices": 1, "approvals": 1, "containers": 1, "apps": 1, "store": 1, "storage": 1, "storage-wizard": 1, "backups": 1, "lights": 1,
+                "cloudflare": 1, "nodes": 1, "tasks": 1, "events": 1, "stats": 1, "terminal": 1, "files": 1, "updates": 1, "freeup": 1, "diag": 1,
+                "totp": 2, "passkeys": 2, "partitions": 2, "mount-points": 2, "swap-setup": 2, "recommendations": 2, "security-activity": 2, "capabilities": 2,
+                "force-unmount": 2}
+REC_CACHE = {}             # recommended actions, worked out at most once a minute
 browser_requests = {}      # id -> {pem, name, code, expires, state, device_id}
 approvals = {}             # id -> {id, device, device_name, method, path, data, created, state, result}
 
@@ -511,6 +538,13 @@ def write_pending():
 totp_lock = threading.Lock()
 totp_fails = []            # times of wrong codes, server-wide: 5 in 15 minutes and codes are refused for a while
 totp_pending = {}          # device id -> {secret, t}: a secret being set up, until it's confirmed with one code
+
+def passkey_rp(headers):
+    """The web address passkeys belong to here: the host the browser used, when it's a name (browsers don't allow
+    passkeys on an IP address)."""
+    h = (headers.get("Host") or "").split(":")[0].strip().lower()
+    if not h or h == "localhost" or re.fullmatch(r"[\d.]+|\[?[0-9a-f:]+\]?", h) or not re.fullmatch(r"[a-z0-9.-]{1,253}", h): return None
+    return h
 
 def totp_state():
     return load_json(TOTP_FILE, {}) if os.path.exists(TOTP_FILE) else {}
@@ -576,6 +610,8 @@ def describe_action(a):
     if p == ["cloudflare", "token", "show"]: return "Show the server's Cloudflare API token (to copy it to another server)"
     if p == ["totp", "setup"]: return "Set up authenticator-app codes (they can approve browsers without your phone)"
     if p == ["totp", "remove"]: return "Turn off authenticator-app codes"
+    if p == ["passkeys", "register", "start"]: return "Add a passkey (it can add browsers and approve what they ask for)"
+    if p == ["passkeys", "remove"]: return "Remove a passkey"
     if p == ["freeup"]: return "Free up space: remove " + ", ".join(str(x) for x in (a.get("data", {}).get("items") or []))[:200]
     if p == ["cloudflare", "app-key"]: return f"Make a key that lets an app's own phone app open {a.get('data', {}).get('host', '?')} (it replaces an older key)"
     if p == ["cloudflare", "app-key", "remove"]: return f"Remove the app key for {a.get('data', {}).get('host', '?')}"
@@ -627,7 +663,7 @@ def partition_op_text(o):
 
 def browser_forbidden(method, parts, dev):
     """Device management and approvals are for phones only (their keys live in hardware)."""
-    if parts[:1] == ["approvals"] and method == "POST" and not (len(parts) == 3 and parts[2] == "totp"): return True   # (a code for its own request is fine)
+    if parts[:1] == ["approvals"] and method == "POST" and not (len(parts) == 3 and parts[2] == "totp") and not (len(parts) == 4 and parts[2] == "passkey"): return True   # (a code for its own request is fine)
     if parts[:1] == ["browser"]: return True
     if parts == ["server", "update"] and method == "POST": return True          # updates: phones only
     if parts[:1] == ["ssh"] and method != "GET": return True                      # SSH keys: phones only
@@ -685,6 +721,7 @@ def needs_stepup(method, parts):
     # authenticator codes: making the secret and turning them off need a fingerprint. Confirming doesn't — it only works
     # with a right code for the secret that same device was just shown.
     if method == "POST" and parts in (["totp", "setup"], ["totp", "remove"]): return True
+    if method == "POST" and parts in (["passkeys", "register", "start"], ["passkeys", "remove"]): return True     # passkeys: fingerprint to add or remove
     if method == "POST" and parts[:1] == ["approvals"] and parts[-1:] == ["approve"]: return True
     if method == "POST" and parts[:1] == ["devices"] and parts[-1:] in (["access"], ["invite"]): return True
     if method != "POST": return False
@@ -994,6 +1031,7 @@ class Handler(BaseHTTPRequestHandler):
             a = new_approval(dev, method, path, data0)
             audit(device=dev["name"], path=path, result=202, why="sent to a phone for approval")
             return self.send(202, {"approval": a["id"], "code": a["code"], "totp": bool(totp_state().get("secret")),
+                                   "passkey": bool(passkey_rp(self.headers)) and passkeys.any_for(passkey_rp(self.headers)),
                                    "message": "Approve this on your phone (Nova app), or on the server: sudo nova approve " + a["code"]})
         if needs_stepup(method, parts) and not dev.get("stepup_ok"):
             audit(device=dev["name"], path=path, result=403, why="step-up required")
@@ -1167,6 +1205,34 @@ class Handler(BaseHTTPRequestHandler):
             helper("notify-paired", "".join(c for c in rq["name"] if c.isalnum() or c in " -_")[:40] or "browser")
             write_pending()
             return self.send(200, {"state": "approved", "device_id": dev_id, "role": "admin"})
+        m = re.fullmatch(r"/api/v1/browser/request/([A-Za-z0-9_-]{10,40})/passkey/(start|finish)", path)
+        if method == "POST" and m:
+            # an admin's passkey (from their password manager) adds this browser — on Nova's web address, not an IP
+            rq = browser_requests.get(m.group(1)); rp = passkey_rp(self.headers)
+            if not rq or rq["state"] != "pending" or rq["expires"] < now: return self.send(404, {"state": "expired"})
+            if rq.get("kind") == "wear": return self.send(403, {"error": "a watch is added from the phone it belongs to"})
+            if not rp: return self.send(400, {"error": "passkeys work at Nova's web address, not at an IP address"})
+            try: d = json.loads(body or b"{}")
+            except Exception: d = {}
+            try:
+                if m.group(2) == "start": return self.send(200, passkeys.assert_start(rp, "pair", rid=m.group(1)))
+                extra, pk_name = passkeys.assert_finish(rp, "pair", d)
+                if extra.get("rid") != m.group(1): raise ValueError("that passkey answer was for another request")
+            except PermissionError as e: return self.send(403, {"error": str(e)})
+            except (ValueError, KeyError, TypeError) as e:
+                fails.setdefault(ip, []).append(now); audit(device=rq["name"], path="/api/v1/browser/request/passkey", result=401, why=f"passkey refused: {e}")
+                return self.send(401, {"error": str(e) if isinstance(e, ValueError) else "that passkey answer was incomplete"})
+            dev_id = secrets.token_urlsafe(12)
+            with lock:
+                devs = load_json(DEVICES, {})
+                devs[dev_id] = {"name": rq["name"][:40], "public_key": rq["pem"], "type": "browser", "created": time.strftime("%Y-%m-%d %H:%M"),
+                                "paired_from": rq["from"], "role": "admin", "approved_by": f"passkey ({pk_name})"}
+                save_json(DEVICES, devs)
+            rq.update(state="approved", device_id=dev_id, role="admin")
+            audit(device=rq["name"], path="/api/v1/browser/approve", result=200, why=f"approved with the passkey {pk_name}")
+            helper("notify-paired", "".join(c for c in rq["name"] if c.isalnum() or c in " -_")[:40] or "browser")
+            write_pending()
+            return self.send(200, {"state": "approved", "device_id": dev_id, "role": "admin"})
         if method == "GET" and path.startswith("/api/v1/browser/request/"):
             rq = browser_requests.get(path.rsplit("/", 1)[1])
             if not rq: return self.send(404, {"state": "expired"})
@@ -1189,6 +1255,7 @@ class Handler(BaseHTTPRequestHandler):
                 write_pending()
             return self.send(200, {"state": rq["state"], "device_id": rq.get("device_id"), "role": rq.get("role"), "kind": rq.get("kind", "browser"),
                                    "totp": bool(totp_state().get("secret")) and rq.get("kind") != "wear",
+                                   "passkey": bool(passkey_rp(self.headers)) and passkeys.any_for(passkey_rp(self.headers)) and rq.get("kind") != "wear",
                                    "server": load_json(SETTINGS, {}).get("display_name") or os.uname().nodename})
         return self.send(404, {"error": "not found"})
 
@@ -1439,6 +1506,43 @@ class Handler(BaseHTTPRequestHandler):
             if not ok: return 401, {"error": "that code isn't right (or was already used) — wait for the next one"}
             code, res = self.run_approval(a, "an authenticator code", dev)
             return 200, {"ok": code < 400, "result": res}
+        if len(parts) == 4 and parts[0] == "approvals" and parts[2] == "passkey" and parts[3] in ("start", "finish") and method == "POST":
+            # a browser approves its own held request with an admin's passkey
+            a = approvals.get(parts[1]); rp = passkey_rp(self.headers)
+            if not a or a["state"] != "pending" or a["device"] != dev["id"]: return 404, {"error": "nothing waiting with that id"}
+            if time.time() - a["created"] > 600: a["state"] = "expired"; return 410, {"error": "that request expired"}
+            if not rp: return 400, {"error": "passkeys work at Nova's web address, not at an IP address"}
+            try:
+                if parts[3] == "start": return 200, passkeys.assert_start(rp, "approve", approval=a["id"], dev=dev["id"])
+                extra, pk_name = passkeys.assert_finish(rp, "approve", data)
+                if extra.get("approval") != a["id"] or extra.get("dev") != dev["id"]: raise ValueError("that passkey answer was for another request")
+            except PermissionError as e: return 403, {"error": str(e)}
+            except (ValueError, KeyError, TypeError) as e:
+                audit(device=dev["name"], path=path, result=401, why=f"passkey refused: {e}"); return 401, {"error": str(e) if isinstance(e, ValueError) else "that passkey answer was incomplete"}
+            code, res = self.run_approval(a, f"the passkey {pk_name}", dev)
+            return 200, {"ok": code < 400, "result": res}
+        # ── passkeys: list, add on this browser (fingerprint to start), remove (fingerprint) ──
+        if parts[:1] == ["passkeys"]:
+            if role_of(dev) != "admin": return 403, {"error": "admins only"}
+            rp = passkey_rp(self.headers)
+            if method == "GET" and parts == ["passkeys"]: return 200, {"passkeys": passkeys.listing(), "rp": rp}
+            if method == "POST" and parts == ["passkeys", "register", "start"]:
+                if not rp: return 400, {"error": "open Nova at its web address (not the IP address) to add a passkey"}
+                return 200, passkeys.register_start(rp, dev.get("user") or dev["name"], dev["id"])
+            if method == "POST" and parts == ["passkeys", "register", "finish"]:
+                if not rp: return 400, {"error": "open Nova at its web address to add a passkey"}
+                try: r = passkeys.register_finish(rp, data, dev["name"], dev["id"])
+                except (ValueError, KeyError, TypeError, IndexError) as e: return 400, {"error": str(e) if isinstance(e, ValueError) else "that passkey answer was incomplete"}
+                audit(device=dev["name"], path=path, result=200, why="passkey added"); return 200, r
+            if method == "POST" and parts == ["passkeys", "remove"]:
+                try: passkeys.remove(str(data.get("id", "")))
+                except ValueError as e: return 404, {"error": str(e)}
+                audit(device=dev["name"], path=path, result=200, why="passkey removed"); return 200, {"ok": True}
+            return 404, {"error": "not found"}
+        # ── security activity: pairings, approvals, devices, codes and passkeys (from the audit log) ──
+        if method == "GET" and parts == ["security", "activity"]:
+            if role_of(dev) != "admin": return 403, {"error": "admins only"}
+            return 200, {"events": security_activity()}
         # ── authenticator codes: set up (shown once), confirm with one code, turn off ──
         if parts[:1] == ["totp"]:
             if role_of(dev) != "admin": return 403, {"error": "admins only"}
@@ -2149,6 +2253,22 @@ class Handler(BaseHTTPRequestHandler):
             rc, res = helper("events-delete", arg, timeout=160); return (200 if rc == 0 else 400), res
         if method == "POST" and parts == ["mounts", "mount"]:
             rc, res = helper("mount-fstab", str(data.get("mount", ""))[:200], timeout=90); return (200 if rc == 0 else 400), res
+        # ── capabilities: what this server can do, so apps show a feature only where it exists (modular, no guessing) ──
+        if method == "GET" and parts == ["capabilities"]:
+            return 200, {"api_level": API_LEVEL, "min_level": MIN_LEVEL, "version": API_VERSION, "capabilities": CAPABILITIES,
+                         "features_off": [k for k, v in (load_json(SETTINGS, {}).get("features") or {}).items() if v is False]}
+        # ── recommended actions (worked out on the server; cached for a minute) ──
+        if method == "GET" and parts == ["recommendations"]:
+            c = REC_CACHE.get("v")
+            if not c or time.time() - REC_CACHE.get("t", 0) > 60 or "fresh=1" in self.path:
+                rc, c = helper("recommendations", timeout=90)
+                if rc != 0: return 502, c
+                REC_CACHE.update(v=c, t=time.time())
+            return 200, c
+        if method == "POST" and parts == ["recommendations", "snooze"]:
+            if role_of(dev) != "admin": return 403, {"error": "admins only"}
+            rc, res = helper("recommendations-snooze", str(data.get("id", ""))[:200]); REC_CACHE.clear()
+            return (200 if rc == 0 else 400), res
         # ── partitions: read the table, check a plan (both change nothing); applying is a storage task ──
         if len(parts) == 3 and parts[0] == "drives" and parts[2] == "partitions" and method == "GET":
             if role_of(dev) != "admin": return 403, {"error": "admins only"}

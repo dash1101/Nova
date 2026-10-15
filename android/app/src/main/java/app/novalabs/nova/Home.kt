@@ -148,7 +148,7 @@ import org.json.JSONObject
         // One rhythm: header · (banner) · then your sections in your order, each block Space.gap apart.
         top(); Spacer(Modifier.height(Space.gap))
         AppPrefs.homeOrder.filter { sectionOn(it) }.forEach { id ->
-            when (id) { "hero" -> hero(260.dp); "shortcuts" -> pills(); else -> HomeStats(app) }
+            when (id) { "hero" -> hero(260.dp); "shortcuts" -> pills(); "recs" -> HomeRecommended(app); else -> HomeStats(app) }
             Spacer(Modifier.height(Space.gap))
         }
         Spacer(Modifier.height(118.dp))
@@ -157,7 +157,7 @@ import org.json.JSONObject
         Column(Modifier.weight(1f).verticalScroll(routeScroll())) { top(); if (AppPrefs.homeHero) hero(if (compact) 230.dp else 440.dp); Spacer(Modifier.height(if (compact) 12.dp else 30.dp)) }
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).statusBarsPadding().padding(top = if (compact) 12.dp else 36.dp, end = 8.dp)) {
             AppPrefs.homeOrder.filter { it != "hero" && sectionOn(it) }.forEach { id ->
-                if (id == "shortcuts") pills() else HomeStats(app); Spacer(Modifier.height(Space.gap)) }
+                when (id) { "shortcuts" -> pills(); "recs" -> HomeRecommended(app); else -> HomeStats(app) }; Spacer(Modifier.height(Space.gap)) }
             Spacer(Modifier.height(30.dp))
         }
     }
@@ -247,6 +247,7 @@ import org.json.JSONObject
         }
         SectionLabel("You and this ${DeviceForm.noun}")
         Group {
+            Row1("Security & privacy", "Approvals, authenticator codes, passkeys, app lock, recent activity", true, Icons.Rounded.Shield, N.green, onClick = { app.go(Route.Security) }); RowDivider()
             Row1("Users & devices", if (app.isAdmin) "Invite phones, approve browsers and watches, roles" else "Who can reach this server", true, Icons.Rounded.Group, onClick = { app.go(Route.Devices) })
             RowDivider()
             Row1("Appearance", "Look, theme, app icon, home layout", true, Icons.Rounded.Palette, onClick = { app.go(Route.Appearance) })

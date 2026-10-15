@@ -906,6 +906,12 @@ if verb == "partitions-plan" and len(args) == 2:                # check a list o
         return {"result": res, "steps": steps, "fingerprint": lay["fingerprint"], "busy": lay["busy"]}
     _guard(go)
 
+if verb == "recommendations" and not args:              # what's worth doing on the server now (reads only)
+    import recommend; _guard(recommend.recommendations)
+
+if verb == "recommendations-snooze" and len(args) == 1:  # "not now": hidden for a month
+    import recommend; _guard(lambda: recommend.snooze(args[0]))
+
 if verb == "labs-images" and not args:
     import labs; _guard(labs.images)
 

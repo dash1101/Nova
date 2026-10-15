@@ -11,8 +11,9 @@ import * as SR from "./start.js";
 import * as SV from "./servers.js";
 import * as FM from "./files.js";
 import * as PT from "./parts.js";
+import * as SEC from "./sec.js";
 
-onApproval((id, code, totp) => waitApproval(id, get, code, totp, post));
+onApproval((id, code, totp, pk) => waitApproval(id, get, code, totp, post, pk));
 
 // ── theme ────────────────────────────────────────────────────────────────────────
 let measuredSlow = (() => { try { return sessionStorage.getItem("nova-slow") === "1"; } catch { return false; } })();
@@ -86,7 +87,7 @@ matchMedia("(prefers-color-scheme: light)").addEventListener?.("change", applyTh
 const ROUTES = {
   home: V.home, menu: V.menu, status: V.status, containers: V.containers, store: V.store, inbox: V.inbox, notify: V.notify,
   quick: V.quick, "edit-quick": V.editQuick, lighting: V.lighting, lights: V.lights, schedules: V.schedules, schedule: V.schedule, hardware: V.hardware,
-  partitions: PT.partitions, disks: PT.disks, devices: V.devices, settings: V.settings, server: V.serverSettings, appearance: V.appearance, "edit-home": V.editHome,
+  partitions: PT.partitions, disks: PT.disks, recommended: V.recommended, security: SEC.security, devices: V.devices, settings: V.settings, server: V.serverSettings, appearance: V.appearance, "edit-home": V.editHome,
   "edit-shortcuts": V.editShortcuts, "edit-tabs": V.editTabs, about: V.about, guide: V.guide, faq: V.faq, terminal: V.terminal,
   dashboard: V.dashboard, "edit-dash": V.editDash, archive: V.archive,
   apps: ST.apps, updates: ST.updates, search: SR.search, start: SR.start, "start-edit": SR.startEdit, favorites: SR.favorites, servers: SV.servers, "container-new": ST.containerNew, term: V.hostTerminal, files: FM.files, labs: ST.labs, freeup: ST.freeup, automation: ST.automation, features: ST.features, plugins: ST.plugins, "labs-images": ST.labsImages, wol: ST.wol, openrgb: ST.openrgb, access: ST.access, cloudflare: ST.cloudflare, setup: ST.setup, pool: ST.pool, task: ST.task, backups: ST.backups, backup: ST.backup, "backup-edit": ST.backupEdit, dev: V.dev, "ha-light": V.haLight, "backup-script": ST.backupScript, restore: ST.restore, diag: ST.diag,
@@ -340,6 +341,21 @@ async function pairScreen() {
         };
         $("#tcgo").onclick = go; $("#tc").onkeydown = e => { if (e.key === "Enter") go(); };
       };
+      const showPasskey = async () => {
+        const SEC = await import("./sec.js");
+        if ($("#pkbox") || !SEC.passkeysHere()) return;
+        $("#totpbox").insertAdjacentHTML("beforebegin", `<div id="pkbox" style="margin:10px 26px"><button class="btn block" id="pkgo" style="margin:0;width:100%">Use a passkey</button><p class="note" id="pkerr" style="color:var(--red)"></p></div>`);
+        $("#pkgo").onclick = async () => {
+          try {
+            const o = await fetch(`/api/v1/browser/request/${j.id}/passkey/start`, { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: "{}" }).then(x => x.json());
+            if (o.error) throw new Error(o.error);
+            const ans = await SEC.passkeyAnswer(o);
+            const r = await fetch(`/api/v1/browser/request/${j.id}/passkey/finish`, { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify(ans) });
+            const k = await r.json().catch(() => ({}));
+            if (r.ok && k.state === "approved") paired = k; else throw new Error(k.error || `That didn't work (${r.status})`);
+          } catch (e) { $("#pkerr").textContent = e.name === "NotAllowedError" ? "Cancelled" : e.message; }
+        };
+      };
       const tick = () => { const s = Math.max(0, Math.round((until - Date.now()) / 1000)), el = $("#left");
         if (el) { el.innerHTML = `Waiting… <b>${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}</b> left`; el.style.color = s < 60 ? "var(--amber)" : ""; } };
       tick(); const timer = setInterval(tick, 1000);
@@ -347,6 +363,7 @@ async function pairScreen() {
         for (let w = 0; w < 10 && !paired; w++) await sleep(200);
         const s = paired || await fetch(`/api/v1/browser/request/${j.id}`, { credentials: "same-origin" }).then(x => x.json()).catch(() => ({}));
         if (s.totp) showTotp();
+        if (s.passkey) showPasskey();
         if (s.state === "approved") { clearInterval(timer); await kv("device", { id: s.device_id, keys }); toast("This browser is paired"); unauthorizedShown = false; return start(); }
         if (s.state === "expired") break;
       }

@@ -135,11 +135,11 @@ private val ROW_H = 60.dp
 }
 
 // ── Home sections ────────────────────────────────────────────────────────────────
-val HOME_SECTIONS = listOf("hero", "shortcuts", "stats")
-fun sectionName(id: String) = when (id) { "hero" -> "Server picture"; "shortcuts" -> "Shortcuts"; else -> "At a glance" }
-private fun sectionIcon(id: String) = when (id) { "hero" -> Icons.Rounded.Dns; "shortcuts" -> Icons.Rounded.Apps; else -> Icons.Rounded.Speed }
-private fun sectionKey(id: String) = when (id) { "hero" -> "home_hero"; "shortcuts" -> "home_shortcuts"; else -> "home_stats" }
-fun sectionOn(id: String) = when (id) { "hero" -> AppPrefs.homeHero; "shortcuts" -> AppPrefs.homeShortcuts; else -> AppPrefs.homeStats }
+val HOME_SECTIONS = listOf("hero", "recs", "shortcuts", "stats")
+fun sectionName(id: String) = when (id) { "hero" -> "Server picture"; "shortcuts" -> "Shortcuts"; "recs" -> "Recommended"; else -> "At a glance" }
+private fun sectionIcon(id: String) = when (id) { "hero" -> Icons.Rounded.Dns; "shortcuts" -> Icons.Rounded.Apps; "recs" -> Icons.Rounded.TaskAlt; else -> Icons.Rounded.Speed }
+private fun sectionKey(id: String) = when (id) { "hero" -> "home_hero"; "shortcuts" -> "home_shortcuts"; "recs" -> "home_recs"; else -> "home_stats" }
+fun sectionOn(id: String) = when (id) { "hero" -> AppPrefs.homeHero; "shortcuts" -> AppPrefs.homeShortcuts; "recs" -> AppPrefs.homeRecs; else -> AppPrefs.homeStats }
 
 /** Settings → Appearance → Home layout (or Home ⋮ → Edit Home): order and show/hide the sections. */
 @Composable fun EditHomeScreen(app: AppState) {

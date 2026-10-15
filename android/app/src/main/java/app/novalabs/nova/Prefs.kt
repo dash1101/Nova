@@ -34,6 +34,7 @@ object AppPrefs {
     var homeHero by mutableStateOf(true); private set
     var homeShortcuts by mutableStateOf(true); private set
     var homeStats by mutableStateOf(true); private set
+    var homeRecs by mutableStateOf(true); private set
     var homeChips by mutableStateOf(DEFAULT_SHORTCUTS); private set        // Home shortcut bar, in order
     var homeOrder by mutableStateOf(HOME_SECTIONS); private set            // Home sections, top to bottom
     var navTabs by mutableStateOf(DEFAULT_TABS); private set               // bottom bar, left to right
@@ -84,7 +85,7 @@ object AppPrefs {
         solid = sp.getBoolean("solid", false); glass = sp.getString("glass", "60")!!.toIntOrNull() ?: 60; round = sp.getString("round", "100")!!.toIntOrNull() ?: 100
         theme = sp.getString("theme", "system")!!; style = sp.getString("style", "auto")!!; reduceMotion = sp.getBoolean("reduce_motion", false)
         appLock = sp.getBoolean("app_lock", false); hideInRecents = sp.getBoolean("hide_recents", false)
-        homeHero = sp.getBoolean("home_hero", true); homeShortcuts = sp.getBoolean("home_shortcuts", true); homeStats = sp.getBoolean("home_stats", true)
+        homeHero = sp.getBoolean("home_hero", true); homeShortcuts = sp.getBoolean("home_shortcuts", true); homeStats = sp.getBoolean("home_stats", true); homeRecs = sp.getBoolean("home_recs", true)
         homeOrder = sp.getString("home_order", null)?.split(",")?.filter { it in HOME_SECTIONS }?.let { it + (HOME_SECTIONS - it.toSet()) } ?: HOME_SECTIONS
         fanReverse = sp.getBoolean("fan_reverse", false)
         startRoute = sp.getString("start_route", "home")!!; startEngine = sp.getString("start_engine", "ddg")!!
@@ -106,7 +107,7 @@ object AppPrefs {
             "solid" -> solid = v as Boolean; "glass" -> glass = (v as Number).toInt(); "round" -> round = (v as Number).toInt()
             "lite" -> lite = v as String; "icon_theme" -> iconTheme = v as String; "theme" -> theme = v as String; "style" -> style = v as String; "reduce_motion" -> reduceMotion = v as Boolean; "app_lock" -> appLock = v as Boolean
             "hide_recents" -> hideInRecents = v as Boolean; "home_hero" -> homeHero = v as Boolean
-            "home_shortcuts" -> homeShortcuts = v as Boolean; "home_stats" -> homeStats = v as Boolean
+            "home_shortcuts" -> homeShortcuts = v as Boolean; "home_stats" -> homeStats = v as Boolean; "home_recs" -> homeRecs = v as Boolean
             "home_order" -> homeOrder = (v as String).split(",")
             "fan_reverse" -> fanReverse = v as Boolean
             "start_route" -> startRoute = v as String; "start_engine" -> startEngine = v as String
@@ -248,13 +249,7 @@ object AppLock {
         Text("Each server also has its own name and accent color (Settings → Server).", color = N.sub, fontSize = 13.sp,
             modifier = Modifier.padding(horizontal = 30.dp, vertical = 4.dp))
         SectionLabel("Privacy")
-        Group {
-            SwitchRow("App lock", "Fingerprint or PIN to open Nova, and again after 5 minutes away", AppPrefs.appLock) { on ->
-                if (on) AppLock.prompt(app.activity) { ok -> if (ok) AppPrefs.set("app_lock", true) } else AppPrefs.set("app_lock", false) }
-            RowDivider()
-            SwitchRow("Hide in recent apps", "Blank preview in the app switcher; screenshots are blocked", AppPrefs.hideInRecents) {
-                AppPrefs.set("hide_recents", it); applySecureFlag(app.activity) }
-        }
+        Group { Row1("Security & privacy", "App lock, hiding Nova in recent apps, approvals, authenticator codes, passkeys", true, Icons.Rounded.Shield, N.green, onClick = { app.go(Route.Security) }) }
     }
 }
 
