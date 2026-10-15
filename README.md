@@ -65,10 +65,19 @@ talks HTTPS to a self-signed certificate that it pins at pairing time. Remotely,
 stops strangers before they reach your machine. The API runs as an unprivileged, sandboxed user;
 the only privileged code is a root helper with a fixed list of verbs. Details: [docs/SECURITY.md](docs/SECURITY.md).
 
-## Install the server (Debian / Ubuntu)
+## Install the server (any Linux with systemd)
+
+One line — downloads the latest release, checks its signature, installs it (the `.deb` on Debian/Ubuntu,
+the one-file installer elsewhere):
 
 ```bash
-sudo apt install ./nova-server_*_all.deb    # from https://github.com/dash1101/Nova/releases/latest
+curl -fsSL https://raw.githubusercontent.com/dash1101/Nova/main/get.sh | sh
+```
+
+Or by hand:
+
+```bash
+sudo apt install ./nova-server_*_all.deb    # from https://github.com/dash1101/Nova/releases/latest (or: sudo sh nova-installer.run)
 sudo nova setup                             # guided setup: network, Tailscale, remote, location, tools, firewall
 sudo nova add                               # shows a QR code: scan it with the app
 ```
