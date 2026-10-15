@@ -10,6 +10,7 @@ import * as ST from "./storage.js";
 import * as SR from "./start.js";
 import * as SV from "./servers.js";
 import * as FM from "./files.js";
+import * as PT from "./parts.js";
 
 onApproval((id, code, totp) => waitApproval(id, get, code, totp, post));
 
@@ -85,7 +86,7 @@ matchMedia("(prefers-color-scheme: light)").addEventListener?.("change", applyTh
 const ROUTES = {
   home: V.home, menu: V.menu, status: V.status, containers: V.containers, store: V.store, inbox: V.inbox, notify: V.notify,
   quick: V.quick, "edit-quick": V.editQuick, lighting: V.lighting, lights: V.lights, schedules: V.schedules, schedule: V.schedule, hardware: V.hardware,
-  devices: V.devices, settings: V.settings, server: V.serverSettings, appearance: V.appearance, "edit-home": V.editHome,
+  partitions: PT.partitions, devices: V.devices, settings: V.settings, server: V.serverSettings, appearance: V.appearance, "edit-home": V.editHome,
   "edit-shortcuts": V.editShortcuts, "edit-tabs": V.editTabs, about: V.about, guide: V.guide, faq: V.faq, terminal: V.terminal,
   dashboard: V.dashboard, "edit-dash": V.editDash, archive: V.archive,
   apps: ST.apps, updates: ST.updates, search: SR.search, start: SR.start, "start-edit": SR.startEdit, favorites: SR.favorites, servers: SV.servers, "container-new": ST.containerNew, term: V.hostTerminal, files: FM.files, labs: ST.labs, freeup: ST.freeup, automation: ST.automation, features: ST.features, plugins: ST.plugins, "labs-images": ST.labsImages, wol: ST.wol, openrgb: ST.openrgb, access: ST.access, cloudflare: ST.cloudflare, setup: ST.setup, pool: ST.pool, task: ST.task, backups: ST.backups, backup: ST.backup, "backup-edit": ST.backupEdit, dev: V.dev, "ha-light": V.haLight, "backup-script": ST.backupScript, restore: ST.restore, diag: ST.diag,

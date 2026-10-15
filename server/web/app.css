@@ -1037,3 +1037,13 @@ html.aero #sheet .box { --sr: calc(8px * var(--rk, 1)); --spx: 18px; --spb: 10px
   box-shadow: inset 0 0 0 1px rgba(0,0,0,.3), inset 0 1px 0 rgba(255,255,255,.55), 0 1px 3px rgba(0,0,0,.3) !important; }
 :is(html[data-icons="glossy"], html.aero:not([data-icons])) .row .ri svg { width: 20px; height: 20px; filter: drop-shadow(0 1px 1px rgba(0,0,0,.45)); }
 :is(html[data-icons="glossy"], html.aero:not([data-icons])) .row .ri svg, :is(html[data-icons="glossy"], html.aero:not([data-icons])) .row .ri svg * { fill: #fff !important; color: #fff !important; }
+
+/* partitions: the drive drawn to scale (a small partition keeps a visible sliver), free space striped */
+.pttop { margin: 0 var(--gutter) 8px 30px; font-size: 15px; }
+.pbar { display: flex; gap: 3px; height: 54px; margin: 8px var(--gutter) 6px; }
+.pseg { min-width: 0; border-radius: var(--rM, 8px); background: color-mix(in srgb, var(--pc, var(--sub)) 82%, transparent); color: #fff; font-size: 12px; font-weight: 600;
+  overflow: hidden; display: grid; place-items: center; padding: 0 4px; box-shadow: inset 0 0 0 1px rgba(255,255,255,.12); transition: box-shadow .15s, transform .15s; }
+.pseg span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; text-shadow: 0 1px 2px rgba(0,0,0,.35); }
+.pseg.gap { background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--text) 8%, transparent) 0 6px, transparent 6px 12px); color: var(--sub); box-shadow: inset 0 0 0 1px var(--divider); }
+.pseg.gap span { text-shadow: none; }
+.pseg.on { box-shadow: inset 0 0 0 2px var(--text), 0 0 0 2px var(--blue); transform: translateY(-1px); }

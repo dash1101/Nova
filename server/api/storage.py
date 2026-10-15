@@ -970,6 +970,13 @@ def op_swap_setup(spec, log, progress):
     return {"gb": gb, "file": SWAPFILE}
 
 
+def op_partition_apply(spec, log, progress):
+    import partitions; return partitions.apply(spec, log, progress)
+
+def op_partition_restore(spec, log, progress):
+    import partitions; return partitions.restore(spec, log, progress)
+
+
 OPS = {"format": op_format, "combine": op_combine, "raid": op_raid, "pool-remove": op_pool_remove, "pool-add": op_pool_add,
-       "fstab-nofail": op_fstab_nofail, "fstab-add": op_fstab_add, "repair": op_repair, "clone": op_clone, "swap-setup": op_swap_setup}
-DESTRUCTIVE = {"format", "combine", "raid", "pool-remove", "pool-add", "repair", "clone"}
+       "fstab-nofail": op_fstab_nofail, "fstab-add": op_fstab_add, "repair": op_repair, "clone": op_clone, "swap-setup": op_swap_setup, "partition-apply": op_partition_apply, "partition-restore": op_partition_restore}
+DESTRUCTIVE = {"format", "combine", "raid", "pool-remove", "pool-add", "repair", "clone", "partition-apply", "partition-restore"}

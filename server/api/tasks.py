@@ -18,7 +18,7 @@ import fcntl, json, os, re, secrets, subprocess, sys, time
 HERE = os.path.dirname(os.path.realpath(__file__))
 sys.path.insert(0, HERE)
 DIR = "/run/nova-tasks"
-STORAGE_KINDS = {"format", "combine", "raid", "pool-remove", "pool-add", "fstab-nofail", "fstab-add", "repair", "clone", "swap-setup"}
+STORAGE_KINDS = {"format", "combine", "raid", "pool-remove", "pool-add", "fstab-nofail", "fstab-add", "repair", "clone", "swap-setup", "partition-apply", "partition-restore"}
 DIAG_KINDS = {"net-internet", "disk-speed", "cpu-stress", "mem-test"}
 BACKUP_KINDS = {"backup-run", "restore", "tools"}
 UPDATE_KINDS = {"updates-check", "apt-upgrade", "containers-update"}
@@ -26,7 +26,7 @@ LABS_KINDS = {"images-prune", "freeup"}
 INSTALL_KINDS = {"run-command", "store-install", "store-uninstall", "custom-install", "custom-uninstall", "program-install", "program-remove", "share-setup"}
 KINDS = STORAGE_KINDS | DIAG_KINDS | BACKUP_KINDS | UPDATE_KINDS | INSTALL_KINDS | LABS_KINDS
 TITLES = {"repair": "Repair a drive", "clone": "Clone a drive", "format": "Set up a drive", "combine": "Combine drives", "raid": "Create a RAID array", "pool-remove": "Remove a pool",
-          "pool-add": "Add a drive", "fstab-nofail": "Boot without missing drives", "fstab-add": "Keep a drive mounted", "swap-setup": "Set up swap",
+          "pool-add": "Add a drive", "fstab-nofail": "Boot without missing drives", "fstab-add": "Keep a drive mounted", "swap-setup": "Set up swap", "partition-apply": "Change partitions", "partition-restore": "Restore a partition table",
           "net-internet": "Internet speed test", "disk-speed": "Drive speed test", "cpu-stress": "CPU stress test", "mem-test": "Memory test",
           "backup-run": "Backup", "restore": "Restore from backup", "tools": "Install tools",
           "updates-check": "Check for updates", "apt-upgrade": "Update packages", "containers-update": "Update containers", "images-prune": "Clean up old images", "freeup": "Free up space"}

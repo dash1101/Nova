@@ -1323,6 +1323,7 @@ async function drive(ctx, serial) {
         + row("Reallocated sectors", { sub: String(d.realloc ?? "—") }) + row("Unreadable (pending)", { sub: String(d.pending ?? "—") }) + row("Uncorrectable errors", { sub: String(d.uncorrect ?? "—") })
         + row("Cable errors (all-time) *", { sub: `${d.crc ?? "—"} · if this keeps rising, check the cable` }))}
       ${testsHtml()}
+      ${isAdmin() ? group(row("Partitions", { sub: d.protected ? "See how it's laid out (it's in use, so it can't be changed)" : "See and change how it's laid out — create, delete, format, label, resize", blue: true, icon: "viewday", click: "go:partitions/" + encodeURIComponent(serial) })) : ""}
       ${sec("Details")}${group(row("Size", { sub: bytes(d.size) }) + row("Connection", { sub: (d.bus || "").toUpperCase() }) + row("Serial", { sub: d.serial }) + row("Mounted at", { sub: (d.mounts || []).join(", ") || "Not mounted" }))}
       ${!isAdmin() ? note("View-only access: an admin can mount or unmount drives.") : d.protected ? note(`This drive is in use by the server (${d.role}) and can't be unmounted from the app.`)
         : `<button class="btn block" data-act="mount" ${busy ? "disabled" : ""}>${busy ? "Working…" : mounted ? "Safely unmount" : "Mount"}</button>`}

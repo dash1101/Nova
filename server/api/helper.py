@@ -879,6 +879,21 @@ if verb == "apps-detect" and not args:
 if verb == "storage-map" and not args:
     import storage; _guard(storage.storage_map)
 
+if verb == "partitions" and len(args) == 1:                     # a drive's partition table, gaps and whether it can be edited
+    import partitions
+    if not re.fullmatch(r"[A-Za-z0-9_.:-]{1,64}", args[0]): fail("bad drive", 2)
+    _guard(lambda: partitions.layout(args[0]))
+
+if verb == "partitions-plan" and len(args) == 2:                # check a list of changes and show the result (changes nothing)
+    import partitions
+    if not re.fullmatch(r"[A-Za-z0-9_.:-]{1,64}", args[0]): fail("bad drive", 2)
+    def go():
+        try: ops = json.loads(args[1])
+        except ValueError: raise ValueError("bad request")
+        lay = partitions.layout(args[0]); res, steps = partitions.plan(partitions.with_min_sizes(lay, ops), ops)
+        return {"result": res, "steps": steps, "fingerprint": lay["fingerprint"], "busy": lay["busy"]}
+    _guard(go)
+
 if verb == "labs-images" and not args:
     import labs; _guard(labs.images)
 

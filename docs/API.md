@@ -86,7 +86,7 @@ Grouped by area; each is `GET` unless marked. Fields are documented by the apps 
 - **Containers and apps:** `containers` · `containers/stats` · `containers/<name>` · `containers/<name>/<stop|start|restart|…>` (POST) ·
   `containers/custom` (POST, step-up) · `apps` · `apps/command` · `store` · `store/<id>/install` (POST, step-up) ·
   `programs`, `programs/search` · `plugins`
-- **Storage:** `storage` · `hardware` · `storage/task/<kind>` (POST; erasing kinds need step-up) · `drives/<serial>/…` ·
+- **Storage:** `storage` · `hardware` · `drives/<serial>/partitions` · `drives/<serial>/partitions/plan` (POST, changes nothing) · `storage/task/<kind>` (POST; erasing kinds need step-up) · `drives/<serial>/…` ·
   `backups` (GET/POST) · `backups/<id>/…` · `backups/suggest` · `backups/legacy/script` (GET/POST, step-up) ·
   `freeup` (GET/POST, step-up)
 - **Lights:** `fan` (GET/POST) · `lights` · `lights/<id>` · `lights/ha` (GET/POST step-up/DELETE) · `lights/ha/lights` (POST)

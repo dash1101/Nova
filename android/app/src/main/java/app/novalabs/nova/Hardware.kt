@@ -149,6 +149,10 @@ private fun health(d: JSONObject): Pair<String, String> {
                     try { app.api.post("/api/v1/drives/$serial/mount"); app.toast("Mounted"); reload() } finally { busy = false } }
             }
         }
+        if (app.isAdmin) Group {
+            Row1("Partitions", if (d.optBoolean("protected")) "See how it's laid out (it's in use, so it can't be changed)" else "See and change how it's laid out — create, delete, format, label, resize",
+                true, Icons.Rounded.ViewDay, onClick = { app.go(Route.Partitions(serial)) })
+        }
         if (app.isAdmin && !d.optBoolean("protected")) {
             SectionLabel("Fix and copy")
             Group {

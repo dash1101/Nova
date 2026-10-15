@@ -604,7 +604,9 @@ def describe_action(a):
                 "raid": f"Create {str(d.get('level', 'RAID')).upper()} “{d.get('name', '')}” (erases {n} drives)", "pool-remove": "Remove a storage pool" + (" and erase its drives" if d.get("erase") else ""),
                 "pool-add": "Add a drive to a pool (erases it)", "repair": "Repair a drive (unmounts it while it's checked)",
                 "clone": "Clone a drive (erases the drive it copies to)",
-                "swap-setup": f"Add a {d.get('gb', '?')} GB swap file on the system drive"}.get(p[2], "Change storage")
+                "swap-setup": f"Add a {d.get('gb', '?')} GB swap file on the system drive",
+                "partition-apply": f"Change the partitions on drive {d.get('serial', '?')}: " + "; ".join(partition_op_text(o) for o in (d.get("ops") or [])[:8]) + (" …" if len(d.get("ops") or []) > 8 else ""),
+                "partition-restore": f"Put back an earlier partition table on drive {d.get('serial', '?')}"}.get(p[2], "Change storage")
     if p == ["updates", "packages"]: return "Update system packages"
     if p == ["notify", "discord"]: return "Change where Discord alerts go"
     if p == ["lights", "ha"]: return "Connect a Home Assistant light to the server's status"
@@ -612,6 +614,14 @@ def describe_action(a):
     if p == ["backups", "legacy", "script"]: return "Change your backup script (it runs as root)"
     if p[:1] == ["backups"] and p[-1:] == ["restore"]: return f"Restore {a.get('data', {}).get('path', 'files')} from a backup"
     return f"{a['method']} {a['path']}"
+
+def partition_op_text(o):
+    """One planned partition change, for the approval prompt on the phone."""
+    if not isinstance(o, dict): return "?"
+    k = o.get("op"); n = o.get("n")
+    return {"table": f"new {'GPT' if o.get('type') == 'gpt' else 'MBR'} table (erases the drive)", "create": f"create {o.get('size_mib', '?')} MiB {o.get('fs', '')}".strip(),
+            "delete": f"delete partition {n}", "format": f"format partition {n} as {o.get('fs', '?')} (erases it)", "label": f"label partition {n}",
+            "flag": f"mark partition {n} {o.get('flag', '')}", "resize": f"resize partition {n} to {o.get('size_mib', '?')} MiB"}.get(k, "?")
 
 def browser_forbidden(method, parts, dev):
     """Device management and approvals are for phones only (their keys live in hardware)."""
@@ -624,7 +634,7 @@ def browser_forbidden(method, parts, dev):
     if parts[:1] == ["devices"] and method != "GET" and parts != ["devices", dev.get("id")]: return True
     return False
 
-STORAGE_DESTRUCTIVE = ("format", "combine", "raid", "pool-remove", "pool-add", "repair", "clone", "swap-setup")
+STORAGE_DESTRUCTIVE = ("format", "combine", "raid", "pool-remove", "pool-add", "repair", "clone", "swap-setup", "partition-apply", "partition-restore")
 ROLES = ("admin", "viewer")
 FORMS = ("phone", "tablet", "desktop", "watch")
 def role_of(d): return d.get("role") if d.get("role") in ROLES else "admin"     # devices from before roles: admin
@@ -2137,6 +2147,15 @@ class Handler(BaseHTTPRequestHandler):
             rc, res = helper("events-delete", arg, timeout=160); return (200 if rc == 0 else 400), res
         if method == "POST" and parts == ["mounts", "mount"]:
             rc, res = helper("mount-fstab", str(data.get("mount", ""))[:200], timeout=90); return (200 if rc == 0 else 400), res
+        # ── partitions: read the table, check a plan (both change nothing); applying is a storage task ──
+        if len(parts) == 3 and parts[0] == "drives" and parts[2] == "partitions" and method == "GET":
+            if role_of(dev) != "admin": return 403, {"error": "admins only"}
+            rc, res = helper("partitions", parts[1], timeout=90); return (200 if rc == 0 else 400), res
+        if len(parts) == 4 and parts[0] == "drives" and parts[2:] == ["partitions", "plan"] and method == "POST":
+            if role_of(dev) != "admin": return 403, {"error": "admins only"}
+            ops = data.get("ops")
+            if not isinstance(ops, list) or len(ops) > 32: return 400, {"error": "nothing to do"}
+            rc, res = helper("partitions-plan", parts[1], json.dumps(ops), timeout=120); return (200 if rc == 0 else 400), res
         if len(parts) == 3 and parts[0] == "drives" and parts[2] == "test":
             if method == "GET": rc, res = helper("smart-tests", parts[1], timeout=70); return (200 if rc == 0 else 400), res
             if method == "POST":
