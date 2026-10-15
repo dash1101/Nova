@@ -330,7 +330,7 @@ class Monitor:
 
             # systemd: failed units ------------------------------------------
             m = re.search(r'^(\S+\.(?:service|mount)): Failed with result', msg) if ident == "systemd" else None
-            if m and not m.group(1).startswith(("user@", "nova-alerts")):
+            if m and not m.group(1).startswith(("user@", "nova-alerts", "nova-helper@", "nova-task-")):     # (a refused helper call or a failed task is reported on its own)
                 self.event("warning", f"Service failed: {m.group(1)}", msg[:200], "service")
 
         # Map ataN ports to their disk so one problem isn't reported twice (sdb + ata1).

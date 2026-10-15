@@ -187,8 +187,7 @@ def execute(tid):
             t.update(state="failed", error=f"Nova couldn't read the result: {e}"[:500], step="Failed")
             notify("warning", f"{t['title']} failed", t["error"][:300], "task")
         else:                                        # refused by a safety check: the app shows why
-            t.update(state="failed", error=str(e)[:500], step="Not started", refused=True)
-            if kind in ("repair", "clone"): notify("info", f"{t['title']}: not started", str(e)[:300], "task")      # so it's in the Inbox too
+            t.update(state="failed", error=str(e)[:500], step="Not started", refused=True)     # (shown right away where it was started)
     except Exception as e:
         t.update(state="failed", error=str(e)[:500], step="Failed")
         if kind not in ANNOUNCES_FAIL: notify("warning", f"{t['title']} failed", str(e)[:300], "task")

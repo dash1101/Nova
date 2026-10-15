@@ -1,5 +1,6 @@
 package app.novalabs.nova
 
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import android.Manifest
@@ -487,13 +488,15 @@ private fun Modifier.paneTouch(app: AppState, left: Boolean) = pointerInput(left
 @Composable private fun WideLayout(app: AppState, width: androidx.compose.ui.unit.Dp, backP: () -> Float = { 0f }, backExit: () -> Float = { 0f }) {
     val tabs = navTabs(app)
     val root = app.stack.first()
-    GlowBackground { Row(Modifier.fillMaxSize()) {        // one glow behind the side pill and both panes
-        // The bottom bar's pill, turned on its side: same tabs, same glass (hold it to choose the tabs)
-        if (app.top != Route.Dashboard)        // the always-on dashboard gets the whole screen
-            Box(Modifier.fillMaxHeight().statusBarsPadding().navigationBarsPadding().padding(start = 12.dp, end = 4.dp), contentAlignment = Alignment.Center) {
-                VerticalNav(tabs.indexOfFirst { it.route == root }, tabs.map { it.icon }, tabs.map { it.label }, { i -> app.tab(tabs[i].route) },
-                    onLongClick = { app.go(Route.EditTabs) }, apps = AppSessions.dock(), selectedApp = (root as? Route.AppFrame)?.id ?: Builtins.current(root), onApp = { id -> dockTap(app, id) }, onAppHold = { id -> app.dockMenu = id })
-            }
+    // The glow and both panes are the glass's source; the side pill floats over them (outside the source), so its
+    // frosted glass has the page's colors behind it instead of nothing (which showed as black).
+    var navW by remember { mutableIntStateOf(0) }
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val hasNav = app.top != Route.Dashboard                // the always-on dashboard gets the whole screen
+    Box(Modifier.fillMaxSize()) {
+    Box(Modifier.fillMaxSize().then(LocalRootHaze.current?.let { Modifier.hazeSource(it) } ?: Modifier)) { GlowLayer()      // one glow behind the side pill and both panes
+    Row(Modifier.fillMaxSize()) {
+        if (hasNav) Spacer(Modifier.width(with(density) { navW.toDp() }))
         val parent = app.stack.getOrNull(app.stack.size - 2)
         val split = parent != null && width >= 900.dp
         var lastParent by remember { mutableStateOf<Route?>(null) }
@@ -515,9 +518,14 @@ private fun Modifier.paneTouch(app: AppState, left: Boolean) = pointerInput(left
                 }
                 val full = !split && (app.top == Route.Home || app.top == Route.Dashboard || app.top == Route.Status)
                 Box(Modifier.weight(1f).fillMaxHeight().paneTouch(app, false), contentAlignment = Alignment.TopCenter) {
-                    Box((if (full || split) Modifier.fillMaxSize() else Modifier.widthIn(max = 760.dp).fillMaxHeight())
-                        .then(LocalRootHaze.current?.let { Modifier.hazeSource(it) } ?: Modifier)) {
-                        // predictive back: the page follows your thumb, as on a phone
+                    Box((if (full || split) Modifier.fillMaxSize() else Modifier.widthIn(max = 760.dp).fillMaxHeight())) {
+                        // predictive back: the page underneath shows while you drag (as on a phone), and the page follows your thumb
+                        val under = app.backTarget
+                        if (p > 0.001f && under != null && !split) Box(Modifier.fillMaxSize().graphicsLayer {
+                            val s = 0.94f + 0.06f * e; scaleX = s; scaleY = s; translationX = -32.dp.toPx() * (1f - e) }) {
+                            Screen(app, under)
+                            Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.28f * (1f - e))))
+                        }
                         AnimatedContent(app.top, modifier = Modifier.fillMaxSize().graphicsLayer {
                                 if (p > 0.001f) {
                                     val sc = 1f - 0.12f * e; scaleX = sc; scaleY = sc
@@ -535,6 +543,13 @@ private fun Modifier.paneTouch(app: AppState, left: Boolean) = pointerInput(left
             BottomScrim(Modifier.align(Alignment.BottomCenter))
         }
     } }
+    // The bottom bar's pill, turned on its side: same tabs, same glass (hold it to choose the tabs)
+    if (hasNav)
+        Box(Modifier.fillMaxHeight().onSizeChanged { navW = it.width }.statusBarsPadding().navigationBarsPadding().padding(start = 12.dp, end = 4.dp), contentAlignment = Alignment.Center) {
+            VerticalNav(tabs.indexOfFirst { it.route == root }, tabs.map { it.icon }, tabs.map { it.label }, { i -> app.tab(tabs[i].route) },
+                onLongClick = { app.go(Route.EditTabs) }, apps = AppSessions.dock(), selectedApp = (root as? Route.AppFrame)?.id ?: Builtins.current(root), onApp = { id -> dockTap(app, id) }, onAppHold = { id -> app.dockMenu = id })
+        }
+    }
 }
 
 @Composable fun Screen(app: AppState, r: Route) = CompositionLocalProvider(LocalRouteScroll provides app.scrollFor(r),
