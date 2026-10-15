@@ -923,3 +923,7 @@ html[data-icons="circles"] .row .ri svg { width: 20px; height: 20px; }
 @keyframes tip-in { from { opacity: 0; margin-top: 4px; } }
 .note.xnote.open .xt { animation: in-fade .22s ease-out; }
 #toast { transition: opacity .25s, transform .35s var(--spring); }
+/* developer options */
+.fpsmeter { position: fixed; top: calc(env(safe-area-inset-top, 0px) + 6px); left: 50%; transform: translateX(-50%); z-index: 99; pointer-events: none;
+  background: rgba(0,0,0,.75); color: #fff; font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; padding: 4px 10px; border-radius: 10px; }
+html.dev-bounds :is(.glass, .frost, #sheet .box, .nav, .alertcard, .sugg, .card) { outline: 1.5px solid magenta !important; outline-offset: -1px; }

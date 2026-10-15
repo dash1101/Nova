@@ -118,7 +118,8 @@ function fit(el) {
   const b = { width: el.offsetWidth, height: el.offsetHeight }; if (b.width < 8 || b.height < 8) return;   // layout size: not scaled by an enter animation
   const r = parseFloat(getComputedStyle(el).borderTopLeftRadius) || 0;
   // bend first, then blur (inside the filter, so the bending stays visible): content panes frosted, small controls clear
-  const soft = el.matches(".nav, #toast") ? 1.2 : 5;
+  const clear = parseFloat(document.documentElement.dataset.clear || ".5");
+  const soft = el.matches(".nav, #toast") ? 1.2 : +(0.6 + 6 * (1 - clear)).toFixed(1);     // clear glass: barely blurred, just bent
   const id = filterFor(b.width, b.height, r, soft);
   el.style.setProperty("--lens", `url(#${id})`);
 }

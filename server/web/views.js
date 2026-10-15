@@ -1,6 +1,6 @@
 // Nova web — every screen of the app. Each view renders with ctx.show(html, options, handlers);
 // buttons carry data-act="name" or data-act="name:arg" and land in `handlers` (or the router's).
-import { gpuInfo } from "./core.js";
+import { gpuInfo, devLog } from "./core.js";
 import { S, $, $$, esc, get, post, del, api, loadNodes, serverHost, sleep, prefs, waitTask, runningTask, levelColor, pct, rate, bytes, isAdmin, has, cleanTitle, cap,
          serverName, uptime, hm, refresh, changeFan, waitJob, kv, archiveMerge, archiveAll, archiveClear, archiveUnmark } from "./core.js";
 import { I, row, group, sec, note, sw, radio, switchRow, links, expand, slider, segmented, bar, usageColor,
@@ -1466,6 +1466,27 @@ function iconSample(theme, icon, tint) {
     mono: "width:26px;height:26px;color:var(--text)" }[look];
   return `<span style="${base}${st}">${I(icon).replace('class="i', 'style="width:17px;height:17px;fill:currentColor" class="i')}</span>`;
 }
+/** Developer options: a frame-rate meter, the requests this browser made, glass outlines, the lens off, device details. */
+export async function dev(ctx) {
+  const draw = () => {
+    const g = gpuInfo(), hz = Math.round(window.__novaHz || 60);
+    const info = [["Nova", S.me?.api || "—"], ["Browser", navigator.userAgent.replace(/^Mozilla\/5\.0 /, "").slice(0, 120)], ["Screen", `${screen.width}×${screen.height} · ${devicePixelRatio}× · about ${hz} Hz`],
+      ["Graphics", g.software ? "Drawn by the processor (no graphics card)" : g.renderer || "Graphics card"], ["Blur", g.blur ? "Supported" : "Not supported"], ["Glass bending", canRefract() ? "Supported" : "Not in this browser"]];
+    const log = devLog.slice(0, 40);
+    ctx.show(note("Tools for checking how Nova runs in this browser. They're only in this browser, and off unless you turn them on.")
+      + sec("Drawing") + group(switchRow("Show frame rate", "A meter at the top: frames per second and the slowest frame", !!prefs.devFps, "fps")
+        + switchRow("Show glass areas", "Outlines every glass surface", !!prefs.devBounds, "bounds") + switchRow("Glass without bending", "Turns the lens off, to compare how smooth it runs", !!prefs.devNoLens, "nolens"))
+      + sec("This browser") + group(info.map(([k, v]) => row(k, { sub: v })).join("") + row("Copy these details", { sub: "For a bug report", icon: "copy", click: "copyinfo" }))
+      + sec("Requests · newest first") + group(log.length ? log.map(e => `<div class="row"><code style="width:38px;color:${e.status >= 200 && e.status < 300 ? "var(--green)" : "var(--red)"}">${e.status || "—"}</code><div class="t"><b style="font:500 13px ui-monospace,monospace">${esc(e.method)} ${esc(e.path)}</b><small>${new Date(e.t).toLocaleTimeString()} · ${e.ms} ms</small></div></div>`).join("") : row("Nothing yet", { dis: true })),
+      { title: "Developer options" });
+  };
+  ctx.handlers({
+    fps: () => { prefs.devFps = !prefs.devFps; ctx.applyTheme(); draw(); }, bounds: () => { prefs.devBounds = !prefs.devBounds; ctx.applyTheme(); draw(); },
+    nolens: () => { prefs.devNoLens = !prefs.devNoLens; ctx.applyTheme(); draw(); },
+    copyinfo: async () => { const t = [...document.querySelectorAll(".row .t")].slice(0, 6).map(r => r.innerText.replace(/\n/, ": ")).join("\n"); try { await navigator.clipboard.writeText(t); toast("Copied"); } catch { toast("Couldn't copy"); } },
+  });
+  draw(); ctx.every(2000, () => draw());
+}
 export async function appearance(ctx) {
   const draw = () => {
     const t = prefs.theme, st = prefs.style, mat = document.documentElement.classList.contains("material"), look = mat ? "Material" : ({ liquid: "Glass", fluent: "Mica", breeze: "Breeze" })[st] || "Default";
@@ -1586,7 +1607,8 @@ export const editTabs = ctx => {
 export async function about(ctx) {
   const s = S.overview?.server || {};
   ctx.show(`<div class="center" style="padding:20px 0"><div style="display:inline-block">${(await import("./ui.js")).logo(72)}</div><div style="font-size:34px;font-weight:700">Nova</div><div class="muted">Nova web</div></div>
-    ${group(row("Version", { sub: `Nova ${S.me?.api || S.cache["/api/v1/server/update"]?.installed || ""} · check for updates`, blue: true, icon: "restart", click: "go:updates" }))}
+    ${group(row("Version", { sub: `Nova ${S.me?.api || S.cache["/api/v1/server/update"]?.installed || ""} · check for updates`, blue: true, icon: "restart", click: "go:updates" })
+      + row("Developer options", { sub: "Frame rate, this browser's requests, glass layers, device details", icon: "tune", tint: "var(--sub)", click: "go:dev" }))}
     ${sec("Server")}${group(row("Name", { sub: s.name }) + row("Board", { sub: s.board }) + row("CPU", { sub: s.cpu }) + row("Memory", { sub: s.ram_gb ? s.ram_gb + " GB" : "" }) + row("Kernel", { sub: s.kernel }) + row("Up for", { sub: s.uptime_s ? uptime(s.uptime_s) : "" }))}
     ${sec("Security")}${group(row("Every request is signed", { sub: "By this browser's own key — it can't be copied out — time-stamped and single-use" }) + row("Risky actions need your phone", { sub: "Shells, stopping things, installs, unmounting, power — approved with your fingerprint" })
       + row("At home: encrypted", { sub: "HTTPS to the server's own certificate" }) + row("Outside home: Cloudflare Access", { sub: "Strangers are stopped before they reach the server" }))}

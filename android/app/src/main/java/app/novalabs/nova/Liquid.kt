@@ -126,7 +126,7 @@ object Backdrop {
                 for (y in 0 until 16) for (x in 0 until 16) { val c = tiny.getPixel(x, y)
                     ls[i++] = (.2126f * ((c shr 16) and 255) + .7152f * ((c shr 8) and 255) + .0722f * (c and 255)) / 255f }
                 ls.sort(); lum = ls.average().toFloat(); dark = ls[64]; bright = ls[191]      // also its darker and brighter quarters
-                (if (AppPrefs.wallBlur <= 0) full else Soft.blur(Soft.shrink(full, (full.width * s).toInt().coerceAtLeast(8)), 2)).asImageBitmap()
+                (if (AppPrefs.wallBlur <= 0) full else Soft.blur(Soft.shrink(full, (full.width * s).toInt().coerceAtLeast(8)), 2 + AppPrefs.wallBlur / 8)).asImageBitmap()
             }.getOrNull()
         }
         return bmp
@@ -213,13 +213,13 @@ half4 main(float2 p0) {
 }
 """
 
-private fun lensEffect(w: Float, h: Float, radius: Float, blurPx: Float, offY: Float = 0f): RenderEffect? {
+private fun lensEffect(w: Float, h: Float, radius: Float, blurPx: Float, offY: Float = 0f, bend: Float = 1f): RenderEffect? {
     if (!Compat.S) return null
     val blur = if (blurPx > 0.5f) android.graphics.RenderEffect.createBlurEffect(blurPx, blurPx, android.graphics.Shader.TileMode.CLAMP) else null
     if (android.os.Build.VERSION.SDK_INT < 33) return blur?.asComposeRenderEffect()
     val sh = runCatching { RuntimeShader(LENS) }.getOrNull()?.apply {          // (if this GPU driver won't take it: blur only)
         setFloatUniform("size", w, h); setFloatUniform("radius", radius.coerceAtMost(minOf(w, h) / 2))
-        setFloatUniform("bevel", minOf(maxOf(radius * 1.1f, 40f), 100f, w / 3, h / 3)); setFloatUniform("strength", minOf(140f, maxOf(50f, minOf(w, h) * .3f)))
+        setFloatUniform("bevel", minOf(maxOf(radius * 1.1f, 40f), 100f, w / 3, h / 3)); setFloatUniform("strength", minOf(140f, maxOf(50f, minOf(w, h) * .3f)) * bend)
         setFloatUniform("off", 0f, offY)
     } ?: return blur?.asComposeRenderEffect()
     val lens = android.graphics.RenderEffect.createRuntimeShaderEffect(sh, "content")
@@ -232,14 +232,19 @@ private fun lensEffect(w: Float, h: Float, radius: Float, blurPx: Float, offY: F
     val ctx = androidx.compose.ui.platform.LocalContext.current
     val win = androidx.compose.ui.platform.LocalWindowInfo.current.containerSize
     var origin by remember { mutableStateOf(Offset.Zero) }
-    val wall = Backdrop.frosted(ctx)
     val inDialog = LocalInDialog.current
     val clear = AppPrefs.glass.coerceIn(0, 100) / 100f
+    // Glass clarity sets how liquid it looks: clear glass sees the page sharply (only bent at the rim), frosted glass a
+    // soft copy. From about the middle up it's the real, sharp backdrop — that's the liquid look.
+    val wall = if (clear >= .45f) Backdrop.wallpaper(ctx) else Backdrop.frosted(ctx)
     // the tint thins out with Glass clarity, but over a wallpaper that clashes with the theme (bright under dark mode, dark
     // under light) it keeps enough body that the text on the card stays easy to read
     val clash = if (wall == null) 0f else if (t.dark) Backdrop.bright else 1f - Backdrop.dark
-    val tint = (if (t.dark) Color(0xFF16161C) else Color(0xFFFAFAFC)).copy(alpha = maxOf((if (t.dark) .55f else .72f) - clear * .45f, .30f + clash * .45f,
-        if (inDialog) (if (t.dark) .5f else .6f) else 0f).coerceAtMost(.9f))                  // a popup's text sits on busy content: give it more body
+    // tint: thick when frosted, almost nothing when clear (100% is clearer than it used to be: the old 100% is now about
+    // 50%); a clashing wallpaper adds a little body, less the clearer you ask for. Popups keep enough to read.
+    val hiA = if (t.dark) .62f else .78f; val loA = if (t.dark) .05f else .12f
+    val tint = (if (t.dark) Color(0xFF16161C) else Color(0xFFFAFAFC)).copy(alpha = maxOf(hiA + (loA - hiA) * clear + clash * .3f * (1f - clear),
+        if (inDialog) (if (t.dark) .5f else .6f) else 0f).coerceIn(0f, .9f))
     val hi = Color.White
     if (solidGlass() || lite()) return this.shadow(if (lite()) 0.dp else elevation, shape).clip(shape).background(t.card)
     // on-screen position: the same in the app's window and in a dialog's own window, so dialogs line up with the wallpaper too
@@ -259,14 +264,15 @@ private fun lensEffect(w: Float, h: Float, radius: Float, blurPx: Float, offY: F
             val lh = minOf(size.height, winH + 768f)
             var lensOff = -1f
             val outline = shape.createOutline(size, layoutDirection, this)
-            val sheen = Brush.linearGradient(listOf(hi.copy(alpha = if (t.dark) .10f else .30f), Color.Transparent), Offset.Zero, Offset(size.width * .35f, size.height * .38f))
+            val sheen = Brush.linearGradient(listOf(hi.copy(alpha = (if (t.dark) .10f else .30f) * (1f - .5f * clear)), Color.Transparent), Offset.Zero, Offset(size.width * .35f, size.height * .38f))
             val rim = Brush.sweepGradient(0f to hi.copy(alpha = .06f), .12f to hi.copy(alpha = .03f), .35f to hi.copy(alpha = .30f), .5f to hi.copy(alpha = .06f),
                 .62f to hi.copy(alpha = .75f), .7f to hi.copy(alpha = .75f), .85f to hi.copy(alpha = .06f), 1f to hi.copy(alpha = .06f), center = Offset(size.width / 2, size.height / 2))
             val stroke = Stroke(0.7.dp.toPx())
             onDrawBehind {
                 val shot = if (inDialog) Behind.shot else null
                 val offY = if (lh >= size.height) 0f else ((((-origin.y - 384f).coerceAtLeast(0f)) / 256f).toInt() * 256f).coerceAtMost(size.height - lh)
-                if (offY != lensOff) { layer.renderEffect = lensEffect(size.width, size.height, r, blurPx, offY); lensOff = offY }
+                val wantOff = if (Dev.noLens) -2f else offY                 // Developer options → Glass without bending
+                if (wantOff != lensOff) { layer.renderEffect = if (Dev.noLens) null else lensEffect(size.width, size.height, r, blurPx, offY, .75f + .55f * clear); lensOff = wantOff }
                 layer.record(size = IntSize(size.width.toInt(), lh.toInt())) {
                     translate(0f, -offY) {
                         if (shot != null) {                      // the page behind this popup, as the popup window dims it
@@ -275,7 +281,8 @@ private fun lensEffect(w: Float, h: Float, radius: Float, blurPx: Float, offY: F
                         } else drawBackdrop(t, origin, win, wall)
                     }
                 }
-                translate(0f, offY) { drawLayer(layer) }
+                translate(0f, offY) { drawLayer(layer)
+                    if (Dev.bounds) drawRect(Color.Magenta, size = androidx.compose.ui.geometry.Size(size.width, lh), style = Stroke(2f)) }   // Developer options → Show glass areas
                 drawRect(tint)
                 drawRect(sheen)
                 drawOutline(outline, rim, style = stroke)

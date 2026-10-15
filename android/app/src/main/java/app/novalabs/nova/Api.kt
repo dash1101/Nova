@@ -87,7 +87,10 @@ class NovaApi(private val pairing: Pairing) {
         // Each attempt is signed afresh (new time + nonce), except step-up calls whose second
         // signature is bound to one message by the fingerprint prompt.
         val fixed = prepared as? Prepared
-        val text = route(method) { name, base -> send(name, base, fixed ?: prepare(method, path, body), stepUpSig) }
+        val t0 = System.nanoTime(); var via = ""
+        val text = try { route(method) { name, base -> via = name; send(name, base, fixed ?: prepare(method, path, body), stepUpSig) } }
+            catch (e: Exception) { DevLog.add(method, path, (e as? ApiException)?.code ?: -1, (System.nanoTime() - t0) / 1_000_000, via, e.message); throw e }
+        DevLog.add(method, path, 200, (System.nanoTime() - t0) / 1_000_000, via, null)
         val obj = runCatching { JSONObject(text) }.getOrElse { JSONObject().put("raw", text) }
         if (method == "GET" && Cache.isFor(pairing.profile)) Cache.put(path, obj)
         obj

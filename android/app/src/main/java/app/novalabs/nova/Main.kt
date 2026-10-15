@@ -44,7 +44,7 @@ import org.json.JSONObject
 /** Every screen in the app. */
 sealed class Route {
     data object Home : Route(); data object Store : Route(); data object Menu : Route()
-    data object Lighting : Route(); data object Schedules : Route(); data object HaLight : Route()
+    data object Lighting : Route(); data object Schedules : Route(); data object HaLight : Route(); data object Dev : Route()
     data class EditSchedule(val index: Int) : Route()
     data object Containers : Route(); data class Container(val name: String) : Route()
     data class Logs(val name: String) : Route(); data class Shell(val name: String) : Route()
@@ -276,7 +276,7 @@ class MainActivity : ComponentActivity() {
         openUpdate = fresh && intent?.getStringExtra("open") == "update"
         intent?.removeExtra("open")
         Alerts.start(this)
-        AppPrefs.init(this); applySecureFlag(this)
+        AppPrefs.init(this); Dev.load(this); applySecureFlag(this)
         setContent { NovaTheme {
             if (AppPrefs.appLock && !AppLock.unlocked) LockScreen(this) else NovaRoot(this, openInbox)
         } }
@@ -422,6 +422,7 @@ class MainActivity : ComponentActivity() {
                 AlertBanner(app, Modifier.align(Alignment.TopCenter))
                 if (DialogStack.depth == 0) OneToastHost(app.snack, Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = if (wide) 24.dp else 96.dp))
             }
+            if (Dev.fps) FpsMeter(Modifier.align(Alignment.TopCenter))       // Developer options → Show frame rate
         }
     }
 }
@@ -561,6 +562,7 @@ private fun Modifier.paneTouch(app: AppState, left: Boolean) = pointerInput(left
         Route.Lighting -> LightingScreen(app)
         Route.Schedules -> SchedulesScreen(app)
         Route.HaLight -> HaLightScreen(app)
+        Route.Dev -> DevScreen(app)
         is Route.EditSchedule -> EditScheduleScreen(app, r.index)
         Route.Containers -> ContainersScreen(app)
         is Route.Container -> ContainerScreen(app, r.name)

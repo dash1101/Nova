@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.7.4-alpha (server, Nova web, app and watch)
+- **Glass is liquid again:** Glass clarity now sets how sharp the page behind the glass is, not just how tinted it is. Clear glass sees the page sharply and only bends it at the rim, with a stronger bend; low clarity gives the soft, frosted look. The scale moved too: the old 100% is now about 50%, so 100% is clearer than ever (app and web).
+- **Developer options** (About → Developer options, app and web): a frame-rate meter (frames per second and the slowest frame, colored against your screen's refresh rate), a log of the last requests with their timing and route, outlines of every glass layer, the glass lens switched off for comparison, and device details you can copy into a bug report.
+
 ## 0.7.3-alpha (server, Nova web, app and watch)
 - **Install in one line:** `curl -fsSL https://raw.githubusercontent.com/dash1101/Nova/main/get.sh | sh` downloads the latest release, checks its signature and installs it (with apt on Debian and Ubuntu). On the website and in the README too.
 - **Container usage:** Containers shows each one's CPU and memory, and **Heaviest first** sorts by what's using the most (web and app).

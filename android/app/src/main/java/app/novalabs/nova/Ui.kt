@@ -746,13 +746,14 @@ fun bytesHuman(b: Long): String {
     var origin by remember { mutableStateOf(Offset.Zero) }
     val win = androidx.compose.ui.platform.LocalWindowInfo.current.containerSize
     Box(Modifier.fillMaxSize().background(t.bg).onGloballyPositioned { origin = it.positionInWindow() }) {
-        bmp?.let { img -> Canvas(Modifier.fillMaxSize().then(if (Compat.S && blur > 0) Modifier.blur((blur / 2).dp) else Modifier)) {
+        // (the copy is already softened to the Blur setting, so no live blur here: the same picture as behind Glass, and cheaper)
+        bmp?.let { img -> Canvas(Modifier.fillMaxSize()) {
             val W = if (win.width > 0) win.width.toFloat() else size.width; val H = if (win.height > 0) win.height.toFloat() else size.height
             val k = maxOf(W / img.width, H / img.height)                     // "cover" the whole window
             val dw = img.width * k; val dh = img.height * k
             drawImage(img, dstOffset = androidx.compose.ui.unit.IntOffset(((W - dw) / 2 - origin.x).toInt(), ((H - dh) / 2 - origin.y).toInt()),
                 dstSize = androidx.compose.ui.unit.IntSize(dw.toInt(), dh.toInt()), filterQuality = androidx.compose.ui.graphics.FilterQuality.High)
         } }
-        Box(Modifier.fillMaxSize().background(t.bg.copy(alpha = AppPrefs.wallDim / 100f)))
+        Box(Modifier.fillMaxSize().background(t.bg.copy(alpha = wallScrim(t))))     // the same dimming as behind Glass, so the glass matches the page
     }
 }

@@ -107,11 +107,16 @@ export async function signedRaw(method, path, bytes) {
   if (!r.ok) throw new ApiError(r.status, j.message || j.error || `HTTP ${r.status}`, false, j.error || "");
   return j;
 }
+/** Developer options → requests: the last 60 calls to the server, newest first. */
+export const devLog = [];
+function logReq(method, path, status, t0) { devLog.unshift({ t: Date.now(), method, path: String(path).split("?")[0].slice(0, 80), status, ms: Math.round(performance.now() - t0) }); devLog.length = Math.min(devLog.length, 60); }
 export async function api(method, path, body, here = false) {
-  let r;
+  let r; const t0 = performance.now();
   try {
     r = await signedFetch(method, path, body, here);
+    logReq(method, path, r.status, t0);
   } catch (e) {
+    logReq(method, path, 0, t0);
     S.lastAttempt = navigator.onLine === false ? "This device is offline" : `Nothing answered at ${location.host} (the server is off, or this network can't reach it)`;
     throw new ApiError(0, "Disconnected", true);
   }

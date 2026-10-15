@@ -359,7 +359,8 @@ import java.util.*
         }
         val serverVer = live(app, "/api/v1/whoami", 0).value?.optString("api").orEmpty()
         Group { Row1("Version", "App $APP_VERSION${if (serverVer.isNotEmpty()) " · server $serverVer" else ""} · check for updates", true,
-            Icons.Rounded.Update, onClick = { app.go(Route.Updates) }) }
+            Icons.Rounded.Update, onClick = { app.go(Route.Updates) })
+            RowDivider(); Row1("Developer options", "Frame rate, the app's requests, glass layers, device details", false, Icons.Rounded.Code, N.sub, onClick = { app.go(Route.Dev) }) }
         SectionLabel("Server")
         Group {
             Row1("Name", s?.optString("name")); RowDivider()

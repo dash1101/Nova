@@ -1,6 +1,7 @@
 // Nova web — entry: router (with back stack, scroll memory and slide transitions), the app shell
 // (the frosted nav pill: along the bottom on phones, down the left on wide screens), pairing, start-up.
 import { S, $, $$, esc, sleep, kv, pemOf, get, post, prefs, has, refresh, onApproval, ApiError, webForm, levelColor, cleanTitle, switchServer, savedTarget, loadNodes, gpuInfo } from "./core.js";
+let fpsEl = null;                 // Developer options → Show frame rate (the meter element)
 import { I, logo, toast, waitApproval, closeSheet, copyCmd } from "./ui.js";
 import * as V from "./views.js";
 import { loadLang, watch } from "./i18n.js";
@@ -45,9 +46,13 @@ function applyTheme() {
   root.classList.toggle("solid", solid);
   // how clear the glass is (Liquid Glass, Fluent) and how round the corners are (the three presets)
   const clear = Math.max(0, Math.min(100, prefs.glass ?? 60)) / 100;
-  if (preset === "liquid" || preset === "fluent") root.style.setProperty("--ga", String((preset === "liquid" ? .55 : .95) - clear * .45)); else root.style.removeProperty("--ga");
+  // Glass clarity: for Glass it also sets how sharp the page behind is (clear = liquid, low = frosted); the old 100% is now about 50%
+  if (preset === "liquid" || preset === "fluent") root.style.setProperty("--ga", String(preset === "liquid" ? .6 - clear * .54 : .95 - clear * .45)); else root.style.removeProperty("--ga");
+  if (preset === "liquid") { root.style.setProperty("--lg-blur", (1.5 + 16 * (1 - clear)).toFixed(1) + "px"); root.dataset.clear = clear.toFixed(2); }
+  else { root.style.removeProperty("--lg-blur"); delete root.dataset.clear; }
   root.style.setProperty("--rk", String(Math.max(25, Math.min(150, prefs.round ?? 100)) / 100));
-  liquid(preset === "liquid" && !solid && !root.classList.contains("lite"));
+  liquid(preset === "liquid" && !solid && !root.classList.contains("lite") && !prefs.devNoLens);
+  root.classList.toggle("dev-bounds", !!prefs.devBounds); fpsMeter(!!prefs.devFps);
   $('meta[name="theme-color"]')?.setAttribute("content", dark ? "#000000" : "#f4f3f8");
   // Your own colors (Appearance → Colors): an accent for this device, how strongly it tints, and a wallpaper
   root.style.setProperty("--tintk", String(Math.max(0, Math.min(100, prefs.tint ?? 50)) / 50));
@@ -77,7 +82,7 @@ const ROUTES = {
   devices: V.devices, settings: V.settings, server: V.serverSettings, appearance: V.appearance, "edit-home": V.editHome,
   "edit-shortcuts": V.editShortcuts, "edit-tabs": V.editTabs, about: V.about, guide: V.guide, faq: V.faq, terminal: V.terminal,
   dashboard: V.dashboard, "edit-dash": V.editDash, archive: V.archive,
-  apps: ST.apps, updates: ST.updates, search: SR.search, start: SR.start, "start-edit": SR.startEdit, favorites: SR.favorites, servers: SV.servers, "container-new": ST.containerNew, term: V.hostTerminal, files: FM.files, labs: ST.labs, freeup: ST.freeup, automation: ST.automation, features: ST.features, plugins: ST.plugins, "labs-images": ST.labsImages, wol: ST.wol, openrgb: ST.openrgb, access: ST.access, cloudflare: ST.cloudflare, setup: ST.setup, pool: ST.pool, task: ST.task, backups: ST.backups, backup: ST.backup, "backup-edit": ST.backupEdit, "ha-light": V.haLight, "backup-script": ST.backupScript, restore: ST.restore, diag: ST.diag,
+  apps: ST.apps, updates: ST.updates, search: SR.search, start: SR.start, "start-edit": SR.startEdit, favorites: SR.favorites, servers: SV.servers, "container-new": ST.containerNew, term: V.hostTerminal, files: FM.files, labs: ST.labs, freeup: ST.freeup, automation: ST.automation, features: ST.features, plugins: ST.plugins, "labs-images": ST.labsImages, wol: ST.wol, openrgb: ST.openrgb, access: ST.access, cloudflare: ST.cloudflare, setup: ST.setup, pool: ST.pool, task: ST.task, backups: ST.backups, backup: ST.backup, "backup-edit": ST.backupEdit, dev: V.dev, "ha-light": V.haLight, "backup-script": ST.backupScript, restore: ST.restore, diag: ST.diag,
 };
 // Wide screens and phones in landscape: the bottom bar's pill stands on its end down the left edge.
 const SIDE = matchMedia("(min-width: 900px), (orientation: landscape) and (max-height: 540px)");
@@ -408,4 +413,19 @@ addEventListener("keydown", e => {
   let q = 0; const all = () => { q = 0; document.querySelectorAll(SEL).forEach(edges); };
   new MutationObserver(() => { if (!q) q = requestAnimationFrame(all); }).observe(document.body, { childList: true, subtree: true });
   addEventListener("resize", all);
+}
+
+
+// Developer options → Show frame rate: frames per second over half a second, and the slowest frame
+function fpsMeter(on) {
+  if (!on) { fpsEl?.remove(); fpsEl = null; return; }
+  if (fpsEl) return;
+  fpsEl = document.createElement("div"); fpsEl.className = "fpsmeter"; document.body.append(fpsEl);
+  let n = 0, t0 = performance.now(), last = t0, worst = 0;
+  const tick = now => { if (!fpsEl) return; n++; worst = Math.max(worst, now - last); last = now;
+    if (now - t0 >= 500) { const fps = Math.round(n * 1000 / (now - t0)); window.__novaHz = Math.max(window.__novaHz || 0, fps);
+      const hz = window.__novaHz || 60, c = fps >= hz * .9 ? "#30d158" : fps >= hz * .6 ? "#ff9f0a" : "#ff453a";
+      fpsEl.innerHTML = `<b style="color:${c}">${fps} fps</b> · worst ${Math.round(worst)} ms`; n = 0; worst = 0; t0 = now; }
+    requestAnimationFrame(tick); };
+  requestAnimationFrame(tick);
 }
