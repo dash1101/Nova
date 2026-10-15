@@ -398,7 +398,7 @@ export function colorPicker(initial = "#3e91ff") {
       ${["Hue:h:0:360", "Saturation:s:0:100", "Brightness:v:0:100"].map(x => { const [l, k, a, b] = x.split(":"); return `<div class="muted" style="font-size:13px;margin-top:6px">${l}</div><input type="range" min="${a}" max="${b}" data-cp="${k}">`; }).join("")}
       ${["R:#ff453a", "G:#32d74b", "B:#0a84ff"].map((x, i) => { const [l, c] = x.split(":"); return `<div style="display:flex;align-items:center;gap:10px;margin-top:10px"><b style="color:${c};width:16px">${l}</b><input type="range" min="0" max="255" data-ch="${i}" style="flex:1"><input class="field" data-num="${i}" inputmode="numeric" maxlength="3" style="width:76px;padding:10px 12px;font-family:ui-monospace,monospace"></div>`; }).join("")}
       <input class="field" id="cp-hex" maxlength="7" style="margin-top:12px;font-family:ui-monospace,monospace" placeholder="#rrggbb"></div>
-      <div class="acts"><button data-b="0">Cancel</button><i></i><button data-b="1" style="color:var(--blue)">Done</button></div>`, () => res(null));
+      <div class="acts"><button data-b="0" data-role="cancel">Cancel</button><i></i><button data-b="1" data-role="primary" style="color:var(--blue)">Done</button></div>`, () => res(null));
     const sync = (from) => {
       const [h0, s, v] = toHsv(rgb); if (s > 0) hue = h0;
       $("#cp-prev", box).style.background = hx(rgb);

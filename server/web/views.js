@@ -44,7 +44,8 @@ function homeOrder() {
 }
 const DASH_TILES = [["clock", "Clock", "clock", 1], ["health", "Health", "okc", 1], ["cpu", "CPU graph", "cpu", 1], ["mem", "Memory graph", "mem", 1], ["temp", "Temperature graph", "temp", 1],
   ["net", "Network graph", "net", 1], ["storage", "Storage", "disk", 2], ["containers", "Containers", "box", 1], ["backup", "Backups", "backup", 1], ["fan", "Fan light", "bulb", 2],
-  ["alerts", "Recent alerts", "bell", 2], ["uptime", "Uptime", "clock", 1], ["gpu", "Graphics graph", "speed", 1], ["swap", "Swap graph", "mem", 1], ["io", "Disk I/O graph", "disk", 1]];
+  ["alerts", "Recent alerts", "bell", 2], ["uptime", "Uptime", "clock", 1], ["gpu", "Graphics graph", "speed", 1], ["swap", "Swap graph", "mem", 1], ["io", "Disk I/O graph", "disk", 1],
+  ["top", "Top containers", "box", 1], ["server", "Server info", "dns", 1]];
 const dashSpan = id => prefs.dashSize?.[id] ?? (DASH_TILES.find(t => t[0] === id)?.[3] || 1);
 const dashTime = (d, sec) => d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", ...(sec ? { second: "2-digit" } : {}), ...(prefs.dashClock24 == null ? {} : { hour12: !prefs.dashClock24 }) });
 const SWATCHES = ["#ffffff", "#ff3b30", "#ff9500", "#ffcc00", "#34c759", "#00c7be", "#005aff", "#3e91ff", "#5e5ce6", "#bf5af2", "#ff2d55", "#ff6b9a"];
@@ -176,7 +177,7 @@ export async function home(ctx) {
     const icon = S.error || S.reconnecting ? "sync" : lvl === "ok" ? "okc" : "err";
     const top = `<div class="home-title"><h1><span>${esc(serverName())}</span></h1><span class="sp"></span>
         <button class="circle" data-act="search" aria-label="Search (press /)">${I("search")}</button><button class="circle" data-act="refresh" aria-label="Refresh">${I("refresh")}</button><button class="circle" data-act="more" aria-label="More">${I("more")}</button></div>
-      <div class="statusline" data-act="go:status"><span style="color:${S.error || S.reconnecting ? "var(--sub)" : levelColor(lvl)};display:flex">${I(icon)}</span>${esc(head)}${cs ? `<span class="sep"></span>${cs.running}/${cs.total} running` : ""}${tasksChip()}</div>
+      <div class="statusline" data-act="go:status"><span style="color:${S.error || S.reconnecting ? "var(--sub)" : levelColor(lvl)};display:flex">${I(icon)}</span>${esc(head)}${cs ? `<span class="sep"></span>${cs.running}/${cs.total} running${cs.stopped ? ` · ${cs.stopped} stopped` : ""}` : ""}${tasksChip()}</div>
       <div style="height:14px"></div>${topBanner()}${S.serverUpdate && localStorage.getItem("nova.dismissedUpdate") !== S.serverUpdate ? `<div class="upnote glass"><span style="color:var(--blue);display:flex">${I("update")}</span><b data-act="go:updates" style="flex:1;cursor:pointer">Nova ${esc(S.serverUpdate)} is ready to install</b><button class="xbtn" data-act="upx" aria-label="Not now">${I("close")}</button></div>` : ""}`;
     const order = homeOrder().filter(id => prefs[HOME_SECTIONS.find(s => s[0] === id)?.[3]] && (id !== "servers" || serverStrip()));
     const block = id => id === "hero" ? `<canvas class="hero" id="hero" data-act="herotap" title="Tap the fan, the drive lights or the power button"></canvas>` : id === "shortcuts" ? pills() : id === "servers" ? serverStrip() : stats();
@@ -294,7 +295,7 @@ export async function status(ctx) {
         ${gcard("CPU temperature", "c3", n?.temp ? Math.round(n.temp) + "°C" : m.cpu_temp || "—", n?.nvme_temp ? `NVMe ${Math.round(n.nvme_temp)}°C` : "")}
         ${gcard("Network", "c4", n ? "↓ " + rate(n.rx) : "—", n ? "↑ " + rate(n.tx) : "")}
         ${n?.gpu != null ? gcard("Graphics", "c5", Math.round(n.gpu) + "%", "GPU busy") : ""}
-        ${gcard("Swap", "c6", n ? Math.round(n.swap || 0) + "%" : "—", "of swap in use")}
+        ${n?.swap_total_gb === 0 ? "" : gcard("Swap", "c6", n ? Math.round(n.swap || 0) + "%" : "—", n?.swap_total_gb ? `${n.swap_used_gb} of ${n.swap_total_gb} GB` : "of swap in use")}
         ${gcard("Disk I/O", "c7", n ? rate(n.io || 0) : "—", "read + write, all drives")}
       </div>
       <p class="note" id="gnote">${pts().length < 3 ? (hour ? "Graphs fill in over the next few minutes." : "Connecting to the live feed…") : ""}</p>
@@ -304,7 +305,8 @@ export async function status(ctx) {
           ...[["Backup sets", m.backup_sets], ["Photo check", (m.backup_verify || "").replace("✗", "").trim()], ["Server settings backup", m.config_backup],
               ...Object.keys(m).filter(k => k.endsWith("_db_backup")).map(k => [cap(k.slice(0, -10).replace(/_/g, " ")) + " database backup", m[k]])].filter(x => x[1]).map(([l, v]) => row(l, { sub: v }))];
         return rows.length ? sec("Backups") + group(rows.join("")) : ""; })()}
-      ${sec("Services")}${group([["Containers", m.containers], ["Websites", m.websites], ["Swap", m.swap]].filter(x => x[1]).map(([l, v]) => row(l, { sub: v })).join("") || row("—"))}`,
+      ${sec("Services")}${group(([["Containers", m.containers], ["Websites", m.websites], ["Swap", n?.swap_total_gb === 0 ? "" : m.swap]].filter(x => x[1]).map(([l, v]) => row(l, { sub: v })).join("") || row("—"))
+        + (n?.swap_total_gb === 0 && isAdmin() ? row("Swap", { sub: "None set up — add a swap file, so a busy moment doesn't run memory out", blue: true, icon: "mem", click: "swapsetup" }) : ""))}`,
       { title: "Server status" });
     wireCommon(ctx.root, { onSeg: (_, i) => { hour = i === 1; draw(); } });
     wireAttention(ctx, draw);
@@ -319,10 +321,15 @@ export async function status(ctx) {
     const set = (id, v) => { const e = $("#" + id); if (e) e.textContent = v; };
     set("c1v", Math.round(n.cpu) + "%"); set("c1s", `load ${n.load} · ${n.cores} cores`);
     set("c2v", Math.round(n.mem) + "%"); set("c2s", `${n.mem_used_gb} of ${n.mem_total_gb} GB`);
-    if (n.temp) set("c3v", Math.round(n.temp) + "°C"); set("c4v", "↓ " + rate(n.rx)); set("c4s", "↑ " + rate(n.tx)); if (n.gpu != null) set("c5v", Math.round(n.gpu) + "%"); set("c6v", Math.round(n.swap || 0) + "%"); set("c7v", rate(n.io || 0));
+    if (n.temp) set("c3v", Math.round(n.temp) + "°C"); set("c4v", "↓ " + rate(n.rx)); set("c4s", "↑ " + rate(n.tx)); if (n.gpu != null) set("c5v", Math.round(n.gpu) + "%"); set("c6v", Math.round(n.swap || 0) + "%"); if (n.swap_total_gb) set("c6s", `${n.swap_used_gb} of ${n.swap_total_gb} GB`); set("c7v", rate(n.io || 0));
   };
   const keyOf = a => { a.pop(); return a.join(":"); };          // keys contain ":" — rejoin the act arguments
   ctx.handlers({ alert: (...a) => alertMenu(keyOf(a), draw), ignore: (...a) => dismissAlert(keyOf(a), draw),
+    // no swap at all: make a swap file on the system drive (it comes back after a restart; the graph returns with it)
+    swapsetup: async () => {
+      const gb = await choose("Set up swap", [["2", "2 GB"], ["4", "4 GB", "A good size for most servers"], ["8", "8 GB"], ["16", "16 GB"]], "4");
+      if (gb) ST.startTask(ctx, "/api/v1/storage/task/swap-setup", { spec: { gb: +gb } });
+    },
     big: id => {
       const [label] = GRAPH[id];
       const box = sheet(`<h2>${esc(label)}</h2><p class="muted" style="margin:0 24px">${hour ? "Last hour" : "Live · last 2 minutes"} — ${matchMedia("(any-pointer: fine)").matches ? "point at" : "drag along"} the line to see the value at that time.</p>
@@ -376,7 +383,8 @@ export async function containers(ctx) {
     const use = x => { const u = st[x.name]; return u && x.state === "running" ? ` · CPU ${u.cpu}% · ${u.mem}` : ""; };
     const weight = x => { const u = st[x.name] || {}; return (u.cpu || 0) * 4 + (u.mem_pct || 0); };
     const shown = heavy ? [["Using the most first", [...items].sort((a, b) => weight(b) - weight(a))]] : groups;
-    ctx.show(`<div class="statusline" style="cursor:default"><span class="dot" style="background:${up === items.length ? "var(--green)" : "var(--amber)"}"></span>${S.cache["/api/v1/containers"] ? `${up} of ${items.length} running` : "Loading…"}</div>
+    const off = items.filter(x => x.stopped).length;          // stopped on purpose: not a problem, just not running
+    ctx.show(`<div class="statusline" style="cursor:default"><span class="dot" style="background:${up + off === items.length ? "var(--green)" : "var(--amber)"}"></span>${S.cache["/api/v1/containers"] ? `${up} of ${items.length - off} running${off ? ` · ${off} stopped` : ""}` : "Loading…"}</div>
       ${items.length > 1 ? segmented(["By app", "Heaviest first"], heavy ? 1 : 0, "csort") : ""}
       ${nod}${shown.map(([g, cs]) => sec(cap(g)) + group(cs.map(x => row(x.name, { sub: `${x.image.split("/").pop()} · ${x.health ? x.state + ", " + x.health : x.state}${use(x)}`, click: "open:" + x.name, end: `<span class="dot" style="background:${stateColor(x.state, x.health)}"></span>` })).join(""))).join("")}`,
       { title: "Containers", actions: isAdmin() ? [{ icon: "add", label: "Add a container", act: "addc" }] : [] });
@@ -1455,15 +1463,17 @@ export async function serverSettings(ctx) {
   draw(); try { await get("/api/v1/settings"); if (ctx.alive()) draw(); } catch (e) { toast(e.message); }
 }
 const ICON_THEMES = [["style", "Matches the style", "Each style's own icons"], ["tonal", "Tonal", "Colored symbols on a soft circle"], ["tiles", "Tiles", "White symbols on colored rounded squares"],
-  ["circles", "Circles", "White symbols on colored circles"], ["outline", "Outline", "Colored symbols in a thin ring"], ["glyph", "Symbols only", "Just the colored symbol"], ["mono", "Monochrome", "Plain symbols in the text color"]];
+  ["circles", "Circles", "White symbols on colored circles"], ["outline", "Outline", "Colored symbols in a thin ring"], ["glyph", "Symbols only", "Just the colored symbol"], ["mono", "Monochrome", "Plain symbols in the text color"],
+  ["glossy", "Glossy", "White symbols on shiny tiles, Windows 7 style"]];
 /** One icon drawn the way an icon style draws it, for the picker — shown beside each choice, all the time. */
 function iconSample(theme, icon, tint) {
-  const look = theme !== "style" ? theme : ({ liquid: "tiles", fluent: "glyph", breeze: "glyph", aero: "tiles" })[prefs.style] || "tonal";
+  const look = theme !== "style" ? theme : ({ liquid: "tiles", fluent: "glyph", breeze: "glyph", aero: "glossy" })[prefs.style] || "tonal";
   const base = "display:inline-grid;place-items:center;flex:none;";
   const st = { tonal: `width:30px;height:30px;border-radius:50%;color:${tint};background:color-mix(in srgb, ${tint} 16%, transparent)`,
     tiles: `width:28px;height:28px;border-radius:8px;color:#fff;background:${tint}`, circles: `width:28px;height:28px;border-radius:50%;color:#fff;background:${tint}`,
     outline: `width:28px;height:28px;box-sizing:border-box;border-radius:50%;color:${tint};border:1.5px solid ${tint}`, glyph: `width:26px;height:26px;color:${tint}`,
-    mono: "width:26px;height:26px;color:var(--text)" }[look];
+    mono: "width:26px;height:26px;color:var(--text)",
+    glossy: `width:28px;height:28px;border-radius:6px;color:#fff;background:linear-gradient(rgba(255,255,255,.55),rgba(255,255,255,.12) 50%,transparent 50%,rgba(255,255,255,.2)),${tint};box-shadow:inset 0 0 0 1px rgba(0,0,0,.3),inset 0 1px 0 rgba(255,255,255,.55)` }[look];
   return `<span style="${base}${st}">${I(icon).replace('class="i', 'style="width:17px;height:17px;fill:currentColor" class="i')}</span>`;
 }
 /** Developer options: a frame-rate meter, the requests this browser made, glass outlines, the lens off, device details. */
@@ -1489,6 +1499,7 @@ export async function dev(ctx) {
 }
 export async function appearance(ctx) {
   const draw = () => {
+    const rmax = prefs.style === "liquid" ? 200 : 400;     // Glass stops at 200%: past that its cards turn into ovals
     const t = prefs.theme, st = prefs.style, mat = document.documentElement.classList.contains("material"), look = mat ? "Material" : ({ liquid: "Glass", fluent: "Mica", breeze: "Breeze", aero: "Aero" })[st] || "Default";
     const autoMat = /Android/i.test(navigator.userAgent) && !/SamsungBrowser|SM-[A-Z0-9]|Xiaomi|Redmi|POCO|HUAWEI|HONOR|vivo|OPPO|realme/i.test(navigator.userAgent);
     ctx.show(`${sec("Style")}${group([["auto", "Automatic", `${autoMat ? "Material You" : "Default"} — picked to suit this device`], ["default", "Default", "Nova's own look: frosted glass and a soft glow"],
@@ -1498,7 +1509,7 @@ export async function appearance(ctx) {
         ["breeze", "Breeze", "Flat and tidy: a thin frame, gentle corners, the accent as the focus color"],
         ["aero", "Aero", "Windows 7 glass: tinted frosted frames with a glossy shine and glowing buttons"]].map(([k, l, d]) => row(l, { sub: d, end: radio(st === k), click: "style:" + k })).join(""))}
       ${["liquid", "fluent", "breeze", "aero"].includes(st) ? group((st !== "breeze" ? `<div class="range-row"><div class="h"><span>Glass clarity</span><span id="glassl">${prefs.glass ?? 60}%</span></div><input type="range" min="0" max="100" value="${prefs.glass ?? 60}" data-range="glass" style="--p:${prefs.glass ?? 60}%"></div>` : "")
-        + `<div class="range-row"><div class="h"><span>Corner roundness</span><span id="roundl">${prefs.round ?? 100}%</span></div><input type="range" min="25" max="400" value="${prefs.round ?? 100}" data-range="round" style="--p:${((prefs.round ?? 100) - 25) / 375 * 100}%"></div>`) : ""}
+        + `<div class="range-row"><div class="h"><span>Corner roundness</span><span id="roundl">${Math.min(prefs.round ?? 100, rmax)}%</span></div><input type="range" min="25" max="${rmax}" value="${Math.min(prefs.round ?? 100, rmax)}" data-range="round" style="--p:${(Math.min(prefs.round ?? 100, rmax) - 25) / (rmax - 25) * 100}%"></div>`) : ""}
       ${st === "liquid" && !canRefract() ? note("This browser shows Glass frosted, without the bending at the edges — that part needs a Chromium-based browser.") : ""}
       ${sec("Theme")}${group([["system", "Same as this device"], ["light", `${look} light`], ["dark", `${look} dark`]].map(([k, l]) => row(l, { end: radio(t === k), click: "theme:" + k })).join(""))}
       ${group(switchRow("Reduce motion", "Simple fades instead of slides and bounces", prefs.reduceMotion, "motion", { blue: false })
@@ -1707,8 +1718,13 @@ export async function dashboard(ctx) {
       case "temp": return g("temp", "temp", "CPU temperature", "var(--amber)", n?.temp ? Math.round(n.temp) + "°C" : m.cpu_temp || "—", n?.nvme_temp ? `NVMe ${Math.round(n.nvme_temp)}°C` : "");
       case "net": return g("net", "net", "Network", "var(--green)", n ? "↓ " + rate(n.rx) : "—", n ? "↑ " + rate(n.tx) : "");
       case "gpu": return g("gpu", "speed", "Graphics", "var(--red)", n?.gpu != null ? Math.round(n.gpu) + "%" : "—", n?.gpu != null ? "GPU busy" : "No graphics reading on this server");
-      case "swap": return g("swap", "mem", "Swap", "var(--amber)", n ? Math.round(n.swap || 0) + "%" : "—", "of swap in use");
+      case "swap": return g("swap", "mem", "Swap", "var(--amber)", n?.swap_total_gb === 0 ? "None" : n ? Math.round(n.swap || 0) + "%" : "—", n?.swap_total_gb === 0 ? "no swap set up" : n?.swap_total_gb ? `${n.swap_used_gb} of ${n.swap_total_gb} GB` : "of swap in use");
       case "io": return g("io", "disk", "Disk I/O", "#64d2ff", n ? rate(n.io || 0) : "—", "read + write, all drives");
+      case "top": { const cst = S.cache["/api/v1/containers/stats"]?.stats, w = v => (v.cpu || 0) * 4 + (v.mem_pct || 0);
+        const rows = cst ? Object.entries(cst).sort((a, b) => w(b[1]) - w(a[1])).slice(0, 4) : [];
+        return `<div class="card glass">${lbl("box", "Top containers", "var(--amber)")}${!cst ? `<div class="sub">—</div>` : rows.length ? rows.map(([k, v]) => `<div style="display:flex;gap:8px;margin-top:8px;font-size:13px"><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(k)}</span><span class="muted">${Math.round(v.cpu || 0)}% · ${esc(v.mem || "")}</span></div>`).join("") : `<div class="sub">Nothing running</div>`}</div>`; }
+      case "server": { const sv = S.overview?.server || {};
+        return `<div class="card glass">${lbl("dns", "Server", "var(--blue)")}<div class="val" style="font-size:20px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(sv.display_name || sv.name || "—")}</div><div class="sub" style="white-space:normal">${esc((sv.cpu || "").replace(/\s+/g, " "))}</div><div class="sub" style="margin-top:auto;white-space:normal">${esc([sv.ram_gb ? sv.ram_gb + " GB memory" : "", sv.kernel ? "Linux " + sv.kernel : ""].filter(Boolean).join(" · "))}</div></div>`; }
       case "storage": return `<div class="card glass span2">${lbl("disk", "Storage", "var(--green)")}${storageList(m).slice(0, 5).map(x => { const p = x.pct / 100; return `<div style="display:flex;align-items:center;gap:10px;margin-top:12px"><span style="width:96px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(x.name)}</span><div style="flex:1">${bar(p, usageColor(p))}</div><span class="muted" style="font-size:12px;width:110px;text-align:right">${esc(x.free)}</span></div>`; }).join("")}</div>`;
       case "containers": return `<div class="card glass">${lbl("box", "Containers", "var(--amber)")}<div class="val" style="font-size:36px">${cs ? `${cs.running}/${cs.total}` : "—"}</div><div class="sub">running</div></div>`;
       case "backup": return `<div class="card glass">${lbl("backup", "Backups", "var(--blue)")}<div class="val" style="font-size:22px">${(m.data_backup || "").includes("running") ? "Running" : esc(m.data_backup || "—")}</div><div class="sub">${esc(m.backup_sets || "")}</div></div>`;
@@ -1722,9 +1738,12 @@ export async function dashboard(ctx) {
     const h = new Date().getHours(), night = prefs.dashDim && (prefs.dashFrom > prefs.dashTo ? h >= prefs.dashFrom || h < prefs.dashTo : h >= prefs.dashFrom && h < prefs.dashTo);
     const cols = prefs.dashCols ? Math.min(prefs.dashCols, Math.max(1, Math.floor(innerWidth / 150))) : Math.max(2, Math.min(6, Math.floor(innerWidth / 260)));
     ctx.raw(`<div class="dash${prefs.dashPlain ? " plain" : ""} bg-${esc(prefs.dashBg || "theme")}" id="dash" style="--dscale:${(prefs.dashScale || 100) / 100}"><div class="top${chrome ? "" : " hide"}" id="dtop"><button class="circle frost" data-act="back" aria-label="Leave">${I("back")}</button><b style="font-size:18px;flex:1">${esc(serverName())}</b>
-        <button class="circle frost" data-act="edit" aria-label="Customize">${I("edit")}</button><button class="circle frost" data-act="fs" aria-label="Full screen">${I("full")}</button></div>
-      <div class="dgrid" style="--cols:${cols};transform:translate(${(shift * 7) % 9 - 4}px,${(shift * 5) % 7 - 3}px)">${prefs.dashTiles.map(id => tileHtml(id).replace(/^<div class="card glass( span2)?/, `<div class="card glass${dashSpan(id) > 1 ? " span2" : ""}`)).join("")}</div>${night ? `<div class="night"></div>` : ""}</div>`);
-    $("#dash").onclick = e => { if (e.target.closest("[data-act]")) return; chrome = !chrome; $("#dtop").classList.toggle("hide", !chrome); clearTimeout(chromeT); if (chrome) chromeT = setTimeout(() => { chrome = false; $("#dtop")?.classList.add("hide"); }, 5000); };
+        <button class="circle frost" data-act="edit" aria-label="Customize">${I("edit")}</button>${document.fullscreenEnabled ? `<button class="circle frost" data-act="fs" aria-label="Full screen">${I("full")}</button>` : ""}</div>
+      <div class="dgrid" style="--cols:${cols};transform:translate(${(shift * 7) % 9 - 4}px,${(shift * 5) % 7 - 3}px)">${prefs.dashTiles.map(id => tileHtml(id).replace(/^<div class="card glass( span2)?/, `<div class="card glass${dashSpan(id) > 1 ? " span2" : ""}`)).join("")}</div>${night ? `<div class="night" style="background:rgba(0,0,0,${(prefs.dashDimLevel ?? 40) / 100})"></div>` : ""}</div>`);
+    $("#dash").onclick = e => { if (e.target.closest("[data-act]")) return;
+      // "Full screen when tapped": browsers only allow full screen from a tap, so the first one asks for it
+      if (prefs.dashFull && document.fullscreenEnabled && !document.fullscreenElement) document.documentElement.requestFullscreen?.().catch(() => {});
+      chrome = !chrome; $("#dtop").classList.toggle("hide", !chrome); clearTimeout(chromeT); if (chrome) chromeT = setTimeout(() => { chrome = false; $("#dtop")?.classList.add("hide"); }, 5000); };
     graphs(); animate($("#dfan"), "fan");
   };
   const graphs = () => {
@@ -1742,12 +1761,13 @@ export async function dashboard(ctx) {
     edit: () => ctx.go("edit-dash"),
     fs: () => document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen?.(),
   });
+  if (prefs.dashTiles.includes("top")) await get("/api/v1/containers/stats").catch(() => {});
   try { const r = await get("/api/v1/stats"); L.history = r.history || []; L.recent = r.recent || []; if (r.now) S.lastNow = r.now; } catch {}
   draw(); chromeT = setTimeout(() => { chrome = false; $("#dtop")?.classList.add("hide"); }, 5000);
   let tick = 0;
   ctx.every(1000, async () => {
     tick++;
-    if (tick % 15 === 0) { await Promise.all([refresh(), get("/api/v1/events?since=0")].map(p => p.catch(() => {}))); }
+    if (tick % 15 === 0) { await Promise.all([refresh(), get("/api/v1/events?since=0"), ...(prefs.dashTiles.includes("top") ? [get("/api/v1/containers/stats")] : [])].map(p => p.catch(() => {}))); }
     if (tick % 60 === 0) shift++;
     if (L.recent.length) try { const r = await api("GET", "/api/v1/stats?since=" + L.recent.at(-1).t); if (r.now) S.lastNow = r.now; if (r.recent?.length) { L.recent = L.recent.concat(r.recent).slice(-180); L.tick++; L.added = r.recent.length; } } catch {}
     if (tick % 15 === 0) draw(); else graphs();
@@ -1766,19 +1786,20 @@ export async function editDash(ctx) {
       ${sec("Clock")}${group(row("Time format", { sub: prefs.dashClock24 == null ? "Same as this device" : prefs.dashClock24 ? "24-hour" : "12-hour", icon: "clock", click: "c24" })
         + switchRow("Show seconds", "", prefs.dashSeconds, "secs"))}
       ${sec("Night")}${group(switchRow("Dim at night", `${String(prefs.dashFrom).padStart(2, "0")}:00 – ${String(prefs.dashTo).padStart(2, "0")}:00`, prefs.dashDim, "dim")
-        + (prefs.dashDim ? slider("From", "from", prefs.dashFrom, 0, 23, prefs.dashFrom + ":00") + slider("Until", "to", prefs.dashTo, 0, 23, prefs.dashTo + ":00") : ""))}
+        + (prefs.dashDim ? slider("How dark", "dimlvl", prefs.dashDimLevel ?? 40, 10, 90, (prefs.dashDimLevel ?? 40) + "%") + slider("From", "from", prefs.dashFrom, 0, 23, prefs.dashFrom + ":00") + slider("Until", "to", prefs.dashTo, 0, 23, prefs.dashTo + ":00") : ""))}
+      ${document.fullscreenEnabled ? sec("Full screen") + group(switchRow("Full screen when tapped", "The first tap on the dashboard fills the screen (browsers only allow it from a tap). Esc or the button leaves it.", prefs.dashFull, "full")) : ""}
       ${note("The dashboard keeps the screen awake, drifts a few pixels every minute so nothing burns in, and hides its buttons until you tap.")}
       ${links([["Reset the dashboard", "reset"]])}`, { title: "Customize dashboard" });
     reorderable($("#rl"), keys => { prefs.dashTiles = keys; draw(); });
-    wireCommon(ctx.root, { onRangeInput: (k, v) => { $(`[data-lbl="${k}"]`).textContent = k === "scale" ? v + "%" : v + ":00"; },
-      onRange: (k, v) => { if (k === "scale") prefs.dashScale = v; else prefs[k === "from" ? "dashFrom" : "dashTo"] = v; draw(); } });
+    wireCommon(ctx.root, { onRangeInput: (k, v) => { $(`[data-lbl="${k}"]`).textContent = k === "scale" || k === "dimlvl" ? v + "%" : v + ":00"; },
+      onRange: (k, v) => { if (k === "scale") prefs.dashScale = v; else if (k === "dimlvl") prefs.dashDimLevel = v; else prefs[k === "from" ? "dashFrom" : "dashTo"] = v; draw(); } });
   };
   ctx.handlers({ rm: id => { prefs.dashTiles = prefs.dashTiles.filter(x => x !== id); draw(); }, add: id => { prefs.dashTiles = [...prefs.dashTiles, id]; draw(); },
     size: id => { prefs.dashSize = { ...(prefs.dashSize || {}), [id]: dashSpan(id) > 1 ? 1 : 2 }; draw(); },
     cols: async () => { const v = await choose("Columns", [[0, "Automatic"], ...[1, 2, 3, 4, 5, 6].map(n => [n, `${n} column${n > 1 ? "s" : ""}`])], prefs.dashCols || 0); if (v != null) { prefs.dashCols = v; draw(); } },
     bg: async () => { const v = await choose("Background", [["theme", "Same as Nova"], ["black", "Black", "Best for OLED screens and dark rooms"], ["wallpaper", "Your wallpaper", "Set one in Appearance"]], prefs.dashBg || "theme"); if (v) { prefs.dashBg = v; draw(); } },
-    plain: () => { prefs.dashPlain = !prefs.dashPlain; draw(); }, secs: () => { prefs.dashSeconds = !prefs.dashSeconds; draw(); },
+    plain: () => { prefs.dashPlain = !prefs.dashPlain; draw(); }, full: () => { prefs.dashFull = !prefs.dashFull; draw(); }, secs: () => { prefs.dashSeconds = !prefs.dashSeconds; draw(); },
     c24: async () => { const v = await choose("Time format", [["auto", "Same as this device"], ["24", "24-hour"], ["12", "12-hour"]], prefs.dashClock24 == null ? "auto" : prefs.dashClock24 ? "24" : "12"); if (v) { prefs.dashClock24 = v === "auto" ? null : v === "24"; draw(); } },
-    dim: () => { prefs.dashDim = !prefs.dashDim; draw(); }, reset: () => { ["dashTiles", "dashDim", "dashFrom", "dashTo", "dashCols", "dashSize", "dashClock24", "dashSeconds", "dashScale", "dashBg", "dashPlain"].forEach(k => localStorage.removeItem("nova." + k)); draw(); } });
+    dim: () => { prefs.dashDim = !prefs.dashDim; draw(); }, reset: () => { ["dashTiles", "dashDim", "dashFrom", "dashTo", "dashCols", "dashSize", "dashClock24", "dashSeconds", "dashScale", "dashBg", "dashPlain", "dashDimLevel", "dashFull"].forEach(k => localStorage.removeItem("nova." + k)); draw(); } });
   draw();
 }

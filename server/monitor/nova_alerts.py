@@ -591,15 +591,22 @@ class Monitor:
         rc, out = sh(["docker", "inspect"] + ids.split()) if ids.strip() else (0, "[]")
         try: ctrs = json.loads(out)
         except Exception: ctrs = []
-        total = running = 0
+        total = running = stopped = 0
         maint = self.maintenance_running()
         fails = self.st["counters"].setdefault("container_down_runs", {})
         for c in ctrs:
             name = c["Name"].lstrip("/")
             if c["HostConfig"]["RestartPolicy"]["Name"] in ("", "no"):
                 continue                                    # one-off containers don't count
-            total += 1
             state = c["State"]["Status"]
+            st_ = c["State"]
+            # stopped on purpose (docker stop / Nova's Stop): Docker would have restarted a crashed "always" or
+            # "unless-stopped" container, so an exited one that isn't restarting was stopped by someone — not an alert
+            if state in ("exited", "created") and not st_.get("Restarting") and not st_.get("OOMKilled") \
+                    and c["HostConfig"]["RestartPolicy"]["Name"] in ("always", "unless-stopped"):
+                stopped += 1; fails[name] = 0
+                continue
+            total += 1
             health = (c["State"].get("Health") or {}).get("Status", "")
             up = state == "running" and health != "unhealthy"
             running += state == "running"
@@ -609,7 +616,7 @@ class Monitor:
             self.condition(f"ctr:{name}", bad, "critical" if state != "running" else "warning",
                            f"Container {'unhealthy' if state == 'running' else 'down'}: {name}",
                            f"State: {state}{', ' + health if health else ''}.")
-        if total: self.metrics["containers"] = f"{running}/{total} running"
+        if total: self.metrics["containers"] = f"{running}/{total} running" + (f" · {stopped} stopped" if stopped else "")
 
     def check_public(self, due):
         if not due:

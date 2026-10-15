@@ -39,7 +39,7 @@ try:                       # optional module: fan/case lighting (modules/fan-gig
 except ImportError:
     nova_rgb = None
 
-API_VERSION = "0.7.5-alpha"
+API_VERSION = "0.7.6-alpha"
 # The API contract (docs/API.md). API_LEVEL only ever goes up: each new level adds endpoints or fields, never removes or
 # changes one. MIN_LEVEL is the oldest level this server still answers in full (old apps keep working back to it).
 # MIN_CLIENT: the oldest app builds still served, per platform — 0 = all of them. Raising it is the last resort, after
@@ -440,6 +440,7 @@ def stats_sampler():
                    "mem": round(100 * (1 - m["MemAvailable"] / m["MemTotal"]), 1),
                    "mem_used_gb": round((m["MemTotal"] - m["MemAvailable"]) / 1048576, 1), "mem_total_gb": round(m["MemTotal"] / 1048576, 1),
                    "swap": round(100 * (1 - m["SwapFree"] / max(1, m["SwapTotal"])), 1) if m.get("SwapTotal") else 0,
+                   "swap_total_gb": round(m.get("SwapTotal", 0) / 1048576, 1), "swap_used_gb": round((m.get("SwapTotal", 0) - m.get("SwapFree", 0)) / 1048576, 1),
                    "temp": _hwmon("k10temp"), "nvme_temp": _hwmon("nvme"),
                    "rx": round((net[0] - prev_net[0]) / (t - prev_t)), "tx": round((net[1] - prev_net[1]) / (t - prev_t)),
                    "load": float(open("/proc/loadavg").read().split()[0]), "cores": os.cpu_count(),
@@ -576,7 +577,8 @@ def describe_action(a):
         return {"format": f"Erase and set up {n} drive", "combine": f"Combine drives into “{d.get('name', '')}”" + (f" (erases {n})" if n else ""),
                 "raid": f"Create {str(d.get('level', 'RAID')).upper()} “{d.get('name', '')}” (erases {n} drives)", "pool-remove": "Remove a storage pool" + (" and erase its drives" if d.get("erase") else ""),
                 "pool-add": "Add a drive to a pool (erases it)", "repair": "Repair a drive (unmounts it while it's checked)",
-                "clone": "Clone a drive (erases the drive it copies to)"}.get(p[2], "Change storage")
+                "clone": "Clone a drive (erases the drive it copies to)",
+                "swap-setup": f"Add a {d.get('gb', '?')} GB swap file on the system drive"}.get(p[2], "Change storage")
     if p == ["updates", "packages"]: return "Update system packages"
     if p == ["notify", "discord"]: return "Change where Discord alerts go"
     if p == ["lights", "ha"]: return "Connect a Home Assistant light to the server's status"
@@ -596,7 +598,7 @@ def browser_forbidden(method, parts, dev):
     if parts[:1] == ["devices"] and method != "GET" and parts != ["devices", dev.get("id")]: return True
     return False
 
-STORAGE_DESTRUCTIVE = ("format", "combine", "raid", "pool-remove", "pool-add", "repair", "clone")
+STORAGE_DESTRUCTIVE = ("format", "combine", "raid", "pool-remove", "pool-add", "repair", "clone", "swap-setup")
 ROLES = ("admin", "viewer")
 FORMS = ("phone", "tablet", "desktop", "watch")
 def role_of(d): return d.get("role") if d.get("role") in ROLES else "admin"     # devices from before roles: admin
@@ -1407,7 +1409,8 @@ class Handler(BaseHTTPRequestHandler):
                                     "ram_gb": round(mem.get("MemTotal", 0) / 1048576), "kernel": os.uname().release,
                                     "uptime_s": int(float(open("/proc/uptime").read().split()[0])), "tailnet_host": TAILNET_HOST},
                          "status": {k: st.get(k) for k in ("level", "headline", "status", "active_count", "active", "ignored", "metrics", "updated_local")},
-                         "fan": fan, "containers": {"running": sum(1 for c in cl if c["state"] == "running"), "total": len(cl)},
+                         "fan": fan, "containers": {"running": sum(1 for c in cl if c["state"] == "running"), "total": sum(1 for c in cl if not c.get("stopped")),
+                                        "stopped": sum(1 for c in cl if c.get("stopped"))},      # stopped on purpose: not counted as missing
                          "tasks": [{"title": t.get("title", ""), "pct": t.get("pct", 0)} for t in live_tasks() if t.get("state") == "running"],
                          # What this server has, so the app only shows what works here.
                          "features": {"lighting": nova_rgb is not None and feat_on("lighting"), "lighting_installed": nova_rgb is not None, "monitor": os.path.exists(STATUS),

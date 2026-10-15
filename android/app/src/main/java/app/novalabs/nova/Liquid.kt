@@ -66,9 +66,20 @@ fun presetTokens(preset: String, dark: Boolean, seed: Color?): NovaColors? = whe
     else -> null
 }
 
-/** Corner radius for a card in the current style (Corner roundness scales the three presets). */
+/** Corner roundness as a factor (25–400%); Glass stops at 200%, past that its cards turn into ovals. */
+fun roundK(): Float = AppPrefs.round.coerceIn(25, if (presetStyle() == "liquid") 200 else 400) / 100f
+
+/** Floating pills (the nav pill, the dock): Mica, Breeze and Aero use their own small corners, scaled by Corner roundness
+ *  (never rounder than the usual capsule). */
+@Composable fun pillCorner(default: Dp): Dp { val k = roundK()
+    return when (N.preset) { "fluent" -> 8.dp * k; "breeze" -> 7.dp * k; "aero" -> 6.dp * k; else -> default }.coerceAtMost(default) }
+/** Small parts — search bars, the selection inside a pill — in Mica, Breeze and Aero, scaled the same way. */
+@Composable fun smallCorner(default: Dp): Dp { val k = roundK()
+    return when (N.preset) { "fluent" -> 4.dp * k; "breeze", "aero" -> 3.dp * k; else -> default }.coerceAtMost(default) }
+
+/** Corner radius for a card in the current style (Corner roundness scales the presets). */
 @Composable fun cardRadius(default: Dp): Dp {
-    val k = AppPrefs.round.coerceIn(25, 400) / 100f
+    val k = roundK()
     return when (N.preset) { "liquid" -> 28.dp * k; "fluent" -> 8.dp * k; "breeze" -> 7.dp * k; "aero" -> 6.dp * k; else -> default }
 }
 
@@ -201,6 +212,7 @@ uniform float radius;
 uniform float bevel;
 uniform float strength;
 uniform float2 off;                                              // where this layer starts inside the card (tall cards draw only what's on screen)
+uniform float fringe;                                            // 1: the prism fringe (two more samples at the rim); 0: off (Glass quality)
 half4 main(float2 p0) {
     float2 p = p0 + off;
     float2 h = size * 0.5;
@@ -216,6 +228,8 @@ half4 main(float2 p0) {
     float m = e * strength;                                      // none inside the bevel, most at the rim
     float2 d = -n * m;                                           // look inward: the rim gathers what's behind the middle
     half4 c = content.eval(p0 + d);
+    half glint0 = half(e * e * 0.10);
+    if (fringe < 0.5) return half4(min(c.rgb + glint0, 1.0), c.a);
     half r = content.eval(p0 + d * 1.06).r;                      // a faint prism fringe at the edge
     half b = content.eval(p0 + d * 0.94).b;
     half glint = half(e * e * 0.10);                             // the curved edge catches a little light, on all four sides
@@ -223,14 +237,17 @@ half4 main(float2 p0) {
 }
 """
 
-private fun lensEffect(w: Float, h: Float, radius: Float, blurPx: Float, offY: Float = 0f, bend: Float = 1f): RenderEffect? {
+/** [q]: Glass quality (Developer options) — under 90% the prism fringe is left out and the bending rim gets narrower,
+ *  which is where the lens spends its time (the flat middle is one plain sample either way). */
+private fun lensEffect(w: Float, h: Float, radius: Float, blurPx: Float, offY: Float = 0f, bend: Float = 1f, q: Float = 1f): RenderEffect? {
     if (!Compat.S) return null
     val blur = if (blurPx > 0.5f) android.graphics.RenderEffect.createBlurEffect(blurPx, blurPx, android.graphics.Shader.TileMode.CLAMP) else null
     if (android.os.Build.VERSION.SDK_INT < 33) return blur?.asComposeRenderEffect()
     val sh = runCatching { RuntimeShader(LENS) }.getOrNull()?.apply {          // (if this GPU driver won't take it: blur only)
         setFloatUniform("size", w, h); setFloatUniform("radius", radius.coerceAtMost(minOf(w, h) / 2))
-        setFloatUniform("bevel", minOf(maxOf(radius * 1.1f, 40f), 100f, w / 3, h / 3)); setFloatUniform("strength", minOf(140f, maxOf(50f, minOf(w, h) * .3f)) * bend)
-        setFloatUniform("off", 0f, offY)
+        val rim = (0.4f + 0.6f * q).coerceIn(0.4f, 1f)
+        setFloatUniform("bevel", minOf(maxOf(radius * 1.1f, 40f), 100f, w / 3, h / 3) * rim); setFloatUniform("strength", minOf(140f, maxOf(50f, minOf(w, h) * .3f)) * bend)
+        setFloatUniform("off", 0f, offY); setFloatUniform("fringe", if (q >= 0.9f) 1f else 0f)
     } ?: return blur?.asComposeRenderEffect()
     val lens = android.graphics.RenderEffect.createRuntimeShaderEffect(sh, "content")
     return (if (blur != null) android.graphics.RenderEffect.createChainEffect(blur, lens) else lens).asComposeRenderEffect()   // bend first, then blur
@@ -273,7 +290,7 @@ fun glassBody(clear: Float): Float { val x = (1f - clear) / .9f; return x * x }
             // The window moves in steps, so the lens is rebuilt only every few hundred pixels of scrolling.
             val winH = if (win.height > 0) win.height.toFloat() else size.height
             val lh = minOf(size.height, winH + 768f)
-            var lensOff = -1f
+            var lensOff = -1f; var lensQ = -1f
             val outline = shape.createOutline(size, layoutDirection, this)
             val sheen = Brush.linearGradient(listOf(hi.copy(alpha = (if (t.dark) .10f else .30f) * (1f - .6f * clear)), Color.Transparent), Offset.Zero, Offset(size.width * .35f, size.height * .38f))
             val rim = Brush.sweepGradient(0f to hi.copy(alpha = .06f), .12f to hi.copy(alpha = .03f), .35f to hi.copy(alpha = .30f), .5f to hi.copy(alpha = .06f),
@@ -283,7 +300,11 @@ fun glassBody(clear: Float): Float { val x = (1f - clear) / .9f; return x * x }
                 val shot = if (inDialog) Behind.shot else null
                 val offY = if (lh >= size.height) 0f else ((((-origin.y - 384f).coerceAtLeast(0f)) / 256f).toInt() * 256f).coerceAtMost(size.height - lh)
                 val wantOff = if (Dev.noLens) -2f else offY                 // Developer options → Glass without bending
-                if (wantOff != lensOff) { layer.renderEffect = if (Dev.noLens) null else lensEffect(size.width, size.height, r, blurPx, offY, .75f + .55f * clear); lensOff = wantOff }
+                // Glass quality (Developer options): lighter lens under 90%, no lens at all under 50% (just the tint and the rim light)
+                val q = Dev.glassQ / 100f
+                if (wantOff != lensOff || q != lensQ) {
+                    layer.renderEffect = if (Dev.noLens || q < 0.5f) null else lensEffect(size.width, size.height, r, blurPx, offY, .75f + .55f * clear, q)
+                    lensOff = wantOff; lensQ = q }
                 layer.record(size = IntSize(size.width.toInt(), lh.toInt())) {
                     translate(0f, -offY) {
                         if (shot != null) {                      // the page behind this popup, as the popup window dims it

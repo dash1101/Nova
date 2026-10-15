@@ -54,7 +54,7 @@ class SwipeAction(val label: String, val icon: ImageVector, val color: Color, va
                 Text(act.label, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp)
             }
         }
-        Box(Modifier.graphicsLayer { translationX = x.value }.background(if (x.value != 0f) N.card else Color.Transparent)
+        Box(Modifier.graphicsLayer { translationX = x.value }.then(if (x.value != 0f) Modifier.swipeSurface() else Modifier)
             .pointerInput(start != null, end != null) {
                 detectHorizontalDragGestures(
                     onHorizontalDrag = { ch, dx ->
@@ -168,4 +168,12 @@ fun dismissAlert(app: AppState, a: JSONObject, done: () -> Unit = {}) {
             }
         }
     }
+}
+
+/** What a row looks like while it's dragged aside: it has to cover the action behind it. In Glass and Aero it becomes its
+ *  own small pane of glass (a solid fill there looked like the glass switching off mid-swipe); elsewhere the card color. */
+@Composable private fun Modifier.swipeSurface(): Modifier = when (N.preset) {
+    "liquid" -> { val r = minOf(cardRadius(18.dp), 22.dp); this.liquidCard(androidx.compose.foundation.shape.RoundedCornerShape(r), r, 4.dp) }
+    "aero" -> this.aeroCard(androidx.compose.foundation.shape.RoundedCornerShape(minOf(cardRadius(6.dp), 14.dp)), 3.dp)
+    else -> this.background(N.card)
 }

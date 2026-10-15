@@ -121,8 +121,13 @@ data class TopAction(val icon: ImageVector, val label: String, val onClick: () -
 
 /** A page that can also be a tab in the navigation pill (Store, Menu): as the current tab it has a big
  *  title and no back button; opened from somewhere else (Menu → Store) it's a normal page with one. */
+/** True for the list pane of the tablet split view (the page the open one came from). */
+val LocalListPane = androidx.compose.runtime.staticCompositionLocalOf { false }
+
 @Composable fun TabOrPage(app: AppState, title: String, content: @Composable ColumnScope.() -> Unit) {
-    val isTab = app.stack.size == 1 && navTabs(app).any { it.route == app.top }
+    // a tab, or a tab shown as the list beside the page it opened (tablets) — neither has anywhere to go back to
+    val isTab = (app.stack.size == 1 && navTabs(app).any { it.route == app.top }) ||
+        (LocalListPane.current && app.stack.size == 2 && navTabs(app).any { it.route == app.stack.first() })
     if (!isTab) { Page(title, app::back, content = content); return }
     Column(Modifier.fillMaxSize().verticalScroll(routeScroll())) {
         val compact = LocalCompactHeight.current
@@ -304,9 +309,9 @@ private fun DialogButton.role(t: NovaColors) = when { color == null -> "cancel";
       androidx.compose.runtime.CompositionLocalProvider(LocalInDialog provides true) {
         when (t.preset) {
             "liquid" -> {
-                val k = AppPrefs.round.coerceIn(25, 400) / 100f; val shape = RoundedCornerShape(34.dp * k)
+                val k = roundK(); val shape = RoundedCornerShape(34.dp * k)
                 Column(Modifier.padding(horizontal = 28.dp).widthIn(max = if (content != null) 440.dp else 320.dp).fillMaxWidth()
-                    .liquidCard(shape, 34.dp * k, 18.dp).padding(start = 16.dp, end = 16.dp, top = 22.dp, bottom = 16.dp),
+                    .liquidCard(shape, 34.dp * k, 18.dp).padding(start = maxOf(16.dp, 34.dp * k * .3f), end = maxOf(16.dp, 34.dp * k * .3f), top = 22.dp, bottom = maxOf(16.dp, 34.dp * k * .3f)),
                     horizontalAlignment = Alignment.CenterHorizontally) {
                     DialogToasts()
                     if (title != null) Text(title, color = t.text, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, textAlign = androidx.compose.ui.text.style.TextAlign.Center, modifier = Modifier.padding(horizontal = 8.dp))
@@ -350,8 +355,8 @@ private fun DialogButton.role(t: NovaColors) = when { color == null -> "cancel";
                 }
             }
             "aero" -> {       // a Windows 7 task dialog: the title on the glass frame, a plain panel for the words, glossy buttons
-                val k = AppPrefs.round.coerceIn(25, 400) / 100f; val shape = RoundedCornerShape(8.dp * k)
-                Column(Modifier.padding(horizontal = 24.dp).widthIn(max = 480.dp).fillMaxWidth().aeroCard(shape, 20.dp).padding(8.dp)) {
+                val k = roundK(); val shape = RoundedCornerShape(8.dp * k)
+                Column(Modifier.padding(horizontal = 24.dp).widthIn(max = 480.dp).fillMaxWidth().aeroCard(shape, 20.dp).padding(maxOf(8.dp, 8.dp * k * .3f))) {   // keeps the buttons clear of a very round corner
                     DialogToasts()
                     if (title != null) Text(title, style = TextStyle(color = t.text, fontSize = 16.sp, shadow = aeroGlow(t.dark)),
                         modifier = Modifier.padding(start = 6.dp, end = 6.dp, top = 2.dp, bottom = 8.dp))
@@ -363,7 +368,7 @@ private fun DialogButton.role(t: NovaColors) = when { color == null -> "cancel";
                     }
                     if (buttons.isNotEmpty()) Row(Modifier.fillMaxWidth().padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)) {
                         buttons.forEach { b -> val r = b.role(t)
-                            Box(Modifier.heightIn(min = 34.dp).widthIn(min = 84.dp).aeroButton(r == "primary").clickable(enabled = b.enabled, onClick = b.onClick)
+                            Box(Modifier.heightIn(min = 34.dp).widthIn(min = 84.dp).aeroButton(r == "primary", RoundedCornerShape(3.dp * k)).clickable(enabled = b.enabled, onClick = b.onClick)
                                 .padding(horizontal = 14.dp, vertical = 7.dp), contentAlignment = Alignment.Center) {
                                 Text(b.label, color = if (!b.enabled) t.sub else if (r == "destructive") t.red else if (t.dark) Color.White else Color(0xFF1E1E1E), fontSize = 14.sp, maxLines = 1)
                             }

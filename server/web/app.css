@@ -378,6 +378,7 @@ html.material .frost { background: var(--nav); backdrop-filter: none; -webkit-ba
 html.material .group { border-radius: 24px; }
 html.material .row + .row::before, html.material .swipe + .swipe::before { left: 0; right: 0; border-top: 3px solid var(--bg); }
 html.material .ph { padding-top: calc(30px + env(safe-area-inset-top)); }
+html.material .topbar { padding-top: calc(30px + env(safe-area-inset-top)); }   /* the back arrow sits level with Material's lower title */
 html.material .ph h1 { font-size: 32px; font-weight: 400; line-height: 1.18; }
 html.material .sec { color: var(--link); font-weight: 600; }
 html.material .sw { width: 52px; height: 32px; border-radius: 16px; background: var(--pill); box-shadow: inset 0 0 0 2px var(--sub); }
@@ -779,7 +780,7 @@ html.breeze .frost, html.breeze #sheet .box { background: var(--frost); box-shad
 html.breeze .glass::after, html.breeze .frost::after { display: none; }
 html.breeze .group, html.breeze .card, html.breeze #sheet .box { border-radius: calc(7px * var(--rk, 1)); }
 html.breeze .nav { border-radius: calc(7px * var(--rk, 1)); }
-html.breeze .nav .bead, html.breeze .nav button, html.breeze .nav .nscroll { border-radius: 4px; }
+html.breeze .nav .bead, html.breeze .nav button, html.breeze .nav .nscroll { border-radius: calc(4px * var(--rk, 1)); }
 html.breeze .nav .bead { background: var(--navSel); backdrop-filter: none; box-shadow: inset 0 0 0 1px var(--blue); }
 html.breeze .row.click:hover { background: color-mix(in srgb, var(--blue) 12%, transparent); }
 html.breeze .sec { color: var(--text); font-weight: 600; }
@@ -883,9 +884,9 @@ html.breeze .alertcard, html.breeze .stat, html.breeze .hint, html.breeze .statu
 
 /* one corner scale per style, so every surface matches: large = cards, tiles, groups, fields; medium = icons, chips, small buttons */
 html.liquid { --rL: calc(24px * var(--rk, 1)); --rM: calc(14px * var(--rk, 1)); }
-html.fluent { --rL: calc(8px * var(--rk, 1)); --rM: 4px; }
-html.breeze { --rL: calc(7px * var(--rk, 1)); --rM: 3px; }
-html.aero { --rL: calc(6px * var(--rk, 1)); --rM: 3px; }
+html.fluent { --rL: calc(8px * var(--rk, 1)); --rM: calc(4px * var(--rk, 1)); }
+html.breeze { --rL: calc(7px * var(--rk, 1)); --rM: calc(3px * var(--rk, 1)); }
+html.aero { --rL: calc(6px * var(--rk, 1)); --rM: calc(3px * var(--rk, 1)); }
 :is(html.liquid, html.fluent, html.breeze, html.aero) :is(.group, .links, .banner, .stat, .card, .tile, .slidetile, .term, .selbar, .srv, .taskbar, .editor, .mtile, .alertcard,
   .nudge, .stile, .sugg, .fsel, .vtbox, .hint, .upnote, .srvchip, .statusline, .code-block) { border-radius: var(--rL); }
 :is(html.liquid, html.fluent, html.breeze, html.aero) :is(.appicon, .appcell, .appic, .eng, .pinbox, .cmdcopy, .sugg button, .ctlbar button, .help, .cftok) { border-radius: var(--rM); }
@@ -961,21 +962,22 @@ html.aero .glass, html.aero .frost, html.aero #sheet .box, html.aero #toast {
   border: 1px solid var(--ae-edge); background-clip: padding-box; box-shadow: inset 0 0 0 1px var(--ae-in), 0 4px 16px rgba(0,0,0,.35); }
 html.aero .glass::after, html.aero .frost::after { display: none; }
 html.aero .nav { border-radius: calc(6px * var(--rk, 1)); }
-html.aero .nav button, html.aero .nav .nscroll { border-radius: 4px; }
+html.aero .nav button, html.aero .nav .nscroll { border-radius: calc(4px * var(--rk, 1)); }
 /* the chosen tab glows like a Windows 7 taskbar button */
-html.aero .nav .bead { border-radius: 4px; backdrop-filter: none; -webkit-backdrop-filter: none;
+html.aero .nav .bead { border-radius: calc(4px * var(--rk, 1)); backdrop-filter: none; -webkit-backdrop-filter: none;
   background: radial-gradient(ellipse 70% 60% at 50% 100%, color-mix(in srgb, var(--blue) 70%, #fff 10%), transparent 75%),
     linear-gradient(rgba(255,255,255,.38), rgba(255,255,255,.10) 50%, transparent 50%);
   box-shadow: inset 0 0 0 1px rgba(255,255,255,.45), 0 0 0 1px rgba(0,0,0,.35); }
 html.aero .sec { color: var(--ae-head); font-size: 15px; font-weight: 400; }
 html.aero.l-light :is(.sec, .ph h1, #sheet .box h2) { text-shadow: 0 0 10px #fff, 0 0 4px #fff; }
 html.aero .ph h1 { font-weight: 400; }
-html.aero :is(.btn, .pillbtn, #sheet .acts button) { border-radius: 3px; color: var(--ae-btext); font-weight: 400; font-size: 14px;
+html.aero :is(.btn, .pillbtn, #sheet .acts button) { border-radius: var(--rM); color: var(--ae-btext); font-weight: 400; font-size: 14px;
   background: linear-gradient(var(--ae-b1), var(--ae-b2) 50%, var(--ae-b3) 50%, var(--ae-b4)); border: 1px solid var(--ae-bedge);
   box-shadow: inset 0 0 0 1px rgba(255,255,255,.35); transition: box-shadow .2s, background .2s; }
 html.aero .btn { height: 36px; padding: 0 18px; }
 html.aero .pillbtn { padding: 5px 12px; }
 html.aero .pillbtn.red, html.aero #sheet .acts button[data-role=destructive] { color: var(--red) !important; }
+html.aero #sheet .acts button[data-role=primary] { color: var(--ae-ptext) !important; }
 html.aero :is(.btn, #sheet .acts button[data-role=primary]),
 html.aero :is(.btn, .pillbtn, #sheet .acts button):hover { background: linear-gradient(var(--ae-p1), var(--ae-p2) 50%, var(--ae-p3) 50%, var(--ae-p4));
   border-color: var(--ae-pedge); color: var(--ae-ptext); }
@@ -992,12 +994,13 @@ html.aero .radio.on { border-color: var(--ae-bedge); }
 html.aero .radio.on::after { width: 9px; height: 9px; background: radial-gradient(circle at 35% 30%, color-mix(in srgb, var(--blue) 30%, #fff), var(--blue) 55%, color-mix(in srgb, var(--blue) 65%, #000)); }
 html.aero .seg .bead { background: linear-gradient(var(--ae-p1), var(--ae-p2) 50%, var(--ae-p3) 50%, var(--ae-p4)); box-shadow: inset 0 0 0 1px var(--ae-pedge); }
 html.aero.l-light .seg .bead ~ * { color: var(--text); }
-html.aero :is(.field, .searchbox) { border-radius: 3px; background: var(--ae-panel); box-shadow: inset 0 0 0 1px var(--ae-bedge); }
+html.aero :is(.field, .searchbox) { border-radius: var(--rM); background: var(--ae-panel); box-shadow: inset 0 0 0 1px var(--ae-bedge); }
 html.aero :is(.field:focus, .searchbox:focus-within) { box-shadow: inset 0 0 0 1px var(--ae-pedge), 0 0 6px color-mix(in srgb, var(--blue) 60%, transparent); }
 /* list rows light up the way Windows 7 lists do: a pale blue gradient with a thin blue frame */
 html.aero :is(.row.click, #sheet .box.menu .choice):hover { background: linear-gradient(color-mix(in srgb, var(--blue) 14%, transparent), color-mix(in srgb, var(--blue) 30%, transparent));
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--blue) 60%, transparent); }
-html.aero #sheet .box.menu .choice { border-radius: 3px; }
+html.aero #sheet .box.menu .choice { border-radius: var(--rM); }
+html.aero #sheet .box:not(.alert) .acts { padding: 0 18px 4px; gap: 8px; justify-content: flex-end; }
 /* popups are task dialogs: the title on the glass, the words on a plain panel, glossy buttons at the bottom right */
 html.aero #sheet { align-items: center; padding: 24px; }
 html.aero #sheet .box { border-radius: calc(8px * var(--rk, 1)); }
@@ -1014,3 +1017,23 @@ html.aero .alertcard, html.aero .stat, html.aero .hint, html.aero .statusline { 
 :is(html.solid, html.lite).aero :is(.glass, .frost, #sheet .box, #toast) { background: linear-gradient(var(--ae-wash), transparent 90px),
   linear-gradient(135deg, transparent 40%, rgba(255,255,255,.11) 46%, transparent 52%, transparent 60%, rgba(255,255,255,.08) 64%, transparent 69%),
   color-mix(in srgb, var(--ae-frame) 82%, var(--bg)) !important; }
+
+/* Big corner radii: a dialog's rounded corner cuts in about 0.3 × its radius, so the button row is inset by whatever
+   of that the dialog's own padding (--spx at the sides, --spb at the bottom) doesn't already cover. */
+#sheet .box { --sr: 0px; --spx: 0px; --spb: 6px; }
+html.liquid #sheet .box { --sr: calc(34px * var(--rk, 1)); --spx: 2px; }
+html.liquid #sheet .box.alert { --spx: 18px; --spb: 16px; } html.liquid #sheet .box.menu { --spx: 16px; --spb: 10px; }
+html.fluent #sheet .box { --sr: calc(8px * var(--rk, 1)); }
+html.fluent #sheet .box.alert { --spx: 24px; --spb: 24px; } html.fluent #sheet .box.menu { --spx: 10px; --spb: 10px; }
+html.breeze #sheet .box { --sr: calc(7px * var(--rk, 1)); }
+html.breeze #sheet .box.alert { --spx: 18px; --spb: 14px; } html.breeze #sheet .box.menu { --spx: 4px; --spb: 8px; }
+html.aero #sheet .box { --sr: calc(8px * var(--rk, 1)); --spx: 18px; --spb: 10px; } html.aero #sheet .box.alert { --spx: 8px; --spb: 10px; }
+#sheet .box .acts { margin-inline: max(0px, calc(var(--sr) * .3 - var(--spx))); margin-bottom: max(0px, calc(var(--sr) * .3 - var(--spb))); }
+
+/* Glossy icons (Aero's own): a colored tile with a shine on its top half, a dark edge, a light line along the top,
+   and a white symbol with a small shadow — like Windows 7's Control Panel */
+:is(html[data-icons="glossy"], html.aero:not([data-icons])) .row .ri { width: 32px; height: 32px; border-radius: min(calc(6px * var(--rk, 1)), 16px);
+  background: linear-gradient(rgba(255,255,255,.55), rgba(255,255,255,.12) 50%, transparent 50%, rgba(255,255,255,.2)), linear-gradient(currentColor, currentColor) !important;
+  box-shadow: inset 0 0 0 1px rgba(0,0,0,.3), inset 0 1px 0 rgba(255,255,255,.55), 0 1px 3px rgba(0,0,0,.3) !important; }
+:is(html[data-icons="glossy"], html.aero:not([data-icons])) .row .ri svg { width: 20px; height: 20px; filter: drop-shadow(0 1px 1px rgba(0,0,0,.45)); }
+:is(html[data-icons="glossy"], html.aero:not([data-icons])) .row .ri svg, :is(html[data-icons="glossy"], html.aero:not([data-icons])) .row .ri svg * { fill: #fff !important; color: #fff !important; }

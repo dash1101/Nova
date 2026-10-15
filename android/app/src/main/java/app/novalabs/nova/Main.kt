@@ -276,7 +276,7 @@ class MainActivity : ComponentActivity() {
         openUpdate = fresh && intent?.getStringExtra("open") == "update"
         intent?.removeExtra("open")
         Alerts.start(this)
-        AppPrefs.init(this); Dev.load(this); applySecureFlag(this)
+        AppPrefs.init(this); Dev.load(this); Dev.applyFpsCap(this); applySecureFlag(this)
         setContent { NovaTheme {
             if (AppPrefs.appLock && !AppLock.unlocked) LockScreen(this) else NovaRoot(this, openInbox)
         } }
@@ -496,6 +496,9 @@ private fun Modifier.paneTouch(app: AppState, left: Boolean) = pointerInput(left
     val hasNav = app.top != Route.Dashboard                // the always-on dashboard gets the whole screen
     Box(Modifier.fillMaxSize()) {
     Box(Modifier.fillMaxSize().then(LocalRootHaze.current?.let { Modifier.hazeSource(it) } ?: Modifier)) { GlowLayer()      // one glow behind the side pill and both panes
+    // the top and bottom fades carry on under the side pill, so there's no seam where the page starts
+    if (hasNav && navW > 0) Box(Modifier.width(with(density) { navW.toDp() }).fillMaxHeight()) {
+        StatusBarScrim(Modifier.align(Alignment.TopStart)); BottomScrim(Modifier.align(Alignment.BottomStart)) }
     Row(Modifier.fillMaxSize()) {
         if (hasNav) Spacer(Modifier.width(with(density) { navW.toDp() }))
         val parent = app.stack.getOrNull(app.stack.size - 2)
@@ -513,7 +516,7 @@ private fun Modifier.paneTouch(app: AppState, left: Boolean) = pointerInput(left
                     exit = if (reduceMotion()) fadeOut() else androidx.compose.animation.shrinkHorizontally(androidx.compose.animation.core.tween(280)) + fadeOut()) {
                     Row {
                         Box(Modifier.width(400.dp).fillMaxHeight().paneTouch(app, true)) {
-                            CompositionLocalProvider(LocalWide provides false) { lastParent?.let { Screen(app, it) } }   // the list pane is phone-width
+                            CompositionLocalProvider(LocalWide provides false, LocalListPane provides true) { lastParent?.let { Screen(app, it) } }   // the list pane is phone-width
                         }
                         Box(Modifier.width(1.dp).fillMaxHeight().background(N.divider))
                     }

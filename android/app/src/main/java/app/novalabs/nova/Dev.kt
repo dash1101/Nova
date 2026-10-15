@@ -24,9 +24,32 @@ object Dev {
     var fps by mutableStateOf(false); private set
     var bounds by mutableStateOf(false); private set
     var noLens by mutableStateOf(false); private set
+    /** Glass quality, percent: 90%+ is the full lens with its prism fringe; below that the fringe is left out and the
+     *  bending rim narrows (the default, 70%, looks nearly the same for much less GPU work); below 50% there's no lens. */
+    var glassQ by mutableIntStateOf(70); private set
+    /** Frame rate cap (0 = as fast as the screen goes). */
+    var fpsCap by mutableIntStateOf(0); private set
     fun load(ctx: android.content.Context) {
         val p = ctx.getSharedPreferences("nova_dev", 0)
         fps = p.getBoolean("fps", false); bounds = p.getBoolean("bounds", false); noLens = p.getBoolean("nolens", false)
+        glassQ = p.getInt("glass_q", 70).coerceIn(30, 100); fpsCap = p.getInt("fps_cap", 0)
+    }
+    fun setInt(ctx: android.content.Context, k: String, v: Int) {
+        ctx.getSharedPreferences("nova_dev", 0).edit().putInt(k, v).apply()
+        when (k) { "glass_q" -> glassQ = v; "fps_cap" -> { fpsCap = v; (ctx as? android.app.Activity)?.let { applyFpsCap(it) } } }
+    }
+    /** Asks the screen for the chosen refresh rate (Android picks the nearest mode the screen has; 0 = no preference). */
+    fun applyFpsCap(a: android.app.Activity) {
+        val w = a.window ?: return
+        w.attributes = w.attributes.apply {
+            preferredRefreshRate = fpsCap.toFloat()
+            val modes = a.display?.supportedModes.orEmpty().toList()
+            val cur = a.display?.mode
+            // same resolution, the highest rate that's no faster than the cap (or the fastest, with no cap)
+            val pick = modes.filter { cur == null || (it.physicalWidth == cur.physicalWidth && it.physicalHeight == cur.physicalHeight) }
+                .filter { fpsCap == 0 || it.refreshRate <= fpsCap + 0.5f }.maxByOrNull { it.refreshRate }
+            preferredDisplayModeId = if (fpsCap == 0) 0 else pick?.modeId ?: 0
+        }
     }
     fun set(ctx: android.content.Context, k: String, v: Boolean) {
         ctx.getSharedPreferences("nova_dev", 0).edit().putBoolean(k, v).apply()
@@ -77,6 +100,20 @@ object DevLog {
             SwitchRow("Show glass areas", "Outlines every Glass layer, to see what's being drawn", Dev.bounds) { Dev.set(ctx, "bounds", it) }
             RowDivider()
             SwitchRow("Glass without bending", "Turns the lens off, to compare how smooth it runs", Dev.noLens) { Dev.set(ctx, "nolens", it) }
+            RowDivider()
+            Column(Modifier.padding(horizontal = 22.dp, vertical = 12.dp)) {
+                Row { Text("Glass quality", color = N.text, fontSize = 17.sp, modifier = Modifier.weight(1f)); Text("${Dev.glassQ}%", color = N.sub, fontSize = 15.sp) }
+                Text("How much of Glass's lens is drawn. 90% and up adds the prism fringe at the edges; lower narrows the bending rim; under 50% the lens is off. Lower is lighter on the GPU and battery.", color = N.sub, fontSize = 13.sp)
+                OneSlider(Dev.glassQ.toFloat(), { Dev.setInt(ctx, "glass_q", (it / 5).toInt() * 5) }, 30f..100f)
+            }
+        }
+        SectionLabel("Frame rate")
+        Group {
+            val hz = view.display?.supportedModes?.map { it.refreshRate.toInt() }?.distinct()?.sorted().orEmpty()
+            val caps = listOf(0) + listOf(30, 60, 90, 120).filter { c -> hz.any { it >= c } && c < (hz.maxOrNull() ?: 60) }
+            caps.forEachIndexed { i, c -> if (i > 0) RowDivider()
+                Row1(if (c == 0) "As fast as the screen goes" else "$c fps", if (c == 0) "Up to ${hz.maxOrNull() ?: 60} Hz" else if (hz.none { it == c }) "The screen picks its nearest rate" else null,
+                    onClick = { Dev.setInt(ctx, "fps_cap", c) }) { OneRadio(Dev.fpsCap == c) } }
         }
         SectionLabel("This ${DeviceForm.noun}")
         val info = remember {

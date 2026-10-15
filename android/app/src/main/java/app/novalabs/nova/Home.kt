@@ -71,7 +71,7 @@ import org.json.JSONObject
             Text(head, color = N.sub, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
             if (cs != null) {
                 Box(Modifier.padding(horizontal = 10.dp).size(4.dp).clip(androidx.compose.foundation.shape.CircleShape).background(N.sub.copy(alpha = 0.6f)))
-                Text("${cs.optInt("running")}/${cs.optInt("total")} running", color = N.sub, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                Text("${cs.optInt("running")}/${cs.optInt("total")} running" + (if (cs.optInt("stopped") > 0) " · ${cs.optInt("stopped")} stopped" else ""), color = N.sub, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
             }
         }
         // Found on open: a newer Nova app or server release
@@ -171,7 +171,7 @@ import org.json.JSONObject
     var builtinMenu by remember { mutableStateOf<String?>(null) }
     builtinMenu?.let { id -> BuiltinMenu(app, id) { builtinMenu = null } }
     TabOrPage(app, "Menu") {
-        Row(Modifier.fillMaxWidth().padding(horizontal = Space.gutter, vertical = 4.dp).clip(androidx.compose.foundation.shape.RoundedCornerShape(28.dp)).background(N.pill)
+        Row(Modifier.fillMaxWidth().padding(horizontal = Space.gutter, vertical = 4.dp).clip(androidx.compose.foundation.shape.RoundedCornerShape(smallCorner(28.dp))).background(N.pill)
             .clickable { app.go(Route.Search) }.padding(horizontal = 18.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Rounded.Search, null, tint = N.sub); Spacer(Modifier.width(12.dp))
             Text("Search Nova", color = N.sub, fontSize = 17.sp)

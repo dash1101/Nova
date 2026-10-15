@@ -63,12 +63,21 @@ def inspect_all():
     rc, js, _ = run(["docker", "inspect"] + ids.split())
     return [c for c in json.loads(js or "[]") if "com.docker.compose.project" in (c["Config"].get("Labels") or {})]
 
+def stopped_on_purpose(c):
+    """Stopped by someone, not broken: Docker never gives up restarting an "always" / "unless-stopped" container, so one
+    of those that has exited and isn't restarting was stopped by hand (docker stop, Nova's Stop). Nova's Force stop
+    takes the restart policy away and remembers it in force-stopped.json — that's on purpose too."""
+    st, pol = c["State"], c["HostConfig"]["RestartPolicy"]["Name"]
+    if st["Status"] not in ("exited", "created") or st.get("Restarting") or st.get("OOMKilled"): return False
+    if pol in ("always", "unless-stopped"): return True
+    return c["Name"].lstrip("/") in load_json("/var/lib/nova-api/force-stopped.json", {})
+
 def summary(c):
     lab = c["Config"].get("Labels") or {}
     return {"name": c["Name"].lstrip("/"), "stack": lab["com.docker.compose.project"],
             "service": lab.get("com.docker.compose.service", ""),
             "image": c["Config"]["Image"].split("@")[0], "state": c["State"]["Status"],
-            "health": (c["State"].get("Health") or {}).get("Status", ""),
+            "health": (c["State"].get("Health") or {}).get("Status", ""), "stopped": stopped_on_purpose(c),
             "started": c["State"].get("StartedAt", "")[:19],
             "store": os.path.exists(f"/opt/{lab['com.docker.compose.project']}/.nova-store"),
             "custom": os.path.exists(f"/opt/{lab['com.docker.compose.project']}/.nova-custom")}

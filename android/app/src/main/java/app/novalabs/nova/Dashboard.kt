@@ -47,6 +47,7 @@ val DASH_TILES = listOf(
     DashTile("fan", "Fan light", Icons.Rounded.Lightbulb, 2),
     DashTile("alerts", "Recent alerts", Icons.Rounded.Notifications, 2),
     DashTile("uptime", "Uptime", Icons.Rounded.Timer, 1),
+    DashTile("top", "Top containers", Icons.Rounded.Leaderboard, 1), DashTile("server", "Server info", Icons.Rounded.Dns, 1),
     DashTile("gpu", "Graphics graph", Icons.Rounded.Speed, 1), DashTile("swap", "Swap graph", Icons.Rounded.SwapHoriz, 1), DashTile("io", "Disk I/O graph", Icons.Rounded.Storage, 1),
 )
 val DEFAULT_DASH = listOf("clock", "health", "cpu", "mem", "temp", "net", "storage", "containers", "backup", "alerts")
@@ -62,7 +63,24 @@ class DashPrefs(ctx: android.content.Context, profile: String) {
         set(v) { p.edit().putBoolean("dim", v).apply() }
     var dimFrom: Int get() = p.getInt("dim_from", 23); set(v) { p.edit().putInt("dim_from", v).apply() }
     var dimTo: Int get() = p.getInt("dim_to", 7); set(v) { p.edit().putInt("dim_to", v).apply() }
+    /** How dark night dimming gets, in percent (it used to be a fixed, very dark 72%). */
+    var dimLevel: Int get() = p.getInt("dim_level", 40); set(v) { p.edit().putInt("dim_level", v).apply() }
+    var fullscreen: Boolean get() = p.getBoolean("fullscreen", true); set(v) { p.edit().putBoolean("fullscreen", v).apply() }
+    var cols: Int get() = p.getInt("cols", 0); set(v) { p.edit().putInt("cols", v).apply() }                     // 0 = as many as fit
+    var scale: Int get() = p.getInt("scale", 100); set(v) { p.edit().putInt("scale", v).apply() }                // text and tile size, %
+    var bg: String get() = p.getString("bg", "theme")!!; set(v) { p.edit().putString("bg", v).apply() }       // theme / black / wallpaper
+    var plain: Boolean get() = p.getBoolean("plain", false); set(v) { p.edit().putBoolean("plain", v).apply() }
+    var clock: String get() = p.getString("clock", "auto")!!; set(v) { p.edit().putString("clock", v).apply() } // auto / 24 / 12
+    var seconds: Boolean get() = p.getBoolean("seconds", false); set(v) { p.edit().putBoolean("seconds", v).apply() }
+    /** Tiles made wide or square by hand (id → columns). */
+    var sizes: Map<String, Int>
+        get() = p.getString("sizes", "")!!.split(",").mapNotNull { it.split(":").takeIf { x -> x.size == 2 }?.let { (k, v) -> v.toIntOrNull()?.let { k to it } } }.toMap()
+        set(v) { p.edit().putString("sizes", v.entries.joinToString(",") { "${it.key}:${it.value}" }).apply() }
+    fun span(t: DashTile) = sizes[t.id] ?: t.span
 }
+
+/** The dashboard's look settings, for the tiles to read. */
+private val LocalDash = staticCompositionLocalOf<DashPrefs?> { null }
 
 @Composable fun DashboardScreen(app: AppState) {
     val prefs = remember { DashPrefs(app.activity, app.pairing.profile) }
@@ -79,7 +97,7 @@ class DashPrefs(ctx: android.content.Context, profile: String) {
         w.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         val c = WindowCompat.getInsetsController(w, w.decorView)
         c.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-        c.hide(WindowInsetsCompat.Type.systemBars())
+        if (prefs.fullscreen) c.hide(WindowInsetsCompat.Type.systemBars())
         onDispose { w.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON); c.show(WindowInsetsCompat.Type.systemBars()) }
     }
     // Burn-in protection: drift the whole layout by a few pixels every minute.
@@ -88,27 +106,34 @@ class DashPrefs(ctx: android.content.Context, profile: String) {
     val hour = Calendar.getInstance().apply { timeInMillis = now }.get(Calendar.HOUR_OF_DAY)
     val night = prefs.dimNight && (if (prefs.dimFrom > prefs.dimTo) hour >= prefs.dimFrom || hour < prefs.dimTo else hour in prefs.dimFrom until prefs.dimTo)
 
-    if (editing) { EditDashboard(app, prefs, tiles, { tiles = it; prefs.tiles = it }) { editing = false }; return }
+    if (editing) { EditDashboard(app, prefs, tiles, { tiles = it; prefs.tiles = it }) { editing = false
+        val w = app.activity.window; val c = WindowCompat.getInsetsController(w, w.decorView)            // the full-screen setting may have changed
+        if (prefs.fullscreen) c.hide(WindowInsetsCompat.Type.systemBars()) else c.show(WindowInsetsCompat.Type.systemBars()) }; return }
+    val k = prefs.scale / 100f
 
     val stats = liveStats(app)
     val events by live(app, "/api/v1/events?since=0", 30_000)
-    Box(Modifier.fillMaxSize().clickable(interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    CompositionLocalProvider(LocalDash provides prefs, androidx.compose.ui.platform.LocalDensity provides androidx.compose.ui.unit.Density(density.density, density.fontScale * k)) {
+    Box(Modifier.fillMaxSize().then(if (prefs.bg == "black") Modifier.background(Color.Black) else Modifier).clickable(interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
         indication = null) { chrome = !chrome }) {
+        if (prefs.bg == "wallpaper" && AppPrefs.wallV > 0L) WallpaperLayer()
         BoxWithConstraints(Modifier.fillMaxSize().padding(16.dp).offset(shiftX, shiftY)) {
-            val cols = (maxWidth / 260.dp).toInt().coerceIn(2, 6)
+            val fit = (maxWidth / (260.dp * k)).toInt().coerceIn(1, 6)
+            val cols = if (prefs.cols > 0) minOf(prefs.cols, maxOf(fit, 1)) else fit.coerceAtLeast(2)
             Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Spacer(Modifier.height(if (chrome) 56.dp else 4.dp))
                 // Pack tiles into rows of `cols` columns, honoring each tile's span.
                 val rows = mutableListOf<MutableList<DashTile>>(); var used = cols
                 tiles.mapNotNull { id -> DASH_TILES.firstOrNull { it.id == id } }.forEach { t ->
-                    val span = t.span.coerceAtMost(cols)
+                    val span = prefs.span(t).coerceAtMost(cols)
                     if (used + span > cols) { rows.add(mutableListOf()); used = 0 }
                     rows.last().add(t); used += span
                 }
                 rows.forEach { row ->
-                    Row(Modifier.fillMaxWidth().height(190.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        row.forEach { t -> Box(Modifier.weight(t.span.coerceAtMost(cols).toFloat()).fillMaxHeight()) { DashTileView(app, t, stats, events, now) } }
-                        val left = cols - row.sumOf { it.span.coerceAtMost(cols) }
+                    Row(Modifier.fillMaxWidth().height(190.dp * k), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        row.forEach { t -> Box(Modifier.weight(prefs.span(t).coerceAtMost(cols).toFloat()).fillMaxHeight()) { DashTileView(app, t, stats, events, now) } }
+                        val left = cols - row.sumOf { prefs.span(it).coerceAtMost(cols) }
                         if (left > 0) Spacer(Modifier.weight(left.toFloat()))
                     }
                 }
@@ -122,12 +147,16 @@ class DashPrefs(ctx: android.content.Context, profile: String) {
             if (!app.isAdmin) Text("View only  ", color = N.sub, fontSize = 13.sp)
             IconButton({ editing = true }) { Icon(Icons.Rounded.Edit, "Customize", tint = N.text) }
         }
-        if (night) Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.72f)))     // night dimming
+        if (night) Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = prefs.dimLevel / 100f)))     // night dimming
+    }
     }
 }
 
+/** A tile's surface: glass, or with Plain tiles just the numbers on the background. */
+@Composable private fun Modifier.dashCard(): Modifier = if (LocalDash.current?.plain == true) this else this.glassCard(RoundedCornerShape(28.dp))
+
 @Composable private fun Tile(title: String, icon: ImageVector, color: Color, content: @Composable ColumnScope.() -> Unit) {
-    Column(Modifier.fillMaxSize().glassCard(RoundedCornerShape(28.dp)).padding(18.dp)) {
+    Column(Modifier.fillMaxSize().dashCard().padding(18.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(icon, null, tint = color, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(6.dp))
             Text(title, color = N.sub, fontSize = 14.sp)
@@ -144,10 +173,13 @@ class DashPrefs(ctx: android.content.Context, profile: String) {
     fun series(k: String) = pts.map { it.optDouble(k, 0.0).toFloat().let { v -> if (v.isNaN()) 0f else v } }
     val tick = if (live) stats.tick else 0; val window = if (live) 120 else 0
     when (t.id) {
-        "clock" -> BoxWithConstraints(Modifier.fillMaxSize().glassCard(RoundedCornerShape(28.dp)).padding(18.dp)) {
-          val big = (maxWidth.value / 3.1f).coerceIn(28f, 72f).sp          // fits the tile, phone or tablet
+        "clock" -> BoxWithConstraints(Modifier.fillMaxSize().dashCard().padding(18.dp)) {
+          val dp = LocalDash.current
+          val h24 = when (dp?.clock) { "24" -> true; "12" -> false; else -> android.text.format.DateFormat.is24HourFormat(app.activity) }
+          val pattern = (if (h24) "HH:mm" else "h:mm") + (if (dp?.seconds == true) ":ss" else "")
+          val big = (maxWidth.value / (if (dp?.seconds == true) 4.4f else 3.1f)).coerceIn(28f, 72f).sp          // fits the tile, phone or tablet
           Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.Center) {
-            Text(SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(now)), color = N.text, fontSize = big, fontWeight = FontWeight.Light,
+            Text(SimpleDateFormat(pattern, Locale.getDefault()).format(Date(now)), color = N.text, fontSize = big, fontWeight = FontWeight.Light,
                 maxLines = 1, softWrap = false)
             Text(SimpleDateFormat("EEEE, MMM d", Locale.getDefault()).format(Date(now)), color = N.sub, fontSize = 16.sp, maxLines = 1)
           }
@@ -168,7 +200,9 @@ class DashPrefs(ctx: android.content.Context, profile: String) {
             series("rx").zip(series("tx")) { a, b -> a + b }, null, tick, window, stats.added)
         "gpu" -> GraphTile("Graphics", Icons.Rounded.Speed, N.red, n?.takeIf { it.has("gpu") && !it.isNull("gpu") }?.let { "%.0f%%".format(it.optDouble("gpu")) } ?: "—",
             if (n?.isNull("gpu") != false) "No graphics reading on this server" else "GPU busy", series("gpu"), 100f, tick, window, stats.added)
-        "swap" -> GraphTile("Swap", Icons.Rounded.SwapHoriz, N.amber, n?.let { "%.0f%%".format(it.optDouble("swap", 0.0)) }, "of swap in use", series("swap"), 100f, tick, window, stats.added)
+        "swap" -> { val tot = n?.optDouble("swap_total_gb", -1.0) ?: -1.0
+            GraphTile("Swap", Icons.Rounded.SwapHoriz, N.amber, if (tot == 0.0) "None" else n?.let { "%.0f%%".format(it.optDouble("swap", 0.0)) },
+                if (tot == 0.0) "no swap set up" else if (tot > 0) "${n!!.optDouble("swap_used_gb")} of $tot GB" else "of swap in use", series("swap"), 100f, tick, window, stats.added) }
         "io" -> GraphTile("Disk I/O", Icons.Rounded.Storage, Color(0xFF64D2FF), n?.let { rate(it.optDouble("io", 0.0)) }, "read + write, all drives", series("io"), null, tick, window, stats.added)
         "storage" -> Tile("Storage", Icons.Rounded.Storage, N.green) {
             storageList(m).take(5).forEach { su ->
@@ -213,6 +247,25 @@ class DashPrefs(ctx: android.content.Context, profile: String) {
                 }
             }
         }
+        "top" -> { val cst = live(app, "/api/v1/containers/stats", 10_000).value?.optJSONObject("stats")
+            Tile("Top containers", Icons.Rounded.Leaderboard, N.amber) {
+                val rows = cst?.keys()?.asSequence()?.map { it to cst.getJSONObject(it) }?.sortedByDescending { (_, v) -> v.optDouble("cpu") * 4 + v.optDouble("mem_pct") }?.take(4)?.toList().orEmpty()
+                if (cst == null) Text("—", color = N.sub) else if (rows.isEmpty()) Text("Nothing running", color = N.sub)
+                rows.forEach { (name, v) ->
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 2.dp)) {
+                        Text(name, color = N.text, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                        Text("${"%.0f".format(v.optDouble("cpu"))}% · ${v.optString("mem")}", color = N.sub, fontSize = 12.sp, maxLines = 1)
+                    }
+                }
+            } }
+        "server" -> { val sv = o?.optJSONObject("server")
+            Tile("Server", Icons.Rounded.Dns, N.blue) {
+                Text(serverName(app), color = N.text, fontSize = 20.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(sv?.optString("cpu")?.replace(Regex("\\s+"), " ") ?: "", color = N.sub, fontSize = 12.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Spacer(Modifier.weight(1f))
+                Text(listOfNotNull(sv?.optInt("ram_gb")?.takeIf { it > 0 }?.let { "$it GB memory" }, sv?.optString("kernel")?.ifEmpty { null }?.let { "Linux $it" }).joinToString(" · "),
+                    color = N.sub, fontSize = 12.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            } }
         "uptime" -> Tile("Uptime", Icons.Rounded.Timer, N.green) {
             val up = n?.optLong("uptime_s") ?: 0
             Text(if (up > 0) "${up / 86400}d ${up % 86400 / 3600}h" else m?.optString("uptime") ?: "—", color = N.text, fontSize = 36.sp, fontWeight = FontWeight.Bold)
@@ -232,6 +285,10 @@ class DashPrefs(ctx: android.content.Context, profile: String) {
 
 @Composable private fun EditDashboard(app: AppState, prefs: DashPrefs, tiles: List<String>, save: (List<String>) -> Unit, done: () -> Unit) {
     var dim by remember { mutableStateOf(prefs.dimNight) }
+    var sizes by remember { mutableStateOf(prefs.sizes) }
+    var level by remember { mutableIntStateOf(prefs.dimLevel) }; var scale by remember { mutableIntStateOf(prefs.scale) }
+    var full by remember { mutableStateOf(prefs.fullscreen) }; var plain by remember { mutableStateOf(prefs.plain) }; var secs by remember { mutableStateOf(prefs.seconds) }
+    var ask by remember { mutableStateOf<String?>(null) }; var tick by remember { mutableIntStateOf(0) }
     var from by remember { mutableIntStateOf(prefs.dimFrom) }; var to by remember { mutableIntStateOf(prefs.dimTo) }
     Page("Customize dashboard", done) {
         SectionLabel("On the dashboard · in this order")
@@ -240,7 +297,10 @@ class DashPrefs(ctx: android.content.Context, profile: String) {
                 if (i > 0) RowDivider()
                 Row(Modifier.fillMaxWidth().padding(start = 22.dp, end = 8.dp, top = 6.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                     Icon(d.icon, null, tint = N.blue, modifier = Modifier.size(22.dp)); Spacer(Modifier.width(14.dp))
-                    Column(Modifier.weight(1f)) { Text(d.label, color = N.text, fontSize = 17.sp); Text(if (d.span > 1) "Wide" else "Square", color = N.sub, fontSize = 12.sp) }
+                    val wide = (sizes[id] ?: d.span) > 1
+                    Column(Modifier.weight(1f)) { Text(d.label, color = N.text, fontSize = 17.sp); Text(if (wide) "Wide" else "Square", color = N.sub, fontSize = 12.sp) }
+                    IconButton({ sizes = sizes + (id to if (wide) 1 else 2); prefs.sizes = sizes }) {
+                        Icon(if (wide) Icons.Rounded.CropSquare else Icons.Rounded.Crop169, if (wide) "Make it square" else "Make it wide", tint = N.text) }
                     IconButton({ if (i > 0) save(tiles.toMutableList().apply { add(i - 1, removeAt(i)) }) }, enabled = i > 0) {
                         Icon(Icons.Rounded.KeyboardArrowUp, "Move up", tint = if (i > 0) N.text else N.divider) }
                     IconButton({ if (i < tiles.lastIndex) save(tiles.toMutableList().apply { add(i + 1, removeAt(i)) }) }, enabled = i < tiles.lastIndex) {
@@ -252,16 +312,45 @@ class DashPrefs(ctx: android.content.Context, profile: String) {
         val more = DASH_TILES.filter { it.id !in tiles }
         if (more.isNotEmpty()) { SectionLabel("Add"); Group { more.forEachIndexed { i, d -> if (i > 0) RowDivider()
             Row1(d.label, if (d.span > 1) "Wide tile" else "Square tile", icon = d.icon, onClick = { save(tiles + d.id) }) { Icon(Icons.Rounded.AddCircle, "Add", tint = N.green) } } } }
+        SectionLabel("Layout")
+        Group {
+            Row1("Columns", if (prefs.cols > 0) "${prefs.cols} (fewer on a narrow screen)" else "Automatic — as many as fit", true, Icons.Rounded.ViewColumn, onClick = { ask = "cols" })
+            RowDivider()
+            SliderRow("Text and tile size", scale.toFloat(), 80f..160f, "$scale%", steps = 15, onChange = { scale = it.toInt() }) { prefs.scale = scale }
+            RowDivider()
+            Row1("Background", mapOf("theme" to "Same as Nova", "black" to "Black — best for OLED screens and dark rooms", "wallpaper" to "Your wallpaper")[prefs.bg], true, Icons.Rounded.Palette, onClick = { ask = "bg" })
+            RowDivider()
+            SwitchRow("Plain tiles", "No glass or borders — just the numbers", plain) { plain = it; prefs.plain = it }
+            RowDivider()
+            SwitchRow("Full screen", "Hides the status and navigation bars (swipe from an edge to see them)", full) { full = it; prefs.fullscreen = it }
+        }
+        SectionLabel("Clock")
+        Group {
+            Row1("Time format", mapOf("auto" to "Same as this ${DeviceForm.noun}", "24" to "24-hour", "12" to "12-hour")[prefs.clock], true, Icons.Rounded.Schedule, onClick = { ask = "clock" })
+            RowDivider()
+            SwitchRow("Show seconds", null, secs) { secs = it; prefs.seconds = it }
+        }
         SectionLabel("Always-on")
         Group {
             SwitchRow("Dim at night", if (dim) "%02d:00 – %02d:00".format(from, to) else "Off", dim, subtitleBlue = dim) { dim = it; prefs.dimNight = it }
             if (dim) {
                 RowDivider()
+                SliderRow("How dark", level.toFloat(), 10f..90f, "$level%", steps = 15, onChange = { level = it.toInt() }) { prefs.dimLevel = level }
                 SliderRow("From", from.toFloat(), 0f..23f, "%02d:00".format(from), steps = 22, onChange = { from = it.toInt() }) { prefs.dimFrom = from }
                 SliderRow("Until", to.toFloat(), 0f..23f, "%02d:00".format(to), steps = 22, onChange = { to = it.toInt() }) { prefs.dimTo = to }
             }
         }
+        key(tick) { }
+        when (ask) {
+            "cols" -> OneDialog({ ask = null }, "Columns", null, listOf(DialogButton("Cancel") { ask = null })) {
+                (0..6).forEach { c -> DialogChoice(if (c == 0) "Automatic" else "$c column${if (c > 1) "s" else ""}", null, prefs.cols == c) { prefs.cols = c; ask = null; tick++ } } }
+            "bg" -> OneDialog({ ask = null }, "Background", null, listOf(DialogButton("Cancel") { ask = null })) {
+                listOf("theme" to ("Same as Nova" to null), "black" to ("Black" to "Best for OLED screens and dark rooms"), "wallpaper" to ("Your wallpaper" to "Set one in Appearance"))
+                    .forEach { (v, l) -> DialogChoice(l.first, l.second, prefs.bg == v) { prefs.bg = v; ask = null; tick++ } } }
+            "clock" -> OneDialog({ ask = null }, "Time format", null, listOf(DialogButton("Cancel") { ask = null })) {
+                listOf("auto" to "Same as this ${DeviceForm.noun}", "24" to "24-hour", "12" to "12-hour").forEach { (v, l) -> DialogChoice(l, null, prefs.clock == v) { prefs.clock = v; ask = null; tick++ } } }
+        }
         Note("The screen stays on and the layout shifts slightly every minute to protect the display. For a wall tablet, pair it as View only and use Android's screen pinning to keep it in Nova.", 13.sp, 8.dp)
-        LinksCard(listOf("Reset to the default tiles" to { save(DEFAULT_DASH) }))
+        LinksCard(listOf("Reset to the default tiles" to { save(DEFAULT_DASH); sizes = emptyMap(); prefs.sizes = sizes }))
     }
 }

@@ -934,6 +934,42 @@ def op_clone(spec, log, progress):
     return {"mode": mode, "unreadable": 0, "shared_ids": sorted(shared)}
 
 
+# ── swap ────────────────────────────────────────────────────────────────────────────
+SWAP_SIZES = (1, 2, 4, 8, 16)
+SWAPFILE = os.environ.get("NOVA_SWAPFILE", "/swapfile") if TEST else "/swapfile"
+
+def swap_active():
+    try: return len(open("/proc/swaps").read().strip().splitlines()) > 1
+    except OSError: return False
+
+def op_swap_setup(spec, log, progress):
+    """A swap file on the system drive, for a server that has no swap at all: made, switched on, kept after a restart."""
+    gb = spec.get("gb")
+    if gb not in SWAP_SIZES: raise ValueError("pick a swap size")
+    if swap_active() and not TEST: raise ValueError("this server already has swap")
+    if os.path.lexists(SWAPFILE): raise ValueError(f"{SWAPFILE} already exists")
+    folder = os.path.dirname(SWAPFILE) or "/"
+    if shutil.disk_usage(folder).free < (gb + 5) * 2**30: raise ValueError(f"not enough free space for {gb} GB of swap (it keeps 5 GB spare)")
+    fs = run(["findmnt", "-no", "FSTYPE", "-T", folder])[1].strip()
+    log(f"Making a {gb} GB swap file ({SWAPFILE})"); progress(10)
+    try:
+        if fs == "btrfs": run(["btrfs", "filesystem", "mkswapfile", "--size", f"{gb}g", SWAPFILE], timeout=900, check=True)
+        else:
+            if run(["fallocate", "-l", f"{gb}G", SWAPFILE], timeout=300)[0] != 0:       # filesystems without fallocate: write it out
+                run(["dd", "if=/dev/zero", f"of={SWAPFILE}", "bs=1M", f"count={gb * 1024}", "status=none"], timeout=1800, check=True)
+            os.chmod(SWAPFILE, 0o600); run(["mkswap", SWAPFILE], check=True)
+        progress(70)
+        if not TEST: run(["swapon", SWAPFILE], check=True)
+        if not any(e.get("src") == SWAPFILE for e in fstab_entries()): fstab_append(f"{SWAPFILE}  none  swap  sw  0  0", "swap file")
+    except Exception:
+        if not TEST: run(["swapoff", SWAPFILE])
+        try: os.remove(SWAPFILE)
+        except OSError: pass
+        raise
+    log(f"Done — {gb} GB of swap is on and comes back after a restart"); progress(100)
+    return {"gb": gb, "file": SWAPFILE}
+
+
 OPS = {"format": op_format, "combine": op_combine, "raid": op_raid, "pool-remove": op_pool_remove, "pool-add": op_pool_add,
-       "fstab-nofail": op_fstab_nofail, "fstab-add": op_fstab_add, "repair": op_repair, "clone": op_clone}
+       "fstab-nofail": op_fstab_nofail, "fstab-add": op_fstab_add, "repair": op_repair, "clone": op_clone, "swap-setup": op_swap_setup}
 DESTRUCTIVE = {"format", "combine", "raid", "pool-remove", "pool-add", "repair", "clone"}

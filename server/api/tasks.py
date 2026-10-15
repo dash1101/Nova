@@ -18,7 +18,7 @@ import fcntl, json, os, re, secrets, subprocess, sys, time
 HERE = os.path.dirname(os.path.realpath(__file__))
 sys.path.insert(0, HERE)
 DIR = "/run/nova-tasks"
-STORAGE_KINDS = {"format", "combine", "raid", "pool-remove", "pool-add", "fstab-nofail", "fstab-add", "repair", "clone"}
+STORAGE_KINDS = {"format", "combine", "raid", "pool-remove", "pool-add", "fstab-nofail", "fstab-add", "repair", "clone", "swap-setup"}
 DIAG_KINDS = {"net-internet", "disk-speed", "cpu-stress", "mem-test"}
 BACKUP_KINDS = {"backup-run", "restore", "tools"}
 UPDATE_KINDS = {"updates-check", "apt-upgrade", "containers-update"}
@@ -26,7 +26,7 @@ LABS_KINDS = {"images-prune", "freeup"}
 INSTALL_KINDS = {"run-command", "store-install", "store-uninstall", "custom-install", "custom-uninstall", "program-install", "program-remove", "share-setup"}
 KINDS = STORAGE_KINDS | DIAG_KINDS | BACKUP_KINDS | UPDATE_KINDS | INSTALL_KINDS | LABS_KINDS
 TITLES = {"repair": "Repair a drive", "clone": "Clone a drive", "format": "Set up a drive", "combine": "Combine drives", "raid": "Create a RAID array", "pool-remove": "Remove a pool",
-          "pool-add": "Add a drive", "fstab-nofail": "Boot without missing drives", "fstab-add": "Keep a drive mounted",
+          "pool-add": "Add a drive", "fstab-nofail": "Boot without missing drives", "fstab-add": "Keep a drive mounted", "swap-setup": "Set up swap",
           "net-internet": "Internet speed test", "disk-speed": "Drive speed test", "cpu-stress": "CPU stress test", "mem-test": "Memory test",
           "backup-run": "Backup", "restore": "Restore from backup", "tools": "Install tools",
           "updates-check": "Check for updates", "apt-upgrade": "Update packages", "containers-update": "Update containers", "images-prune": "Clean up old images", "freeup": "Free up space"}
@@ -88,6 +88,9 @@ def check_spec(kind, spec):
         if kind == "share-setup":
             if not re.fullmatch(r"[a-z0-9-]{1,40}", str(spec.get("companion", ""))) or not re.fullmatch(r"[0-9]{1,5}", str(spec.get("app_port", ""))): raise ValueError("bad share setup")
             spec["name"] = str(spec.get("for_host") or spec.get("share_host"))[:253]
+    if kind == "swap-setup":
+        import storage
+        if spec.get("gb") not in storage.SWAP_SIZES: raise ValueError("pick a swap size")
     if kind == "freeup":
         import freeup
         it = spec.get("items")

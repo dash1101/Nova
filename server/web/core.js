@@ -168,7 +168,7 @@ const PREF_DEFAULTS = {
   navTabs: ["store", "home", "menu"],
   quick: ["backup", "freeram", "fan", "dim", "status", "dashboard"],
   dashTiles: ["clock", "health", "cpu", "mem", "temp", "net", "storage", "containers", "backup", "alerts"],
-  dashDim: true, dashFrom: 23, dashTo: 7,
+  dashDim: true, dashFrom: 23, dashTo: 7, dashDimLevel: 40, dashFull: false,
   dashCols: 0, dashSize: {}, dashClock24: null, dashSeconds: false, dashScale: 100, dashBg: "theme", dashPlain: false,
   lastEventSeen: 0,
 };

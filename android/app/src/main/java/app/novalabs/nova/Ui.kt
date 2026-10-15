@@ -227,8 +227,15 @@ fun levelColor(level: String, t: NovaColors) = when (level) {
 /** A row's icon in the chosen icon style ([theme] = one of ICON_THEMES, or the current setting). */
 @Composable fun RowIcon(icon: ImageVector, c: Color, theme: String = AppPrefs.iconTheme) {
     val t = N
-    when (theme.takeIf { it != "style" } ?: when (t.preset) { "liquid", "aero" -> "tiles"; "fluent", "breeze" -> "glyph"; else -> "tonal" }) {
+    when (theme.takeIf { it != "style" } ?: when (t.preset) { "liquid" -> "tiles"; "aero" -> "glossy"; "fluent", "breeze" -> "glyph"; else -> "tonal" }) {
         "tiles" -> Box(Modifier.size(30.dp).clip(RoundedCornerShape(cardRadius(8.dp))).background(c), contentAlignment = Alignment.Center) { Icon(icon, null, tint = Color.White, modifier = Modifier.size(19.dp)) }
+        // Aero's own: a colored tile with a shine on its top half, a dark edge and a light line along the top
+        "glossy" -> { val sh = RoundedCornerShape(minOf(cardRadius(6.dp), 15.dp))
+            Box(Modifier.size(30.dp).shadow(2.dp, sh).clip(sh).background(c)
+                .background(Brush.verticalGradient(0f to Color.White.copy(alpha = .55f), .5f to Color.White.copy(alpha = .12f), .5f to Color.Transparent, 1f to Color.White.copy(alpha = .2f)))
+                .border(1.dp, Color.Black.copy(alpha = .3f), sh), contentAlignment = Alignment.Center) {
+                Icon(icon, null, tint = Color.Black.copy(alpha = .35f), modifier = Modifier.size(19.dp).offset(y = 1.dp))
+                Icon(icon, null, tint = Color.White, modifier = Modifier.size(19.dp)) } }
         "circles" -> Box(Modifier.size(34.dp).clip(CircleShape).background(c), contentAlignment = Alignment.Center) { Icon(icon, null, tint = Color.White, modifier = Modifier.size(19.dp)) }
         "outline" -> Box(Modifier.size(34.dp).border(1.5.dp, c, CircleShape), contentAlignment = Alignment.Center) { Icon(icon, null, tint = c, modifier = Modifier.size(18.dp)) }
         "glyph" -> Box(Modifier.size(28.dp), contentAlignment = Alignment.Center) { Icon(icon, null, tint = c, modifier = Modifier.size(22.dp)) }
@@ -373,7 +380,7 @@ val LocalWide = staticCompositionLocalOf { false }
         if (to != tabScroll.value) tabScroll.animateScrollTo(to.coerceIn(0, tabScroll.maxValue)) } }
     val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
     if (N.material) {                         // M3 Expressive: a floating bar, pill indicator behind the icon, labels
-        Row(modifier.navigationBarsPadding().padding(bottom = 12.dp).frosted(null, RoundedCornerShape(32.dp), 6.dp)
+        Row(modifier.navigationBarsPadding().padding(bottom = 12.dp).frosted(null, RoundedCornerShape(pillCorner(32.dp)), 6.dp)
             .pointerInput(onLongClick) { detectTapGestures(onLongPress = { onLongClick?.let { l -> haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress); l() } }) }
             .padding(horizontal = 8.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             val mInner = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp.dp - 40.dp - 16.dp
@@ -400,7 +407,7 @@ val LocalWide = staticCompositionLocalOf { false }
         }
         return
     }
-    Box(modifier.navigationBarsPadding().padding(bottom = 14.dp).frosted(LocalRootHaze.current, RoundedCornerShape(40.dp), 18.dp)
+    Box(modifier.navigationBarsPadding().padding(bottom = 14.dp).frosted(LocalRootHaze.current, RoundedCornerShape(pillCorner(40.dp)), 18.dp)
         .pointerInput(onLongClick) { detectTapGestures(onLongPress = { onLongClick?.let { l -> haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress); l() } }) }
         .padding(6.dp)) {
         // on an app the bead narrows to a true circle around it (52 across, centered in the pill's height).
@@ -424,7 +431,7 @@ val LocalWide = staticCompositionLocalOf { false }
         Row(horizontalArrangement = Arrangement.spacedBy(gap), verticalAlignment = Alignment.CenterVertically) {
             Row(Modifier.width(tabsView).fadeEdges(tabScroll, true, 40.dp).horizontalScroll(tabScroll), horizontalArrangement = Arrangement.spacedBy(gap)) {
                 icons.forEachIndexed { i, ic ->
-                    Box(Modifier.size(width = itemW, height = 56.dp).clip(RoundedCornerShape(28.dp))
+                    Box(Modifier.size(width = itemW, height = 56.dp).clip(RoundedCornerShape(smallCorner(28.dp) + 1.dp))
                         .bouncy(onLongClick = onLongClick) { onSelect(i) }, contentAlignment = Alignment.Center) {
                         Icon(ic, labels[i], tint = N.text, modifier = Modifier.size(26.dp))
                     }
@@ -456,7 +463,7 @@ fun Modifier.fadeEdges(s: androidx.compose.foundation.ScrollState, horizontal: B
 
 @Composable fun CancelSavePill(onCancel: () -> Unit, onSave: () -> Unit, saveEnabled: Boolean = true,
                                saveLabel: String = "Save", modifier: Modifier = Modifier, cancelLabel: String = "Cancel") {
-    Row(modifier.navigationBarsPadding().padding(bottom = 14.dp).frosted(null, RoundedCornerShape(40.dp), 18.dp)
+    Row(modifier.navigationBarsPadding().padding(bottom = 14.dp).frosted(null, RoundedCornerShape(pillCorner(40.dp)), 18.dp)
         .padding(horizontal = 10.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
         Text(cancelLabel, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = N.text,
             modifier = Modifier.clip(RoundedCornerShape(24.dp)).clickable(onClick = onCancel).padding(horizontal = 28.dp, vertical = 14.dp))
@@ -620,7 +627,7 @@ class PillBead(val x: androidx.compose.animation.core.Animatable<Float, androidx
     val vs = rememberScrollState()
     val maxH = androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp.dp - 48.dp
     if (N.material) {
-        Column(modifier.frosted(null, RoundedCornerShape(32.dp), 6.dp).then(hold).heightIn(max = maxH).fadeEdges(vs, false, 40.dp).verticalScroll(vs)
+        Column(modifier.frosted(null, RoundedCornerShape(pillCorner(32.dp)), 6.dp).then(hold).heightIn(max = maxH).fadeEdges(vs, false, 40.dp).verticalScroll(vs)
             .padding(horizontal = 8.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(gap)) {
             icons.forEachIndexed { i, ic ->
                 val on = i == selected
@@ -637,14 +644,14 @@ class PillBead(val x: androidx.compose.animation.core.Animatable<Float, androidx
         }
         return
     }
-    Box(modifier.frosted(LocalRootHaze.current, RoundedCornerShape(40.dp), 18.dp).then(hold)) {
+    Box(modifier.frosted(LocalRootHaze.current, RoundedCornerShape(pillCorner(40.dp)), 18.dp).then(hold)) {
       Box(Modifier.heightIn(max = maxH).fadeEdges(vs, false, 40.dp).verticalScroll(vs).padding(6.dp)) {
         Box(Modifier.offset(y = bead.pos).size(width = 64.dp, height = bead.size).graphicsLayer { alpha = bead.alpha }
-            .frosted(LocalRootHaze.current, RoundedCornerShape(28.dp), 4.dp)
+            .frosted(LocalRootHaze.current, RoundedCornerShape(smallCorner(28.dp) + 1.dp), 4.dp)
             .background(if (N.dark) Color.White.copy(alpha = 0.10f) else Color.Black.copy(alpha = 0.05f)))
         Column(verticalArrangement = Arrangement.spacedBy(gap), horizontalAlignment = Alignment.CenterHorizontally) {
             icons.forEachIndexed { i, ic ->
-                Box(Modifier.size(width = 64.dp, height = itemH).clip(RoundedCornerShape(28.dp))
+                Box(Modifier.size(width = 64.dp, height = itemH).clip(RoundedCornerShape(smallCorner(28.dp) + 1.dp))
                     .bouncy(onLongClick = onLongClick) { onSelect(i) }, contentAlignment = Alignment.Center) {
                     Icon(ic, labels[i], tint = N.text, modifier = Modifier.size(26.dp))
                 }
@@ -676,8 +683,9 @@ class PillBead(val x: androidx.compose.animation.core.Animatable<Float, androidx
     val pos by androidx.compose.animation.core.animateFloatAsState(selected.toFloat(),
         if (reduceMotion()) androidx.compose.animation.core.tween(180) else androidx.compose.animation.core.spring(0.72f, 420f), label = "segthumb")
     val preset = N.preset
-    val track = when (preset) { "liquid" -> RoundedCornerShape(50); "fluent" -> RoundedCornerShape(6.dp); "breeze" -> RoundedCornerShape(5.dp); "aero" -> RoundedCornerShape(5.dp); else -> RoundedCornerShape(24.dp) }
-    val thumb = when (preset) { "liquid" -> RoundedCornerShape(50); "fluent", "breeze", "aero" -> RoundedCornerShape(3.dp); else -> RoundedCornerShape(20.dp) }
+    val rk = roundK()
+    val track = when (preset) { "liquid" -> RoundedCornerShape(50); "fluent" -> RoundedCornerShape(6.dp * rk); "breeze", "aero" -> RoundedCornerShape(5.dp * rk); else -> RoundedCornerShape(24.dp) }
+    val thumb = when (preset) { "liquid" -> RoundedCornerShape(50); "fluent", "breeze", "aero" -> RoundedCornerShape(minOf(3.dp * rk, 18.dp)); else -> RoundedCornerShape(20.dp) }
     val outer = Modifier.padding(horizontal = Space.gutter, vertical = 6.dp).fillMaxWidth()
     BoxWithConstraints((if (preset == "liquid") outer.clip(track).background(Color(0x3D787880)) else outer.glassCard(track, 3.dp)).padding(if (preset == "liquid") 3.dp else 4.dp)) {
         val w = maxWidth / options.size.coerceAtLeast(1)

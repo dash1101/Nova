@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.7.6-alpha (server, Nova web, app and watch)
+- **Stopped containers aren't problems:** a container you stop on purpose (Stop in Nova, `docker stop`) no longer shows up as "Container down" or "needs attention". It's counted as stopped instead ("10/10 running · 4 stopped"), on Home, in Containers and in Status. A container that crashes is still an alert.
+- **Swap, clearer:** the Swap graph shows how much is in use and how big it is ("1.1 of 6.2 GB"). A server with no swap at all hides the graph and offers **Set up swap**, which makes a swap file on the system drive, switches it on and keeps it after a restart (asks for your fingerprint).
+- **Glass is lighter on the GPU (app):** Developer options → **Glass quality** (default 70%) leaves out the prism fringe and narrows the bending rim, where the lens does its work; under 50% the lens is off. And **Frame rate** caps the app at 30, 60, 90 or 120 fps — the biggest saving on a 120 Hz phone.
+- **Dashboard:** night dimming is gentler (40% instead of 72%) and has a **How dark** slider; new **Top containers** and **Server info** tiles; on the web, **Full screen when tapped**; and the app catches up with the web — columns, text and tile size, black or wallpaper background, plain tiles, wide or square tiles, 12/24-hour clock with seconds, and a full screen switch.
+- **Corner roundness up to 400%**, with dialogs keeping their buttons clear of the corners at any roundness; Glass stops at 200% (past that its cards turn into ovals). Aero's, Mica's and Breeze's small parts — the nav pill and its selection, search bars, sliders, buttons — now follow the roundness too.
+- **Glossy icons:** a new icon style, white symbols on shiny Windows 7-style tiles — Aero's own.
+- **Fixes:** swiping an Inbox alert away in Glass keeps it glass while it moves (it turned flat for a moment); Material You's back arrow lines up with the page title on the web; Aero's color picker's Done button reads properly; tablets: no seam beside the side pill at the top and bottom, and a tab shown beside the page it opened no longer has a back arrow.
+
 ## 0.7.5-alpha (server, Nova web, app and watch)
 - **A long-term API** ([docs/API.md](docs/API.md)): the server reports an API level (`api_level`, `min_level`, and an `X-Nova-Api-Level` header on every response) that only ever goes up, endpoints are never removed or changed within `/api/v1`, and anything retired is announced with deprecation headers for at least two releases and six months first. The apps tell the server which build they are, so a server can ask a too-old app to update instead of failing strangely; the app shows a banner when it or the server needs updating. The security test now checks the contract.
 - **Landscape back gesture, cleaned up:** the page underneath stays full size and brightens as you drag, and the page on top slides away with a soft shadow on its edge — no more hard edges or a black strip.

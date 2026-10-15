@@ -254,7 +254,9 @@ private fun uptime(s: Long) = "${s / 86400}d ${s % 86400 / 3600}h ${s % 3600 / 6
             Row(horizontalArrangement = Arrangement.spacedBy(Space.gap)) {
                 if (hasGpu) MetricCard("Graphics", "%.0f%%".format(now!!.optDouble("gpu")), "GPU busy",
                     N.red, series("gpu"), 100f, Modifier.weight(1f), tick, window, ls.added, times, pctF, live)
-                MetricCard("Swap", now?.let { "%.0f%%".format(it.optDouble("swap", 0.0)) } ?: "—", "of swap in use",
+                val noSwap = now != null && now.has("swap_total_gb") && now.optDouble("swap_total_gb") == 0.0
+                if (!noSwap) MetricCard("Swap", now?.let { "%.0f%%".format(it.optDouble("swap", 0.0)) } ?: "—",
+                    now?.takeIf { it.optDouble("swap_total_gb") > 0 }?.let { "${it.optDouble("swap_used_gb")} of ${it.optDouble("swap_total_gb")} GB" } ?: "of swap in use",
                     Color(0xFFFF9F0A), series("swap"), 100f, Modifier.weight(1f), tick, window, ls.added, times, pctF, live)
                 if (!hasGpu) MetricCard("Disk I/O", now?.let { rate(it.optDouble("io", 0.0)) } ?: "—", "read + write, all drives",
                     Color(0xFF64D2FF), series("io"), null, Modifier.weight(1f), tick, window, ls.added, times, { rate(it.toDouble()) }, live)
@@ -294,12 +296,24 @@ private fun uptime(s: Long) = "${s / 86400}d ${s % 86400 / 3600}h ${s % 3600 / 6
             }
         }
         // Services
+        var swapAsk by remember { mutableStateOf(false) }
         SectionLabel("Services")
         Group {
             Row1("Containers", m?.optString("containers")?.ifEmpty { null } ?: app.overview?.optJSONObject("containers")?.let { "${it.optInt("running")}/${it.optInt("total")} running" },
                 true, Icons.Rounded.ViewInAr, onClick = { app.go(Route.Containers) })
             if (!m?.optString("websites").isNullOrEmpty()) { RowDivider(); Row1("Websites", m?.optString("websites"), false, Icons.Rounded.Language) }
-            RowDivider(); Row1("Swap", m?.optString("swap")?.ifEmpty { null } ?: now?.let { "%.0f%% used".format(it.optDouble("swap")) }, false, Icons.Rounded.SwapHoriz)
+            val noSwap = now != null && now.has("swap_total_gb") && now.optDouble("swap_total_gb") == 0.0
+            // no swap at all: the graph is gone, and an admin can make a swap file (the graph comes back with it)
+            if (noSwap && app.isAdmin) { RowDivider(); Row1("Swap", "None set up — add a swap file, so a busy moment doesn't run memory out", true, Icons.Rounded.SwapHoriz, onClick = { swapAsk = true }) }
+            else { RowDivider(); Row1("Swap", m?.optString("swap")?.ifEmpty { null } ?: now?.let { "%.0f%% used".format(it.optDouble("swap")) }, false, Icons.Rounded.SwapHoriz) }
+        }
+        if (swapAsk) OneDialog({ swapAsk = false }, "Set up swap", "A swap file on the system drive. It's switched on now and comes back after a restart.",
+            listOf(DialogButton("Cancel") { swapAsk = false })) {
+            listOf(2 to null, 4 to "A good size for most servers", 8 to null, 16 to null).forEach { (gb, sub) ->
+                DialogChoice("$gb GB", sub, selected = false, action = true) { swapAsk = false; app.act {
+                    val r = app.stepUp("Add a $gb GB swap file", "POST", "/api/v1/storage/task/swap-setup", org.json.JSONObject().put("spec", org.json.JSONObject().put("gb", gb)))
+                    app.go(Route.Task(r.optString("id"))) } }
+            }
         }
     }
 }

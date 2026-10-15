@@ -198,8 +198,8 @@ object AppLock {
                     Row { Text("Glass clarity", color = N.sub, fontSize = 14.sp, modifier = Modifier.weight(1f)); Text("${AppPrefs.glass}%", color = N.sub, fontSize = 14.sp) }
                     OneSlider(AppPrefs.glass.toFloat(), { AppPrefs.set("glass", it.toInt()) }, 0f..100f)
                 }
-                Row { Text("Corner roundness", color = N.sub, fontSize = 14.sp, modifier = Modifier.weight(1f)); Text("${AppPrefs.round}%", color = N.sub, fontSize = 14.sp) }
-                OneSlider(AppPrefs.round.toFloat(), { AppPrefs.set("round", it.toInt()) }, 25f..400f)
+                Row { Text("Corner roundness", color = N.sub, fontSize = 14.sp, modifier = Modifier.weight(1f)); Text("${(roundK() * 100).toInt()}%", color = N.sub, fontSize = 14.sp) }
+                OneSlider(roundK() * 100, { AppPrefs.set("round", it.toInt()) }, 25f..(if (presetStyle() == "liquid") 200f else 400f))   // Glass stops at 200%
             }
         }
         SectionLabel("Theme")
@@ -359,7 +359,7 @@ private val MY_ACCENTS = listOf("#3e91ff", "#5e5ce6", "#bf5af2", "#ff2d55", "#ff
 }
 
 
-val ICON_THEMES = listOf("style" to "Matches the style", "tonal" to "Tonal", "tiles" to "Tiles", "circles" to "Circles", "outline" to "Outline", "glyph" to "Symbols only", "mono" to "Monochrome")
+val ICON_THEMES = listOf("style" to "Matches the style", "tonal" to "Tonal", "tiles" to "Tiles", "circles" to "Circles", "outline" to "Outline", "glyph" to "Symbols only", "mono" to "Monochrome", "glossy" to "Glossy")
 @Composable fun IconThemePicker() {
     SectionLabel("Icons")
     val samples = listOf(androidx.compose.material.icons.Icons.Rounded.MonitorHeart to N.green, androidx.compose.material.icons.Icons.Rounded.Backup to N.blue,

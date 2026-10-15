@@ -103,7 +103,7 @@ private fun greeting(): String = when (java.time.LocalTime.now().hour) { in 0..4
             }
         }
         // search
-        Row(Modifier.fillMaxWidth().padding(horizontal = Space.gutter, vertical = 6.dp).clip(RoundedCornerShape(28.dp)).background(N.pill)
+        Row(Modifier.fillMaxWidth().padding(horizontal = Space.gutter, vertical = 6.dp).clip(RoundedCornerShape(smallCorner(28.dp))).background(N.pill)
             .padding(horizontal = 18.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Rounded.Search, null, tint = N.sub); Spacer(Modifier.width(12.dp))
             Box(Modifier.weight(1f)) {
