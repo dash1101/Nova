@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.7.8-alpha (server, Nova web, app and watch)
+- **Partition manager** (Storage & hardware → Partition manager, or search for it): every drive and its partitions on one page, like Windows Disk Management — tap a drive to edit its partitions, tap a partition to change where it's mounted.
+- **Change where a drive is mounted** (like "Change drive letter and paths"): pick a folder like /mnt/name and the partition is mounted there only, kept after a restart. Files that were saved into that folder while the drive wasn't there are moved onto the drive first (checked byte for byte; if a file clashes with a different one on the drive, nothing is removed).
+- **Storage fixes it spots for you**, with one tap to fix (in Storage & hardware and the Partition manager): a partition mounted in several places or listed several times in /etc/fstab, files hidden under a mount point, and mounts left behind by a drive that's been unplugged.
+
 ## 0.7.7-alpha (server, Nova web, app and watch)
 - **Partitions** (a drive's page → Partitions, app and web), laid out like KDE Partition Manager: the drive drawn to scale, its partitions and free space, and the changes you queue up — new GPT or MBR table, create, delete, format (ext4, XFS, btrfs, exFAT, FAT32, swap), label, flags (EFI, BIOS boot, RAID, LVM), grow, and shrink (ext4). You see the drive as it will be, then apply everything together with your fingerprint and the drive's serial. Nova checks every change against the real drive, only touches a drive nothing is using (never the system drive), refuses if the drive changed since you planned, and saves the old table first — **Restore the previous table** puts it back. Moving partitions isn't offered.
 - **Authenticator codes, for computers without a phone or SSH at hand** (Users & devices → Authenticator codes, app and web): scan a QR code into any authenticator app, and a 6-digit code from it can add a browser to the server, or approve something a browser asks for. It's off until an admin turns it on with their fingerprint; every code works once, and after five wrong codes in 15 minutes codes are refused for a while (your phone still works).

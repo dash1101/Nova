@@ -8,6 +8,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
@@ -102,11 +103,21 @@ private val FLAG_NAMES = linkedMapOf("none" to "Normal data partition", "esp" to
                         "new".takeIf { p.optBoolean("new") })
                     Row1("${p.optInt("n")} · ${p.optString("label").ifEmpty { p.optString("node").removePrefix("/dev/").ifEmpty { "partition" } }}", bits.joinToString(" · "), false,
                         if (p.optString("fs") == "swap") Icons.Rounded.Memory else Icons.Rounded.Storage, FS_COLOR[p.optString("fs")] ?: N.sub,
-                        onClick = if (editable) ({ sel = it.key }) else null) { if (sel == it.key) Icon(Icons.Rounded.CheckCircle, null, tint = N.blue) }
+                        onClick = if (app.isAdmin) ({ sel = it.key }) else null) { if (sel == it.key) Icon(Icons.Rounded.CheckCircle, null, tint = N.blue) }
                 }
             }
         }
         val selP = sel?.takeIf { it.startsWith("p") }?.let { k -> parts.firstOrNull { "p" + it.optInt("n") == k } }
+        var mountFor by remember { mutableStateOf<JSONObject?>(null) }
+        val canMount = app.isAdmin && selP != null && selP.optString("fs").isNotEmpty() && selP.optString("fs") != "swap" && !selP.optBoolean("new") &&
+            busy.none { b -> listOf("system drive", "pool", "array", "LVM", "RAID", "swap").any { b.contains(it) } }
+        if (canMount && selP != null) {
+            SectionLabel("Mount point")
+            Group { val ms = selP.optJSONArray("mounts")?.let { m -> (0 until m.length()).map { m.getString(it) } }.orEmpty()
+                Row1(if (ms.isNotEmpty()) "Change where it's mounted" else "Mount it", if (ms.isNotEmpty()) "Now at " + ms.joinToString(", ") else "Not mounted — pick a folder like /mnt/name",
+                    false, Icons.Rounded.Folder, N.blue, onClick = { mountFor = JSONObject(selP.toString()).put("name", selP.optString("node").removePrefix("/dev/")) }) }
+        }
+        mountFor?.let { MountPointDialog(app, serial, it) { mountFor = null } }
         val selG = sel?.takeIf { it.startsWith("g") }?.let { gaps.getOrNull(it.drop(1).toInt()) }
         if (editable) {
             SectionLabel("Change")
@@ -206,5 +217,63 @@ private val FLAG_NAMES = linkedMapOf("none" to "Normal data partition", "esp" to
                     } })) {
                 OneTextField(text, { text = it.take(64) }, l.optString("serial"), Modifier.fillMaxWidth().padding(horizontal = 22.dp), mono = true) }
         }
+    }
+}
+
+
+// ── the partition manager: every drive at a glance (like Windows Disk Management); each opens its editor ──
+@Composable fun DisksScreen(app: AppState) {
+    val live = live(app, "/api/v1/storage", 30_000)
+    val st = live.value
+    var mp by remember { mutableStateOf<Pair<String, JSONObject>?>(null) }
+    Page("Partition manager", app::back) {
+        if (st == null) { Note("Reading the drives…", 14.sp); return@Page }
+        val issues = st.optJSONArray("suggestions").objs().filter { Regex("^(dup|stale|hidden):").containsMatchIn(it.optString("id")) }
+        if (issues.isNotEmpty()) { SectionLabel("Needs fixing"); issues.forEach { SuggestionCard(app, it) } }
+        SectionLabel("Drives")
+        st.optJSONArray("drives").objs().forEach { d ->
+            val parts = d.optJSONArray("partitions").objs(); val size = d.optLong("size").coerceAtLeast(1)
+            Group {
+                Row1("${d.optString("model").ifEmpty { d.optString("name") }} · ${d.optString("size_text")}",
+                    listOfNotNull("/dev/" + d.optString("name"), "system drive".takeIf { d.optBoolean("system") }, "in a pool".takeIf { !d.isNull("pool") && d.optString("pool").isNotEmpty() },
+                        d.optJSONArray("warnings")?.optString(0)?.ifEmpty { null }).joinToString(" · "), false, Icons.Rounded.Storage, N.blue,
+                    onClick = { app.go(Route.Partitions(d.optString("serial"))) }) { Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, null, tint = N.sub) }
+                Row(Modifier.fillMaxWidth().height(40.dp).padding(horizontal = 16.dp, vertical = 2.dp), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                    val used = parts.sumOf { it.optLong("size") }; val sh = RoundedCornerShape(smallCorner(8.dp))
+                    parts.forEach { p -> Box(Modifier.weight((p.optLong("size").toFloat() / size).coerceAtLeast(.03f)).fillMaxHeight().clip(sh).background((FS_COLOR[p.optString("fstype")] ?: N.sub).copy(alpha = .85f)),
+                        contentAlignment = Alignment.Center) { Text(p.optString("label").ifEmpty { p.optString("fstype") }, color = Color.White, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) } }
+                    if ((size - used).toFloat() / size > .01f) Box(Modifier.weight(((size - used).toFloat() / size).coerceAtLeast(.03f)).fillMaxHeight().clip(sh).background(N.pill), contentAlignment = Alignment.Center) {
+                        Text("free", color = N.sub, fontSize = 11.sp) }
+                }
+                parts.forEach { p -> RowDivider()
+                    val mounts = p.optJSONArray("mounts")?.let { a -> (0 until a.length()).map { a.getString(it) } }.orEmpty()
+                    val can = app.isAdmin && !d.optBoolean("system") && (d.isNull("pool") || d.optString("pool").isEmpty()) && p.optString("fstype").isNotEmpty() && !p.optBoolean("swap")
+                    Row1("${p.optString("name")} · ${p.optString("label").ifEmpty { p.optString("fstype").ifEmpty { "no filesystem" } }}",
+                        listOfNotNull(bytesHuman(p.optLong("size")), p.optJSONObject("usage")?.let { "${bytesHuman(it.optLong("free"))} free" },
+                            if (p.optBoolean("swap")) "swap in use" else if (mounts.isNotEmpty()) "at " + mounts.joinToString(", ") else if (p.optString("fstype").isNotEmpty()) "not mounted" else null).joinToString(" · "),
+                        false, Icons.Rounded.Folder, FS_COLOR[p.optString("fstype")] ?: N.sub, onClick = if (can) ({ mp = d.optString("serial") to p }) else null)
+                }
+            }
+        }
+        Note("Tap a drive to see its partitions and change them (create, delete, format, label, flags, grow, shrink). Tap a partition here to change where it's mounted. Nova doesn't move partitions, and never changes the system drive.", 13.sp, 8.dp)
+    }
+    mp?.let { (serial, p) -> MountPointDialog(app, serial, p) { mp = null; app.act { live.value = app.api.get("/api/v1/storage") } } }
+}
+
+/** Change where a partition is mounted: one place, kept after a restart; files saved into that folder while the drive
+ *  wasn't there are moved onto it. Like "Change drive letter and paths" in Windows. */
+@Composable fun MountPointDialog(app: AppState, serial: String, p: JSONObject, done: () -> Unit) {
+    val mounts = p.optJSONArray("mounts")?.let { a -> (0 until a.length()).map { a.getString(it) } }.orEmpty()
+    val name = p.optString("name").ifEmpty { p.optString("node").removePrefix("/dev/") }
+    var to by remember { mutableStateOf(mounts.firstOrNull() ?: "/mnt/" + p.optString("label").ifEmpty { name }.lowercase().replace(Regex("[^a-z0-9_.-]+"), "_").trim('_').ifEmpty { "drive" }) }
+    val ok = Regex("/(mnt|srv|media|data)/[A-Za-z0-9][A-Za-z0-9_.-]{0,40}").matches(to)
+    OneDialog(done, "Where ${p.optString("label").ifEmpty { name }} is mounted", (if (mounts.isNotEmpty()) "Now at ${mounts.joinToString(", ")}. " else "Not mounted now. ") +
+        "It's mounted at the folder you pick only, and comes back there after a restart. Files saved into that folder while the drive wasn't there are moved onto it.",
+        listOf(DialogButton("Cancel", onClick = done), DialogButton("Mount here", N.blue, enabled = ok) { val target = to.trim(); done()
+            app.act { val t = app.stepUp("Mount $name at $target", "POST", "/api/v1/storage/task/mount-set",
+                JSONObject().put("spec", JSONObject().put("serial", serial).put("part", name).put("mount", target).put("merge", true)))
+                app.go(Route.Task(t.optString("id"))) } })) {
+        OneTextField(to, { to = it.take(46) }, "/mnt/name", Modifier.fillMaxWidth().padding(horizontal = 22.dp), mono = true)
+        if (!ok) Text("Use a folder like /mnt/name", color = N.red, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 22.dp, vertical = 4.dp))
     }
 }

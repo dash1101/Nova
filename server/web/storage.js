@@ -62,6 +62,7 @@ export function overviewHtml() {
     ${sug.length ? secHelp("Suggested", "suggestions") + sug.map((s, i) => group(`<div class="row" style="align-items:flex-start"><span class="ic" style="background:color-mix(in srgb,${lvColor(s.level)} 16%,transparent);color:${lvColor(s.level)}">${I(s.level === "info" ? "bulb" : "warn")}</span>
         <div class="t"><b>${esc(s.title)}</b><small>${esc(s.detail)}</small>${s.actions?.length ? `<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px">${s.actions.map((a, k) => `<button class="pillbtn press" data-act="sug:${i}:${k}">${esc(a.label)}</button>`).join("")}</div>` : ""}</div></div>`)).join("") : ""}
     ${secHelp("Pools", "pool")}${group(pools.map((p, i) => poolRow(p, i)).join("") + row("Set up drives", { sub: "Combine drives, make a RAID, or a backup drive — a step-by-step guide", blue: true, icon: "addc", tint: "var(--green)", click: "go:setup" }))}
+    ${group(row("Partition manager", { sub: "Every drive and its partitions — format, resize, label, change where they're mounted", blue: true, icon: "viewday", tint: "var(--blue)", click: "go:disks" }))}
     ${group(row("Backups", { sub: [legacy ? "your backup script" : "", nj ? `${nj} Nova backup${nj > 1 ? "s" : ""}` : ""].filter(Boolean).join(" + ") || "Nothing backed up yet — set one up", blue: true, icon: "backup", click: "go:backups" })
       + row("Diagnostics", { sub: "Internet & drive speed, CPU and memory tests, ping and more", icon: "speed", tint: "#64d2ff", click: "go:diag" }))}`;
 }

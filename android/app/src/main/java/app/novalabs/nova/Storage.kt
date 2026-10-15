@@ -57,6 +57,8 @@ fun driveTitle(d: JSONObject) = "${d.optString("size_text")} ${d.optString("mode
         Row1("Set up drives", "Combine drives, make a RAID, or a backup drive — a step-by-step guide", true, Icons.Rounded.AddCircle, N.green,
             onClick = { if (app.isAdmin) app.go(Route.StorageWizard()) else app.toast("This ${DeviceForm.noun} has view-only access") })
     }
+    Group { Row1("Partition manager", "Every drive and its partitions — format, resize, label, change where they're mounted", true, Icons.Rounded.ViewDay, N.blue,
+        onClick = { app.go(Route.Disks) }) }
     Group {
         val legacy = st?.optJSONObject("legacy_backup"); val nj = st?.optJSONArray("jobs")?.length() ?: 0
         Row1("Backups", listOfNotNull(legacy?.let { "your backup script" }, if (nj > 0) "$nj Nova backup${if (nj > 1) "s" else ""}" else null)
@@ -79,7 +81,7 @@ fun driveTitle(d: JSONObject) = "${d.optString("size_text")} ${d.optString("mode
 }
 
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
-@Composable private fun SuggestionCard(app: AppState, s: JSONObject) {
+@Composable fun SuggestionCard(app: AppState, s: JSONObject) {
     val lvl = s.optString("level"); val c = levelColor(lvl, N)
     Group {
         Row(Modifier.padding(start = 20.dp, end = 20.dp, top = 16.dp), verticalAlignment = Alignment.Top) {
@@ -105,7 +107,8 @@ fun suggestionAction(app: AppState, a: JSONObject) {
         "wizard" -> app.go(Route.StorageWizard(a.optString("goal"), a.optJSONArray("drives").strs(), a.optString("pool").ifEmpty { null }))
         "backup-wizard" -> app.go(Route.BackupWizard(null, a.optJSONArray("sources").strs()))
         "task" -> app.act {
-            val t = app.api.post("/api/v1/storage/task/${a.optString("kind")}", JSONObject().put("spec", a.optJSONObject("spec") ?: JSONObject()))
+            // with the fingerprint: some fixes change /etc/fstab or what's mounted (the server says which need it)
+            val t = app.stepUp(a.optString("label").ifEmpty { "Fix a storage problem" }, "POST", "/api/v1/storage/task/${a.optString("kind")}", JSONObject().put("spec", a.optJSONObject("spec") ?: JSONObject()))
             app.go(Route.Task(t.optString("id")))
         }
     }

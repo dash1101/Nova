@@ -43,6 +43,7 @@ val PLACES: List<Triple<String, String, Pair<ImageVector, Route>>> = listOf(
     Triple("Find a program", "apt package install program software", Icons.Rounded.Search to Route.ProgramSearch),
     Triple("Storage & hardware", "drives disks pools raid smart mount unmount temperature fans", Icons.Rounded.Storage to Route.Hardware),
     Triple("Set up drives", "format raid mirror combine pool mergerfs mdadm new drive", Icons.Rounded.AddCircle to Route.StorageWizard()),
+    Triple("Partition manager", "partitions disk management format resize label mount point fstab drive letter", Icons.Rounded.ViewDay to Route.Disks),
     Triple("Backups", "backup restore snapshot nas smb nfs schedule", Icons.Rounded.Backup to Route.Backups),
     Triple("Diagnostics", "speed test internet ping traceroute dns port cpu stress memory test disk speed", Icons.Rounded.Speed to Route.Diagnostics),
     Triple("Updates", "upgrade packages apt containers images nova update", Icons.Rounded.Update to Route.Updates),

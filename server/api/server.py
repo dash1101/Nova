@@ -40,7 +40,7 @@ try:                       # optional module: fan/case lighting (modules/fan-gig
 except ImportError:
     nova_rgb = None
 
-API_VERSION = "0.7.7-alpha"
+API_VERSION = "0.7.8-alpha"
 # The API contract (docs/API.md). API_LEVEL only ever goes up: each new level adds endpoints or fields, never removes or
 # changes one. MIN_LEVEL is the oldest level this server still answers in full (old apps keep working back to it).
 # MIN_CLIENT: the oldest app builds still served, per platform — 0 = all of them. Raising it is the last resort, after
@@ -606,7 +606,9 @@ def describe_action(a):
                 "clone": "Clone a drive (erases the drive it copies to)",
                 "swap-setup": f"Add a {d.get('gb', '?')} GB swap file on the system drive",
                 "partition-apply": f"Change the partitions on drive {d.get('serial', '?')}: " + "; ".join(partition_op_text(o) for o in (d.get("ops") or [])[:8]) + (" …" if len(d.get("ops") or []) > 8 else ""),
-                "partition-restore": f"Put back an earlier partition table on drive {d.get('serial', '?')}"}.get(p[2], "Change storage")
+                "partition-restore": f"Put back an earlier partition table on drive {d.get('serial', '?')}",
+                "mount-set": f"Mount {d.get('part', '?')} at {d.get('mount', '?')} only (other places unmounted, /etc/fstab updated" + (", files saved in that folder moved onto the drive)" if d.get("merge") else ")"),
+                "mount-clear": f"Clear the leftover mount {d.get('mount', '?')} (its drive is gone)"}.get(p[2], "Change storage")
     if p == ["updates", "packages"]: return "Update system packages"
     if p == ["notify", "discord"]: return "Change where Discord alerts go"
     if p == ["lights", "ha"]: return "Connect a Home Assistant light to the server's status"
@@ -634,7 +636,7 @@ def browser_forbidden(method, parts, dev):
     if parts[:1] == ["devices"] and method != "GET" and parts != ["devices", dev.get("id")]: return True
     return False
 
-STORAGE_DESTRUCTIVE = ("format", "combine", "raid", "pool-remove", "pool-add", "repair", "clone", "swap-setup", "partition-apply", "partition-restore")
+STORAGE_DESTRUCTIVE = ("format", "combine", "raid", "pool-remove", "pool-add", "repair", "clone", "swap-setup", "partition-apply", "partition-restore", "mount-set", "mount-clear")
 ROLES = ("admin", "viewer")
 FORMS = ("phone", "tablet", "desktop", "watch")
 def role_of(d): return d.get("role") if d.get("role") in ROLES else "admin"     # devices from before roles: admin

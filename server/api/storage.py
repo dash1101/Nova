@@ -310,6 +310,8 @@ def covered_by_backup(path, m):
 
 def suggestions(m):
     out = []
+    try: out += mount_issues(m)
+    except Exception: pass
     unused = [d for d in m["drives"] if "unused" in d["roles"] and not d["system"]]
     if unused:
         names = ", ".join(f"{d['size_text']} {d['model'] or d['name']}" for d in unused)
@@ -970,6 +972,135 @@ def op_swap_setup(spec, log, progress):
     return {"gb": gb, "file": SWAPFILE}
 
 
+# ── mount points: one place per partition, nothing hidden under it, nothing left from a drive that's gone ─────
+MOUNT_RE = re.compile(r"/(mnt|srv|media|data)/[A-Za-z0-9][A-Za-z0-9_.-]{0,40}")
+
+def _part_of_uuid(m, uuid):
+    for d in m["drives"]:
+        for p in d["partitions"]:
+            if uuid and p.get("uuid") == uuid: return d, p
+    return None, None
+
+def mount_issues(m):
+    """Mount problems Nova can fix with one tap: a drive's partition mounted in several places (or listed several times
+    in /etc/fstab), files saved into a mount point's folder while its drive wasn't there (hidden once it's mounted), and
+    mounts left behind by a drive that's been unplugged."""
+    out = []; mp = mounts(); fst = fstab_entries()
+    bydev = {}
+    for mnt, i in mp.items():
+        if i["src"].startswith("/dev/"): bydev.setdefault(os.path.realpath(i["src"]), []).append(mnt)
+    for mnt, i in mp.items():
+        if i["src"].startswith("/dev/") and not os.path.exists(i["src"]) and mnt not in PROTECTED:
+            out.append({"id": "stale:" + mnt, "level": "warning", "title": f"{mnt} is still mounted, but its drive is gone",
+                        "detail": f"It was {i['src']}, which isn't connected any more. Clearing it frees the folder — nothing on any drive changes.",
+                        "actions": [{"label": "Clear it", "action": "task", "kind": "mount-clear", "spec": {"mount": mnt}}]})
+    seen = set()
+    for d in m["drives"]:
+        if d["system"]: continue
+        for p in d["partitions"]:
+            ms = sorted(bydev.get(os.path.realpath(p["path"]), []))
+            fm = sorted({e["mount"] for e in fst if p.get("uuid") and e["src"] in (f"UUID={p['uuid']}", p["path"])})
+            name = p.get("label") or p["name"]
+            if len(ms) > 1 or len(fm) > 1:
+                seen.add(p["path"])
+                choices = fm + [x for x in ms if x not in fm]
+                out.append({"id": "dup:" + p["path"], "level": "warning", "title": f"{name} is set up in more than one place",
+                            "detail": f"Mounted at {', '.join(ms) or 'nowhere'}; /etc/fstab mounts it at {', '.join(fm) or 'nothing'}. Pick one: the others are unmounted and "
+                                      "taken out of /etc/fstab, and anything saved into the chosen folder while the drive wasn't there is moved onto it.",
+                            "actions": [{"label": f"Keep it at {x}", "action": "task", "kind": "mount-set",
+                                         "spec": {"serial": d["serial"], "part": p["name"], "mount": x, "merge": True}} for x in choices[:3]]})
+    for e in fst:
+        mnt = e["mount"]
+        if not MOUNT_RE.fullmatch(mnt) or os.path.ismount(mnt) or not os.path.isdir(mnt): continue
+        try: has = any(True for _ in os.scandir(mnt))
+        except OSError: has = False
+        if not has: continue
+        d, p = _part_of_uuid(m, e["src"][5:] if e["src"].startswith("UUID=") else "")
+        if p and p["path"] in seen: continue
+        out.append({"id": "hidden:" + mnt, "level": "warning", "title": f"Files were saved into {mnt} while its drive wasn't mounted",
+                    "detail": f"They're on the system drive (taking its space), and they'd be hidden once the drive is mounted there. "
+                              + ("Nova can move them onto the drive and mount it." if p else "Its drive isn't connected — plug it in first."),
+                    "actions": [{"label": f"Move them onto {p.get('label') or p['name']} and mount it", "action": "task", "kind": "mount-set",
+                                 "spec": {"serial": d["serial"], "part": p["name"], "mount": mnt, "merge": True}}] if p else []})
+    return out
+
+def _merge_into(folder, dest, log):
+    """Copy what's in the folder onto the drive (never over a different file), check every byte, then remove the originals."""
+    log(f"Moving the files saved in {folder} onto the drive…")
+    run(["rsync", "-a", "--ignore-existing", folder.rstrip("/") + "/", dest.rstrip("/") + "/"], timeout=86400, check=True)
+    rc, so, _ = run(["rsync", "-a", "--checksum", "--dry-run", "--itemize-changes", folder.rstrip("/") + "/", dest.rstrip("/") + "/"], timeout=86400)
+    clash = [l.split(" ", 1)[-1] for l in so.splitlines() if l.strip() and not l.startswith((".d", "cd"))]
+    if rc != 0 or clash:
+        raise ValueError(f"{len(clash)} file(s) in {folder} have a different copy on the drive ({', '.join(clash[:3])}) — nothing was removed; "
+                         "look at them in Files, then try again")
+    for e in os.scandir(folder):
+        if e.is_dir(follow_symlinks=False): shutil.rmtree(e.path)
+        else: os.remove(e.path)
+    log(f"Done — they're on the drive now, and {folder} on the system drive is empty")
+
+def op_mount_set(spec, log, progress):
+    """Put a partition at exactly one mount point: unmount it everywhere else, one line in /etc/fstab, files that were
+    saved into the folder while it wasn't mounted moved onto it (with merge)."""
+    d = find_drive(str(spec.get("serial", "")))
+    p = next((x for x in d["partitions"] if x["name"] == spec.get("part")), None)
+    if not p: raise ValueError("no such partition (was the drive changed?)")
+    if d["system"]: raise ValueError("that's the system drive — Nova doesn't move its mounts")
+    if d["pool"] or any(r in d["roles"] for r in ("raid-member", "pool-member")): raise ValueError("it's part of a pool or array — change that from the pool's page")
+    fs = p.get("fstype") or ""
+    if not fs or fs in ("swap", "LVM2_member", "linux_raid_member", "crypto_LUKS"): raise ValueError(f"Nova can't mount {fs or 'an empty partition'}")
+    target = str(spec.get("mount", ""))
+    if not MOUNT_RE.fullmatch(target): raise ValueError("mount point must be like /mnt/name")
+    if target in PROTECTED: raise ValueError("that's a protected location")
+    dev = os.path.realpath(p["path"]); mp = mounts()
+    if os.path.ismount(target) and os.path.realpath(mp.get(target, {}).get("src", "")) != dev: raise ValueError(f"another drive is mounted at {target}")
+    current = sorted(mnt for mnt, i in mp.items() if os.path.realpath(i["src"]) == dev)
+    users = docker_users()
+    busy = sorted({c for src, cs in users.items() for mnt in current if mnt != target and (src == mnt or src.startswith(mnt.rstrip("/") + "/")) for c in cs})
+    if busy: raise ValueError(f"{', '.join(busy[:4])} use{'s' if len(busy) == 1 else ''} {', '.join(x for x in current if x != target)} — stop {'it' if len(busy) == 1 else 'them'} or point {'it' if len(busy) == 1 else 'them'} at {target} first")
+    progress(10)
+    if os.path.isdir(target) and not os.path.ismount(target) and any(True for _ in os.scandir(target)):
+        if not spec.get("merge"): raise ValueError(f"{target} already has files in it")
+        src = next((x for x in current if x != target), None); tmp = None
+        if not src:
+            tmp = f"/run/nova-merge-{p['name']}"; os.makedirs(tmp, exist_ok=True); run(["mount", p["path"], tmp], timeout=120, check=True); src = tmp
+        try: _merge_into(target, src, log)
+        finally:
+            if tmp: run(["umount", tmp], timeout=120); os.rmdir(tmp)
+    progress(60)
+    for mnt in current:
+        if mnt == target: continue
+        if mnt in PROTECTED: raise ValueError(f"{mnt} is a protected location")
+        rc, _, _ = run(["umount", mnt], timeout=120)
+        if rc != 0:
+            run(["umount", "-l", mnt], timeout=120)
+            log(f"Unmounted {mnt} (something had a folder open there, like a terminal — it lets go when that's closed)")
+        else: log(f"Unmounted {mnt}")
+    uuid = p.get("uuid") or blkid_uuid(p["path"])
+    for e in fstab_entries():
+        if e["src"] in (f"UUID={uuid}", p["path"]) and e["mount"] != target: fstab_remove(e["mount"]); log(f"{e['mount']} no longer mounts at boot")
+    if not any(e["mount"] == target for e in fstab_entries()):
+        opts = fs_opts(fs) if fs in FILESYSTEMS else "defaults,noatime,nofail,x-systemd.device-timeout=10s"
+        fstab_append(f"UUID={uuid}  {target}  {fs}  {opts}  0  {2 if fs in ('ext4', 'xfs') else 0}", f"mounted at {target}")
+    os.makedirs(target, exist_ok=True)
+    if not os.path.ismount(target): run(["mount", "-t", fs, p["path"], target], timeout=120, check=True)
+    for mnt in current:
+        if mnt != target and MOUNT_RE.fullmatch(mnt) and os.path.isdir(mnt) and not os.path.ismount(mnt):
+            try: os.rmdir(mnt)                                  # only an empty folder goes
+            except OSError: pass
+    reload_systemd(); progress(100)
+    log(f"Done — {p.get('label') or p['name']} is at {target}, and comes back there after a restart")
+    return {"mount": target}
+
+def op_mount_clear(spec, log, progress):
+    """A mount left from a drive that's been unplugged: detach it (nothing on any drive is touched)."""
+    mnt = str(spec.get("mount", "")); i = mounts().get(mnt)
+    if not i: raise ValueError(f"nothing is mounted at {mnt}")
+    if mnt in PROTECTED: raise ValueError("that's a protected location")
+    if not i["src"].startswith("/dev/") or os.path.exists(i["src"]): raise ValueError(f"{mnt}'s drive is still connected — unmount it from its page instead")
+    run(["umount", "-l", mnt], timeout=120, check=True); progress(100)
+    log(f"Cleared {mnt} (it was {i['src']}, which isn't connected any more)")
+    return {"cleared": mnt}
+
 def op_partition_apply(spec, log, progress):
     import partitions; return partitions.apply(spec, log, progress)
 
@@ -978,5 +1109,6 @@ def op_partition_restore(spec, log, progress):
 
 
 OPS = {"format": op_format, "combine": op_combine, "raid": op_raid, "pool-remove": op_pool_remove, "pool-add": op_pool_add,
-       "fstab-nofail": op_fstab_nofail, "fstab-add": op_fstab_add, "repair": op_repair, "clone": op_clone, "swap-setup": op_swap_setup, "partition-apply": op_partition_apply, "partition-restore": op_partition_restore}
+       "fstab-nofail": op_fstab_nofail, "fstab-add": op_fstab_add, "repair": op_repair, "clone": op_clone, "swap-setup": op_swap_setup, "partition-apply": op_partition_apply, "partition-restore": op_partition_restore,
+       "mount-set": op_mount_set, "mount-clear": op_mount_clear}
 DESTRUCTIVE = {"format", "combine", "raid", "pool-remove", "pool-add", "repair", "clone", "partition-apply", "partition-restore"}

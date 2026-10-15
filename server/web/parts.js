@@ -45,11 +45,16 @@ export async function partitions(ctx) {
       const used = x.used != null && x.size ? ` · ${bytes(x.used)} used` : "";
       const bits = [x.fs || "no filesystem", bytes(x.size) + used, x.flag && x.flag !== "none" ? FLAG_NAMES[x.flag] : "", (x.mounts || []).length ? "mounted at " + x.mounts.join(", ") : "", x.new ? "new" : ""].filter(Boolean);
       return row(`${x.n} · ${x.label || x.name || (x.node || "").replace("/dev/", "") || "partition"}`, { sub: bits.join(" · "), icon: x.fs === "swap" ? "mem" : "disk",
-        tint: FS_COLOR[x.fs] || "var(--sub)", click: lay.editable && isAdmin() ? "sel:" + key : "", end: sel === key ? `<span style="color:var(--blue)">${I("okc")}</span>` : "" });
+        tint: FS_COLOR[x.fs] || "var(--sub)", click: isAdmin() ? "sel:" + key : "", end: sel === key ? `<span style="color:var(--blue)">${I("okc")}</span>` : "" });
     }).join(""));
   };
+  const mountRow = () => {        // where a partition is mounted can change even while the drive is in use (not the system drive)
+    const p = sel?.startsWith("p") && lay.partitions.find(x => "p" + x.n === sel);
+    if (!p || !isAdmin() || !p.fs || p.fs === "swap" || (lay.busy || []).some(b => /system drive|pool|array|LVM|RAID|swap/.test(b))) return "";
+    return sec("Mount point") + group(row((p.mounts || []).length ? "Change where it's mounted" : "Mount it", { sub: (p.mounts || []).length ? "Now at " + p.mounts.join(", ") : "Not mounted — pick a folder like /mnt/name", icon: "folder", tint: "var(--blue)", click: "mountpt" }));
+  };
   const actions = v => {
-    if (!lay.editable || !isAdmin()) return "";
+    if (!lay.editable || !isAdmin()) return mountRow();
     const rows = [];
     if (!v.table) rows.push(row("New partition table", { sub: "GPT (recommended) or MBR — the drive starts empty", icon: "add", tint: "var(--blue)", click: "table" }));
     else if (sel?.startsWith("g")) {
@@ -66,7 +71,7 @@ export async function partitions(ctx) {
       }
     } else rows.push(row("Pick a partition or free space", { sub: "Tap it in the bar or the list to see what you can do" }));
     if (v.table) rows.push(row("New partition table", { sub: "Erases the whole drive and starts again", icon: "add", tint: "var(--red)", click: "table" }));
-    return sec("Change") + group(rows.join(""));
+    return sec("Change") + group(rows.join("")) + mountRow();
   };
   const pending = () => {
     if (!ops.length) return "";
@@ -91,6 +96,7 @@ export async function partitions(ctx) {
   const pick = () => sel?.startsWith("p") ? view().partitions.find(x => "p" + x.n === sel) : null;
   ctx.handlers({
     sel: k => { sel = sel === k ? null : k; draw(); },
+    mountpt: async () => { const p = lay.partitions.find(x => "p" + x.n === sel); if (!p) return; await get("/api/v1/storage").catch(() => {}); mountPoint(ctx, lay.serial, (p.node || "").replace("/dev/", "")); },
     table: async () => {
       const t = await choose("New partition table", [["gpt", "GPT", "Recommended — any size, up to 128 partitions"], ["dos", "MBR", "For old computers — up to 4 partitions, 2 TB"]], null);
       if (t && await confirm("Erase the whole drive?", "A new partition table replaces everything on it, once you apply.", "New table")) add({ op: "table", type: t });
@@ -141,4 +147,48 @@ export async function partitions(ctx) {
   draw();
   try { await load(); } catch (e) { err = e.message; }
   if (ctx.alive()) draw();
+}
+
+// ── the partition manager: every drive at a glance (like Windows Disk Management), each one opens its editor ──
+export async function disks(ctx) {
+  const draw = () => {
+    const st = S.cache["/api/v1/storage"];
+    if (!st) return ctx.show(note("Reading the drives…"), { title: "Partition manager" });
+    const mountIssues = (st.suggestions || []).filter(s => /^(dup|stale|hidden):/.test(s.id || ""));
+    const drive = d => {
+      const parts = d.partitions || [], used = parts.reduce((a, p) => a + (p.size || 0), 0), free = Math.max(0, d.size - used);
+      const segs = parts.map(p => ({ w: p.size / d.size, c: FS_COLOR[p.fstype] || "var(--sub)", t: p.label || p.fstype || p.name }));
+      if (free / d.size > 0.01) segs.push({ w: free / d.size, gap: true, t: "free" });
+      const tag = d.system ? "system drive" : d.pool ? "in a pool" : (d.roles || []).includes("unused") ? "not in use" : "";
+      return `<div class="group glass"><div class="row click" data-act="open:${esc(d.serial)}"><div class="t"><b>${esc(d.model || d.name)} · ${esc(d.size_text)}</b>
+          <small>/dev/${esc(d.name)}${tag ? " · " + tag : ""}${(d.warnings || [])[0] ? " · " + esc(d.warnings[0]) : ""}</small></div>${I("back", "flip")}</div>
+        <div class="pbar" style="margin:0 16px 10px">${segs.length ? segs.map(s => `<div class="pseg${s.gap ? " gap" : ""}" style="flex:${Math.max(s.w, 0.03).toFixed(4)} 1 0;${s.c ? `--pc:${s.c}` : ""}"><span>${esc(s.t)}</span></div>`).join("") : `<div class="pseg gap" style="flex:1"><span>empty</span></div>`}</div>
+        ${parts.map(p => row(`${p.name} · ${p.label || p.fstype || "no filesystem"}`, { sub: [bytes(p.size), p.usage ? `${bytes(p.usage.free)} free` : "", p.swap ? "swap in use" : (p.mounts || []).length ? "at " + p.mounts.join(", ") : p.fstype ? "not mounted" : ""].filter(Boolean).join(" · "),
+          icon: "disk", tint: FS_COLOR[p.fstype] || "var(--sub)", click: isAdmin() && !d.system && !d.pool && p.fstype && !p.swap ? `mp:${esc(d.serial)}:${esc(p.name)}` : "" })).join("")}</div>`;
+    };
+    ctx.show(`${mountIssues.length ? sec("Needs fixing") + mountIssues.map(s => group(`<div class="row" style="align-items:flex-start"><div class="t"><b>${esc(s.title)}</b><small>${esc(s.detail)}</small>
+        ${s.actions?.length && isAdmin() ? `<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px">${s.actions.map((a, k) => `<button class="pillbtn press" data-act="fix:${esc(s.id)}:${k}">${esc(a.label)}</button>`).join("")}</div>` : ""}</div></div>`)).join("") : ""}
+      ${sec("Drives")}${(st.drives || []).map(drive).join("")}
+      ${note("Tap a drive to see its partitions and change them (create, delete, format, label, flags, grow, shrink). Tap a partition here to change where it's mounted. Nova doesn't move partitions, and never changes the system drive.")}`,
+      { title: "Partition manager" });
+  };
+  ctx.handlers({
+    open: s => ctx.go("partitions/" + encodeURIComponent(s)),
+    fix: (...a) => { const k = +a.pop(), id = a.join(":"); const s = (S.cache["/api/v1/storage"]?.suggestions || []).find(x => x.id === id); const act = s?.actions?.[k];
+      if (act?.action === "task") ST.startTask(ctx, `/api/v1/storage/task/${act.kind}`, { spec: act.spec || {} }); },
+    mp: (serial, part) => mountPoint(ctx, serial, part),
+  });
+  draw(); try { await get("/api/v1/storage"); } catch (e) { toast(e.message); } if (ctx.alive()) draw();
+}
+
+/** Change where a partition is mounted (one place, kept after a restart; files saved into that folder while the drive
+ *  wasn't there are moved onto it). Like "Change drive letter and paths" in Windows. */
+export async function mountPoint(ctx, serial, part) {
+  const d = (S.cache["/api/v1/storage"]?.drives || []).find(x => x.serial === serial), p = d?.partitions?.find(x => x.name === part);
+  const cur = p?.mounts?.[0] || "", guess = cur || "/mnt/" + ((p?.label || part).toLowerCase().replace(/[^a-z0-9_.-]+/g, "_").replace(/^_+/, "") || "drive");
+  const to = await ask(`Mount ${p?.label || part} at`, "/mnt/name", guess, "Next", 46); if (!to) return;
+  if (!/^\/(mnt|srv|media|data)\/[A-Za-z0-9][A-Za-z0-9_.-]{0,40}$/.test(to)) return toast("Use a folder like /mnt/name");
+  const others = (p?.mounts || []).filter(m => m !== to);
+  if (!(await confirm(`Mount it at ${to}?`, `${others.length ? `It's unmounted from ${others.join(", ")}. ` : ""}It's mounted at ${to} only, and comes back there after a restart. If files were saved into ${to} while the drive wasn't there, they're moved onto the drive (a file that differs from one already on the drive stops it, and nothing is removed).`, "Mount here", "var(--blue)"))) return;
+  ST.startTask(ctx, "/api/v1/storage/task/mount-set", { spec: { serial, part, mount: to, merge: true } });
 }
