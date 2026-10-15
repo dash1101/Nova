@@ -203,6 +203,12 @@ input[type=range]:disabled { opacity: .45; }
 .card .lbl { color: var(--sub); font-size: 13px; display: flex; gap: 6px; align-items: center; }
 .card .val { font-size: 24px; font-weight: 700; } .card .sub { color: var(--sub); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .card canvas { width: 100%; height: 56px; margin-top: 8px; display: block; }
+.wicons { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 6px; padding: 12px; margin: 0 var(--gutter); }
+.wicon { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 8px 4px; border-radius: 14px; color: var(--sub); }
+.wicon img { width: 52px; height: 52px; border-radius: 14px; box-shadow: 0 2px 8px rgba(0,0,0,.25); background: repeating-conic-gradient(#8884 0 25%, transparent 0 50%) 0 0 / 10px 10px; }
+.wicon small { font-size: 12px; text-align: center; line-height: 1.2; } .wicon.on { color: var(--text); background: color-mix(in srgb, var(--blue) 18%, transparent); }
+.grid.cores { grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); }
+.card.core { padding: 12px; border-radius: calc(18px * var(--rk, 1)); } .card.core .val { font-size: 18px; } .card.core canvas { height: 34px; margin-top: 6px; }
 
 /* quick panel tiles */
 .tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 6px 14px; }
@@ -751,7 +757,8 @@ html.fluent .group, html.fluent .card { border-radius: calc(8px * var(--rk, 1));
 html.fluent #sheet .box { border-radius: calc(8px * var(--rk, 1)); }
 html.fluent #sheet .acts button { border-radius: 4px; }
 html.fluent .nav { border-radius: calc(8px * var(--rk, 1)); }
-html.fluent .nav .bead, html.fluent .nav button, html.fluent .nav .nscroll { border-radius: 4px; }
+/* the selection sits 6px inside the pill, so its corners are the pill's minus 6px (concentric at any roundness) */
+html.fluent .nav .bead, html.fluent .nav button, html.fluent .nav .nscroll { border-radius: clamp(3px, calc(8px * var(--rk, 1) - 6px), 28px); }
 html.fluent .nav .bead { background: var(--navSel); backdrop-filter: none; box-shadow: none; }
 html.fluent .nav .bead::after { content: ""; position: absolute; left: 50%; bottom: 6px; width: 16px; height: 3px; margin-left: -8px; border-radius: 2px; background: var(--blue); }
 html.fluent .nav.vertical .bead::after { left: 4px; top: 50%; bottom: auto; width: 3px; height: 16px; margin: -8px 0 0; }
@@ -891,6 +898,8 @@ html.aero { --rL: calc(6px * var(--rk, 1)); --rM: calc(3px * var(--rk, 1)); }
   .nudge, .stile, .sugg, .fsel, .vtbox, .hint, .upnote, .srvchip, .statusline, .code-block) { border-radius: var(--rL); }
 :is(html.liquid, html.fluent, html.breeze, html.aero) :is(.appicon, .appcell, .appic, .eng, .pinbox, .cmdcopy, .sugg button, .ctlbar button, .help, .cftok) { border-radius: var(--rM); }
 :is(html.fluent, html.breeze, html.aero) :is(.field, .searchbox, .chip, .crumb, .pillbar, .pillbar button, .seg, .seg .bead, .seg button, .badge:not(:empty), .rcheck, .linkbtn, #toast) { border-radius: var(--rM); }
+/* the bead sits 4px inside the track: concentric corners */
+:is(html.fluent, html.breeze, html.aero) .seg .bead { border-radius: clamp(2px, calc(var(--rM) - 4px), 20px); }
 :is(html.fluent, html.breeze, html.aero) .rl .row.lift { border-radius: var(--rL); }
 :is(.mapps, .srvstrip, .fdrives, .hfade).fs { -webkit-mask-image: linear-gradient(90deg, transparent, #000 40px); mask-image: linear-gradient(90deg, transparent, #000 40px); }
 :is(.mapps, .srvstrip, .fdrives, .hfade).fe { -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 40px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 40px), transparent); }
@@ -934,7 +943,7 @@ html[data-icons="circles"] .row .ri svg { width: 20px; height: 20px; }
 html.dev-bounds :is(.glass, .frost, #sheet .box, .nav, .alertcard, .sugg, .card) { outline: 1.5px solid magenta !important; outline-offset: -1px; }
 
 /* ── Aero ────────────────────────────────────────────────────────────────────────────────
-   Windows 7 glass: sky-blue frames that frost what's behind them, a soft shine from the top edge with two faint
+   Sky-blue glass: frames that frost what's behind them, a soft shine from the top edge with two faint
    diagonal streaks, a dark outer edge with a light one just inside, and glossy buttons that glow blue. */
 html.aero { font-family: "Segoe UI", "Selawik", "Open Sans", system-ui, sans-serif;
   --blue: #63a5de; --link: #7fb5e4; --bg: #0a1b2e; --glow: color-mix(in srgb, var(--blue) 90%, #fff); --glow2: #1a7f8e;
@@ -961,10 +970,18 @@ html.aero .glass, html.aero .frost, html.aero #sheet .box, html.aero #toast {
   backdrop-filter: blur(var(--ae-blur, 10px)) saturate(1.4); -webkit-backdrop-filter: blur(var(--ae-blur, 10px)) saturate(1.4);
   border: 1px solid var(--ae-edge); background-clip: padding-box; box-shadow: inset 0 0 0 1px var(--ae-in), 0 4px 16px rgba(0,0,0,.35); }
 html.aero .glass::after, html.aero .frost::after { display: none; }
+/* pop-ups that land on top of anything (toasts, alerts): heavier frost, so the words stay clear over a busy page */
+html.aero #toast, html.aero .alertcard { --ae-blur: 28px;
+  background: linear-gradient(var(--ae-wash), transparent 70px),
+    linear-gradient(135deg, transparent 40%, rgba(255,255,255,.10) 46%, transparent 52%),
+    color-mix(in srgb, var(--ae-frame) clamp(80%, calc(var(--ga, .55) * 100% + 25%), 95%), transparent);
+  backdrop-filter: blur(28px) saturate(1.5) brightness(.92); -webkit-backdrop-filter: blur(28px) saturate(1.5) brightness(.92); }
+html.aero.l-light #toast, html.aero.l-light .alertcard { backdrop-filter: blur(28px) saturate(1.4) brightness(1.06); -webkit-backdrop-filter: blur(28px) saturate(1.4) brightness(1.06); }
+
 html.aero .nav { border-radius: calc(6px * var(--rk, 1)); }
-html.aero .nav button, html.aero .nav .nscroll { border-radius: calc(4px * var(--rk, 1)); }
-/* the chosen tab glows like a Windows 7 taskbar button */
-html.aero .nav .bead { border-radius: calc(4px * var(--rk, 1)); backdrop-filter: none; -webkit-backdrop-filter: none;
+html.aero .nav button, html.aero .nav .nscroll { border-radius: clamp(2px, calc(6px * var(--rk, 1) - 6px), 28px); }
+/* the chosen tab glows like a lit taskbar button */
+html.aero .nav .bead { border-radius: clamp(2px, calc(6px * var(--rk, 1) - 6px), 28px); backdrop-filter: none; -webkit-backdrop-filter: none;
   background: radial-gradient(ellipse 70% 60% at 50% 100%, color-mix(in srgb, var(--blue) 70%, #fff 10%), transparent 75%),
     linear-gradient(rgba(255,255,255,.38), rgba(255,255,255,.10) 50%, transparent 50%);
   box-shadow: inset 0 0 0 1px rgba(255,255,255,.45), 0 0 0 1px rgba(0,0,0,.35); }
@@ -996,7 +1013,7 @@ html.aero .seg .bead { background: linear-gradient(var(--ae-p1), var(--ae-p2) 50
 html.aero.l-light .seg .bead ~ * { color: var(--text); }
 html.aero :is(.field, .searchbox) { border-radius: var(--rM); background: var(--ae-panel); box-shadow: inset 0 0 0 1px var(--ae-bedge); }
 html.aero :is(.field:focus, .searchbox:focus-within) { box-shadow: inset 0 0 0 1px var(--ae-pedge), 0 0 6px color-mix(in srgb, var(--blue) 60%, transparent); }
-/* list rows light up the way Windows 7 lists do: a pale blue gradient with a thin blue frame */
+/* list rows light up the way classic glass lists do: a pale blue gradient with a thin blue frame */
 html.aero :is(.row.click, #sheet .box.menu .choice):hover { background: linear-gradient(color-mix(in srgb, var(--blue) 14%, transparent), color-mix(in srgb, var(--blue) 30%, transparent));
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--blue) 60%, transparent); }
 html.aero #sheet .box.menu .choice { border-radius: var(--rM); }
@@ -1031,7 +1048,7 @@ html.aero #sheet .box { --sr: calc(8px * var(--rk, 1)); --spx: 18px; --spb: 10px
 #sheet .box .acts { margin-inline: max(0px, calc(var(--sr) * .3 - var(--spx))); margin-bottom: max(0px, calc(var(--sr) * .3 - var(--spb))); }
 
 /* Glossy icons (Aero's own): a colored tile with a shine on its top half, a dark edge, a light line along the top,
-   and a white symbol with a small shadow — like Windows 7's Control Panel */
+   and a white symbol with a small shadow — like a classic control panel */
 :is(html[data-icons="glossy"], html.aero:not([data-icons])) .row .ri { width: 32px; height: 32px; border-radius: min(calc(6px * var(--rk, 1)), 16px);
   background: linear-gradient(rgba(255,255,255,.55), rgba(255,255,255,.12) 50%, transparent 50%, rgba(255,255,255,.2)), linear-gradient(currentColor, currentColor) !important;
   box-shadow: inset 0 0 0 1px rgba(0,0,0,.3), inset 0 1px 0 rgba(255,255,255,.55), 0 1px 3px rgba(0,0,0,.3) !important; }

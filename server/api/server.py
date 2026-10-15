@@ -393,6 +393,14 @@ def _cpu_times():
     f = [int(x) for x in open("/proc/stat").readline().split()[1:]]
     return sum(f), f[3] + f[4]                        # total, idle+iowait
 
+def _core_times():
+    """Per core (cpu0, cpu1, …): (total, idle+iowait)."""
+    out = []
+    for l in open("/proc/stat"):
+        if l.startswith("cpu") and l[3:4].isdigit():
+            f = [int(x) for x in l.split()[1:]]; out.append((sum(f), f[3] + f[4]))
+    return out
+
 def _default_iface():
     try:
         for l in open("/proc/net/route").readlines()[1:]:
@@ -448,6 +456,7 @@ def _gpu():
 def stats_sampler():
     iface = _default_iface()
     prev_cpu, prev_net, prev_t = _cpu_times(), _net(iface), time.time()
+    prev_cores = _core_times()
     prev_disk = _disks()
     n = 0
     while True:
@@ -471,10 +480,13 @@ def stats_sampler():
             disk = _disks(); dt = max(0.2, t - prev_t)
             now["disks"] = {d: [round(min(1.0, max(0.0, (v[1] - prev_disk[d][1]) / (dt * 1000))), 2), round((v[0] - prev_disk[d][0]) * 512 / dt)]
                             for d, v in disk.items() if d in prev_disk}
+            cores = _core_times()                         # each core's use, for the per-core graphs
+            now["cpus"] = [round(100 * (1 - (c[1] - p[1]) / max(1, c[0] - p[0])), 1) for c, p in zip(cores, prev_cores)]
+            prev_cores = cores
             now["gpu"] = _gpu()
             now["io"] = sum(v[1] for v in now["disks"].values())            # bytes/s read + written, every drive
             STATS["now"] = now
-            point = {k: now[k] for k in ("t", "cpu", "mem", "temp", "rx", "tx", "swap", "io", "gpu")}
+            point = {k: now[k] for k in ("t", "cpu", "mem", "temp", "rx", "tx", "swap", "io", "gpu", "cpus")}
             STATS["recent"] = (STATS["recent"] + [point])[-RECENT_N:]
             if n % HISTORY_EVERY == 1:                    # one averaged point per 15 s for the hour view
                 last = STATS["recent"][-HISTORY_EVERY:]

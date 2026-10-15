@@ -66,6 +66,16 @@ object Space {
         else glass.border(0.8.dp, edge(), shape)
 }
 
+/** Pop-ups that land on top of any page (toasts, alert banners). Aero frosts them much more heavily, so the words
+ *  stay clear over a busy page; the other styles use their usual frosted pane. */
+@Composable fun Modifier.popupFrost(state: HazeState?, shape: Shape, elevation: Dp = 10.dp): Modifier {
+    if (N.preset != "aero" || state == null || N.material || solidGlass() || lite()) return frosted(state, shape, elevation)
+    val f = aeroFrame(N)
+    return this.shadow(elevation, shape, ambientColor = Color.Black.copy(alpha = 0.35f), spotColor = Color.Black.copy(alpha = 0.45f)).clip(shape)
+        .hazeEffect(state, HazeStyle(backgroundColor = N.bg, tints = listOf(HazeTint(f.copy(alpha = maxOf(f.alpha, if (N.dark) .84f else .8f)))), blurRadius = 36.dp, noiseFactor = 0f))
+        .aeroGloss(shape, N.dark)
+}
+
 /** Glass card for content inside a page: translucent, highlighted edge, soft shadow. */
 @Composable fun Modifier.glassCard(shape: Shape, elevation: Dp = 6.dp): Modifier =
     if (N.material) this.clip(shape).background(N.card)

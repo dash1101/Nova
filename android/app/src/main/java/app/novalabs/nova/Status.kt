@@ -188,6 +188,15 @@ private fun smoothPath(xs: List<Float>, ys: List<Float>): Path {
     }
 }
 
+@Composable private fun CoreCard(i: Int, v: Double, values: List<Float>, modifier: Modifier, tick: Int, window: Int, added: Int) {
+    Column(modifier.glassCard(RoundedCornerShape(18.dp)).padding(12.dp)) {
+        Text("Core $i", color = N.sub, fontSize = 12.sp)
+        Text("%.0f%%".format(v), color = N.text, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.height(6.dp))
+        Sparkline(values, N.blue, Modifier.fillMaxWidth().height(34.dp), 100f, tick, window, added)
+    }
+}
+
 /** Mounted storage, from the monitor's list (any machine), or the older fixed keys. (name, used 0..100, "x GB free") */
 data class StorageUse(val name: String, val pct: Float, val free: String, val mount: String)
 fun storageList(m: JSONObject?): List<StorageUse> {
@@ -263,6 +272,20 @@ private fun uptime(s: Long) = "${s / 86400}d ${s % 86400 / 3600}h ${s % 3600 / 6
             }
             if (hasGpu) MetricCard("Disk I/O", rate(now!!.optDouble("io", 0.0)), "read + write, all drives",
                 Color(0xFF64D2FF), series("io"), null, Modifier.fillMaxWidth(), tick, window, ls.added, times, { rate(it.toDouble()) }, live)
+            // one small graph per core (live view only — the hour view keeps the overall CPU)
+            val cores = now?.optJSONArray("cpus")?.length() ?: 0
+            if (live && cores > 1) {
+                SectionLabel("CPU cores · $cores")
+                (0 until cores).chunked(3).forEach { rowIdx ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(Space.gap)) {
+                        rowIdx.forEach { i ->
+                            val vals = pts.map { it.optJSONArray("cpus")?.optDouble(i, 0.0)?.toFloat()?.takeIf { v -> !v.isNaN() } ?: 0f }
+                            CoreCard(i, now!!.optJSONArray("cpus")!!.optDouble(i, 0.0), vals, Modifier.weight(1f), tick, window, ls.added)
+                        }
+                        repeat(3 - rowIdx.size) { Spacer(Modifier.weight(1f)) }
+                    }
+                }
+            }
             if (pts.size < 3 || (!hourView && !live)) Text(if (hourView) "Graphs fill in over the next few minutes." else "Connecting to the live feed…", color = N.sub, fontSize = 13.sp, modifier = Modifier.padding(start = 8.dp))
         }
         // Storage

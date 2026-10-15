@@ -10,6 +10,8 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
+import androidx.compose.ui.platform.compositionContext
+import androidx.compose.ui.platform.createLifecycleAwareWindowRecomposer
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
@@ -277,6 +279,8 @@ class MainActivity : ComponentActivity() {
         intent?.removeExtra("open")
         Alerts.start(this)
         AppPrefs.init(this); Dev.load(this); Dev.applyFpsCap(this); applySecureFlag(this)
+        // Appearance → Animation speed: every Compose animation runs on this window's recomposer, so one scale covers them all
+        window.decorView.compositionContext = window.decorView.createLifecycleAwareWindowRecomposer(NovaMotion, lifecycle)
         setContent { NovaTheme {
             if (AppPrefs.appLock && !AppLock.unlocked) LockScreen(this) else NovaRoot(this, openInbox)
         } }
@@ -633,3 +637,8 @@ private fun Modifier.paneTouch(app: AppState, left: Boolean) = pointerInput(left
 }
 
 private val Int.dp get() = androidx.compose.ui.unit.Dp(this.toFloat())
+
+/** Animation length = normal × this (Appearance → Animation speed; 2× faster → 0.5). */
+object NovaMotion : androidx.compose.ui.MotionDurationScale {
+    override val scaleFactor: Float get() = 100f / AppPrefs.animSpeed.coerceIn(25, 300)
+}

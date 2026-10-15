@@ -34,6 +34,7 @@ function applyTheme() {
   const t = prefs.theme, root = document.documentElement;
   if (t === "system") delete root.dataset.theme; else root.dataset.theme = t;
   if (prefs.iconTheme && prefs.iconTheme !== "style") root.dataset.icons = prefs.iconTheme; else delete root.dataset.icons;
+  if (prefs.webIcon && prefs.webIcon !== "default") import("./webicon.js").then(m => m.applyWebIcon()).catch(() => {});      // "Your color" follows the accent
   root.classList.toggle("reduce", prefs.reduceMotion || matchMedia("(prefers-reduced-motion: reduce)").matches);
   // Lighter effects: no frosted blur or soft shadows (the costly parts on older computers and phones).
   // "auto" turns it on for slow machines — few cores or little memory, or a choppy first second (measured once).
@@ -212,13 +213,21 @@ function drawNav(route) {
   $(".nscroll", nav)?.onscroll?.();
 }
 
+// ── animation speed (Appearance): every CSS transition and animation plays at the chosen rate as it starts ──
+const animRate = () => Math.max(.25, Math.min(3, (+prefs.animSpeed || 100) / 100));
+for (const ev of ["transitionrun", "animationstart"]) document.addEventListener(ev, e => {
+  const k = animRate(); if (k === 1) return;
+  for (const a of e.target.getAnimations?.() || []) if (a.playbackRate !== k) a.playbackRate = k;
+}, true);
+const rateViewTransition = t => t.ready?.then(() => { const k = animRate(); if (k !== 1) document.getAnimations().forEach(a => { if (String(a.effect?.pseudoElement || "").startsWith("::view-transition")) a.playbackRate = k; }); }).catch(() => {});
+
 // ── render a route ───────────────────────────────────────────────────────────────
 let lastRendered = null;
 function render(dir = 0) {
   const my = ++seq, [r, ...args] = parse(), view = S.target && NOT_RELAYED.includes(r) ? notRelayed : ROUTES[r] || V.home;
   current?.leave(); closeSheet();
   if (V.navTabs().some(t => t.route === r) && depth === 0) rootRoute = r;
-  let shown, firstShow = new Promise(res => shown = res);
+  let shown, firstShow = new Promise(res => shown = res), t0 = performance.now(), held = 0;
   const leaveFns = [], timers = [];
   let handlers = {};
   const ctx = {
@@ -239,6 +248,10 @@ function render(dir = 0) {
       if (!ctx.alive()) return;
       ensureShell();
       const main = $("#main"), first = !main.dataset.seq || main.dataset.seq !== String(my);
+      // a page's "Loading…" placeholder: keep the last page up a moment instead, so a quick load doesn't flash an empty page
+      clearTimeout(held);
+      const wait = 350 - (performance.now() - t0);
+      if (first && wait > 0 && !o.now && html.length < 600 && /Loading…|Looking at the server…/.test(html)) { held = setTimeout(() => ctx.show(html, { ...o, now: true }), wait); return; }
       // Store / Menu are tab roots only when they're in your navigation pill and you came to them as a tab
       if (o.root && !(depth === 0 && V.navTabs().some(t => t.route === r))) o = { ...o, root: false };
       const header = o.noHeader ? "" : o.root ? `<div class="ph root"><h1>${esc(o.title || "")}</h1></div>` : `<div class="ph"><h1>${esc(o.title || "")}</h1></div>`;
@@ -269,7 +282,7 @@ function render(dir = 0) {
   const vt = !hop && document.startViewTransition && !document.documentElement.classList.contains("reduce") && dir !== 0 && $("#shell") && r !== "dashboard";
   if (vt) {
     document.documentElement.classList.toggle("vt-fwd", dir === 1); document.documentElement.classList.toggle("vt-back", dir === -1);
-    const t = document.startViewTransition(() => Promise.race([run(), sleep(400)]));
+    const t = document.startViewTransition(() => Promise.race([run(), sleep(400)])); rateViewTransition(t);
     [t.ready, t.finished, t.updateCallbackDone].forEach(p => p?.catch?.(() => {}));    // a newer navigation may cut it short
   } else run();
 }

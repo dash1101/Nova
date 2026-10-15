@@ -163,7 +163,7 @@ export async function waitJob(job, onUpdate) {
 // ── preferences (this browser) — same choices as the app's Appearance screens ───
 const PREF_DEFAULTS = {
   theme: "system", style: "auto", reduceMotion: true,       // browsers start calm; turn motion on in Appearance
-  homeOrder: ["hero", "servers", "recs", "shortcuts", "stats"], homeRecs: true, homeHero: true, homeShortcuts: true, homeStats: true, homeServers: true,
+  homeOrder: ["hero", "servers", "recs", "shortcuts", "stats"], homeRecs: true, animSpeed: 100, webIcon: "default", homeHero: true, homeShortcuts: true, homeStats: true, homeServers: true,
   homeChips: ["inbox", "quick", "containers", "storage"],
   navTabs: ["store", "home", "menu"],
   quick: ["backup", "freeram", "fan", "dim", "status", "dashboard"],

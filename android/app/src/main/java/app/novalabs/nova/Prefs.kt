@@ -29,6 +29,7 @@ object AppPrefs {
     var theme by mutableStateOf("system"); private set            // system | light | dark
     var style by mutableStateOf("auto"); private set              // auto | default (One UI-like) | material (Material You Expressive)
     var reduceMotion by mutableStateOf(false); private set
+    var animSpeed by mutableStateOf(100); private set               // % of normal animation speed (25–300)
     var appLock by mutableStateOf(false); private set
     var hideInRecents by mutableStateOf(false); private set
     var homeHero by mutableStateOf(true); private set
@@ -83,7 +84,7 @@ object AppPrefs {
         wallV = sp.getString("wall_v", "0")!!.toLongOrNull() ?: 0L; wallBlur = sp.getString("wall_blur", "16")!!.toIntOrNull() ?: 16; wallDim = sp.getString("wall_dim", "35")!!.toIntOrNull() ?: 35
         lang = sp.getString("lang", "auto")!!; I18n.load(ctx, lang)
         solid = sp.getBoolean("solid", false); glass = sp.getString("glass", "60")!!.toIntOrNull() ?: 60; round = sp.getString("round", "100")!!.toIntOrNull() ?: 100
-        theme = sp.getString("theme", "system")!!; style = sp.getString("style", "auto")!!; reduceMotion = sp.getBoolean("reduce_motion", false)
+        theme = sp.getString("theme", "system")!!; style = sp.getString("style", "auto")!!; reduceMotion = sp.getBoolean("reduce_motion", false); animSpeed = (sp.getString("anim_speed", "100")!!.toIntOrNull() ?: 100).coerceIn(25, 300)
         appLock = sp.getBoolean("app_lock", false); hideInRecents = sp.getBoolean("hide_recents", false)
         homeHero = sp.getBoolean("home_hero", true); homeShortcuts = sp.getBoolean("home_shortcuts", true); homeStats = sp.getBoolean("home_stats", true); homeRecs = sp.getBoolean("home_recs", true)
         homeOrder = sp.getString("home_order", null)?.split(",")?.filter { it in HOME_SECTIONS }?.let { it + (HOME_SECTIONS - it.toSet()) } ?: HOME_SECTIONS
@@ -105,7 +106,7 @@ object AppPrefs {
             "wall_blur" -> wallBlur = (v as Number).toInt(); "wall_dim" -> wallDim = (v as Number).toInt()
             "lang" -> lang = v as String
             "solid" -> solid = v as Boolean; "glass" -> glass = (v as Number).toInt(); "round" -> round = (v as Number).toInt()
-            "lite" -> lite = v as String; "icon_theme" -> iconTheme = v as String; "theme" -> theme = v as String; "style" -> style = v as String; "reduce_motion" -> reduceMotion = v as Boolean; "app_lock" -> appLock = v as Boolean
+            "lite" -> lite = v as String; "icon_theme" -> iconTheme = v as String; "theme" -> theme = v as String; "style" -> style = v as String; "reduce_motion" -> reduceMotion = v as Boolean; "anim_speed" -> animSpeed = (v as Number).toInt(); "app_lock" -> appLock = v as Boolean
             "hide_recents" -> hideInRecents = v as Boolean; "home_hero" -> homeHero = v as Boolean
             "home_shortcuts" -> homeShortcuts = v as Boolean; "home_stats" -> homeStats = v as Boolean; "home_recs" -> homeRecs = v as Boolean
             "home_order" -> homeOrder = (v as String).split(",")
@@ -187,7 +188,7 @@ object AppLock {
                    "liquid" to ("Glass" to "Clear glass that bends the light behind it at its edges" + if (android.os.Build.VERSION.SDK_INT < 33) " (the bending needs Android 13)" else ""),
                    "fluent" to ("Mica" to "A soft, tinted base with frosted menus and crisp, small corners"),
                    "breeze" to ("Breeze" to "Flat and tidy: a thin frame, gentle corners, the accent as the focus color"),
-                   "aero" to ("Aero" to "Windows 7 glass: tinted frosted frames with a glossy shine and glowing buttons"))
+                   "aero" to ("Aero" to "Tinted frosted glass frames with a glossy shine and glowing buttons"))
                 .forEachIndexed { i, (k, l) ->
                     if (i > 0) RowDivider()
                     Row1(l.first, l.second, onClick = { AppPrefs.set("style", k) }) { OneRadio(AppPrefs.style == k) }
@@ -213,6 +214,10 @@ object AppLock {
         }
         Group {
             SwitchRow("Reduce motion", "Simple fades instead of slides and bounces, and no back-gesture animation", AppPrefs.reduceMotion) { AppPrefs.set("reduce_motion", it) }
+            RowDivider()
+            var sp by remember { mutableFloatStateOf(AppPrefs.animSpeed.toFloat()) }
+            SliderRow("Animation speed", sp, 25f..300f, sp.toInt().let { if (it == 100) "Normal (1×)" else "%s× %s".format((it / 100f).toString().removeSuffix(".0"), if (it > 100) "faster" else "speed") },
+                steps = 10, onChange = { sp = it; AppPrefs.set("anim_speed", it.toInt()) }, onDone = {})
             RowDivider()
             SwitchRow("Reduce transparency", "Solid surfaces instead of glass — easier to read, lighter to draw", AppPrefs.solid) { AppPrefs.set("solid", it) }
         }

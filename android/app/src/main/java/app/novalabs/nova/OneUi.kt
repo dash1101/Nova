@@ -184,7 +184,7 @@ val LocalListPane = androidx.compose.runtime.staticCompositionLocalOf { false }
         }
         Box(Modifier.fillMaxWidth().padding(horizontal = 36.dp), contentAlignment = Alignment.Center) {
             Text(data.visuals.message, color = if (N.dark) Color(0xFFF2F2F4) else Color(0xFF1B1B1D), fontSize = 15.sp,
-                textAlign = TextAlign.Center, modifier = Modifier.frosted(LocalRootHaze.current, RoundedCornerShape(22.dp), 10.dp)
+                textAlign = TextAlign.Center, modifier = Modifier.popupFrost(LocalRootHaze.current, RoundedCornerShape(22.dp), 10.dp)
                     .padding(horizontal = 20.dp, vertical = 12.dp))
         }
     }
@@ -354,7 +354,7 @@ private fun DialogButton.role(t: NovaColors) = when { color == null -> "cancel";
                     }
                 }
             }
-            "aero" -> {       // a Windows 7 task dialog: the title on the glass frame, a plain panel for the words, glossy buttons
+            "aero" -> {       // a glass task dialog: the title on the glass frame, a plain panel for the words, glossy buttons
                 val k = roundK(); val shape = RoundedCornerShape(8.dp * k)
                 Column(Modifier.padding(horizontal = 24.dp).widthIn(max = 480.dp).fillMaxWidth().aeroCard(shape, 20.dp).padding(maxOf(8.dp, 8.dp * k * .3f))) {   // keeps the buttons clear of a very round corner
                     DialogToasts()

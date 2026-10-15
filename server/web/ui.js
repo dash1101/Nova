@@ -273,7 +273,11 @@ export function reorderable(list, onMove) {
 /** Long-press (and right-click) handler, for "hold the bar to edit". */
 export function onHold(el, fn) {
   if (!el) return;
-  let t; el.addEventListener("pointerdown", () => { t = setTimeout(() => { t = null; navigator.vibrate?.(10); fn(); }, 500); });
+  const swallow = () => {                        // the press that ended a hold isn't also a tap
+    const stop = e => { e.stopPropagation(); e.preventDefault(); };
+    addEventListener("click", stop, { capture: true, once: true }); setTimeout(() => removeEventListener("click", stop, { capture: true }), 600);
+  };
+  let t; el.addEventListener("pointerdown", () => { t = setTimeout(() => { t = null; navigator.vibrate?.(10); swallow(); fn(); }, 500); });
   ["pointerup", "pointerleave", "pointercancel"].forEach(ev => el.addEventListener(ev, () => clearTimeout(t)));
   el.addEventListener("contextmenu", e => { e.preventDefault(); fn(); });
 }

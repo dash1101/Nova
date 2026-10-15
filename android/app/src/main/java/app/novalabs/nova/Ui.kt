@@ -21,6 +21,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
@@ -244,11 +245,13 @@ fun levelColor(level: String, t: NovaColors) = when (level) {
     }
 }
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable fun Row1(title: String, subtitle: String? = null, subtitleBlue: Boolean = false,
                      icon: ImageVector? = null, iconTint: Color? = null, enabled: Boolean = true,
-                     onClick: (() -> Unit)? = null, trailing: (@Composable () -> Unit)? = null) {
+                     onClick: (() -> Unit)? = null, onLongClick: (() -> Unit)? = null, trailing: (@Composable () -> Unit)? = null) {
     val t = N
-    Row(Modifier.fillMaxWidth().then(if (onClick != null && enabled) Modifier.clickable(onClick = onClick) else Modifier)
+    Row(Modifier.fillMaxWidth().then(if (onLongClick != null && enabled) Modifier.combinedClickable(onLongClick = onLongClick) { onClick?.invoke() }
+            else if (onClick != null && enabled) Modifier.clickable(onClick = onClick) else Modifier)
         .padding(horizontal = 22.dp, vertical = 17.dp), verticalAlignment = Alignment.CenterVertically) {
         if (icon != null) {
             RowIcon(icon, iconTint ?: t.blue)
@@ -407,6 +410,8 @@ val LocalWide = staticCompositionLocalOf { false }
         }
         return
     }
+    // the selection sits 6dp inside the pill: Mica, Breeze and Aero give it the pill's corners minus 6dp (concentric); the others are round
+    val beadShape = if (N.preset in setOf("fluent", "breeze", "aero")) RoundedCornerShape((pillCorner(40.dp) - 6.dp).coerceIn(2.dp, 28.dp)) else RoundedCornerShape(50)
     Box(modifier.navigationBarsPadding().padding(bottom = 14.dp).frosted(LocalRootHaze.current, RoundedCornerShape(pillCorner(40.dp)), 18.dp)
         .pointerInput(onLongClick) { detectTapGestures(onLongPress = { onLongClick?.let { l -> haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress); l() } }) }
         .padding(6.dp)) {
@@ -426,12 +431,12 @@ val LocalWide = staticCompositionLocalOf { false }
                 val out = maxOf(lo - x, x - hi, 0f) / 44f
                 alpha = bead.shown.value * (1f - out).coerceIn(0f, 1f)
             }
-            .frosted(LocalRootHaze.current, RoundedCornerShape(50), 4.dp)
+            .frosted(LocalRootHaze.current, beadShape, 4.dp)
             .background(if (N.dark) Color.White.copy(alpha = 0.10f) else Color.Black.copy(alpha = 0.05f)))
         Row(horizontalArrangement = Arrangement.spacedBy(gap), verticalAlignment = Alignment.CenterVertically) {
             Row(Modifier.width(tabsView).fadeEdges(tabScroll, true, 40.dp).horizontalScroll(tabScroll), horizontalArrangement = Arrangement.spacedBy(gap)) {
                 icons.forEachIndexed { i, ic ->
-                    Box(Modifier.size(width = itemW, height = 56.dp).clip(RoundedCornerShape(smallCorner(28.dp) + 1.dp))
+                    Box(Modifier.size(width = itemW, height = 56.dp).clip(beadShape)
                         .bouncy(onLongClick = onLongClick) { onSelect(i) }, contentAlignment = Alignment.Center) {
                         Icon(ic, labels[i], tint = N.text, modifier = Modifier.size(26.dp))
                     }
@@ -685,7 +690,9 @@ class PillBead(val x: androidx.compose.animation.core.Animatable<Float, androidx
     val preset = N.preset
     val rk = roundK()
     val track = when (preset) { "liquid" -> RoundedCornerShape(50); "fluent" -> RoundedCornerShape(6.dp * rk); "breeze", "aero" -> RoundedCornerShape(5.dp * rk); else -> RoundedCornerShape(24.dp) }
-    val thumb = when (preset) { "liquid" -> RoundedCornerShape(50); "fluent", "breeze", "aero" -> RoundedCornerShape(minOf(3.dp * rk, 18.dp)); else -> RoundedCornerShape(20.dp) }
+    // the thumb sits 4dp inside the track: its corners are the track's minus 4dp, so the two stay concentric at any roundness
+    val thumb = when (preset) { "liquid" -> RoundedCornerShape(50); "fluent" -> RoundedCornerShape((6.dp * rk - 4.dp).coerceIn(2.dp, 21.dp))
+        "breeze", "aero" -> RoundedCornerShape((5.dp * rk - 4.dp).coerceIn(2.dp, 21.dp)); else -> RoundedCornerShape(20.dp) }
     val outer = Modifier.padding(horizontal = Space.gutter, vertical = 6.dp).fillMaxWidth()
     BoxWithConstraints((if (preset == "liquid") outer.clip(track).background(Color(0x3D787880)) else outer.glassCard(track, 3.dp)).padding(if (preset == "liquid") 3.dp else 4.dp)) {
         val w = maxWidth / options.size.coerceAtLeast(1)

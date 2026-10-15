@@ -54,7 +54,7 @@ fun presetTokens(preset: String, dark: Boolean, seed: Color?): NovaColors? = whe
         else NovaColors(Color(0xFFEFF0F1), Color.Transparent, Color.Transparent, Color.White, Color(0xFFF7F7F7), Color(0xFFFCFCFC),
             lerp(Color.White, acc, .18f), Color(0xFF232629), Color(0xFF707D8A), acc, lerp(acc, Color.Black, .15f), Color(0x14000000), Color(0xFF27AE60), Color(0xFFF67400), Color(0xFFDA4453), false, preset = "breeze")
     }
-    "aero" -> {       // Windows 7: sky-blue glass over a deep blue desktop; the body text stays plain and dark on light
+    "aero" -> {       // sky-blue glass over a deep blue desktop; the body text stays plain and dark on light
         val acc = seed ?: Color(0xFF3C8FD6)
         if (dark) NovaColors(Color(0xFF0A1B2E), lerp(acc, Color.White, .1f), Color(0xFF1A7F8E), Color(0xFF13253A), Color(0xFF1C3350), Color(0xFF142A42),
             lerp(Color(0xFF1C3350), acc, .45f), Color.White, Color(0xFFB3C6DA), lerp(acc, Color.White, .2f), lerp(acc, Color.White, .35f), Color(0x1FFFFFFF),
@@ -408,5 +408,5 @@ fun Modifier.aeroGloss(shape: Shape, dark: Boolean): Modifier = this.drawWithCac
             onDrawWithContent { drawOutline(o, Color.White.copy(alpha = if (t.dark) .12f else .6f), style = Stroke(px * 3)); drawOutline(o, edge, style = Stroke(px)); drawContent() } }
 }
 
-/** Text on Aero glass carries a soft glow behind it, like a Windows 7 title bar (light mode only — dark text needs it). */
+/** Text on Aero glass carries a soft glow behind it, like a glass title bar (light mode only — dark text needs it). */
 fun aeroGlow(dark: Boolean): androidx.compose.ui.graphics.Shadow? = if (dark) null else androidx.compose.ui.graphics.Shadow(Color.White.copy(alpha = .9f), Offset.Zero, 10f)

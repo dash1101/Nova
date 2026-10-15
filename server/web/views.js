@@ -1,6 +1,7 @@
 // Nova web — every screen of the app. Each view renders with ctx.show(html, options, handlers);
 // buttons carry data-act="name" or data-act="name:arg" and land in `handlers` (or the router's).
 import { gpuInfo, devLog } from "./core.js";
+import { WEB_ICONS, iconSvg, svgUrl, applyWebIcon } from "./webicon.js";
 import { S, $, $$, esc, get, post, del, api, loadNodes, serverHost, sleep, prefs, waitTask, runningTask, levelColor, pct, rate, bytes, isAdmin, has, cleanTitle, cap,
          serverName, uptime, hm, refresh, changeFan, waitJob, kv, archiveMerge, archiveAll, archiveClear, archiveUnmark } from "./core.js";
 import { I, row, group, sec, note, sw, radio, switchRow, links, expand, slider, segmented, bar, usageColor,
@@ -119,6 +120,7 @@ async function powerDo(v) {
   try { const r = await post(`/api/v1/power/${v}`); toast(done(r.in_seconds || 8)); } catch (e) { toast(e.message); }
 }
 
+const speedText = v => v == 100 ? "Normal (1×)" : `${+(v / 100).toFixed(2)}× ${v > 100 ? "faster" : "speed"}`;
 let smartOpen = false;
 function smartHtml(d) {
   const probs = [d.smart_passed === false && "the drive reports it's failing", d.realloc > 0 && `${d.realloc} reallocated`, d.pending > 0 && `${d.pending} unreadable`, d.uncorrect > 0 && `${d.uncorrect} uncorrectable`].filter(Boolean);
@@ -193,15 +195,29 @@ const recRow = (r, short = true) => row(r.title, { sub: r.detail, icon: REC_ICON
 function recsCard() {
   const l = S.cache["/api/v1/recommendations"]?.recommendations || [];
   if (!l.length) return "";
-  return sec("Recommended") + group(l.slice(0, 3).map(r => recRow(r)).join("") + (l.length > 3 ? row(`See all ${l.length}`, { blue: true, icon: "list", click: "go:recommended" }) : ""));
+  return sec("Recommended") + `<div id="recs">` + group(l.slice(0, 3).map(r => recRow(r)).join("") + (l.length > 3 ? row(`See all ${l.length}`, { blue: true, icon: "list", click: "go:recommended" }) : "")) + `</div>`;
+}
+/** Hold (or right-click) a recommendation: hide it for a month, or hide the whole card from Home. */
+function wireRecHold(root, list, redraw, onHome) {
+  $$("#recs .row", root).forEach((el, i) => { const r = list[i]; if (!r) return;
+    onHold(el, async () => {
+      const opts = [...(isAdmin() ? [["snooze", "Not now", "Hide this one for a month"]] : []), ...(r.action?.go ? [["open", r.action.label || "Open", ""]] : []),
+        ...(onHome ? [["hide", "Hide Recommended from Home", "Turn it back on in Edit Home"]] : [])];
+      const v = await choose(r.title, opts, null);
+      if (v === "open") { location.hash = "#/" + r.action.go; return; }
+      if (v === "hide") { prefs.homeRecs = false; toast("Recommended is hidden — Edit Home brings it back"); return redraw(); }
+      if (v === "snooze") try { await post("/api/v1/recommendations/snooze", { id: r.id }); await get("/api/v1/recommendations"); toast("Hidden for a month"); redraw(); } catch (e) { toast(e.message); }
+    });
+  });
 }
 export async function recommended(ctx) {
   const draw = () => {
     const r = S.cache["/api/v1/recommendations"], l = r?.recommendations || [];
-    ctx.show(!r ? note("Looking at the server…") : `${l.length ? l.map(x => group(recRow(x, false) + (isAdmin() ? `<div style="display:flex;gap:8px;padding:0 16px 12px 66px">${x.action?.go ? `<button class="pillbtn press" data-act="go:${esc(x.action.go)}">${esc(x.action.label)}</button>` : ""}<button class="pillbtn plain press" data-act="snooze:${esc(x.id)}">Not now</button></div>` : ""))).join("") : note("Nothing to do — the server looks after itself right now.")}
+    ctx.show(!r ? note("Looking at the server…") : `<div id="recs">${l.length ? l.map(x => group(recRow(x, false) + (isAdmin() ? `<div style="display:flex;gap:8px;padding:0 16px 12px 66px">${x.action?.go ? `<button class="pillbtn press" data-act="go:${esc(x.action.go)}">${esc(x.action.label)}</button>` : ""}<button class="pillbtn plain press" data-act="snooze:${esc(x.id)}">Not now</button></div>` : ""))).join("") : note("Nothing to do — the server looks after itself right now.")}</div>
       ${r?.snoozed ? note(`${r.snoozed} hidden for now (Not now hides one for a month).`) : ""}
       ${note("Nova works these out from what it already watches: space, memory, updates, drive health, backups, devices and more. Nothing changes until you tap a fix.")}`,
       { title: "Recommended", actions: [{ act: "fresh", icon: "refresh", label: "Look again" }] });
+    wireRecHold(ctx.root, l, draw, false);
   };
   ctx.handlers({
     snooze: async (...a) => { const id = a.filter(x => typeof x === "string").join(":");      // ids hold ":" (the tapped button comes last, not part of it)
@@ -256,6 +272,7 @@ export async function home(ctx) {
     };
     animate($("#hero"), "server", () => S.error ? "#9e9ea4" : getComputedStyle(document.documentElement).getPropertyValue(lvl === "ok" ? "--green" : lvl === "warning" ? "--amber" : "--red").trim());
     onHold($("#chips"), () => ctx.go("edit-shortcuts"));
+    wireRecHold(ctx.root, (S.cache["/api/v1/recommendations"]?.recommendations || []).slice(0, 3), draw, true);
   };
   // once per visit: is there a newer signed release for the server? (the server checks at most every 30 minutes)
   if (isAdmin() && !S.updateAsked) { S.updateAsked = true;
@@ -355,6 +372,7 @@ export async function status(ctx) {
         ${n?.swap_total_gb === 0 ? "" : gcard("Swap", "c6", n ? Math.round(n.swap || 0) + "%" : "—", n?.swap_total_gb ? `${n.swap_used_gb} of ${n.swap_total_gb} GB` : "of swap in use")}
         ${gcard("Disk I/O", "c7", n ? rate(n.io || 0) : "—", "read + write, all drives")}
       </div>
+      ${live() && n?.cpus?.length > 1 ? sec(`CPU cores · ${n.cpus.length}`) + `<div class="grid cores">${n.cpus.map((v, i) => `<div class="card glass core"><div class="lbl">Core ${i}</div><div class="val" id="k${i}v">${Math.round(v)}%</div><canvas id="k${i}"></canvas></div>`).join("")}</div>` : ""}
       <p class="note" id="gnote">${pts().length < 3 ? (hour ? "Graphs fill in over the next few minutes." : "Connecting to the live feed…") : ""}</p>
       ${sec("Storage")}${group(storage.map(x => { const p = x.pct / 100; return `<div class="row" style="display:block"><div style="display:flex"><span style="flex:1;font-size:16px">${esc(x.name)}</span><span class="muted" style="font-size:14px">${Math.round(x.pct)}% · ${esc(x.free)}</span></div><div style="margin-top:8px">${bar(p, usageColor(p))}</div></div>`; }).join("")
         + row("Drives", { sub: `${m.drives || "—"} · ${m.drive_temps || ""}`, blue: true, icon: "disk", click: "go:hardware" }))}
@@ -372,6 +390,9 @@ export async function status(ctx) {
   const graphs = () => {
     const p = pts(), n = L.now, opts = { ...(live() ? { window: 120, tick: L.tick, added: L.added } : { tick: 0 }), times: p.map(x => x.t) };
     for (const [id, [, col, val, fmt, max]] of Object.entries(GRAPH)) spark($("#" + id), p.map(val), col, { ...opts, fmt, max });
+    if (live()) (n?.cpus || []).forEach((v, i) => { const c = $("#k" + i); if (!c) return;          // per-core graphs (live view only)
+      spark(c, p.map(x => +(x.cpus?.[i] || 0)), "--blue", { ...opts, fmt: v => Math.round(v) + "%", max: 100 });
+      const e = $(`#k${i}v`); if (e) e.textContent = Math.round(v) + "%"; });
     if (big && big.canvas.isConnected) { const [, col, val, fmt, max] = GRAPH[big.id]; spark(big.canvas, p.map(val), col, { ...opts, fmt, max, scrub: "all" }); }
     const gn = $("#gnote"); if (gn) gn.textContent = p.length < 3 ? (hour ? "Graphs fill in over the next few minutes." : "Connecting to the live feed…") : "";
     if (!n) return;
@@ -414,7 +435,8 @@ export async function status(ctx) {
       if (r.now?.cpu != null) { L.now = r.now; S.lastNow = r.now; }
       const add = r.recent || [];
       if (add.length) { L.recent = L.recent.concat(add).slice(-180); L.tick++; L.added = add.length; }
-      if (ctx.alive()) graphs();
+      // the per-core section appears once the live feed carries cores (and goes with the hour view)
+      if (ctx.alive()) { if (!!$("#k0") !== (live() && L.now?.cpus?.length > 1)) draw(); else graphs(); }
     } catch { /* offline for a moment: keep the last graph */ }
   }
 }
@@ -451,7 +473,9 @@ export async function containers(ctx) {
     addc: async () => { const r = await dialog("Add a container", "", [{ label: "Cancel", value: null }, ...(has("store") ? [{ label: "From the app store", value: "store" }] : []), { label: "Your own", color: "var(--blue)", value: "own" }],
       `<div class="pad"><p class="muted" style="margin:0">Pick a ready-made app from the store, or run any image you like.</p></div>`);
       if (r === "store") ctx.go("store"); else if (r === "own") ctx.go("container-new"); } });
-  draw(); ctx.every(10000, async () => { await Promise.all([get("/api/v1/containers"), get("/api/v1/containers/stats").catch(() => {})]); draw(); }, true);
+  draw(); ctx.every(10000, async () => {        // the list first (quick), then the live use (docker stats takes a second or two)
+    const st = get("/api/v1/containers/stats").catch(() => {});
+    await get("/api/v1/containers"); if (ctx.alive()) draw(); await st; if (ctx.alive()) draw(); }, true);
 }
 async function container(ctx, name) {
   const path = `/api/v1/containers/${encodeURIComponent(name)}`;
@@ -1544,7 +1568,7 @@ export async function serverSettings(ctx) {
 }
 const ICON_THEMES = [["style", "Matches the style", "Each style's own icons"], ["tonal", "Tonal", "Colored symbols on a soft circle"], ["tiles", "Tiles", "White symbols on colored rounded squares"],
   ["circles", "Circles", "White symbols on colored circles"], ["outline", "Outline", "Colored symbols in a thin ring"], ["glyph", "Symbols only", "Just the colored symbol"], ["mono", "Monochrome", "Plain symbols in the text color"],
-  ["glossy", "Glossy", "White symbols on shiny tiles, Windows 7 style"]];
+  ["glossy", "Glossy", "White symbols on shiny glossy tiles"]];
 /** One icon drawn the way an icon style draws it, for the picker — shown beside each choice, all the time. */
 function iconSample(theme, icon, tint) {
   const look = theme !== "style" ? theme : ({ liquid: "tiles", fluent: "glyph", breeze: "glyph", aero: "glossy" })[prefs.style] || "tonal";
@@ -1587,12 +1611,13 @@ export async function appearance(ctx) {
         ["liquid", "Glass", "Clear glass that bends the light behind it at its edges"],
         ["fluent", "Mica", "A soft, tinted base with frosted menus and crisp, small corners"],
         ["breeze", "Breeze", "Flat and tidy: a thin frame, gentle corners, the accent as the focus color"],
-        ["aero", "Aero", "Windows 7 glass: tinted frosted frames with a glossy shine and glowing buttons"]].map(([k, l, d]) => row(l, { sub: d, end: radio(st === k), click: "style:" + k })).join(""))}
+        ["aero", "Aero", "Tinted frosted glass frames with a glossy shine and glowing buttons"]].map(([k, l, d]) => row(l, { sub: d, end: radio(st === k), click: "style:" + k })).join(""))}
       ${["liquid", "fluent", "breeze", "aero"].includes(st) ? group((st !== "breeze" ? `<div class="range-row"><div class="h"><span>Glass clarity</span><span id="glassl">${prefs.glass ?? 60}%</span></div><input type="range" min="0" max="100" value="${prefs.glass ?? 60}" data-range="glass" style="--p:${prefs.glass ?? 60}%"></div>` : "")
         + `<div class="range-row"><div class="h"><span>Corner roundness</span><span id="roundl">${Math.min(prefs.round ?? 100, rmax)}%</span></div><input type="range" min="25" max="${rmax}" value="${Math.min(prefs.round ?? 100, rmax)}" data-range="round" style="--p:${(Math.min(prefs.round ?? 100, rmax) - 25) / (rmax - 25) * 100}%"></div>`) : ""}
       ${st === "liquid" && !canRefract() ? note("This browser shows Glass frosted, without the bending at the edges — that part needs a Chromium-based browser.") : ""}
       ${sec("Theme")}${group([["system", "Same as this device"], ["light", `${look} light`], ["dark", `${look} dark`]].map(([k, l]) => row(l, { end: radio(t === k), click: "theme:" + k })).join(""))}
       ${group(switchRow("Reduce motion", "Simple fades instead of slides and bounces", prefs.reduceMotion, "motion", { blue: false })
+        + `<div class="range-row"><div class="h"><span>Animation speed</span><span id="speedl">${speedText(prefs.animSpeed ?? 100)}</span></div><input type="range" min="25" max="300" step="25" value="${prefs.animSpeed ?? 100}" data-range="animSpeed" style="--p:${((prefs.animSpeed ?? 100) - 25) / 275 * 100}%"></div>`
         + switchRow("Reduce transparency", "Solid surfaces instead of glass — easier to read, lighter to draw", !!prefs.reduceTransparency, "solid", { blue: false }))}
       ${sec("Colors")}${group(row("Accent color", { sub: prefs.accentLocal ? "This browser's own color" : `The server's color${S.overview?.server?.accent ? "" : " (Nova blue)"} — tap to pick your own`, blue: !!prefs.accentLocal,
             end: `<span class="swatch" style="background:${esc(prefs.accentLocal || S.overview?.server?.accent || "#3e91ff")}"></span>`, click: "accent" })
@@ -1608,6 +1633,8 @@ export async function appearance(ctx) {
       ${(() => { const g = gpuInfo(); if (!g.software && g.blur) return "";
         return `<div class="hint" style="margin:10px var(--gutter);border:1px solid color-mix(in srgb,var(--amber) 50%,transparent)"><b style="color:var(--amber)">${g.software ? "This browser isn't using the graphics card" : "This browser can't blur"}</b>
           <p class="muted" style="margin:6px 0 0">${g.software ? "Glass, blur and the live graphs are drawn by the processor instead, so they can stutter and use more power. Turn on hardware acceleration and restart the browser — Chrome or Edge: Settings → System → “Use graphics acceleration when available”. Firefox: Settings → Performance. Until then, Lighter effects is on automatically." : "Frosted glass shows as plain, see-through surfaces here. Update the browser, or turn on Reduce transparency for solid surfaces."}</p></div>`; })()}
+      ${sec("App icon")}<div class="group glass wicons">${WEB_ICONS.map(([k, l]) => `<button class="wicon press${(prefs.webIcon || "default") === k ? " on" : ""}" data-act="wicon:${k}"><img data-wicon="${k}" alt=""><small>${esc(l)}</small></button>`).join("")}</div>
+      ${note("This browser's tab icon, and the icon Nova gets when you add it to an iPhone or iPad home screen. The phone app has its own (Appearance → App icon in the app).")}
       ${sec("Icons")}${group(ICON_THEMES.map(([k, l, d]) => `<div class="row click" data-act="icon:${k}"><div class="t"><b>${esc(l)}</b><small>${esc(d)}</small></div>
           <span class="icprev" aria-hidden="true">${[["status", "#3ecf6e"], ["backup", "var(--blue)"], ["del", "var(--amber)"]].map(([ic, c]) => iconSample(k, ic, c)).join("")}</span>${radio((prefs.iconTheme || "style") === k)}</div>`).join(""))}
       ${sec("Lighter effects")}${segmented(["Automatic", "On", "Off"], ["auto", "on", "off"].indexOf(prefs.lite || "auto"), "lite")}
@@ -1617,9 +1644,11 @@ export async function appearance(ctx) {
         + row("Start page", { sub: `Search, stats, apps and bookmarks · Nova opens on ${({ home: "Home", start: "the start page", status: "Status", apps: "Apps", inbox: "the Inbox", dashboard: "the dashboard" })[prefs.startRoute || "home"]}`, blue: true, icon: "home", click: "go:start-edit" })
         + row("Navigation pill", { sub: navTabs().map(s => s.label).join(", ") + " · along the bottom, or down the left on wide screens", blue: true, icon: "viewday", click: "go:edit-tabs" }))}
       ${note("These choices are saved in this browser. Each server also has its own name and accent color (Settings → Server).")}`, { title: "Appearance" });
+    $$("[data-wicon]", ctx.root).forEach(async im => { try { im.src = svgUrl(await iconSvg(im.dataset.wicon)); } catch {} });
     wireCommon(ctx.root, { onSeg: (k, i) => { if (k === "lite") { prefs.lite = ["auto", "on", "off"][i]; ctx.applyTheme(); draw(); } },
       onRangeInput: (k, v) => {                                   // live while dragging
         prefs[k] = v; ctx.applyTheme();
+        if (k === "animSpeed" && $("#speedl")) $("#speedl").textContent = speedText(v);
         const l = { tint: ["tintl", "%"], wallBlur: ["blurl", "px"], wallDim: ["diml", "%"], glass: ["glassl", "%"], round: ["roundl", "%"] }[k]; if (l && $("#" + l[0])) $("#" + l[0]).textContent = v + l[1];
       } });
   };
@@ -1633,6 +1662,7 @@ export async function appearance(ctx) {
   };
   ctx.handlers({
     icon: k => { prefs.iconTheme = k; ctx.applyTheme(); draw(); },
+    wicon: async k => { prefs.webIcon = k; await applyWebIcon(); draw(); },
     accent: async () => { const c = await colorPicker(prefs.accentLocal || S.overview?.server?.accent || "#3e91ff"); if (c) setAccent(c); },
     acc: c => setAccent(c && /^#[0-9a-f]{6}$/i.test(c) ? c : ""),
     wall: () => {
@@ -1670,7 +1700,7 @@ export async function editHome(ctx) {
       ${links([["Choose shortcuts", "go:edit-shortcuts"], ["Reset Home", "reset"]])}`, { title: "Home layout" });
     reorderable($("#rl"), keys => { prefs.homeOrder = keys; draw(); });
   };
-  ctx.handlers({ tog: k => { prefs[k] = !prefs[k]; draw(); }, reset: () => { ["homeOrder", "homeHero", "homeServers", "homeShortcuts", "homeStats"].forEach(k => localStorage.removeItem("nova." + k)); draw(); } });
+  ctx.handlers({ tog: k => { prefs[k] = !prefs[k]; draw(); }, reset: () => { ["homeOrder", "homeHero", "homeServers", "homeShortcuts", "homeStats", "homeRecs"].forEach(k => localStorage.removeItem("nova." + k)); draw(); } });
   draw();
 }
 function editList(ctx, { title, label, all, key, max, fixed, preview, resetLabel }) {
