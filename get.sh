@@ -37,7 +37,7 @@ else
 fi
 [ -n "$F" ] || die "The release has no server package."
 say "Downloading $F…"
-get "$BASE/$F" "$T/$F"
+get "$BASE/$(printf %s "$F" | tr '~' '.')" "$T/$F"          # (GitHub stores "~" in file names as ".")
 (cd "$T" && grep "  $F\$" SHA256SUMS | sha256sum -c --status) || die "$F doesn't match its checksum — not installing."
 say "✓ $F checks out"
 
