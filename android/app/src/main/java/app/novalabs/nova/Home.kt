@@ -114,12 +114,16 @@ import org.json.JSONObject
     }
     // Hero: the server with the live fan — tap the fan for Lighting, the drive lights for Storage, the power button for power
     var powerMenu by remember { mutableStateOf(false) }
+    var powerAsk by remember { mutableStateOf<String?>(null) }
     if (powerMenu) OneDialog({ powerMenu = false }, "Power", null, listOf(DialogButton("Cancel") { powerMenu = false })) {
-        DialogChoice("Restart server", "Everything goes offline for about 2 minutes", false, action = true) { powerMenu = false
-            app.act { app.stepUp("Restart the server", "POST", "/api/v1/power/reboot"); app.toast("The server will restart in a few seconds") } }
-        DialogChoice("Shut down server", "You'll need to press the power button to turn it back on", false, action = true) { powerMenu = false
-            app.act { app.stepUp("Shut down the server", "POST", "/api/v1/power/poweroff"); app.toast("The server will shut down in a few seconds") } }
+        listOf("reboot" to ("Restart server" to "Everything goes offline for about 2 minutes"),
+            "poweroff" to ("Shut down server" to "You'll need to press the power button to turn it back on"),
+            "nova-restart" to ("Restart Nova" to "Only Nova restarts, in a few seconds — everything else keeps running"),
+            "nova-stop" to ("Shut down Nova" to "The server keeps running, but Nova can't be reached until it's started again")).forEach { (id, t) ->
+            DialogChoice(t.first, t.second, false, action = true) { powerMenu = false; powerAsk = id }
+        }
     }
+    powerAsk?.let { PowerConfirm(app, it) { powerAsk = null } }
     val hero: @Composable (androidx.compose.ui.unit.Dp) -> Unit = { h ->
         Box(Modifier.fillMaxWidth().height(h).pointerInput(Unit) {
             detectTapGestures { o ->

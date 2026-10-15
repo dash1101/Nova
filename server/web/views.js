@@ -101,6 +101,36 @@ function ignoredHtml() {
     <div class="xb">${l.map(a => row(cleanTitle(a.title), { sub: [a.detail, a.since && "since " + a.since, a.ignored && "ignored " + a.ignored].filter(Boolean).join(" · "), icon: "warn", tint: levelColor(a.level),
       end: `<button class="pillbtn press" data-act="unignore:${esc(a.key)}">Stop ignoring</button>` })).join("")}</div>`)}</div>`;
 }
+// The power menu: the server itself, or just Nova (the API — everything else keeps running).
+const POWER = [
+  ["reboot", "Restart server", "Everything goes offline for about 2 minutes", "restart", "var(--amber)"],
+  ["poweroff", "Shut down server", "You'll need to press the power button to turn it back on", "power", "var(--red)"],
+  ["nova-restart", "Restart Nova", "Only Nova restarts, in a few seconds — containers and everything else keep running", "restart", "var(--blue)"],
+  ["nova-stop", "Shut down Nova", "The server keeps running, but Nova can't be reached until it's started again", "stop", "var(--red)"],
+];
+async function powerDo(v) {
+  const [title, body, btn, done] = {
+    reboot: ["Restart the server?", "Everything running on it will be unavailable until it's back. Your phone confirms it.", "Restart", s => `Done — the server will restart in ${s} seconds`],
+    poweroff: ["Shut down the server?", "Everything running on it will be unavailable until someone presses its power button. Your phone confirms it.", "Shut down", s => `Done — the server will shut down in ${s} seconds`],
+    "nova-restart": ["Restart Nova?", "The apps and this page lose the server for a few seconds, then reconnect. Nothing else is touched. Your phone confirms it.", "Restart", () => "Nova is restarting — back in a few seconds"],
+    "nova-stop": ["Shut down Nova?", "Nova stops until the server restarts or someone runs “sudo systemctl start nova-api” on it — the apps and this page can't start it again. Everything else keeps running. Your phone confirms it.", "Shut down", () => "Nova is shutting down"],
+  }[v] || [];
+  if (!title || !(await confirm(title, body, btn))) return;
+  try { const r = await post(`/api/v1/power/${v}`); toast(done(r.in_seconds || 8)); } catch (e) { toast(e.message); }
+}
+
+let smartOpen = false;
+function smartHtml(d) {
+  const probs = [d.smart_passed === false && "the drive reports it's failing", d.realloc > 0 && `${d.realloc} reallocated`, d.pending > 0 && `${d.pending} unreadable`, d.uncorrect > 0 && `${d.uncorrect} uncorrectable`].filter(Boolean);
+  const sum = [d.smart_passed == null ? "Not read yet" : d.smart_passed === false ? "FAILED" : "Passed", d.temp ? d.temp + "°C" : "", probs.length ? probs.join(", ") : "no bad sectors"].filter(Boolean).join(" · ");
+  return (d.health != null ? group(row("Estimated health", { sub: `${d.health}%${d.life != null ? ` · ${d.life}% of its rated wear left` : ""} — a guide from its SMART data, not a promise` })) : "")
+    + `<div class="expand ign${smartOpen ? " open" : ""}" style="margin-top:${d.health != null ? 14 : 0}px">${group(`<div class="row click" data-act="smartfold"><span class="ri" style="color:var(--sub);background:color-mix(in srgb, var(--sub) 16%, transparent)">${I("speed")}</span>
+      <div class="t"><b>Health checks</b><small>${esc(sum)}</small></div><span class="chev muted">${I("down")}</span></div>
+    <div class="xb">${(d.hours ? row("Powered on", { sub: `${d.hours.toLocaleString()} hours (${(d.hours / 8766).toFixed(1)} years)` }) : "")
+      + row("Overall", { sub: d.smart_passed == null ? "Not read yet — run a quick test" : d.smart_passed === false ? "FAILED" : "Passed" }) + row("Temperature", { sub: d.temp ? d.temp + "°C" : "—" })
+      + row("Reallocated sectors", { sub: String(d.realloc ?? "—") }) + row("Unreadable (pending)", { sub: String(d.pending ?? "—") }) + row("Uncorrectable errors", { sub: String(d.uncorrect ?? "—") })
+      + row("Cable errors (all-time)", { sub: `${d.crc ?? "—"} · if this keeps rising, check the cable` })}</div>`)}</div>`;
+}
 async function undismissAlert(key, redraw) {
   if (!isAdmin()) return viewOnly();
   try { await post("/api/v1/alerts/undismiss", { key }); toast("It's an active alert again"); } catch (e) { toast(e.message); }
@@ -174,7 +204,8 @@ export async function recommended(ctx) {
       { title: "Recommended", actions: [{ act: "fresh", icon: "refresh", label: "Look again" }] });
   };
   ctx.handlers({
-    snooze: async (...a) => { try { await post("/api/v1/recommendations/snooze", { id: a.join(":") }); await get("/api/v1/recommendations"); draw(); } catch (e) { toast(e.message); } },
+    snooze: async (...a) => { const id = a.filter(x => typeof x === "string").join(":");      // ids hold ":" (the tapped button comes last, not part of it)
+      try { await post("/api/v1/recommendations/snooze", { id }); await get("/api/v1/recommendations"); draw(); } catch (e) { toast(e.message); } },
     fresh: async () => { try { await get("/api/v1/recommendations?fresh=1"); draw(); } catch (e) { toast(e.message); } },
   });
   draw(); try { await get("/api/v1/recommendations"); } catch {} if (ctx.alive()) draw();
@@ -219,9 +250,8 @@ export async function home(ctx) {
       if (hit === "drives") return ctx.go("hardware");
       if (hit === "power") {
         if (!isAdmin()) return viewOnly();
-        const v = await choose("Power", [["reboot", "Restart server", "Everything goes offline for about 2 minutes"], ["poweroff", "Shut down server", "You'll need to press the power button to turn it back on"]], null);
-        if (!v || !(await confirm(v === "reboot" ? "Restart the server?" : "Shut down the server?", "Everything running on it will be unavailable until it's back. Your phone confirms it.", v === "reboot" ? "Restart" : "Shut down"))) return;
-        try { const r = await post(`/api/v1/power/${v}`); toast(`Done — the server will ${v === "reboot" ? "restart" : "shut down"} in ${r.in_seconds || 8} seconds`); } catch (e) { toast(e.message); }
+        const v = await choose("Power", POWER.map(([id, label, sub]) => [id, label, sub]), null);
+        if (v) await powerDo(v);
       }
     };
     animate($("#hero"), "server", () => S.error ? "#9e9ea4" : getComputedStyle(document.documentElement).getPropertyValue(lvl === "ok" ? "--green" : lvl === "warning" ? "--amber" : "--red").trim());
@@ -960,8 +990,7 @@ export async function quick(ctx) {
         return `<button class="tile glass press${on ? " on" : ""}" data-act="run:${esc(id)}" data-hold="${esc(id)}"><span class="ti">${I(d.icon)}</span><span class="tt"><b>${esc(d.label)}</b>${st ? `<small>${esc(st)}</small>` : ""}</span></button>`; }).join("")}</div>
       <p class="note" style="margin-left:24px">Tip: hold a tile for its settings.${ids.length ? "" : " No quick actions — tap the pencil to add some."}</p>
       ${(busy === "backup" || b?.running) && b ? sec("Backup") + group(`<div style="padding:16px 22px">${bar(b.progress?.phase === "copying" ? b.progress.pct / 100 : .1)}<p class="muted" style="font-size:13px;margin:8px 0 0">${esc(backupLine(b))}</p></div>`) : ""}
-      ${isAdmin() ? sec("Power") + group(row("Restart server", { sub: "Everything goes offline for about 2 minutes", icon: "restart", tint: "var(--amber)", click: "power:reboot" })
-        + row("Shut down server", { sub: "You'll need to press the power button to turn it back on", icon: "power", tint: "var(--red)", click: "power:poweroff" })) : ""}`,
+      ${isAdmin() ? sec("Power") + group(POWER.map(([id, label, sub, icon, tint]) => row(label, { sub, icon, tint, click: "power:" + id })).join("")) : ""}`,
       { title: "Quick panel", actions: [{ icon: "edit", label: "Edit", act: "go:edit-quick" }] });
     wireFanSlider($("#fantile"), draw, () => ctx.go("lighting"));
     $$("[data-hold]").forEach(t => onHold(t, () => { const r = { fan: "lighting", dim: "lighting", bright: "lighting", status_light: "lighting", lighting: "lighting", backup: "status", freeram: "status", status: "status", discord: "notify", inbox: "notify", containers: "containers", storage: "hardware" }[t.dataset.hold] || (t.dataset.hold.startsWith("restart:") ? "containers/" + t.dataset.hold.slice(8) : null); if (r) ctx.go(r); }));
@@ -981,10 +1010,7 @@ export async function quick(ctx) {
         else if (id.startsWith("restart:")) { const n = id.slice(8); if (!(await confirm(`Restart ${n}?`, "Your phone will ask you to confirm with your fingerprint.", "Restart"))) return; busy = id; draw(); await post(`/api/v1/containers/${encodeURIComponent(n)}/restart`); toast(`${n} restarted`); }
       } catch (e) { toast(e.message); } finally { busy = null; if (ctx.alive()) draw(); }
     },
-    power: async what => {
-      if (!(await confirm(what === "reboot" ? "Restart the server?" : "Shut down the server?", "Everything running on it will be unavailable until it's back. Your phone confirms it.", what === "reboot" ? "Restart" : "Shut down"))) return;
-      try { const r = await post(`/api/v1/power/${what}`); toast(`Done — the server will ${what === "reboot" ? "restart" : "shut down"} in ${r.in_seconds || 8} seconds`); } catch (e) { toast(e.message); }
-    },
+    power: what => powerDo(what),
   });
   draw();
   get("/api/v1/notify").then(() => ctx.alive() && draw()).catch(() => {});
@@ -1300,7 +1326,7 @@ const driveName = d => { const m = d.model || "", gbn = Math.round(d.size / 1e9)
   const kind = d.bus === "nvme" || (d.name || "").startsWith("nvme") ? "NVMe" : d.ssd ? "SSD" : "HDD";
   return !m ? d.name : brand ? `${brand} ${kind} ${gb}` : `${m} ${gb}`; };
 const health = d => { const p = d.health != null ? ` · ${d.health}%` : "";
-  return d.smart_passed === false ? ["Failing" + p, "critical"] : (d.realloc > 0 || d.uncorrect > 0 || d.pending > 0) ? ["Worn — keep an eye on it" + p, "warning"] : d.crc > 50 ? ["Healthy*" + p, "ok"] : ["Healthy" + p, "ok"]; };
+  return d.smart_passed === false ? ["Failing" + p, "critical"] : (d.worn ?? (d.realloc > 9 || d.uncorrect > 3)) ? ["Worn — keep an eye on it" + p, "warning"] : (d.realloc > 0 || d.uncorrect > 0 || d.pending > 0) ? ["Mostly healthy" + p, "ok"] : d.crc > 50 ? ["Healthy*" + p, "ok"] : ["Healthy" + p, "ok"]; };
 export async function hardware(ctx) {
   const [serial] = ctx.args;
   if (serial) return drive(ctx, serial);
@@ -1344,11 +1370,7 @@ async function drive(ctx, serial) {
     const [h, lv] = health(d), mounted = (d.mounts || []).length > 0;
     ctx.show(`<div class="center" style="padding:16px 0"><div style="color:${levelColor(lv)}">${I(d.ssd ? "ssd" : "disk").replace('class="i ', 'style="width:90px;height:90px" class="i ')}</div>
         <div style="color:${levelColor(lv)};font-size:18px;font-weight:700">${h}</div><div class="muted">${esc(d.role || "")} · /dev/${esc(d.name)}</div></div>
-      ${sec("Health (SMART)")}${group((d.health != null ? row("Estimated health", { sub: `${d.health}%${d.life != null ? ` · ${d.life}% of its rated wear left` : ""} — a guide from its SMART data, not a promise` }) : "")
-        + (d.hours ? row("Powered on", { sub: `${d.hours.toLocaleString()} hours (${(d.hours / 8766).toFixed(1)} years)` }) : "")
-        + row("Overall", { sub: d.smart_passed == null ? "Not read yet — run a quick test" : d.smart_passed === false ? "FAILED" : "Passed" }) + row("Temperature", { sub: d.temp ? d.temp + "°C" : "—" })
-        + row("Reallocated sectors", { sub: String(d.realloc ?? "—") }) + row("Unreadable (pending)", { sub: String(d.pending ?? "—") }) + row("Uncorrectable errors", { sub: String(d.uncorrect ?? "—") })
-        + row("Cable errors (all-time) *", { sub: `${d.crc ?? "—"} · if this keeps rising, check the cable` }))}
+      ${sec("Health (SMART)")}${smartHtml(d)}
       ${testsHtml()}
       ${isAdmin() ? group(row("Partitions", { sub: d.protected ? "See how it's laid out (it's in use, so it can't be changed)" : "See and change how it's laid out — create, delete, format, label, resize", blue: true, icon: "viewday", click: "go:partitions/" + encodeURIComponent(serial) })) : ""}
       ${sec("Details")}${group(row("Size", { sub: bytes(d.size) }) + row("Connection", { sub: (d.bus || "").toUpperCase() }) + row("Serial", { sub: d.serial }) + row("Mounted at", { sub: (d.mounts || []).join(", ") || "Not mounted" }))}
@@ -1358,6 +1380,7 @@ async function drive(ctx, serial) {
           + row("Clone to another drive", { sub: "Copies everything onto a spare drive (which is erased). Bigger: an exact copy that grows to fill it. Smaller: the files are copied if they fit.", icon: "copy", tint: "var(--blue)", click: "clone" })) : ""}`, { title: driveName(d) });
   };
   ctx.handlers({
+    smartfold: () => { smartOpen = !smartOpen; $$(".expand.ign", ctx.root).forEach(e => e.querySelector("[data-act=smartfold]") && e.classList.toggle("open", smartOpen)); },
     repair: async () => {
       const d = (S.cache["/api/v1/hardware"]?.drives || []).find(x => x.serial === serial); if (!d) return;
       if (!(await confirm(`Repair ${driveName(d)}?`, `${(d.mounts || []).length ? `It's unmounted while it's checked (${d.mounts.join(", ")}) — apps using it lose it for a few minutes, then it's mounted again. ` : ""}Nothing is erased. Your phone confirms it.`, "Repair", "var(--blue)"))) return;

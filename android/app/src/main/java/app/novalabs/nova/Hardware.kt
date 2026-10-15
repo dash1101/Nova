@@ -32,7 +32,8 @@ private fun health(d: JSONObject): Pair<String, String> {
     val p = if (d.has("health") && !d.isNull("health")) " · ${d.optInt("health")}%" else ""
     return when {
         d.has("smart_passed") && !d.isNull("smart_passed") && !d.optBoolean("smart_passed", true) -> "Failing$p" to "critical"
-        bad -> "Worn — keep an eye on it$p" to "warning"
+        if (d.has("worn")) d.optBoolean("worn") else d.optInt("realloc", 0) > 9 || d.optInt("uncorrect", 0) > 3 -> "Worn — keep an eye on it$p" to "warning"
+        bad -> "Mostly healthy$p" to "ok"
         d.optInt("crc", 0) > 50 -> "Healthy*$p" to "ok"
         else -> "Healthy$p" to "ok"
     }
@@ -121,13 +122,22 @@ private fun health(d: JSONObject): Pair<String, String> {
         Group {
             if (d.has("health") && !d.isNull("health")) { Row1("Estimated health", "${d.optInt("health")}%" +
                 (if (d.has("life") && !d.isNull("life")) " · ${d.optInt("life")}% of its rated wear left" else "") + " — a guide from its SMART data, not a promise"); RowDivider() }
-            if (d.optLong("hours") > 0) { Row1("Powered on", "%,d hours (%.1f years)".format(d.optLong("hours"), d.optLong("hours") / 8766.0)); RowDivider() }
-            Row1("Overall", if (!d.has("smart_passed") || d.isNull("smart_passed")) "Not read yet — run a quick test" else if (d.optBoolean("smart_passed", true)) "Passed" else "FAILED"); RowDivider()
-            Row1("Temperature", d.optInt("temp").takeIf { it > 0 }?.let { "$it°C" } ?: "—"); RowDivider()
-            Row1("Reallocated sectors", d.optString("realloc", "—")); RowDivider()
-            Row1("Unreadable (pending)", d.optString("pending", "—")); RowDivider()
-            Row1("Uncorrectable errors", d.optString("uncorrect", "—")); RowDivider()
-            Row1("Cable errors (all-time) *", "${d.optString("crc", "—")} · if this keeps rising, check the cable")
+            val passed = if (!d.has("smart_passed") || d.isNull("smart_passed")) null else d.optBoolean("smart_passed", true)
+            val probs = listOfNotNull(if (passed == false) "the drive reports it's failing" else null,
+                d.optInt("realloc", 0).takeIf { it > 0 }?.let { "$it reallocated" }, d.optInt("pending", 0).takeIf { it > 0 }?.let { "$it unreadable" },
+                d.optInt("uncorrect", 0).takeIf { it > 0 }?.let { "$it uncorrectable" })
+            val sum = listOfNotNull(when (passed) { null -> "Not read yet"; false -> "FAILED"; else -> "Passed" }, d.optInt("temp").takeIf { it > 0 }?.let { "$it°C" },
+                if (probs.isEmpty()) "no bad sectors" else probs.joinToString(", ")).joinToString(" · ")
+            ExpandRow("Health checks", sum, icon = Icons.Rounded.Speed, iconTint = N.sub) {
+                if (d.optLong("hours") > 0) DetailLine("Powered on", "%,d hours (%.1f years)".format(d.optLong("hours"), d.optLong("hours") / 8766.0))
+                DetailLine("Overall", when (passed) { null -> "Not read yet — run a quick test"; false -> "FAILED"; else -> "Passed" })
+                DetailLine("Temperature", d.optInt("temp").takeIf { it > 0 }?.let { "$it°C" } ?: "—")
+                DetailLine("Reallocated sectors", d.optString("realloc", "—"))
+                DetailLine("Unreadable (pending)", d.optString("pending", "—"))
+                DetailLine("Uncorrectable errors", d.optString("uncorrect", "—"))
+                DetailLine("Cable errors (all-time)", d.optString("crc", "—"))
+                Detail("Cable errors never go back down — only worry if the number keeps rising.")
+            }
         }
         DriveTests(app, serial)
         SectionLabel("Details")

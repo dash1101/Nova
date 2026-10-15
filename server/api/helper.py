@@ -160,7 +160,7 @@ def disks():
                     "usage": sorted(usage, key=lambda u: (u["mount"] != "/", -u["total"])),
                     "protected": protected, "temp": sm.get("temp"), "smart_passed": sm.get("passed"),
                     "realloc": sm.get("realloc"), "pending": sm.get("pending"), "uncorrect": sm.get("uncorrect"),
-                    "life": sm.get("life"), "hours": sm.get("hours"), "health": _health(sm, not d.get("rota")),
+                    "life": sm.get("life"), "hours": sm.get("hours"), "health": _health(sm, not d.get("rota")), "worn": _health(sm, False, True),
                     "crc": sm.get("crc")})
     return res
 
@@ -620,11 +620,11 @@ if verb == "programs" and not args:
     ps = programs(); inst = pkg.installed([p["pkg"] for p in ps.values()])
     out({"items": [p | {"installed": inst.get(p["pkg"], False)} for p in ps.values() if pkg.name(p["pkg"])]})
 
-def _health(sm, ssd):
+def _health(sm, ssd, worn=False):
     sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
     try:
         import storage
-        return storage.health_pct(sm, ssd)
+        return storage.is_worn(sm) if worn else storage.health_pct(sm, ssd)
     except Exception: return None
 
 if verb == "drives" and not args:
@@ -689,6 +689,16 @@ if verb == "drive-mount" and len(args) == 1:
     changelog(f"Mounted {d['model']} ({', '.join(targets)}) from the Nova app")
     out({"ok": True, "mounted": targets})
 
+if verb == "power" and args in (["nova-restart"], ["nova-stop"]):
+    # Nova itself (the API and its tunnel), not the server. Delayed a moment so this answer gets back to the app first.
+    # Stopped, it starts again at the next boot, or with: sudo systemctl start nova-api
+    stop = args[0] == "nova-stop"
+    changelog(f"Nova {'stopped' if stop else 'restarted'} from the Nova app")
+    if stop: notify("warning", "Nova was stopped (from the Nova app)", "The server keeps running. Start Nova again with: sudo systemctl start nova-api (or restart the server)")
+    rc, so, se = run(["systemd-run", "--on-active=2", "--timer-property=AccuracySec=100ms", f"--unit=nova-app-self-{int(time.time())}",
+                      "systemctl", "stop" if stop else "restart", "nova-api.service"])
+    out({"ok": rc == 0, "in_seconds": 2, "error": "" if rc == 0 else se.strip()[:200]}, 0 if rc == 0 else 1)
+
 if verb == "power" and len(args) == 1 and args[0] in ("reboot", "poweroff"):
     changelog(f"Server {args[0]} requested from the Nova app")
     notify("warning", f"Server {'restarting' if args[0] == 'reboot' else 'shutting down'} (from the Nova app)", "")
@@ -700,7 +710,7 @@ if verb == "power" and len(args) == 1 and args[0] in ("reboot", "poweroff"):
             try: run(["systemctl", "start", unit], timeout=40)
             except Exception: break
             if not glob.glob("/var/lib/nova-alerts/spool/*.json"): break
-    rc, so, se = run(["systemd-run", "--on-active=8", "--unit=nova-app-power", "systemctl", args[0]])
+    rc, so, se = run(["systemd-run", "--on-active=8", "--timer-property=AccuracySec=100ms", f"--unit=nova-app-power-{int(time.time())}", "systemctl", args[0]])
     out({"ok": rc == 0, "in_seconds": 8, "error": se.strip()[:200]}, 0 if rc == 0 else 1)
 
 # ── alerts: dismiss / delete (the monitor keeps the state) ─────────────────────────

@@ -218,16 +218,30 @@ private fun settingsFor(id: String): Route? = when {
             RowDivider()
             Row1("Shut down server", "You'll need to press the power button to turn it back on", false,
                 Icons.Rounded.PowerSettingsNew, N.red, onClick = { confirm = "poweroff" })
+            RowDivider()
+            Row1("Restart Nova", "Only Nova restarts, in a few seconds — containers and everything else keep running", false,
+                Icons.Rounded.RestartAlt, N.blue, onClick = { confirm = "nova-restart" })
+            RowDivider()
+            Row1("Shut down Nova", "The server keeps running, but Nova can't be reached until it's started again", false,
+                Icons.Rounded.StopCircle, N.red, onClick = { confirm = "nova-stop" })
         }
     }
-    confirm?.let { what ->
-        OneDialog({ confirm = null }, if (what == "reboot") "Restart the server?" else "Shut down the server?",
-            "Everything running on it will be unavailable until it's back.",
-            listOf(DialogButton("Cancel") { confirm = null },
-                DialogButton(if (what == "reboot") "Restart" else "Shut down", N.red) { confirm = null
-                    app.act("Done — the server will ${if (what == "reboot") "restart" else "shut down"} in 5 seconds") {
-                        app.stepUp(if (what == "reboot") "Restart the server" else "Shut down the server", "POST", "/api/v1/power/$what") } }))
+    confirm?.let { what -> PowerConfirm(app, what) { confirm = null } }
+}
+
+/** Confirms one power action (the server, or just Nova) and sends it — the phone's fingerprint approves it. */
+@Composable fun PowerConfirm(app: AppState, what: String, close: () -> Unit) {
+    val (title, body, btn) = when (what) {
+        "reboot" -> Triple("Restart the server?", "Everything running on it will be unavailable until it's back.", "Restart")
+        "poweroff" -> Triple("Shut down the server?", "Everything running on it will be unavailable until someone presses its power button.", "Shut down")
+        "nova-restart" -> Triple("Restart Nova?", "The app loses the server for a few seconds, then reconnects. Nothing else is touched.", "Restart")
+        else -> Triple("Shut down Nova?", "Nova stops until the server restarts or someone runs “sudo systemctl start nova-api” on it — the app can't start it again. Everything else keeps running.", "Shut down")
     }
+    val done = when (what) { "reboot" -> "Done — the server will restart in 8 seconds"; "poweroff" -> "Done — the server will shut down in 8 seconds"
+        "nova-restart" -> "Nova is restarting — back in a few seconds"; else -> "Nova is shutting down" }
+    val step = when (what) { "reboot" -> "Restart the server"; "poweroff" -> "Shut down the server"; "nova-restart" -> "Restart Nova"; else -> "Shut down Nova" }
+    OneDialog(close, title, body, listOf(DialogButton("Cancel") { close() },
+        DialogButton(btn, N.red) { close(); app.act(done) { app.stepUp(step, "POST", "/api/v1/power/$what") } }))
 }
 
 @Composable fun EditQuickScreen(app: AppState) {

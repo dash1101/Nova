@@ -10,7 +10,7 @@ of drive serials the user confirmed.
 Test mode (NOVA_STORAGE_TEST=1, root shell only): loop devices count as drives, and fstab /
 mdadm.conf are redirected (NOVA_FSTAB, NOVA_MDADM_CONF), so the real system is never touched.
 """
-import glob, json, os, re, shutil, subprocess, time
+import glob, json, math, os, re, shutil, subprocess, time
 
 TEST = os.environ.get("NOVA_STORAGE_TEST") == "1"
 FSTAB = os.environ.get("NOVA_FSTAB", "/etc/fstab") if TEST else "/etc/fstab"
@@ -196,13 +196,24 @@ def disks_of_dev(name):
 
 def health_pct(sm, ssd):
     """A rough "how healthy is it" number from SMART, for the drive list (100 = like new).
-    SSDs: the wear the drive reports itself. All drives lose points for bad sectors and read errors;
-    a failed SMART verdict caps it at 5. An estimate, not a promise — drives can die at 100%."""
+    SSDs start from the wear the drive reports itself. Points come off for real failure signs, on a log scale so the
+    first few count for little and hundreds count a lot: reallocated sectors and errors the drive reported to the
+    computer weigh the most; pending (unreadable) sectors weigh less — a handful usually come from a power cut
+    mid-write and go away when the file is written again. Age, the cable-error history and vendor-specific raw values
+    (Seagate's seek and read error rates) don't count. A failed SMART verdict caps it at 5. An estimate, not a promise."""
     if not sm: return None
+    lg = lambda k, w, cap: min(cap, w * math.log2(1 + max(0, sm.get(k) or 0)))
     h = sm.get("life") if sm.get("life") is not None else 100
-    h -= min(50, 2 * (sm.get("realloc") or 0)) + min(30, 6 * (sm.get("pending") or 0)) + min(30, 6 * (sm.get("uncorrect") or 0)) + min(40, 4 * (sm.get("media_errors") or 0))
+    h -= lg("realloc", 6, 50) + lg("pending", 3, 30) + lg("uncorrect", 5, 30) + lg("media_errors", 6, 40)
     if sm.get("passed") is False: h = min(h, 5)
     return max(0, min(100, int(round(h))))
+
+def is_worn(sm):
+    """"Worn — keep an eye on it": the failure signs above cost 20 points or more (10 reallocated sectors, or hundreds
+    of unreadable ones), or an SSD is down to its last 10% of rated wear. A few bad sectors alone: "mostly healthy"."""
+    if not sm: return False
+    lg = lambda k, w, cap: min(cap, w * math.log2(1 + max(0, sm.get(k) or 0)))
+    return lg("realloc", 6, 50) + lg("pending", 3, 30) + lg("uncorrect", 5, 30) + lg("media_errors", 6, 40) >= 20 or (sm.get("life") is not None and sm["life"] <= 10)
 
 def owner_mount(path, mps):
     """The mount point a path lives on (longest prefix)."""
@@ -274,7 +285,7 @@ def storage_map():
         bus = d.get("tran") or ("nvme" if d["name"].startswith("nvme") else "")
         if bus == "usb" and member_of: warn.append("USB drives can drop out of RAID arrays — a SATA port is safer")
         if sm.get("passed") is False: warn.append("SMART says this drive is failing — copy its data off and replace it")
-        elif (sm.get("realloc") or 0) > 0 or (sm.get("pending") or 0) > 0: warn.append("Some bad sectors — keep an eye on it")
+        elif is_worn(sm): warn.append("Worn: it's remapping or failing to read sectors — keep backups of what's on it")
         for m in mps:
             fe = fst_by_mount.get(m)
             if not system and m not in mp: continue
@@ -292,7 +303,7 @@ def storage_map():
                        "mounts": [m for m in mps if m != "[SWAP]"], "roles": sorted(set(roles)), "uses": sorted(set(uses)), "warnings": warn,
                        "system": system, "erasable": erasable, "has_data": bool(has_fs), "pool": member_of["id"] if member_of else None,
                        "smart": {k: sm.get(k) for k in ("passed", "temp", "realloc", "pending", "uncorrect", "crc", "life", "hours")} if sm else None,
-                       "health": health_pct(sm, not d.get("rota")) if sm else None})
+                       "health": health_pct(sm, not d.get("rota")) if sm else None, "worn": is_worn(sm)})
     # Network shares ─────────────────────────────────────────────────────────────────────
     network = [{"mount": m, "src": i["src"], "type": i["type"], "usage": usage(m)} for m, i in mp.items() if i["type"] in ("nfs", "nfs4", "cifs", "smb3")]
     res = {"drives": drives, "pools": pools, "network": network, "legacy_backup": legacy, "jobs": [{"id": j["id"], "name": j.get("name"), "sources": j.get("sources", []),

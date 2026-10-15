@@ -174,7 +174,7 @@ export async function disks(ctx) {
   };
   ctx.handlers({
     open: s => ctx.go("partitions/" + encodeURIComponent(s)),
-    fix: (...a) => { const k = +a.pop(), id = a.join(":"); const s = (S.cache["/api/v1/storage"]?.suggestions || []).find(x => x.id === id); const act = s?.actions?.[k];
+    fix: (...a) => { a = a.filter(x => typeof x === "string"); const k = +a.pop(), id = a.join(":"); const s = (S.cache["/api/v1/storage"]?.suggestions || []).find(x => x.id === id); const act = s?.actions?.[k];
       if (act?.action === "task") ST.startTask(ctx, `/api/v1/storage/task/${act.kind}`, { spec: act.spec || {} }); },
     mp: (serial, part) => mountPoint(ctx, serial, part),
   });

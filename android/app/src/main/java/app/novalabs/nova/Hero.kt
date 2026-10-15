@@ -184,7 +184,7 @@ private fun activity(i: Int, tMs: Double, pct: Int = 9): Float {
             val p = Offset(x0 + i * step, y)
             val (col, a) = when (lvl) {
                 "critical" -> Color(0xFFFF4040) to (0.35f + 0.65f * (0.5f + 0.5f * sin(t / 1800.0 * 2 * PI).toFloat()))
-                "warning" -> Color(0xFFFFB020) to 0.9f
+                "warning" -> Color(0xFFFFB020) to (0.45f + 0.55f * activity(i, t, blinkRate(io?.optJSONArray(list?.get(i)?.optString("name") ?: ""))))   // amber still shows activity
                 else -> Color(0xFF3ECF6E) to (0.38f + 0.62f * activity(i, t, blinkRate(io?.optJSONArray(list?.get(i)?.optString("name") ?: ""))))
             }
             if (a > 0.5f) drawCircle(col.copy(alpha = (a - 0.5f) * 0.6f), rr * 2.6f, p)

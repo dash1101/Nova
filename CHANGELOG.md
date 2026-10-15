@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.1-alpha (server, Nova web, app and watch)
+- **Fairer drive health:** the health % now weighs real failure signs — sectors the drive had to remap and read errors it reported — on a scale where the first few count for little and hundreds count a lot. A handful of unreadable (pending) sectors, which a power cut mid-write leaves behind and which go away when the file is written again, cost only a few points, and age, the cable-error history and vendor-specific raw values don't count. A drive with a few bad sectors now reads **Mostly healthy**; **Worn — keep an eye on it** (and the amber light on the server picture) is kept for drives that are really wearing out.
+- **Health checks fold away** (a drive's page, app and web): the SMART readings sit in one row with a summary ("Passed · 42°C · 4 unreadable") — tap it for the details.
+- **Amber drive lights blink too:** a drive with a warning still shows its disk activity on the server picture, like the green ones.
+- **Restart Nova and Shut down Nova** in the power menu (Quick panel and the server picture's power button, app and web): restart just Nova in a few seconds, or stop it, without touching the server or anything else running on it. A stopped Nova comes back at the next boot or with `sudo systemctl start nova-api`. Both need your phone's fingerprint.
+- **Fixed:** **Not now** on some recommendations said "bad id", and the fix buttons for some mount problems in the Partition manager didn't work (web).
+
 ## 0.8.0-alpha (server, Nova web, app and watch)
 - **Security & privacy** (Settings or Menu, app and web): everything about who and what can reach the server, on one page — this device's key, app lock and hiding Nova in recent apps (app), how risky actions are approved, authenticator codes, passkeys, users and devices, remote access, privacy (Start page suggestions, the privacy policy) and **recent security activity** (pairings, approvals, devices, codes and passkeys, anything refused).
 - **Passkeys** (Nova web): add a passkey from your password manager (Security & privacy → Passkeys), and it can add a new browser to the server or approve what a browser asks for — your fingerprint, face or PIN instead of the admin phone. Passkeys belong to a web address, so they work at Nova's web address (your Cloudflare one), not at an IP address. Adding or removing one needs your phone's fingerprint.

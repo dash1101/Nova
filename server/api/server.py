@@ -41,7 +41,7 @@ try:                       # optional module: fan/case lighting (modules/fan-gig
 except ImportError:
     nova_rgb = None
 
-API_VERSION = "0.8.0-alpha"
+API_VERSION = "0.8.1-alpha"
 # The API contract (docs/API.md). API_LEVEL only ever goes up: each new level adds endpoints or fields, never removes or
 # changes one. MIN_LEVEL is the oldest level this server still answers in full (old apps keep working back to it).
 # MIN_CLIENT: the oldest app builds still served, per platform — 0 = all of them. Raising it is the last resort, after
@@ -507,7 +507,7 @@ def der_sig(raw):
 CAPABILITIES = {"devices": 1, "approvals": 1, "containers": 1, "apps": 1, "store": 1, "storage": 1, "storage-wizard": 1, "backups": 1, "lights": 1,
                 "cloudflare": 1, "nodes": 1, "tasks": 1, "events": 1, "stats": 1, "terminal": 1, "files": 1, "updates": 1, "freeup": 1, "diag": 1,
                 "totp": 2, "passkeys": 2, "partitions": 2, "mount-points": 2, "swap-setup": 2, "recommendations": 2, "security-activity": 2, "capabilities": 2,
-                "force-unmount": 2}
+                "force-unmount": 2, "nova-power": 2}
 REC_CACHE = {}             # recommended actions, worked out at most once a minute
 browser_requests = {}      # id -> {pem, name, code, expires, state, device_id}
 approvals = {}             # id -> {id, device, device_name, method, path, data, created, state, result}
@@ -624,7 +624,7 @@ def describe_action(a):
     if p[:1] == ["store"]: return f"{p[2].title()} {p[1]} from the app store"
     if p[:1] == ["programs"]: return f"{p[2].title()} the program {p[1]}"
     if p[:1] == ["drives"]: return f"{p[2].title()} a drive"
-    if p[:1] == ["power"]: return "Restart the server" if p[1:] == ["reboot"] else "Shut down the server"
+    if p[:1] == ["power"]: return {"reboot": "Restart the server", "nova-restart": "Restart Nova", "nova-stop": "Shut down Nova (the server keeps running)"}.get(p[1] if len(p) > 1 else "", "Shut down the server")
     if p[:1] == ["devices"] and a.get("method") == "DELETE" and len(p) == 2:
         d = load_json(DEVICES, {}).get(p[1], {})
         return f"Remove “{d.get('name', 'a device')}” from this server" if d else "Remove a device"
@@ -2287,7 +2287,7 @@ class Handler(BaseHTTPRequestHandler):
         if method == "POST" and len(parts) == 3 and parts[0] == "drives" and parts[2] in ("mount", "unmount"):
             extra = ["force"] if parts[2] == "unmount" and data.get("force") is True else []      # force: stops the containers using it, detaches the rest
             rc, res = helper(f"drive-{parts[2]}", parts[1], *extra, timeout=180); return (200 if rc == 0 else 409 if res.get("busy") else 400), res
-        if method == "POST" and len(parts) == 2 and parts[0] == "power" and parts[1] in ("reboot", "poweroff"):
+        if method == "POST" and len(parts) == 2 and parts[0] == "power" and parts[1] in ("reboot", "poweroff", "nova-restart", "nova-stop"):
             rc, res = helper("power", parts[1]); return (200 if rc == 0 else 500), res
 
         # ── quick actions ──

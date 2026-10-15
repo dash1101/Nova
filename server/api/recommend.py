@@ -107,9 +107,14 @@ def recommendations():
         name = (known.get(serial) or {}).get("model") or serial
         if sm.get("passed") is False:
             add(f"smart:{serial}", "urgent", f"{name} says it's failing", "Copy what's on it to another drive now, then replace it.", "Open the drive", go=f"drive/{serial}")
-        elif (sm.get("pending") or 0) > 0 or (sm.get("uncorrect") or 0) > 0:
-            add(f"pending:{serial}", "warn", f"{name} has {sm.get('pending') or sm.get('uncorrect')} unreadable sector{'s' if (sm.get('pending') or 0) != 1 else ''}",
-                "Usually from a power cut mid-write, not a dying drive. Run a full surface scan to find them; the file they're in gets fixed when it's written again.",
+        elif (sm.get("realloc") or 0) >= 10 or (sm.get("uncorrect") or 0) >= 4:
+            add(f"worn:{serial}", "warn", f"{name} is wearing out", f"{sm.get('realloc') or 0} sectors moved to spares, {sm.get('uncorrect') or 0} read errors reported. Keep a backup of what's on it, and plan to replace it.",
+                "Open the drive", go=f"drive/{serial}")
+        elif (sm.get("pending") or 0) > 0:
+            n = sm["pending"]
+            add(f"pending:{serial}", "warn" if n >= 50 else "tip", f"{name} has {n} unreadable sector{'s' if n != 1 else ''}",
+                ("Usually from a power cut mid-write, not a dying drive — it's still healthy. " if n < 50 else "That's more than a power cut leaves — watch whether it grows. ")
+                + "Run a full surface scan to find them; the file they're in is fixed when it's written again (copy it from a backup).",
                 "Open the drive", go=f"drive/{serial}")
         elif (sm.get("temp") or 0) >= 55:
             add(f"hot:{serial}", "warn", f"{name} is running hot ({sm['temp']}°C)", "Check the airflow over the drives (and that the fans are spinning).", "Open the drive", go=f"drive/{serial}")

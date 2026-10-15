@@ -27,7 +27,7 @@ Commands:  nova_alerts.py                  one check pass (the timer runs this e
            nova_alerts.py forget-drive <serial|name>
            nova_alerts.py test             send a test alert
 """
-import json, os, re, subprocess, sys, time, socket, glob, urllib.request, urllib.error, fcntl
+import json, math, os, re, subprocess, sys, time, socket, glob, urllib.request, urllib.error, fcntl
 from datetime import datetime, timezone
 
 CONFIG_FILE = os.environ.get("NOVA_ALERTS_CONFIG", "/etc/nova-alerts/config.json")
@@ -165,6 +165,11 @@ def mount_name(mp, names):
 LEGACY_METRIC = {"/": "root"}            # older apps read root_used; everything else is in metrics["storage"]
 
 # ── state ─────────────────────────────────────────────────────────────────────
+def worn(sm):
+    """Same rule as storage.is_worn: a few unreadable sectors after a power cut aren't wear."""
+    lg = lambda k, w, cap: min(cap, w * math.log2(1 + max(0, sm.get(k) or 0)))
+    return lg("realloc", 6, 50) + lg("pending", 3, 30) + lg("uncorrect", 5, 30) + lg("media_errors", 6, 40) >= 20 or (sm.get("life") is not None and sm["life"] <= 10)
+
 def disk_of(mp):
     """The disk behind a mount point and its port, like "sdc (ata3)" — so an alert says which drive to check."""
     try:
@@ -571,7 +576,7 @@ class Monitor:
             elif dead_here: lvl, why = "critical", "not responding"
             elif now() - io_at < 600: lvl, why = "critical", "read/write errors"
             elif f"temp:{serial}" in conds: lvl, why = conds[f"temp:{serial}"]["level"], "hot"
-            elif any((sm.get(k) or 0) > 0 for k in ("realloc", "pending", "uncorrect", "media_errors")): lvl, why = "warning", "worn"
+            elif worn(sm): lvl, why = "warning", "worn"
             states.append({"name": d.get("name"), "model": d.get("model"), "serial": serial, "level": lvl, "why": why,
                            "boot": (d.get("name") or "").startswith("nvme") or (d.get("tran") or "") == "nvme"})
         states.sort(key=lambda x: (not x["boot"], x["name"] or ""))

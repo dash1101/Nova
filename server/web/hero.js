@@ -128,14 +128,14 @@ function drawServer(c, w, h, look, t, spin, status, drives, reverse) {
     }
     c.restore();
   });
-  // one LED per drive (boot drive included): green + activity, amber = worn/hot, red pulsing = missing/failing
+  // one LED per drive (boot drive included): green + activity, amber = worn/hot (both blink with activity), red pulsing = missing/failing
   const list = drives && drives.length ? drives : null, n = list ? list.length : 6;
   const step = n > 1 ? Math.min(cw * .09, cw * .62 / (n - 1)) : 0, x0 = left + cw / 2 - step * (n - 1) / 2, ly = top + ch * .83;
   const lr = Math.max(cw * .008, Math.min(cw * .016, step * .32));
   for (let i = 0; i < n; i++) {
     const lvl = list ? list[i].level : "ok";
     const io = list && S.lastNow?.disks ? S.lastNow.disks[list[i].name] : null;
-    const [col, a] = lvl === "critical" ? [[255, 64, 64], .35 + .65 * (.5 + .5 * Math.sin(t / 1800 * 2 * Math.PI))] : lvl === "warning" ? [[255, 176, 32], .9] : [[62, 207, 110], .38 + .62 * activity(i, t, blinkRate(io))];
+    const [col, a] = lvl === "critical" ? [[255, 64, 64], .35 + .65 * (.5 + .5 * Math.sin(t / 1800 * 2 * Math.PI))] : lvl === "warning" ? [[255, 176, 32], .45 + .55 * activity(i, t, blinkRate(io))] : [[62, 207, 110], .38 + .62 * activity(i, t, blinkRate(io))];
     if (a > .5) { c.fillStyle = rgbA(col, (a - .5) * .6); c.beginPath(); c.arc(x0 + i * step, ly, lr * 2.6, 0, 7); c.fill(); }
     c.fillStyle = rgbA(col, a); c.beginPath(); c.arc(x0 + i * step, ly, lr, 0, 7); c.fill();
   }
