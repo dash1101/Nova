@@ -76,7 +76,7 @@ export async function partitions(ctx) {
   const pending = () => {
     if (!ops.length) return "";
     return sec(`Waiting to apply · ${ops.length}`) + group((planned?.steps || []).map((s, i) => row(s, { icon: i === ops.length - 1 ? "back" : "history", tint: "var(--amber)", click: i === ops.length - 1 ? "undo" : "" })).join(""))
-      + `<div style="display:flex;gap:10px;margin:8px var(--gutter)"><button class="btn ghost" style="flex:1" data-act="clear">Clear</button><button class="btn" style="flex:2" data-act="apply" ${lay.editable ? "" : "disabled"}>Apply ${ops.length} change${ops.length > 1 ? "s" : ""}</button></div>`;
+      + `<div style="display:flex;gap:10px;margin:8px var(--gutter)"><button class="btn ghost" style="flex:1" data-act="clear">Clear</button><button class="btn" style="flex:2" data-act="apply" ${lay.editable ? "" : "disabled"}>Apply changes (${ops.length})</button></div>`;
   };
   const draw = () => {
     if (!lay) return ctx.show(note(err || "Reading the drive…"), { title: "Partitions" });

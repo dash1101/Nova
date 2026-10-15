@@ -709,15 +709,15 @@
 ]
 },
 {
-"en": "a drive",
+"en": "A drive",
 "in": [
+"app",
 "web"
 ]
 },
 {
-"en": "A drive",
+"en": "a drive",
 "in": [
-"app",
 "web"
 ]
 },
@@ -1900,12 +1900,6 @@
 "en": "Apply what it does right away",
 "in": [
 "app"
-]
-},
-{
-"en": "Apply {0} change{1}",
-"in": [
-"web"
 ]
 },
 {
@@ -5037,14 +5031,14 @@
 ]
 },
 {
-"en": "e.g. photos",
+"en": "e.g. Photos",
 "in": [
 "app",
 "web"
 ]
 },
 {
-"en": "e.g. Photos",
+"en": "e.g. photos",
 "in": [
 "app",
 "web"
@@ -10307,14 +10301,14 @@
 ]
 },
 {
-"en": "no partition table",
+"en": "No partition table",
 "in": [
 "app",
 "web"
 ]
 },
 {
-"en": "No partition table",
+"en": "no partition table",
 "in": [
 "app",
 "web"
@@ -16534,14 +16528,14 @@
 ]
 },
 {
-"en": "System drive",
+"en": "system drive",
 "in": [
 "app",
 "web"
 ]
 },
 {
-"en": "system drive",
+"en": "System drive",
 "in": [
 "app",
 "web"

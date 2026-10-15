@@ -275,7 +275,7 @@ private fun uptime(s: Long) = "${s / 86400}d ${s % 86400 / 3600}h ${s % 3600 / 6
             // one small graph per core (live view only — the hour view keeps the overall CPU)
             val cores = now?.optJSONArray("cpus")?.length() ?: 0
             if (live && cores > 1) {
-                SectionLabel("CPU cores · $cores")
+                Box(Modifier.offset(x = -Space.gutter)) { SectionLabel("CPU cores · $cores") }      // the page column is already inset
                 (0 until cores).chunked(3).forEach { rowIdx ->
                     Row(horizontalArrangement = Arrangement.spacedBy(Space.gap)) {
                         rowIdx.forEach { i ->

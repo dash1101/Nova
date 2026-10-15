@@ -147,7 +147,7 @@ private val FLAG_NAMES = linkedMapOf("none" to "Normal data partition", "esp" to
                     onClick = if (i == steps.lastIndex) ({ undo() }) else null) } }
             Row(Modifier.fillMaxWidth().padding(horizontal = Space.gutter, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 PrimaryButton("Clear", Modifier.weight(1f), true, N.pill) { ops.clear(); planned = null }
-                PrimaryButton("Apply ${ops.size} change${if (ops.size > 1) "s" else ""}", Modifier.weight(2f), l.optBoolean("editable")) { dialog = "apply" }
+                PrimaryButton("Apply changes (${ops.size})", Modifier.weight(2f), l.optBoolean("editable")) { dialog = "apply" }
             }
         }
         val backs = l.optJSONArray("backups")?.let { a -> (0 until a.length()).map { a.getString(it) } }.orEmpty()
@@ -201,7 +201,7 @@ private val FLAG_NAMES = linkedMapOf("none" to "Normal data partition", "esp" to
             }
             "delete" -> selP?.let { p -> OneDialog(close, "Delete partition ${p.optInt("n")}?", "${p.optString("label").ifEmpty { p.optString("fs").ifEmpty { "It" } }} (${bytesHuman(p.optLong("size"))}) goes, once you apply.",
                 listOf(DialogButton("Cancel", onClick = close), DialogButton("Delete", N.red) { close(); add(JSONObject().put("op", "delete").put("n", p.optInt("n"))) })) }
-            "apply", "restore" -> OneDialog(close, if (dialog == "apply") "Apply ${ops.size} change${if (ops.size > 1) "s" else ""}?" else "Restore the previous table?",
+            "apply", "restore" -> OneDialog(close, if (dialog == "apply") "Apply changes (${ops.size})?" else "Restore the previous table?",
                 (if (dialog == "apply") "The old table is saved first. " else "The current table is saved first. Filesystems on the old partitions come back if nothing new was written over them. ") +
                     "Type the drive's serial (${l.optString("serial")}) to confirm.",
                 listOf(DialogButton("Cancel", onClick = close), DialogButton(if (dialog == "apply") "Apply" else "Restore", N.red) {

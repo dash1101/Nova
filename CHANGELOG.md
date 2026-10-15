@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.8.2-alpha (server, Nova web, app and watch)
+- **Hold a recommendation** (or right-click it on the web) for a quick menu: **Not now** hides it for a month, its fix opens straight away, and on Home **Hide Recommended from Home** takes the whole card off (Edit Home brings it back).
+- **No more blank flash between pages** (web): the page you're leaving stays up until the next one has something to show, instead of flashing an empty "Loading…" page. Containers now draws as soon as the list arrives; the live CPU and memory figures fill in a moment later.
+- **Animation speed** (Appearance, app and web): a slider from 0.25× to 3× for every animation in Nova.
+- **Per-core CPU graphs** (Status, app and web): a small live graph for each CPU core under the main graphs.
+- **Your own Nova icon on the web** (Appearance → App icon): the browser tab icon, and the icon Nova gets on an iPhone or iPad home screen, in any of the app's styles.
+- **App icons that match the styles** (app, Appearance → App icon): new Aero, see-through Glass, Mica and Breeze icons.
+- **Aero:** pop-up notifications and alerts get a much heavier frost, so they stay readable over anything; and the style no longer mentions Windows 7 by name.
+- **Mica, Breeze and Aero:** the selection in the navigation pill and in segmented controls now keeps the pill's own corner shape at any corner roundness.
+- **Translations:** about 1,200 more of Nova's words in Spanish, German, French, Portuguese, Italian, Russian, Chinese, Japanese and Korean — nearly everything is translated now.
+
 ## 0.8.1-alpha (server, Nova web, app and watch)
 - **Fairer drive health:** the health % now weighs real failure signs — sectors the drive had to remap and read errors it reported — on a scale where the first few count for little and hundreds count a lot. A handful of unreadable (pending) sectors, which a power cut mid-write leaves behind and which go away when the file is written again, cost only a few points, and age, the cable-error history and vendor-specific raw values don't count. A drive with a few bad sectors now reads **Mostly healthy**; **Worn — keep an eye on it** (and the amber light on the server picture) is kept for drives that are really wearing out.
 - **Health checks fold away** (a drive's page, app and web): the SMART readings sit in one row with a summary ("Passed · 42°C · 4 unreadable") — tap it for the details.
