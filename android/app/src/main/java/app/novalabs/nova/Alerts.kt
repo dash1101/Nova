@@ -63,6 +63,7 @@ object Alerts {
                 continue
             }
             if (since <= 0 || !Notifier.atLeast(e.optString("level"), pairing.phoneNotifyLevel)) continue
+            if (pairing.quietNow() && e.optString("level") != "critical") continue          // quiet hours: it waits in the Inbox
             if (t < fresh) { stale++; continue }
             Notifier.post(ctx, (t * 1000).toLong().toInt() xor pairing.profile.hashCode(), e.optString("level"),
                 if (many) "$name · ${e.optString("title")}" else e.optString("title"), e.optString("detail"))

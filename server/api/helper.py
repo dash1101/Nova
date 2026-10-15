@@ -171,6 +171,22 @@ argv = sys.argv[1:]
 if not argv: fail("no verb", 2)
 verb, args = argv[0], argv[1:]
 
+if verb == "containers-stats" and not args:
+    # CPU and memory of every running container, for the Containers list (one docker call for all of them)
+    rc, st, _ = run(["docker", "stats", "--no-stream", "--format", "{{json .}}"], timeout=30)
+    stats_by_name = {}
+    for line in (st or "").splitlines():
+        try: d = json.loads(line)
+        except ValueError: continue
+        name = d.get("Name", "")
+        if not re.fullmatch(NAME_RE, name or ""): continue
+        try: cpu = float(str(d.get("CPUPerc", "0")).rstrip("%") or 0)
+        except ValueError: cpu = 0.0
+        try: memp = float(str(d.get("MemPerc", "0")).rstrip("%") or 0)
+        except ValueError: memp = 0.0
+        stats_by_name[name] = {"cpu": round(cpu, 1), "mem": str(d.get("MemUsage", "")).split("/")[0].strip()[:20], "mem_pct": round(memp, 1)}
+    out({"stats": stats_by_name, "t": int(time.time())})
+
 if verb == "containers" and not args:
     out({"containers": sorted([summary(c) for c in inspect_all()], key=lambda x: (x["stack"], x["name"]))})
 

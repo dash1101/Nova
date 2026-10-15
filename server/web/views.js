@@ -363,6 +363,7 @@ export async function containers(ctx) {
   if (name && sub === "logs") return logs(ctx, name);
   if (name && sub === "shell") return shell(ctx, name);
   if (name) return container(ctx, name);
+  let heavy = false;
   const draw = () => {
     const items = S.cache["/api/v1/containers"]?.containers || [];
     const stacks = {}; items.forEach(x => (stacks[x.stack || x.name] ||= []).push(x));
@@ -371,15 +372,21 @@ export async function containers(ctx) {
     const up = items.filter(x => x.state === "running").length;
     const nod = S.overview?.features?.docker === false ? group(row("Docker isn't installed", { sub: "Containers need it. Programs from the store work without it.", icon: "box", tint: "var(--amber)" })
       + (isAdmin() ? row("Install Docker", { sub: "In the app store", icon: "down", blue: true, click: "go:store" }) : "")) : "";
+    const st = S.cache["/api/v1/containers/stats"]?.stats || {};
+    const use = x => { const u = st[x.name]; return u && x.state === "running" ? ` · CPU ${u.cpu}% · ${u.mem}` : ""; };
+    const weight = x => { const u = st[x.name] || {}; return (u.cpu || 0) * 4 + (u.mem_pct || 0); };
+    const shown = heavy ? [["Using the most first", [...items].sort((a, b) => weight(b) - weight(a))]] : groups;
     ctx.show(`<div class="statusline" style="cursor:default"><span class="dot" style="background:${up === items.length ? "var(--green)" : "var(--amber)"}"></span>${S.cache["/api/v1/containers"] ? `${up} of ${items.length} running` : "Loading…"}</div>
-      ${nod}${groups.map(([g, cs]) => sec(cap(g)) + group(cs.map(x => row(x.name, { sub: `${x.image.split("/").pop()} · ${x.health ? x.state + ", " + x.health : x.state}`, click: "open:" + x.name, end: `<span class="dot" style="background:${stateColor(x.state, x.health)}"></span>` })).join(""))).join("")}`,
+      ${items.length > 1 ? segmented(["By app", "Heaviest first"], heavy ? 1 : 0, "csort") : ""}
+      ${nod}${shown.map(([g, cs]) => sec(cap(g)) + group(cs.map(x => row(x.name, { sub: `${x.image.split("/").pop()} · ${x.health ? x.state + ", " + x.health : x.state}${use(x)}`, click: "open:" + x.name, end: `<span class="dot" style="background:${stateColor(x.state, x.health)}"></span>` })).join(""))).join("")}`,
       { title: "Containers", actions: isAdmin() ? [{ icon: "add", label: "Add a container", act: "addc" }] : [] });
+    wireCommon(ctx.root, { onSeg: (k, i) => { if (k === "csort") { heavy = i === 1; draw(); } } });
   };
   ctx.handlers({ open: n => ctx.go("containers/" + encodeURIComponent(n)),
     addc: async () => { const r = await dialog("Add a container", "", [{ label: "Cancel", value: null }, ...(has("store") ? [{ label: "From the app store", value: "store" }] : []), { label: "Your own", color: "var(--blue)", value: "own" }],
       `<div class="pad"><p class="muted" style="margin:0">Pick a ready-made app from the store, or run any image you like.</p></div>`);
       if (r === "store") ctx.go("store"); else if (r === "own") ctx.go("container-new"); } });
-  draw(); ctx.every(10000, async () => { await get("/api/v1/containers"); draw(); }, true);
+  draw(); ctx.every(10000, async () => { await Promise.all([get("/api/v1/containers"), get("/api/v1/containers/stats").catch(() => {})]); draw(); }, true);
 }
 async function container(ctx, name) {
   const path = `/api/v1/containers/${encodeURIComponent(name)}`;

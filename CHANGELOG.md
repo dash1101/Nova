@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.7.3-alpha (server, Nova web, app and watch)
+- **Install in one line:** `curl -fsSL https://raw.githubusercontent.com/dash1101/Nova/main/get.sh | sh` downloads the latest release, checks its signature and installs it (with apt on Debian and Ubuntu). On the website and in the README too.
+- **Container usage:** Containers shows each one's CPU and memory, and **Heaviest first** sorts by what's using the most (web and app).
+- **Quiet hours** (app → Inbox → notification settings): at night only critical alerts make a notification; the rest wait in the Inbox.
+- **Glass, sharper and easier to read:** blurred wallpapers and the page behind popups are smooth instead of pixelated, popup text sits on a calmer layer, and long lists like the Inbox now get their glass edges too (a very tall card used to lose its lens).
+- **Landscape:** the side navigation pill is frosted glass again instead of black, and the back gesture shows the page underneath while you drag.
+- **FAQ:** setting Nova up on several computers on the same network, and sharing one Cloudflare token and domain between them. The website also says where Windows and macOS stand (not yet; Nova web works on them).
+- **Quieter Inbox:** a drive repair or clone that's refused, or one of Nova's own helper calls refusing something, no longer shows up as an alert.
+
 ## 0.7.2-alpha (server, Nova web, app and watch)
 - **Home Assistant light** (Lighting → Automation): any light Home Assistant knows — a Govee strip, a Hue bulb — shows the server's status too: amber for a warning, red for something critical, then back exactly to how it was. Nova only changes it when the status changes, so your own switches and automations keep working. It needs your HA address and a long-lived access token (saving it needs your fingerprint).
 - **Lights look right:** colors are gamma-corrected and brightness follows how bright it looks, so the status light's red stays red (no more pink at high brightness) and lower brightness really is dimmer. You may want to raise your brightness a little after updating.

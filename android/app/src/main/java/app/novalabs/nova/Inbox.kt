@@ -206,6 +206,17 @@ import java.util.*
                 Row1(label, if (k == "info") "Includes logins and USB plug/unplug" else null, onClick = { phone = k; app.pairing.phoneNotifyLevel = k }) {
                     OneRadio(phone == k) } }
         }
+        SectionLabel("Quiet hours")
+        Group {
+            var quiet by remember { mutableStateOf(app.pairing.quietOn) }
+            var from by remember { mutableIntStateOf(app.pairing.quietFrom) }; var to by remember { mutableIntStateOf(app.pairing.quietTo) }
+            SwitchRow("Quiet hours", if (quiet) "%02d:00 – %02d:00 · only critical alerts make a sound; the rest wait in the Inbox".format(from, to)
+                else "Hold back everything but critical alerts at night", quiet) { quiet = it; app.pairing.quietOn = it }
+            if (quiet) {
+                RowDivider(); SliderRow("From", from.toFloat(), 0f..23f, "%02d:00".format(from), steps = 22, onChange = { from = it.toInt() }, onDone = { app.pairing.quietFrom = from })
+                RowDivider(); SliderRow("Until", to.toFloat(), 0f..23f, "%02d:00".format(to), steps = 22, onChange = { to = it.toInt() }, onDone = { app.pairing.quietTo = to })
+            }
+        }
         Text("Instant alerts keep one quiet connection to each server and show a silent notification Android requires — long-press it to hide it. Uses very little battery.", color = N.sub, fontSize = 13.sp,
             modifier = Modifier.padding(horizontal = 30.dp, vertical = 4.dp))
         s?.let { s ->

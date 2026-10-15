@@ -195,6 +195,21 @@ class Pairing(ctx: Context, val profile: String = Servers.active(ctx)) {
     var phoneNotifyLevel: String
         get() = p.getString("phone_notify", "warning")!!
         set(v) { p.edit().putString("phone_notify", v).apply() }
+    /** Quiet hours: between these hours only critical alerts make a notification (the rest wait in the Inbox). */
+    var quietOn: Boolean
+        get() = p.getBoolean("quiet_on", false)
+        set(v) { p.edit().putBoolean("quiet_on", v).apply() }
+    var quietFrom: Int
+        get() = p.getInt("quiet_from", 23)
+        set(v) { p.edit().putInt("quiet_from", v.coerceIn(0, 23)).apply() }
+    var quietTo: Int
+        get() = p.getInt("quiet_to", 7)
+        set(v) { p.edit().putInt("quiet_to", v.coerceIn(0, 23)).apply() }
+    fun quietNow(): Boolean {
+        if (!quietOn) return false
+        val h = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
+        return if (quietFrom > quietTo) h >= quietFrom || h < quietTo else h in quietFrom until quietTo
+    }
 
     fun updateRemote(remote: String, cfId: String, cfSecret: String) {
         p.edit().putString("remote_url", remote).putString("cf_id", cfId)

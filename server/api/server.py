@@ -39,7 +39,7 @@ try:                       # optional module: fan/case lighting (modules/fan-gig
 except ImportError:
     nova_rgb = None
 
-API_VERSION = "0.7.2-alpha"
+API_VERSION = "0.7.3-alpha"
 CONFIG = "/etc/nova-api/config.json"
 DATA = "/var/lib/nova-api"
 DEVICES = f"{DATA}/devices.json"
@@ -158,6 +158,8 @@ def app_list():
                     **({"kind": "command", "command": c["command"], "timeout": c.get("timeout", 600), "confirm": bool(c.get("confirm"))} if c.get("command") else {}),
                     "hidden": bool(c.get("hidden")), "source": "custom", "port": None, "scheme": "", "path": "", "host_ip": ""})
     return out
+
+_cstats = {"t": 0, "v": None}
 
 def live_tasks():
     """Running background tasks (and ones that just ended), read straight from /run/nova-tasks."""
@@ -1876,6 +1878,11 @@ class Handler(BaseHTTPRequestHandler):
         # ── containers ──
         if method == "GET" and parts == ["containers"]:
             rc, res = helper("containers"); return (200 if rc == 0 else 502), res
+        if method == "GET" and parts == ["containers", "stats"]:      # CPU and memory per running container (cached briefly: docker stats takes ~2 s)
+            if time.time() - _cstats["t"] > 10:
+                rc, res = helper("containers-stats", timeout=40)
+                if rc == 0: _cstats.update(t=time.time(), v=res)
+            return 200, _cstats["v"] or {"stats": {}}
         # your own container, from a form (helper.py checks every field; risky options can't be expressed)
         if method == "POST" and parts == ["containers", "custom", "check"]:
             if role_of(dev) != "admin": return 403, {"error": "admins only"}

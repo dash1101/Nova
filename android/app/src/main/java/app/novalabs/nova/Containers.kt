@@ -62,16 +62,24 @@ fun localTime(utc: String): String = runCatching {
             Row1("Docker isn't installed", "Containers need it. Programs from the store work without it.", false, Icons.Rounded.ViewInAr, N.amber)
             if (app.isAdmin) { RowDivider(); Row1("Install Docker", "In the app store", true, Icons.Rounded.Download, onClick = { app.go(Route.Store) }) }
         }
+        // CPU and memory per container (one call for all), and an optional "heaviest first" order
+        val usage by live(app, "/api/v1/containers/stats", 10_000)
+        val us = usage?.optJSONObject("stats")
+        var heavy by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
+        if (items.size > 1) Segmented(listOf("By app", "Heaviest first"), if (heavy) 1 else 0) { heavy = it == 1 }
+        fun weight(c: JSONObject) = us?.optJSONObject(c.optString("name"))?.let { it.optDouble("cpu", 0.0) * 4 + it.optDouble("mem_pct", 0.0) } ?: 0.0
+        fun use(c: JSONObject) = us?.optJSONObject(c.optString("name"))?.takeIf { c.optString("state") == "running" }?.let { " · CPU ${it.optDouble("cpu")}% · ${it.optString("mem")}" } ?: ""
         // Stacks with several containers get their own card; one-container apps share an "Apps" card.
         val stacks = items.groupBy { it.optString("stack") }
         val singles = stacks.filter { it.value.size == 1 }.values.flatten()
-        (stacks.filter { it.value.size > 1 }.toList() + (if (singles.isNotEmpty()) listOf("" to singles) else emptyList())).forEach { (stack, cs) ->
-            SectionLabel(if (stack.isEmpty()) "Apps" else stack.replaceFirstChar { it.uppercase() } + if (cs.any { it.optBoolean("store") }) "  ·  from the store" else "")
+        (if (heavy) listOf("\u0000" to items.sortedByDescending { weight(it) })
+         else stacks.filter { it.value.size > 1 }.toList() + (if (singles.isNotEmpty()) listOf("" to singles) else emptyList())).forEach { (stack, cs) ->
+            SectionLabel(if (stack == "\u0000") "Using the most first" else if (stack.isEmpty()) "Apps" else stack.replaceFirstChar { it.uppercase() } + if (cs.any { it.optBoolean("store") }) "  ·  from the store" else "")
             Group {
                 cs.forEachIndexed { i, c ->
                     if (i > 0) RowDivider()
                     val st = c.optString("state"); val h = c.optString("health")
-                    Row1(c.optString("name"), "${c.optString("image").substringAfterLast('/')} · ${if (h.isNotEmpty()) "$st, $h" else st}",
+                    Row1(c.optString("name"), "${c.optString("image").substringAfterLast('/')} · ${if (h.isNotEmpty()) "$st, $h" else st}${use(c)}",
                         onClick = { app.go(Route.Container(c.optString("name"))) }) {
                         Box(Modifier.size(10.dp).clip(CircleShape).background(stateColor(st, h)))
                     }
