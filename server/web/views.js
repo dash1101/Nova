@@ -1498,7 +1498,7 @@ export async function appearance(ctx) {
         ["breeze", "Breeze", "Flat and tidy: a thin frame, gentle corners, the accent as the focus color"],
         ["aero", "Aero", "Windows 7 glass: tinted frosted frames with a glossy shine and glowing buttons"]].map(([k, l, d]) => row(l, { sub: d, end: radio(st === k), click: "style:" + k })).join(""))}
       ${["liquid", "fluent", "breeze", "aero"].includes(st) ? group((st !== "breeze" ? `<div class="range-row"><div class="h"><span>Glass clarity</span><span id="glassl">${prefs.glass ?? 60}%</span></div><input type="range" min="0" max="100" value="${prefs.glass ?? 60}" data-range="glass" style="--p:${prefs.glass ?? 60}%"></div>` : "")
-        + `<div class="range-row"><div class="h"><span>Corner roundness</span><span id="roundl">${prefs.round ?? 100}%</span></div><input type="range" min="25" max="150" value="${prefs.round ?? 100}" data-range="round" style="--p:${((prefs.round ?? 100) - 25) / 125 * 100}%"></div>`) : ""}
+        + `<div class="range-row"><div class="h"><span>Corner roundness</span><span id="roundl">${prefs.round ?? 100}%</span></div><input type="range" min="25" max="400" value="${prefs.round ?? 100}" data-range="round" style="--p:${((prefs.round ?? 100) - 25) / 375 * 100}%"></div>`) : ""}
       ${st === "liquid" && !canRefract() ? note("This browser shows Glass frosted, without the bending at the edges — that part needs a Chromium-based browser.") : ""}
       ${sec("Theme")}${group([["system", "Same as this device"], ["light", `${look} light`], ["dark", `${look} dark`]].map(([k, l]) => row(l, { end: radio(t === k), click: "theme:" + k })).join(""))}
       ${group(switchRow("Reduce motion", "Simple fades instead of slides and bounces", prefs.reduceMotion, "motion", { blue: false })

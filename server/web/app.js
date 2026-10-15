@@ -55,7 +55,7 @@ function applyTheme() {
   if (preset === "aero") root.style.setProperty("--ae-blur", (4 + 12 * (1 - clear)).toFixed(1) + "px"); else root.style.removeProperty("--ae-blur");
   if (preset === "liquid") { root.style.setProperty("--lg-blur", (1 + 13 * glassBody(clear)).toFixed(1) + "px"); root.dataset.clear = clear.toFixed(2); }
   else { root.style.removeProperty("--lg-blur"); delete root.dataset.clear; }
-  root.style.setProperty("--rk", String(Math.max(25, Math.min(150, prefs.round ?? 100)) / 100));
+  root.style.setProperty("--rk", String(Math.max(25, Math.min(400, prefs.round ?? 100)) / 100));
   liquid(preset === "liquid" && !solid && !root.classList.contains("lite") && !prefs.devNoLens);
   root.classList.toggle("dev-bounds", !!prefs.devBounds); fpsMeter(!!prefs.devFps);
   $('meta[name="theme-color"]')?.setAttribute("content", dark ? "#000000" : "#f4f3f8");

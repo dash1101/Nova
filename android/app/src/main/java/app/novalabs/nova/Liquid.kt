@@ -68,7 +68,7 @@ fun presetTokens(preset: String, dark: Boolean, seed: Color?): NovaColors? = whe
 
 /** Corner radius for a card in the current style (Corner roundness scales the three presets). */
 @Composable fun cardRadius(default: Dp): Dp {
-    val k = AppPrefs.round.coerceIn(25, 150) / 100f
+    val k = AppPrefs.round.coerceIn(25, 400) / 100f
     return when (N.preset) { "liquid" -> 28.dp * k; "fluent" -> 8.dp * k; "breeze" -> 7.dp * k; "aero" -> 6.dp * k; else -> default }
 }
 

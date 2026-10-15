@@ -304,7 +304,7 @@ private fun DialogButton.role(t: NovaColors) = when { color == null -> "cancel";
       androidx.compose.runtime.CompositionLocalProvider(LocalInDialog provides true) {
         when (t.preset) {
             "liquid" -> {
-                val k = AppPrefs.round.coerceIn(25, 150) / 100f; val shape = RoundedCornerShape(34.dp * k)
+                val k = AppPrefs.round.coerceIn(25, 400) / 100f; val shape = RoundedCornerShape(34.dp * k)
                 Column(Modifier.padding(horizontal = 28.dp).widthIn(max = if (content != null) 440.dp else 320.dp).fillMaxWidth()
                     .liquidCard(shape, 34.dp * k, 18.dp).padding(start = 16.dp, end = 16.dp, top = 22.dp, bottom = 16.dp),
                     horizontalAlignment = Alignment.CenterHorizontally) {
@@ -350,7 +350,7 @@ private fun DialogButton.role(t: NovaColors) = when { color == null -> "cancel";
                 }
             }
             "aero" -> {       // a Windows 7 task dialog: the title on the glass frame, a plain panel for the words, glossy buttons
-                val k = AppPrefs.round.coerceIn(25, 150) / 100f; val shape = RoundedCornerShape(8.dp * k)
+                val k = AppPrefs.round.coerceIn(25, 400) / 100f; val shape = RoundedCornerShape(8.dp * k)
                 Column(Modifier.padding(horizontal = 24.dp).widthIn(max = 480.dp).fillMaxWidth().aeroCard(shape, 20.dp).padding(8.dp)) {
                     DialogToasts()
                     if (title != null) Text(title, style = TextStyle(color = t.text, fontSize = 16.sp, shadow = aeroGlow(t.dark)),

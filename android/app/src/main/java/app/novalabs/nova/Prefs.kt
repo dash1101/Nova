@@ -199,7 +199,7 @@ object AppLock {
                     OneSlider(AppPrefs.glass.toFloat(), { AppPrefs.set("glass", it.toInt()) }, 0f..100f)
                 }
                 Row { Text("Corner roundness", color = N.sub, fontSize = 14.sp, modifier = Modifier.weight(1f)); Text("${AppPrefs.round}%", color = N.sub, fontSize = 14.sp) }
-                OneSlider(AppPrefs.round.toFloat(), { AppPrefs.set("round", it.toInt()) }, 25f..150f)
+                OneSlider(AppPrefs.round.toFloat(), { AppPrefs.set("round", it.toInt()) }, 25f..400f)
             }
         }
         SectionLabel("Theme")
