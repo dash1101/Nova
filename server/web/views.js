@@ -1359,8 +1359,14 @@ async function drive(ctx, serial) {
       const d = (S.cache["/api/v1/hardware"]?.drives || []).find(x => x.serial === serial), mounted = (d?.mounts || []).length > 0;
       if (mounted && !(await confirm("Unmount this drive?", "Anything using it stops being able to read or write it. Your phone confirms it.", "Unmount"))) return;
       busy = true; draw();
-      try { await post(`/api/v1/drives/${encodeURIComponent(serial)}/${mounted ? "unmount" : "mount"}`); toast(mounted ? "Unmounted — safe to remove" : "Mounted"); await get("/api/v1/hardware"); }
-      catch (e) { toast(e.message); } finally { busy = false; if (ctx.alive()) draw(); }
+      const path = `/api/v1/drives/${encodeURIComponent(serial)}/${mounted ? "unmount" : "mount"}`;
+      try { const r = await post(path); toast(mounted ? (r?.note || "Unmounted — safe to remove") : "Mounted"); await get("/api/v1/hardware"); }
+      catch (e) {
+        // something's using it: say what, and offer to force it (stops those containers, detaches the rest)
+        if (e.code === 409 && mounted && await confirm("Force unmount?", `${e.message}. Force unmount stops those containers and detaches the drive; programs that had it open (a terminal, say) let go when they're closed. Start the containers again once it's back.`, "Force unmount")) {
+          try { const r = await post(path, { force: true }); toast(r?.note || "Unmounted"); await get("/api/v1/hardware"); } catch (e2) { toast(e2.message); }
+        } else if (e.code !== 409) toast(e.message);
+      } finally { busy = false; if (ctx.alive()) draw(); }
     },
   });
   draw(); if (!S.cache["/api/v1/hardware"]) { await get("/api/v1/hardware").catch(e => toast(e.message)); if (ctx.alive()) draw(); }

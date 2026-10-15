@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.7.9-alpha (server, Nova web, app and watch)
+- **Moving files onto a drive is smarter:** the same file on both sides (byte for byte, whatever its date) no longer counts as a clash — the extra copy just goes. Two different files with one name: Nova tests archives (.gz, .zst, .xz, .bz2, .zip), and when the drive's copy is broken (what a failing drive does) the good one takes its place and the broken one is kept beside it, renamed. If it can't tell, both are kept. Nothing is ever lost, and no SSH needed.
+- **Force unmount** (app and web): when something is using a drive, Nova says what — containers and programs — and offers Force unmount, which stops those containers and detaches the drive. Start the containers again once it's back.
+- **A drive you removed on purpose** (Forget it in the Inbox) leaves the server picture right away — no red light for it.
+
 ## 0.7.8-alpha (server, Nova web, app and watch)
 - **Partition manager** (Storage & hardware → Partition manager, or search for it): every drive and its partitions on one page, like Windows Disk Management — tap a drive to edit its partitions, tap a partition to change where it's mounted.
 - **Change where a drive is mounted** (like "Change drive letter and paths"): pick a folder like /mnt/name and the partition is mounted there only, kept after a restart. Files that were saved into that folder while the drive wasn't there are moved onto the drive first (checked byte for byte; if a file clashes with a different one on the drive, nothing is removed).

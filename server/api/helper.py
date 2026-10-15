@@ -632,19 +632,30 @@ if verb == "drives" and not args:
          "fans": {"supported": False,
                   "note": "This board's fan chip isn't supported by the built-in Linux driver yet."}})
 
-if verb == "drive-unmount" and len(args) == 1:
+if verb == "drive-unmount" and len(args) in (1, 2) and (len(args) == 1 or args[1] == "force"):
+    force = len(args) == 2
     d = disk_by_serial(args[0])
     if d["protected"]: fail(f"{d['role']} can't be unmounted while the server is running")
     if not d["mounts"]: fail("it isn't mounted")
     if BACKUP_MOUNT and BACKUP_MOUNT in d["mounts"]:
         rc, so, _ = run(["systemctl", "is-active", "nova-backup.service"])
         if so.strip() in ("active", "activating"): fail("a backup is writing to it right now")
+    import storage
+    ctrs = sorted({c for src, cs in storage.docker_users().items() for m in d["mounts"] if src == m or src.startswith(m.rstrip("/") + "/") for c in cs})
+    progs = []
     for m in d["mounts"]:
         rc, so, se = run(["fuser", "-vm", m])
-        users = sorted({l.split()[-1] for l in se.splitlines()[1:] if l.strip() and "kernel" not in l})
-        if users: fail(f"{m} is in use by: {', '.join(users)}")
+        progs += [l.split()[-1] for l in se.splitlines()[1:] if l.strip() and "kernel" not in l]
+    progs = sorted(set(progs))
+    if (ctrs or progs) and not force:
+        # say what's using it, so the app can offer Force unmount (it stops those containers, then detaches the rest)
+        out({"ok": False, "busy": True, "containers": ctrs, "programs": progs,
+             "error": f"In use by {', '.join((['containers: ' + ', '.join(ctrs)] if ctrs else []) + (['programs: ' + ', '.join(progs[:6])] if progs else []))}"}, 1)
+    for c in ctrs: run(["docker", "stop", "-t", "20", c], timeout=90)
+    lazy = []
     for m in sorted(d["mounts"], key=len, reverse=True):
         rc, so, se = run(["umount", m])
+        if rc != 0 and force: rc, so, se = run(["umount", "-l", m]); lazy.append(m)
         if rc != 0: fail(f"umount {m}: {se.strip()[:150]}")
     set_unmounted(d["mounts"] + [d["serial"]], True)
     unplug = False
@@ -654,8 +665,9 @@ if verb == "drive-unmount" and len(args) == 1:
             open(f"/sys/block/{d['name']}/device/delete", "w").write("1\n"); unplug = True
         except Exception: pass
     changelog(f"Unmounted {d['model']} ({', '.join(d['mounts'])}) from the Nova app")
-    out({"ok": True, "safe_to_unplug": unplug or d["bus"] == "usb",
-         "note": "Safe to unplug." if unplug else "Unmounted. It stays connected until you power off or unplug it."})
+    out({"ok": True, "safe_to_unplug": (unplug or d["bus"] == "usb") and not lazy, "stopped": ctrs,
+         "note": ("Stopped " + ", ".join(ctrs) + ". " if ctrs else "") + ("Detached — programs that had it open (a terminal, say) let go once they're closed; wait for that before unplugging." if lazy
+                  else "Safe to unplug." if unplug else "Unmounted. It stays connected until you power off or unplug it.")})
 
 if verb == "drive-mount" and len(args) == 1:
     d = disk_by_serial(args[0])

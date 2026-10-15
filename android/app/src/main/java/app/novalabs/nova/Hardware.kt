@@ -186,11 +186,19 @@ private fun health(d: JSONObject): Pair<String, String> {
                     JSONObject().put("spec", JSONObject().put("drives", JSONArray(listOf(serial, t.optString("serial")))).put("confirm", JSONArray(listOf(t.optString("serial"))))))
                 app.go(Route.Task(r.optString("id"))) } }))
     }
+    var forceWhy by remember { mutableStateOf<String?>(null) }
     if (confirm) OneDialog({ confirm = false }, "Unmount ${driveName(d)}?",
         "Anything using it (shares, backups) loses access until it's mounted again. USB drives are powered down so you can unplug them.",
         listOf(DialogButton("Cancel") { confirm = false }, DialogButton("Unmount", N.amber) { confirm = false; app.act { busy = true
             try { val r = app.stepUp("Unmount ${driveName(d)}", "POST", "/api/v1/drives/$serial/unmount"); app.toast(r.optString("note", "Unmounted")); reload() }
+            catch (e: ApiException) { if (e.code == 409) forceWhy = e.message else throw e }
             finally { busy = false } } }))
+    // something's using it: say what, and offer to force it (stops those containers, detaches the rest)
+    forceWhy?.let { why -> OneDialog({ forceWhy = null }, "Force unmount?",
+        "$why. Force unmount stops those containers and detaches the drive; programs that had it open (a terminal, say) let go when they're closed. Start the containers again once it's back.",
+        listOf(DialogButton("Cancel") { forceWhy = null }, DialogButton("Force unmount", N.red) { forceWhy = null; app.act { busy = true
+            try { val r = app.stepUp("Force unmount ${driveName(d)}", "POST", "/api/v1/drives/$serial/unmount", JSONObject().put("force", true)); app.toast(r.optString("note", "Unmounted")); reload() }
+            finally { busy = false } } })) }
 }
 
 /** SMART self-tests: the drive checks itself (read-only, fine while it's in use). */

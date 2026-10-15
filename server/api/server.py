@@ -40,7 +40,7 @@ try:                       # optional module: fan/case lighting (modules/fan-gig
 except ImportError:
     nova_rgb = None
 
-API_VERSION = "0.7.8-alpha"
+API_VERSION = "0.7.9-alpha"
 # The API contract (docs/API.md). API_LEVEL only ever goes up: each new level adds endpoints or fields, never removes or
 # changes one. MIN_LEVEL is the oldest level this server still answers in full (old apps keep working back to it).
 # MIN_CLIENT: the oldest app builds still served, per platform — 0 = all of them. Raising it is the last resort, after
@@ -2165,7 +2165,8 @@ class Handler(BaseHTTPRequestHandler):
                 if kind not in ("short", "long", "abort"): raise ValueError("type must be short, long or abort")
                 rc, res = helper("smart-test", parts[1], kind, timeout=70); return (200 if rc == 0 else 400), res
         if method == "POST" and len(parts) == 3 and parts[0] == "drives" and parts[2] in ("mount", "unmount"):
-            rc, res = helper(f"drive-{parts[2]}", parts[1], timeout=120); return (200 if rc == 0 else 400), res
+            extra = ["force"] if parts[2] == "unmount" and data.get("force") is True else []      # force: stops the containers using it, detaches the rest
+            rc, res = helper(f"drive-{parts[2]}", parts[1], *extra, timeout=180); return (200 if rc == 0 else 409 if res.get("busy") else 400), res
         if method == "POST" and len(parts) == 2 and parts[0] == "power" and parts[1] in ("reboot", "poweroff"):
             rc, res = helper("power", parts[1]); return (200 if rc == 0 else 500), res
 

@@ -1024,19 +1024,73 @@ def mount_issues(m):
                                  "spec": {"serial": d["serial"], "part": p["name"], "mount": mnt, "merge": True}}] if p else []})
     return out
 
+INTEGRITY = {".gz": ["gzip", "-t"], ".tgz": ["gzip", "-t"], ".zst": ["zstd", "-tq"], ".xz": ["xz", "-t"], ".bz2": ["bzip2", "-t"], ".zip": ["unzip", "-tq"]}
+
+def _intact(path):
+    """True / False for archives Nova can test (a broken copy from a failing drive shows up here); None when it can't tell."""
+    ext = next((e for e in INTEGRITY if path.lower().endswith(e)), None)
+    if not ext or not have(INTEGRITY[ext][0]): return None
+    return run(INTEGRITY[ext] + [path], timeout=3600)[0] == 0
+
+def _same(a, b):
+    if os.path.getsize(a) != os.path.getsize(b): return False
+    import hashlib
+    def h(p):
+        d = hashlib.sha256()
+        with open(p, "rb") as f:
+            for blk in iter(lambda: f.read(1 << 20), b""): d.update(blk)
+        return d.digest()
+    return h(a) == h(b)
+
+def _aside(path, why):
+    """A free name next to path for a copy that's kept, not used: 'name (from the system drive).ext' and so on."""
+    base, ext = os.path.splitext(path)
+    if ext in (".gz", ".zst", ".xz", ".bz2"): base, e2 = os.path.splitext(base); ext = e2 + ext
+    cand, n = f"{base} ({why}){ext}", 2
+    while os.path.lexists(cand): cand, n = f"{base} ({why} {n}){ext}", n + 1
+    return cand
+
 def _merge_into(folder, dest, log):
-    """Copy what's in the folder onto the drive (never over a different file), check every byte, then remove the originals."""
+    """Move what's in the folder onto the drive. Nothing is ever lost:
+       * a file the drive doesn't have is copied over;
+       * the same file on both (byte for byte, whatever its date) — the extra copy goes;
+       * two different files with the same name: if one is a broken archive (a failing drive does that), the intact one
+         wins and the broken one is kept beside it, renamed; otherwise both are kept, the incoming one renamed
+         "… (from the system drive)".
+    Every copy is checked before its original is removed."""
     log(f"Moving the files saved in {folder} onto the drive…")
-    run(["rsync", "-a", "--ignore-existing", folder.rstrip("/") + "/", dest.rstrip("/") + "/"], timeout=86400, check=True)
-    rc, so, _ = run(["rsync", "-a", "--checksum", "--dry-run", "--itemize-changes", folder.rstrip("/") + "/", dest.rstrip("/") + "/"], timeout=86400)
-    clash = [l.split(" ", 1)[-1] for l in so.splitlines() if l.strip() and not l.startswith((".d", "cd"))]
-    if rc != 0 or clash:
-        raise ValueError(f"{len(clash)} file(s) in {folder} have a different copy on the drive ({', '.join(clash[:3])}) — nothing was removed; "
-                         "look at them in Files, then try again")
-    for e in os.scandir(folder):
-        if e.is_dir(follow_symlinks=False): shutil.rmtree(e.path)
-        else: os.remove(e.path)
-    log(f"Done — they're on the drive now, and {folder} on the system drive is empty")
+    folder = folder.rstrip("/"); dest = dest.rstrip("/")
+    same = new = kept = fixed = 0
+    for root, dirs, files in os.walk(folder):
+        rel = os.path.relpath(root, folder); droot = os.path.join(dest, rel) if rel != "." else dest
+        os.makedirs(droot, exist_ok=True)
+        for fn in files:
+            src = os.path.join(root, fn); dst = os.path.join(droot, fn)
+            if os.path.islink(src) or not os.path.isfile(src): continue
+            if not os.path.lexists(dst):
+                shutil.copy2(src, dst)
+                if not _same(src, dst): raise RuntimeError(f"the copy of {fn} didn't match — the drive may be failing; nothing was removed")
+                new += 1
+            elif os.path.isfile(dst) and _same(src, dst): same += 1
+            else:
+                a, b = _intact(src), _intact(dst)
+                if a and b is False:                         # the drive's copy is broken: the good one takes its place
+                    os.rename(dst, _aside(dst, "broken copy")); shutil.copy2(src, dst)
+                    if not _same(src, dst): raise RuntimeError(f"the copy of {fn} didn't match — the drive may be failing; nothing was removed")
+                    log(f"{os.path.join(rel, fn)}: the drive's copy was broken — replaced with the good one (the broken one is kept, renamed)"); fixed += 1
+                else:                                       # can't tell which is right: keep both
+                    side = _aside(dst, "from the system drive"); shutil.copy2(src, side)
+                    if not _same(src, side): raise RuntimeError(f"the copy of {fn} didn't match — the drive may be failing; nothing was removed")
+                    log(f"{os.path.join(rel, fn)}: a different file with that name is on the drive — both kept (this one as “{os.path.basename(side)}”)"); kept += 1
+            os.remove(src)
+    for root, dirs, files in os.walk(folder, topdown=False):
+        for d in dirs:
+            try: os.rmdir(os.path.join(root, d))
+            except OSError: pass
+    left = [e.name for e in os.scandir(folder)]
+    if left: raise ValueError(f"{len(left)} item(s) in {folder} couldn't be moved (links or special files: {', '.join(left[:3])}) — the rest is on the drive")
+    log(f"Done — {new} copied, {same} already on the drive" + (f", {fixed} broken copies replaced" if fixed else "") + (f", {kept} kept side by side" if kept else "")
+        + f". {folder} on the system drive is empty now")
 
 def op_mount_set(spec, log, progress):
     """Put a partition at exactly one mount point: unmount it everywhere else, one line in /etc/fstab, files that were

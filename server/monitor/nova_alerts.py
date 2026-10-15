@@ -886,6 +886,10 @@ def main():
             if key.startswith("drive:"):       # a drive removed on purpose: forget it completely
                 serial = key[6:]
                 for d in ("drives", "smart", "smart_baseline"): m.st["counters"].get(d, {}).pop(serial, None)
+                # …and its light comes off the server picture right away (not at the next check)
+                lm = m.st.get("last_metrics") or {}
+                if isinstance(lm.get("drive_states"), list): lm["drive_states"] = [x for x in lm["drive_states"] if x.get("serial") != serial]
+                m.st.setdefault("forgotten_drives", {})[serial] = now()
             else:
                 m.st["dismissed"][key] = now()
                 if c: m.st["ignored"][key] = {k: c.get(k) for k in ("level", "title", "detail", "since")}
