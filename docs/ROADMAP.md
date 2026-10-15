@@ -2,6 +2,19 @@
 
 Where Nova is heading next. Nothing here is promised; it's the plan as it stands.
 
+## The road to 1.0
+
+- [x] One-line install on any Linux with systemd (`get.sh`), signed releases, self-updating server and app
+- [x] A stable, documented API contract with levels and a deprecation policy ([API.md](API.md))
+- [x] Privacy policy ([site/privacy.html](../site/privacy.html)) and an upgrade guide ([UPGRADING.md](UPGRADING.md))
+- [x] Nova web installable on iPhone and iPad (Add to Home Screen)
+- [ ] A feature freeze and a beta period on several machines and distributions
+- [ ] Translations complete for the languages that ship (fewer, finished languages over many half-done ones)
+- [ ] App store rework: dynamic listings and easier installs
+- [ ] Play Store listing (screenshots, store text, permission review)
+- [ ] An outside review of the pairing and approval design
+- [ ] After 1.0: a native iPhone app, then the Windows agent below
+
 ## Windows (server side)
 
 People will want to manage a Windows PC the same way, and nothing about the phone side stops them.

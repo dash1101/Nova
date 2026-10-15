@@ -78,6 +78,9 @@ body.side .topbar { left: calc(100px + env(safe-area-inset-left)); }
 @keyframes in-back { from { transform: translateX(-24px); opacity: 0; } to { transform: none; opacity: 1; } }
 @keyframes in-fade { from { opacity: 0; } to { opacity: 1; } }
 .enter-1 { animation: in-fwd .32s var(--ease); } .enter--1 { animation: in-back .32s var(--ease); } .enter-0 { animation: in-fade .18s ease; }
+/* the page's own background behind the two pictures while they cross: without it, the moment both are half
+   faded the browser's blank (white) canvas shows through — a white flash, worst in dark mode */
+::view-transition { background: var(--bg); }
 ::view-transition-old(root), ::view-transition-new(root) { animation-duration: .32s; animation-timing-function: var(--ease); }
 html.vt-fwd::view-transition-old(root) { animation-name: vt-out-fwd; } html.vt-fwd::view-transition-new(root) { animation-name: in-fwd; }
 html.vt-back::view-transition-old(root) { animation-name: vt-out-back; } html.vt-back::view-transition-new(root) { animation-name: in-back; }
@@ -882,11 +885,12 @@ html.breeze .alertcard, html.breeze .stat, html.breeze .hint, html.breeze .statu
 html.liquid { --rL: calc(24px * var(--rk, 1)); --rM: calc(14px * var(--rk, 1)); }
 html.fluent { --rL: calc(8px * var(--rk, 1)); --rM: 4px; }
 html.breeze { --rL: calc(7px * var(--rk, 1)); --rM: 3px; }
-:is(html.liquid, html.fluent, html.breeze) :is(.group, .links, .banner, .stat, .card, .tile, .slidetile, .term, .selbar, .srv, .taskbar, .editor, .mtile, .alertcard,
+html.aero { --rL: calc(6px * var(--rk, 1)); --rM: 3px; }
+:is(html.liquid, html.fluent, html.breeze, html.aero) :is(.group, .links, .banner, .stat, .card, .tile, .slidetile, .term, .selbar, .srv, .taskbar, .editor, .mtile, .alertcard,
   .nudge, .stile, .sugg, .fsel, .vtbox, .hint, .upnote, .srvchip, .statusline, .code-block) { border-radius: var(--rL); }
-:is(html.liquid, html.fluent, html.breeze) :is(.appicon, .appcell, .appic, .eng, .pinbox, .cmdcopy, .sugg button, .ctlbar button, .help, .cftok) { border-radius: var(--rM); }
-:is(html.fluent, html.breeze) :is(.field, .searchbox, .chip, .crumb, .pillbar, .pillbar button, .seg, .seg .bead, .seg button, .badge:not(:empty), .rcheck, .linkbtn, #toast) { border-radius: var(--rM); }
-:is(html.fluent, html.breeze) .rl .row.lift { border-radius: var(--rL); }
+:is(html.liquid, html.fluent, html.breeze, html.aero) :is(.appicon, .appcell, .appic, .eng, .pinbox, .cmdcopy, .sugg button, .ctlbar button, .help, .cftok) { border-radius: var(--rM); }
+:is(html.fluent, html.breeze, html.aero) :is(.field, .searchbox, .chip, .crumb, .pillbar, .pillbar button, .seg, .seg .bead, .seg button, .badge:not(:empty), .rcheck, .linkbtn, #toast) { border-radius: var(--rM); }
+:is(html.fluent, html.breeze, html.aero) .rl .row.lift { border-radius: var(--rL); }
 :is(.mapps, .srvstrip, .fdrives, .hfade).fs { -webkit-mask-image: linear-gradient(90deg, transparent, #000 40px); mask-image: linear-gradient(90deg, transparent, #000 40px); }
 :is(.mapps, .srvstrip, .fdrives, .hfade).fe { -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 40px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 40px), transparent); }
 :is(.mapps, .srvstrip, .fdrives, .hfade).fs.fe { -webkit-mask-image: linear-gradient(90deg, transparent, #000 40px, #000 calc(100% - 40px), transparent); mask-image: linear-gradient(90deg, transparent, #000 40px, #000 calc(100% - 40px), transparent); }
@@ -927,3 +931,86 @@ html[data-icons="circles"] .row .ri svg { width: 20px; height: 20px; }
 .fpsmeter { position: fixed; top: calc(env(safe-area-inset-top, 0px) + 6px); left: 50%; transform: translateX(-50%); z-index: 99; pointer-events: none;
   background: rgba(0,0,0,.75); color: #fff; font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; padding: 4px 10px; border-radius: 10px; }
 html.dev-bounds :is(.glass, .frost, #sheet .box, .nav, .alertcard, .sugg, .card) { outline: 1.5px solid magenta !important; outline-offset: -1px; }
+
+/* ── Aero ────────────────────────────────────────────────────────────────────────────────
+   Windows 7 glass: sky-blue frames that frost what's behind them, a soft shine from the top edge with two faint
+   diagonal streaks, a dark outer edge with a light one just inside, and glossy buttons that glow blue. */
+html.aero { font-family: "Segoe UI", "Selawik", "Open Sans", system-ui, sans-serif;
+  --blue: #63a5de; --link: #7fb5e4; --bg: #0a1b2e; --glow: color-mix(in srgb, var(--blue) 90%, #fff); --glow2: #1a7f8e;
+  --card: #13253a; --card-top: #13253a; --pill: #1c3350; --nav: #142a42; --navSel: color-mix(in srgb, var(--blue) 45%, #1c3350);
+  --divider: rgba(255,255,255,.12); --text: #fff; --sub: #b3c6da; --green: #4cc24c; --amber: #f2b630; --red: #e8584a; --frost-solid: #142a42;
+  --ae-frame: color-mix(in srgb, var(--blue) 35%, #0e2238); --ae-edge: rgba(0,0,0,.55); --ae-in: rgba(255,255,255,.22); --ae-wash: rgba(255,255,255,.16);
+  --ae-panel: rgba(20,30,43,.94); --ae-head: #a9d3f5;
+  --ae-b1: #4a5b70; --ae-b2: #3a4a5e; --ae-b3: #2b394a; --ae-b4: #334356; --ae-bedge: #0b1520; --ae-btext: #fff;
+  --ae-p1: #6fb3e8; --ae-p2: #4a93d2; --ae-p3: #2e74b5; --ae-p4: #3f8ed3; --ae-pedge: #0b2f52; --ae-ptext: #fff; }
+html.aero.l-light { --blue: #3379b6; --link: #0066cc; --bg: #d3e5f5; --glow: color-mix(in srgb, var(--blue) 65%, #fff); --glow2: #b9e3d3;
+  --card: #f5f9fd; --card-top: #f5f9fd; --pill: #e8f1fa; --nav: #eef5fc; --navSel: #cde6f7;
+  --divider: rgba(11,58,102,.10); --text: #1e1e1e; --sub: #4f5f70; --green: #2e9e2e; --amber: #c77c00; --red: #c8321f; --frost-solid: #eef5fc;
+  --ae-frame: color-mix(in srgb, var(--blue) 38%, #fff); --ae-edge: rgba(11,46,79,.40); --ae-in: rgba(255,255,255,.55); --ae-wash: rgba(255,255,255,.34);
+  --ae-panel: rgba(255,255,255,.97); --ae-head: #1e395b;
+  --ae-b1: #f2f2f2; --ae-b2: #ebebeb; --ae-b3: #dddddd; --ae-b4: #cfcfcf; --ae-bedge: #707070; --ae-btext: #1e1e1e;
+  --ae-p1: #eaf6fd; --ae-p2: #d9f0fc; --ae-p3: #bee6fd; --ae-p4: #a7d9f5; --ae-pedge: #3c7fb1; --ae-ptext: #1e1e1e; }
+html.aero body::before { background: radial-gradient(70vw 50vh at 30% 0%, color-mix(in srgb, var(--glow) 55%, transparent), transparent 70%),
+  radial-gradient(60vw 60vh at 90% 85%, color-mix(in srgb, var(--glow2) 45%, transparent), transparent 70%),
+  linear-gradient(160deg, transparent 40%, rgba(255,255,255,.06) 48%, transparent 56%), linear-gradient(var(--bg), color-mix(in srgb, var(--bg) 75%, #000)); }
+html.aero .glass, html.aero .frost, html.aero #sheet .box, html.aero #toast {
+  background: linear-gradient(var(--ae-wash), transparent 90px),
+    linear-gradient(135deg, transparent 40%, rgba(255,255,255,.11) 46%, transparent 52%, transparent 60%, rgba(255,255,255,.08) 64%, transparent 69%),
+    color-mix(in srgb, var(--ae-frame) calc(var(--ga, .55) * 100%), transparent);
+  backdrop-filter: blur(var(--ae-blur, 10px)) saturate(1.4); -webkit-backdrop-filter: blur(var(--ae-blur, 10px)) saturate(1.4);
+  border: 1px solid var(--ae-edge); background-clip: padding-box; box-shadow: inset 0 0 0 1px var(--ae-in), 0 4px 16px rgba(0,0,0,.35); }
+html.aero .glass::after, html.aero .frost::after { display: none; }
+html.aero .nav { border-radius: calc(6px * var(--rk, 1)); }
+html.aero .nav button, html.aero .nav .nscroll { border-radius: 4px; }
+/* the chosen tab glows like a Windows 7 taskbar button */
+html.aero .nav .bead { border-radius: 4px; backdrop-filter: none; -webkit-backdrop-filter: none;
+  background: radial-gradient(ellipse 70% 60% at 50% 100%, color-mix(in srgb, var(--blue) 70%, #fff 10%), transparent 75%),
+    linear-gradient(rgba(255,255,255,.38), rgba(255,255,255,.10) 50%, transparent 50%);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.45), 0 0 0 1px rgba(0,0,0,.35); }
+html.aero .sec { color: var(--ae-head); font-size: 15px; font-weight: 400; }
+html.aero.l-light :is(.sec, .ph h1, #sheet .box h2) { text-shadow: 0 0 10px #fff, 0 0 4px #fff; }
+html.aero .ph h1 { font-weight: 400; }
+html.aero :is(.btn, .pillbtn, #sheet .acts button) { border-radius: 3px; color: var(--ae-btext); font-weight: 400; font-size: 14px;
+  background: linear-gradient(var(--ae-b1), var(--ae-b2) 50%, var(--ae-b3) 50%, var(--ae-b4)); border: 1px solid var(--ae-bedge);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.35); transition: box-shadow .2s, background .2s; }
+html.aero .btn { height: 36px; padding: 0 18px; }
+html.aero .pillbtn { padding: 5px 12px; }
+html.aero .pillbtn.red, html.aero #sheet .acts button[data-role=destructive] { color: var(--red) !important; }
+html.aero :is(.btn, #sheet .acts button[data-role=primary]),
+html.aero :is(.btn, .pillbtn, #sheet .acts button):hover { background: linear-gradient(var(--ae-p1), var(--ae-p2) 50%, var(--ae-p3) 50%, var(--ae-p4));
+  border-color: var(--ae-pedge); color: var(--ae-ptext); }
+html.aero :is(.btn, .pillbtn, #sheet .acts button):hover { box-shadow: inset 0 0 0 1px rgba(255,255,255,.45), 0 0 9px color-mix(in srgb, var(--blue) 70%, transparent); }
+html.aero .sw { width: 44px; height: 22px; border-radius: 11px; background: linear-gradient(var(--ae-b1), var(--ae-b2) 50%, var(--ae-b3) 50%, var(--ae-b4));
+  box-shadow: inset 0 0 0 1px var(--ae-bedge); }
+html.aero .sw::after { top: 2px; left: 2px; width: 18px; height: 18px; background: linear-gradient(#fff, #f0f0f0 50%, #dcdcdc 50%, #e8e8e8);
+  box-shadow: 0 0 0 1px var(--ae-bedge), 0 1px 2px rgba(0,0,0,.3); }
+html.aero .sw.on { background: linear-gradient(color-mix(in srgb, var(--blue) 50%, #fff), color-mix(in srgb, var(--blue) 80%, #fff) 50%, var(--blue) 50%, color-mix(in srgb, var(--blue) 70%, #fff));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--blue) 55%, #000); }
+html.aero .sw.on::after { transform: translateX(22px); }
+html.aero .radio { width: 18px; height: 18px; border: 1px solid var(--ae-bedge); background: linear-gradient(var(--ae-b4), var(--ae-b1)); }
+html.aero .radio.on { border-color: var(--ae-bedge); }
+html.aero .radio.on::after { width: 9px; height: 9px; background: radial-gradient(circle at 35% 30%, color-mix(in srgb, var(--blue) 30%, #fff), var(--blue) 55%, color-mix(in srgb, var(--blue) 65%, #000)); }
+html.aero .seg .bead { background: linear-gradient(var(--ae-p1), var(--ae-p2) 50%, var(--ae-p3) 50%, var(--ae-p4)); box-shadow: inset 0 0 0 1px var(--ae-pedge); }
+html.aero.l-light .seg .bead ~ * { color: var(--text); }
+html.aero :is(.field, .searchbox) { border-radius: 3px; background: var(--ae-panel); box-shadow: inset 0 0 0 1px var(--ae-bedge); }
+html.aero :is(.field:focus, .searchbox:focus-within) { box-shadow: inset 0 0 0 1px var(--ae-pedge), 0 0 6px color-mix(in srgb, var(--blue) 60%, transparent); }
+/* list rows light up the way Windows 7 lists do: a pale blue gradient with a thin blue frame */
+html.aero :is(.row.click, #sheet .box.menu .choice):hover { background: linear-gradient(color-mix(in srgb, var(--blue) 14%, transparent), color-mix(in srgb, var(--blue) 30%, transparent));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--blue) 60%, transparent); }
+html.aero #sheet .box.menu .choice { border-radius: 3px; }
+/* popups are task dialogs: the title on the glass, the words on a plain panel, glossy buttons at the bottom right */
+html.aero #sheet { align-items: center; padding: 24px; }
+html.aero #sheet .box { border-radius: calc(8px * var(--rk, 1)); }
+html.aero #sheet .box.alert { width: min(470px, 100%); padding: 8px 8px 10px; }
+html.aero #sheet .box.alert h2 { margin: 2px 6px 8px; font-size: 16px; font-weight: 400; }
+html.aero #sheet .box.alert :is(p, .body) { margin: 0; padding: 12px 14px; background: var(--ae-panel); color: var(--text); font-size: 14px;
+  border: 1px solid var(--ae-edge); border-radius: 4px; }
+html.aero #sheet .box.alert p + .body { margin-top: -1px; border-top-color: transparent; }
+html.aero #sheet .acts { margin-top: 10px; justify-content: flex-end; gap: 8px; }
+html.aero #sheet .acts i { display: none; }
+html.aero #sheet .acts button { flex: none; min-width: 84px; height: 32px; padding: 0 14px; }
+html.aero .alertcard, html.aero .stat, html.aero .hint, html.aero .statusline { border-radius: calc(6px * var(--rk, 1)); }
+/* Reduce transparency and Lighter effects: no blur, but still the tinted frame with its shine — that part costs nothing */
+:is(html.solid, html.lite).aero :is(.glass, .frost, #sheet .box, #toast) { background: linear-gradient(var(--ae-wash), transparent 90px),
+  linear-gradient(135deg, transparent 40%, rgba(255,255,255,.11) 46%, transparent 52%, transparent 60%, rgba(255,255,255,.08) 64%, transparent 69%),
+  color-mix(in srgb, var(--ae-frame) 82%, var(--bg)) !important; }

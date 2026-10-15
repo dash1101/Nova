@@ -104,6 +104,8 @@ import org.json.JSONObject
         val backupRunning = m?.optString("data_backup")?.contains("running") == true
         val backup = if (backupRunning) live(app, "/api/v1/backup", 5_000).value else null
         when {
+            ApiCompat.appTooOld -> Banner("This app is too old for the server — tap to update it", N.amber) { app.go(Route.Updates) }
+            ApiCompat.serverTooOld -> Banner("The server's Nova is older than this app needs — tap to update the server", N.amber) { app.go(Route.Updates) }
             app.notAuthorized -> Banner("This ${DeviceForm.noun} isn't authorized anymore — tap to pair again", N.red) { app.pairing.clear(); app.paired = false }
             app.error != null -> DisconnectedBanner(app)
             level != "ok" -> Banner(st?.optString("headline") ?: "", levelColor(level, N)) { app.go(Route.Inbox) }

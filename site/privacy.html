@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="Nova's privacy policy: Nova collects nothing. The apps talk only to your own server.">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<title>Nova Privacy Policy</title>
+<style>
+:root { --bg: #f5f3fb; --surface: #ffffff; --ink: #17151f; --muted: #5d5970; --line: #e3dfef; --accent: #5b3fd0; color-scheme: light; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg: #0f0d16; --surface: #17141f; --ink: #efecf7; --muted: #a49fb8; --line: #2a2536; --accent: #a996ff; color-scheme: dark; } }
+:root[data-theme="dark"] { --bg: #0f0d16; --surface: #17141f; --ink: #efecf7; --muted: #a49fb8; --line: #2a2536; --accent: #a996ff; color-scheme: dark; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 17px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif; }
+main { max-width: 68ch; margin: 0 auto; padding-block: 48px 72px; padding-inline: 20px; }
+h1 { font-size: 2.1rem; line-height: 1.15; margin: 0 0 6px; text-wrap: balance; }
+h2 { font-size: 1.2rem; margin: 34px 0 6px; text-wrap: balance; }
+p, li { color: var(--ink); } .muted { color: var(--muted); font-size: .95rem; }
+a { color: var(--accent); }
+ul { padding-left: 1.2em; } li { margin: 6px 0; }
+code { font: .9em ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 1px 5px; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 18px 20px; margin: 22px 0; }
+</style>
+</head>
+<body>
+<main>
+  <p><a href="./">← Nova</a></p>
+  <h1>Privacy policy</h1>
+  <p class="muted">For the Nova server, Nova web, the Nova Android app and the Nova Wear OS app · effective October 2026</p>
+
+  <div class="card"><b>In one sentence:</b> Nova collects nothing about you. The apps talk only to the server you installed Nova on, and there is no Nova account, no Nova cloud, and no analytics or tracking of any kind.</div>
+
+  <h2>Who runs what</h2>
+  <p>Nova is open-source software (AGPL-3.0) that you install on your own computer. The project doesn't run any service that your data passes through. Whoever runs the server is in charge of the data on it — for a home server, that's you.</p>
+
+  <h2>What stays on your server</h2>
+  <ul>
+    <li>The list of paired devices: each device's name, its public key (the private key never leaves the device) and when it was last seen.</li>
+    <li>Alerts and their history (your Inbox and Archive), and the settings you choose.</li>
+    <li>Whatever you set up yourself, such as backups, Cloudflare or Discord settings and a Home Assistant token. Tokens are stored on the server only and are never sent back to the apps.</li>
+  </ul>
+  <p>None of this is sent to the Nova project or anyone else.</p>
+
+  <h2>What the apps keep on your phone or watch</h2>
+  <ul>
+    <li>The device's own key pair, created in its secure hardware, used to sign every request.</li>
+    <li>Your server's address and certificate fingerprint, your appearance settings, a small cache of the last screens so the app opens quickly, and an optional wallpaper you pick.</li>
+  </ul>
+
+  <h2>What Nova connects to</h2>
+  <p>Only what you'd expect, and never with your data: your own server; GitHub, to check for and download signed Nova updates; package mirrors and container registries when you install or update software; Cloudflare and Tailscale, only if you set them up for remote access; Discord, only if you add a webhook; Home Assistant, only if you connect a light; a speed-test server when you run a speed test; a public icon set for app icons; and DuckDuckGo for search suggestions on the Start page (which you can turn off).</p>
+
+  <h2>Android permissions and why</h2>
+  <ul>
+    <li><b>Camera</b> — only to scan the pairing QR code.</li>
+    <li><b>Notifications</b> — to show your server's alerts and approval requests.</li>
+    <li><b>Biometrics</b> — to confirm risky actions with your fingerprint or face.</li>
+    <li><b>Internet</b> — to reach your server.</li>
+    <li><b>Install apps</b> — to install Nova's own signed updates when you tap Update.</li>
+    <li><b>Run in the background and at startup</b> — optional "Instant alerts": one quiet connection to your server so alerts arrive right away.</li>
+  </ul>
+
+  <h2>Crash reports</h2>
+  <p>If the app crashes, it can send the error to <em>your own server</em> the next time it opens, so it shows up there. Nothing goes to the Nova project.</p>
+
+  <h2>Children</h2>
+  <p>Nova isn't directed at children and collects no personal information from anyone.</p>
+
+  <h2>Changes and contact</h2>
+  <p>If this policy changes, the new version is published here and in the source repository. Questions: open an issue at <a href="https://github.com/dash1101/Nova/issues">github.com/dash1101/Nova/issues</a>.</p>
+</main>
+</body>
+</html>

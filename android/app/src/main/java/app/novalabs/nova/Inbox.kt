@@ -383,7 +383,9 @@ import java.util.*
                 runCatching { ctx.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://github.com/dash1101/Nova/issues/new?template=feature_request.yml"))) } }) }
         SectionLabel("Project")
         Group { Row1("Nova by dash1101", "Open source · AGPL-3.0 · github.com/dash1101/Nova", true, onClick = {
-            runCatching { ctx.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://github.com/dash1101/Nova"))) } }) }
+            runCatching { ctx.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://github.com/dash1101/Nova"))) } })
+            RowDivider(); Row1("Privacy policy", "Nova collects nothing — the app talks only to your server", false, Icons.Rounded.Shield, N.sub, onClick = {
+            runCatching { ctx.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://dash1101.github.io/Nova/privacy.html"))) } }) }
     }
 }
 

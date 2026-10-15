@@ -1458,7 +1458,7 @@ const ICON_THEMES = [["style", "Matches the style", "Each style's own icons"], [
   ["circles", "Circles", "White symbols on colored circles"], ["outline", "Outline", "Colored symbols in a thin ring"], ["glyph", "Symbols only", "Just the colored symbol"], ["mono", "Monochrome", "Plain symbols in the text color"]];
 /** One icon drawn the way an icon style draws it, for the picker — shown beside each choice, all the time. */
 function iconSample(theme, icon, tint) {
-  const look = theme !== "style" ? theme : ({ liquid: "tiles", fluent: "glyph", breeze: "glyph" })[prefs.style] || "tonal";
+  const look = theme !== "style" ? theme : ({ liquid: "tiles", fluent: "glyph", breeze: "glyph", aero: "tiles" })[prefs.style] || "tonal";
   const base = "display:inline-grid;place-items:center;flex:none;";
   const st = { tonal: `width:30px;height:30px;border-radius:50%;color:${tint};background:color-mix(in srgb, ${tint} 16%, transparent)`,
     tiles: `width:28px;height:28px;border-radius:8px;color:#fff;background:${tint}`, circles: `width:28px;height:28px;border-radius:50%;color:#fff;background:${tint}`,
@@ -1489,14 +1489,15 @@ export async function dev(ctx) {
 }
 export async function appearance(ctx) {
   const draw = () => {
-    const t = prefs.theme, st = prefs.style, mat = document.documentElement.classList.contains("material"), look = mat ? "Material" : ({ liquid: "Glass", fluent: "Mica", breeze: "Breeze" })[st] || "Default";
+    const t = prefs.theme, st = prefs.style, mat = document.documentElement.classList.contains("material"), look = mat ? "Material" : ({ liquid: "Glass", fluent: "Mica", breeze: "Breeze", aero: "Aero" })[st] || "Default";
     const autoMat = /Android/i.test(navigator.userAgent) && !/SamsungBrowser|SM-[A-Z0-9]|Xiaomi|Redmi|POCO|HUAWEI|HONOR|vivo|OPPO|realme/i.test(navigator.userAgent);
     ctx.show(`${sec("Style")}${group([["auto", "Automatic", `${autoMat ? "Material You" : "Default"} — picked to suit this device`], ["default", "Default", "Nova's own look: frosted glass and a soft glow"],
         ["material", "Material You", "Material 3 Expressive: tonal colors from the accent, bolder shapes, springy motion"],
         ["liquid", "Glass", "Clear glass that bends the light behind it at its edges"],
         ["fluent", "Mica", "A soft, tinted base with frosted menus and crisp, small corners"],
-        ["breeze", "Breeze", "Flat and tidy: a thin frame, gentle corners, the accent as the focus color"]].map(([k, l, d]) => row(l, { sub: d, end: radio(st === k), click: "style:" + k })).join(""))}
-      ${["liquid", "fluent", "breeze"].includes(st) ? group((st !== "breeze" ? `<div class="range-row"><div class="h"><span>Glass clarity</span><span id="glassl">${prefs.glass ?? 60}%</span></div><input type="range" min="0" max="100" value="${prefs.glass ?? 60}" data-range="glass" style="--p:${prefs.glass ?? 60}%"></div>` : "")
+        ["breeze", "Breeze", "Flat and tidy: a thin frame, gentle corners, the accent as the focus color"],
+        ["aero", "Aero", "Windows 7 glass: tinted frosted frames with a glossy shine and glowing buttons"]].map(([k, l, d]) => row(l, { sub: d, end: radio(st === k), click: "style:" + k })).join(""))}
+      ${["liquid", "fluent", "breeze", "aero"].includes(st) ? group((st !== "breeze" ? `<div class="range-row"><div class="h"><span>Glass clarity</span><span id="glassl">${prefs.glass ?? 60}%</span></div><input type="range" min="0" max="100" value="${prefs.glass ?? 60}" data-range="glass" style="--p:${prefs.glass ?? 60}%"></div>` : "")
         + `<div class="range-row"><div class="h"><span>Corner roundness</span><span id="roundl">${prefs.round ?? 100}%</span></div><input type="range" min="25" max="150" value="${prefs.round ?? 100}" data-range="round" style="--p:${((prefs.round ?? 100) - 25) / 125 * 100}%"></div>`) : ""}
       ${st === "liquid" && !canRefract() ? note("This browser shows Glass frosted, without the bending at the edges — that part needs a Chromium-based browser.") : ""}
       ${sec("Theme")}${group([["system", "Same as this device"], ["light", `${look} light`], ["dark", `${look} dark`]].map(([k, l]) => row(l, { end: radio(t === k), click: "theme:" + k })).join(""))}
@@ -1614,7 +1615,7 @@ export async function about(ctx) {
       + row("At home: encrypted", { sub: "HTTPS to the server's own certificate" }) + row("Outside home: Cloudflare Access", { sub: "Strangers are stopped before they reach the server" }))}
     ${group(row("Questions", { sub: "Is it safe, what it connects to, how to undo things", blue: true, icon: "help", click: "go:faq" })
       + `<a class="row press" href="https://github.com/dash1101/Nova/issues/new?template=feature_request.yml" target="_blank" rel="noopener"><span class="ri" style="color:var(--blue);background:color-mix(in srgb, var(--blue) 16%, transparent)">${I("add")}</span><div class="t"><b>Request a feature</b><small>Tell us what Nova should do — on GitHub</small></div></a>`)}
-    ${sec("Project")}${group(`<a class="row click" href="https://github.com/dash1101/Nova" target="_blank" rel="noopener" style="color:inherit;text-decoration:none"><div class="t"><b>Nova by dash1101</b><small>Open source · AGPL-3.0 · github.com/dash1101/Nova</small></div></a>`)}`, { title: "About" });
+    ${sec("Project")}${group(`<a class="row click" href="https://github.com/dash1101/Nova" target="_blank" rel="noopener" style="color:inherit;text-decoration:none"><div class="t"><b>Nova by dash1101</b><small>Open source · AGPL-3.0 · github.com/dash1101/Nova</small></div></a><a class="row click" href="https://dash1101.github.io/Nova/privacy.html" target="_blank" rel="noopener" style="color:inherit;text-decoration:none"><div class="t"><b>Privacy policy</b><small>Nova collects nothing — this page talks only to your server</small></div></a>`)}`, { title: "About" });
 }
 /** Questions people ask before trusting Nova with their server — the same answers as the website's FAQ. */
 export const FAQ = [

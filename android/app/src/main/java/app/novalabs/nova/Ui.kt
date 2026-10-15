@@ -8,6 +8,7 @@ import androidx.compose.ui.zIndex
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.ui.layout.layout
 import androidx.compose.foundation.border
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.foundation.horizontalScroll
@@ -63,7 +64,7 @@ data class NovaColors(
     val divider: Color, val green: Color, val amber: Color, val red: Color, val dark: Boolean,
     /** Material You Expressive style (Settings → Appearance → Style) instead of the default One UI-like look. */
     val material: Boolean = false, val onBlue: Color = Color.White, val blueContainer: Color = Color(0x333E91FF), val onBlueContainer: Color = Color(0xFF3E91FF),
-    /** Glass, Mica or Breeze (Liquid.kt; "liquid" / "fluent" / "breeze"), "" otherwise. */
+    /** Glass, Mica, Breeze or Aero (Liquid.kt; "liquid" / "fluent" / "breeze" / "aero"), "" otherwise. */
     val preset: String = "",
 )
 val DarkTokens = NovaColors(Color.Black, Color(0xFF2E2560), Color(0xFF1A2550), Color(0xFF1E1E22), Color(0xFF2A2A2F),
@@ -179,6 +180,8 @@ fun levelColor(level: String, t: NovaColors) = when (level) {
 @Composable fun SectionLabel(text: String) = when (N.preset) {
     "liquid" -> Text(tr(text).uppercase(), color = N.sub, fontSize = 13.sp, letterSpacing = .3.sp, fontWeight = FontWeight.Medium,
         modifier = Modifier.padding(start = Space.gutter + 18.dp, end = 30.dp, top = 22.dp, bottom = 7.dp))
+    "aero" -> Text(text, style = androidx.compose.ui.text.TextStyle(color = if (N.dark) Color(0xFFA9D3F5) else Color(0xFF1E395B), fontSize = 15.sp, shadow = aeroGlow(N.dark)),
+        modifier = Modifier.padding(start = Space.gutter + 4.dp, end = 30.dp, top = 18.dp, bottom = 8.dp))
     "fluent", "breeze" -> Text(text, color = N.text, fontSize = 14.sp, fontWeight = if (N.preset == "fluent") FontWeight.SemiBold else FontWeight.Bold,
         modifier = Modifier.padding(start = Space.gutter + 4.dp, end = 30.dp, top = 18.dp, bottom = 8.dp))
     else -> Text(text, color = if (N.material) N.blue else N.sub, fontSize = 14.sp, fontWeight = if (N.material) FontWeight.SemiBold else FontWeight.Medium,
@@ -197,6 +200,7 @@ fun levelColor(level: String, t: NovaColors) = when (level) {
     N.preset == "liquid" -> HorizontalDivider(Modifier.padding(start = 66.dp), thickness = 0.5.dp, color = N.divider)        // starts after the icon tile
     N.preset == "fluent" -> HorizontalDivider(Modifier.padding(horizontal = 16.dp), thickness = 1.dp, color = N.divider)
     N.preset == "breeze" -> HorizontalDivider(thickness = 1.dp, color = N.divider)
+    N.preset == "aero" -> HorizontalDivider(Modifier.padding(horizontal = 12.dp), thickness = 1.dp, color = N.divider)
     else -> HorizontalDivider(Modifier.padding(horizontal = 22.dp), thickness = 0.8.dp, color = N.divider)
 }
 
@@ -223,7 +227,7 @@ fun levelColor(level: String, t: NovaColors) = when (level) {
 /** A row's icon in the chosen icon style ([theme] = one of ICON_THEMES, or the current setting). */
 @Composable fun RowIcon(icon: ImageVector, c: Color, theme: String = AppPrefs.iconTheme) {
     val t = N
-    when (theme.takeIf { it != "style" } ?: when (t.preset) { "liquid" -> "tiles"; "fluent", "breeze" -> "glyph"; else -> "tonal" }) {
+    when (theme.takeIf { it != "style" } ?: when (t.preset) { "liquid", "aero" -> "tiles"; "fluent", "breeze" -> "glyph"; else -> "tonal" }) {
         "tiles" -> Box(Modifier.size(30.dp).clip(RoundedCornerShape(cardRadius(8.dp))).background(c), contentAlignment = Alignment.Center) { Icon(icon, null, tint = Color.White, modifier = Modifier.size(19.dp)) }
         "circles" -> Box(Modifier.size(34.dp).clip(CircleShape).background(c), contentAlignment = Alignment.Center) { Icon(icon, null, tint = Color.White, modifier = Modifier.size(19.dp)) }
         "outline" -> Box(Modifier.size(34.dp).border(1.5.dp, c, CircleShape), contentAlignment = Alignment.Center) { Icon(icon, null, tint = c, modifier = Modifier.size(18.dp)) }
@@ -672,14 +676,15 @@ class PillBead(val x: androidx.compose.animation.core.Animatable<Float, androidx
     val pos by androidx.compose.animation.core.animateFloatAsState(selected.toFloat(),
         if (reduceMotion()) androidx.compose.animation.core.tween(180) else androidx.compose.animation.core.spring(0.72f, 420f), label = "segthumb")
     val preset = N.preset
-    val track = when (preset) { "liquid" -> RoundedCornerShape(50); "fluent" -> RoundedCornerShape(6.dp); "breeze" -> RoundedCornerShape(5.dp); else -> RoundedCornerShape(24.dp) }
-    val thumb = when (preset) { "liquid" -> RoundedCornerShape(50); "fluent", "breeze" -> RoundedCornerShape(4.dp); else -> RoundedCornerShape(20.dp) }
+    val track = when (preset) { "liquid" -> RoundedCornerShape(50); "fluent" -> RoundedCornerShape(6.dp); "breeze" -> RoundedCornerShape(5.dp); "aero" -> RoundedCornerShape(5.dp); else -> RoundedCornerShape(24.dp) }
+    val thumb = when (preset) { "liquid" -> RoundedCornerShape(50); "fluent", "breeze", "aero" -> RoundedCornerShape(3.dp); else -> RoundedCornerShape(20.dp) }
     val outer = Modifier.padding(horizontal = Space.gutter, vertical = 6.dp).fillMaxWidth()
     BoxWithConstraints((if (preset == "liquid") outer.clip(track).background(Color(0x3D787880)) else outer.glassCard(track, 3.dp)).padding(if (preset == "liquid") 3.dp else 4.dp)) {
         val w = maxWidth / options.size.coerceAtLeast(1)
         Box(Modifier.offset(x = w * pos).width(w).height(if (preset == "liquid") 34.dp else 42.dp)
             .then(if (preset == "liquid") Modifier.shadow(3.dp, thumb) else Modifier)
-            .clip(thumb).background(when (preset) { "liquid" -> if (N.dark) Color(0xFF636366) else Color.White; "breeze" -> N.navSel; else -> N.navSel })
+            .then(if (preset == "aero") Modifier.aeroButton(true, thumb) else Modifier)
+            .clip(thumb).background(when (preset) { "aero" -> Color.Transparent; "liquid" -> if (N.dark) Color(0xFF636366) else Color.White; "breeze" -> N.navSel; else -> N.navSel })
             .then(if (preset == "breeze") Modifier.border(1.dp, N.blue, thumb) else Modifier))
         if (preset == "fluent") Box(Modifier.offset(x = w * pos + w / 2 - 8.dp, y = 36.dp).size(16.dp, 3.dp).clip(RoundedCornerShape(2.dp)).background(N.blue))
         Row(Modifier.fillMaxWidth()) {
@@ -745,7 +750,9 @@ fun bytesHuman(b: Long): String {
     // in screen coordinates too, so it continues seamlessly from a page to the strip behind the side pill
     var origin by remember { mutableStateOf(Offset.Zero) }
     val win = androidx.compose.ui.platform.LocalWindowInfo.current.containerSize
-    Box(Modifier.fillMaxSize().background(t.bg).onGloballyPositioned { origin = it.positionInWindow() }) {
+    // clipped to this page: the picture is drawn window-sized (so it lines up), and unclipped a sliding page painted it over
+    // the page underneath during the back gesture
+    Box(Modifier.fillMaxSize().clipToBounds().background(t.bg).onGloballyPositioned { origin = it.positionInWindow() }) {
         // (the copy is already softened to the Blur setting, so no live blur here: the same picture as behind Glass, and cheaper)
         bmp?.let { img -> Canvas(Modifier.fillMaxSize()) {
             val W = if (win.width > 0) win.width.toFloat() else size.width; val H = if (win.height > 0) win.height.toFloat() else size.height

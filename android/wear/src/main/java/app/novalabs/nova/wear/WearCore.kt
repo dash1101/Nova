@@ -88,7 +88,7 @@ class WearApi(private val store: WearStore) {
         val digest = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
         val msg = "$method\n$path\n$ts\n$nonce\n$digest".toByteArray()
         val rb = Request.Builder().url(store.url.trimEnd('/') + path).header("X-Nova-Device", store.deviceId)
-            .header("X-Nova-Time", ts).header("X-Nova-Nonce", nonce).header("X-Nova-Signature", WearKeys.sign(msg))
+            .header("X-Nova-Time", ts).header("X-Nova-Nonce", nonce).header("X-Nova-Signature", WearKeys.sign(msg)).header("X-Nova-Client", "wear ${app.novalabs.nova.wear.BuildConfig.VERSION_CODE}")
         if (method == "GET") rb.get() else rb.method(method, bytes.toRequestBody("application/json".toMediaType()))
         try {
             http().newCall(rb.build()).execute().use { r ->

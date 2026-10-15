@@ -1,5 +1,7 @@
 package app.novalabs.nova
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import android.app.Activity
 import android.hardware.biometrics.BiometricManager.Authenticators
 import android.hardware.biometrics.BiometricPrompt
@@ -19,6 +21,15 @@ import java.util.Base64
 import java.util.concurrent.TimeUnit
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
+
+/** The API contract (docs/API.md): the server's API level, and whether one side needs updating. */
+object ApiCompat {
+    /** The lowest API level this app needs. Raise it only when the app depends on something newer. */
+    const val NEEDS_LEVEL = 0
+    var serverLevel by androidx.compose.runtime.mutableIntStateOf(-1)          // -1 = not seen yet; 0 = a server from before levels
+    var appTooOld by androidx.compose.runtime.mutableStateOf(false)
+    val serverTooOld get() = serverLevel in 0 until NEEDS_LEVEL
+}
 
 class ApiException(val code: Int, message: String, val stepUpRequired: Boolean = false, val offline: Boolean = false) : Exception(message)
 
@@ -246,6 +257,7 @@ class NovaApi(private val pairing: Pairing) {
             .header("X-Nova-Device", if (quick) pairing.quickApproverId else pairing.deviceId).header("X-Nova-Time", pr.ts)
             .header("X-Nova-Nonce", pr.nonce).header("X-Nova-Signature", sig)
         if (stepUpSig != null) rb.header("X-Nova-StepUp", stepUpSig)
+        rb.header("X-Nova-Client", "android ${BuildConfig.VERSION_CODE}")      // the API contract: a server can tell a too-old app to update
         if (route == "remote" && pairing.cfClientId.isNotEmpty()) {
             rb.header("CF-Access-Client-Id", pairing.cfClientId)
             rb.header("CF-Access-Client-Secret", pairing.cfClientSecret)
@@ -257,8 +269,10 @@ class NovaApi(private val pairing: Pairing) {
     private fun send(route: String, base: String, pr: Prepared, stepUpSig: String?): String {
         client(route).newCall(build(route, base, pr, stepUpSig)).execute().use { resp ->
             val text = resp.body.string()
+            resp.header("X-Nova-Api-Level")?.toIntOrNull()?.let { ApiCompat.serverLevel = it }
             if (!resp.isSuccessful) {
                 val obj = runCatching { JSONObject(text) }.getOrDefault(JSONObject())
+                if (resp.code == 426) { ApiCompat.appTooOld = true; throw ApiException(426, obj.optString("error", "Update the app to keep using this server")) }
                 if (resp.code == 401) throw ApiException(401, "This ${DeviceForm.noun} isn't authorized anymore. Pair again.")
                 if (obj.optString("error") == "view_only")
                     throw ApiException(403, "This ${DeviceForm.noun} has view-only access — ask an admin to change it.")

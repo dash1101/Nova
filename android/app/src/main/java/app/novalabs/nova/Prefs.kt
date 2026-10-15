@@ -128,9 +128,9 @@ object AppPrefs {
  *  Nothing, Sony, OnePlus…) gets Material You Expressive, so Nova matches the rest of the phone. */
 private val DEFAULT_LOOK_MAKERS = setOf("samsung", "xiaomi", "redmi", "poco", "huawei", "honor", "vivo", "iqoo", "oppo", "realme", "meizu")
 fun autoMaterial(): Boolean = android.os.Build.MANUFACTURER.lowercase() !in DEFAULT_LOOK_MAKERS && android.os.Build.BRAND.lowercase() !in DEFAULT_LOOK_MAKERS
-fun materialStyle(): Boolean = when (AppPrefs.style) { "material" -> true; "default", "liquid", "fluent", "breeze" -> false; else -> autoMaterial() }
+fun materialStyle(): Boolean = when (AppPrefs.style) { "material" -> true; "default", "liquid", "fluent", "breeze", "aero" -> false; else -> autoMaterial() }
 /** Glass, Mica or Breeze (Appearance → Style; internally liquid / fluent / breeze), "" for Default / Material You. */
-fun presetStyle(): String = AppPrefs.style.takeIf { it in setOf("liquid", "fluent", "breeze") } ?: ""
+fun presetStyle(): String = AppPrefs.style.takeIf { it in setOf("liquid", "fluent", "breeze", "aero") } ?: ""
 /** Reduce transparency (Appearance): solid surfaces everywhere, no blur or bending. */
 fun solidGlass(): Boolean = AppPrefs.solid
 
@@ -185,7 +185,8 @@ object AppLock {
                    "material" to ("Material You" to "Material 3 Expressive: colors from your wallpaper, bolder shapes, springy motion"),
                    "liquid" to ("Glass" to "Clear glass that bends the light behind it at its edges" + if (android.os.Build.VERSION.SDK_INT < 33) " (the bending needs Android 13)" else ""),
                    "fluent" to ("Mica" to "A soft, tinted base with frosted menus and crisp, small corners"),
-                   "breeze" to ("Breeze" to "Flat and tidy: a thin frame, gentle corners, the accent as the focus color"))
+                   "breeze" to ("Breeze" to "Flat and tidy: a thin frame, gentle corners, the accent as the focus color"),
+                   "aero" to ("Aero" to "Windows 7 glass: tinted frosted frames with a glossy shine and glowing buttons"))
                 .forEachIndexed { i, (k, l) ->
                     if (i > 0) RowDivider()
                     Row1(l.first, l.second, onClick = { AppPrefs.set("style", k) }) { OneRadio(AppPrefs.style == k) }
@@ -203,7 +204,7 @@ object AppLock {
         }
         SectionLabel("Theme")
         Group {
-            val look = if (materialStyle()) "Material" else mapOf("liquid" to "Glass", "fluent" to "Mica", "breeze" to "Breeze")[presetStyle()] ?: "Default"
+            val look = if (materialStyle()) "Material" else mapOf("liquid" to "Glass", "fluent" to "Mica", "breeze" to "Breeze", "aero" to "Aero")[presetStyle()] ?: "Default"
             listOf("system" to "Same as the ${DeviceForm.noun}", "light" to "$look light", "dark" to "$look dark").forEachIndexed { i, (k, l) ->
                 if (i > 0) RowDivider()
                 Row1(l, null, onClick = { AppPrefs.set("theme", k) }) { OneRadio(AppPrefs.theme == k) }

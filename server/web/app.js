@@ -25,6 +25,9 @@ function slowMachine() {
     if (n < 40 && document.visibilityState === "visible") { measuredSlow = true; try { sessionStorage.setItem("nova-slow", "1"); } catch {} if (prefs.lite !== "off") document.documentElement.classList.add("lite"); } };
   setTimeout(() => requestAnimationFrame(tick), 1500);
 })();
+/** How much body Glass has at a clarity (0..1): 1 at 10% (the old frosted look), 0 at 100%. */
+function glassBody(clear) { return ((1 - clear) / .9) ** 2; }
+
 function applyTheme() {
   const t = prefs.theme, root = document.documentElement;
   if (t === "system") delete root.dataset.theme; else root.dataset.theme = t;
@@ -36,19 +39,21 @@ function applyTheme() {
   const dark = t === "dark" || (t === "system" && !matchMedia("(prefers-color-scheme: light)").matches);
   // Style: Material You on Android phones that aren't Samsung (or another One UI/iOS-like maker); the Default look elsewhere
   const autoMaterial = /Android/i.test(navigator.userAgent) && !/SamsungBrowser|SM-[A-Z0-9]|Xiaomi|Redmi|POCO|HUAWEI|HONOR|vivo|OPPO|realme/i.test(navigator.userAgent);
-  const preset = ["liquid", "fluent", "breeze"].includes(prefs.style) ? prefs.style : "";
+  const preset = ["liquid", "fluent", "breeze", "aero"].includes(prefs.style) ? prefs.style : "";
   const material = !preset && (prefs.style === "material" || (prefs.style !== "default" && autoMaterial));
   root.classList.toggle("material", material); root.classList.toggle("m-dark", material && dark); root.classList.toggle("m-light", material && !dark);
-  for (const p of ["liquid", "fluent", "breeze"]) root.classList.toggle(p, preset === p);
+  for (const p of ["liquid", "fluent", "breeze", "aero"]) root.classList.toggle(p, preset === p);
   root.classList.toggle("l-light", !dark);
   // Reduce transparency: every glass surface solid (also when the system asks for it)
   const solid = !!prefs.reduceTransparency || matchMedia("(prefers-reduced-transparency: reduce)").matches;
   root.classList.toggle("solid", solid);
   // how clear the glass is (Liquid Glass, Fluent) and how round the corners are (the three presets)
   const clear = Math.max(0, Math.min(100, prefs.glass ?? 60)) / 100;
-  // Glass clarity: for Glass it also sets how sharp the page behind is (clear = liquid, low = frosted); the old 100% is now about 50%
-  if (preset === "liquid" || preset === "fluent") root.style.setProperty("--ga", String(preset === "liquid" ? .6 - clear * .54 : .95 - clear * .45)); else root.style.removeProperty("--ga");
-  if (preset === "liquid") { root.style.setProperty("--lg-blur", (1.5 + 16 * (1 - clear)).toFixed(1) + "px"); root.dataset.clear = clear.toFixed(2); }
+  // Glass clarity: for Glass it also sets how sharp the page behind is (clear = liquid, low = frosted); 10% is the old
+  // frosted Glass, 100% almost bare glass
+  if (preset === "liquid" || preset === "fluent" || preset === "aero") root.style.setProperty("--ga", String(preset === "liquid" ? +(.02 + .08 * glassBody(clear)).toFixed(3) : preset === "aero" ? .82 - clear * .5 : .95 - clear * .45)); else root.style.removeProperty("--ga");
+  if (preset === "aero") root.style.setProperty("--ae-blur", (4 + 12 * (1 - clear)).toFixed(1) + "px"); else root.style.removeProperty("--ae-blur");
+  if (preset === "liquid") { root.style.setProperty("--lg-blur", (1 + 13 * glassBody(clear)).toFixed(1) + "px"); root.dataset.clear = clear.toFixed(2); }
   else { root.style.removeProperty("--lg-blur"); delete root.dataset.clear; }
   root.style.setProperty("--rk", String(Math.max(25, Math.min(150, prefs.round ?? 100)) / 100));
   liquid(preset === "liquid" && !solid && !root.classList.contains("lite") && !prefs.devNoLens);

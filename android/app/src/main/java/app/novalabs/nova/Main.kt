@@ -499,7 +499,8 @@ private fun Modifier.paneTouch(app: AppState, left: Boolean) = pointerInput(left
     Row(Modifier.fillMaxSize()) {
         if (hasNav) Spacer(Modifier.width(with(density) { navW.toDp() }))
         val parent = app.stack.getOrNull(app.stack.size - 2)
-        val split = parent != null && width >= 900.dp
+        // full-screen pages (Home, the dashboard, Status) are never squeezed into the list pane: going back to them is a whole page
+        val split = parent != null && width >= 900.dp && parent != Route.Home && parent != Route.Dashboard && parent != Route.Status
         var lastParent by remember { mutableStateOf<Route?>(null) }
         if (split) lastParent = parent
         val p = backP(); val x = backExit(); val e = 1f - (1f - p) * (1f - p)
@@ -521,18 +522,18 @@ private fun Modifier.paneTouch(app: AppState, left: Boolean) = pointerInput(left
                 Box(Modifier.weight(1f).fillMaxHeight().paneTouch(app, false), contentAlignment = Alignment.TopCenter) {
                     Box((if (full || split) Modifier.fillMaxSize() else Modifier.widthIn(max = 760.dp).fillMaxHeight())) {
                         // predictive back: the page underneath shows while you drag (as on a phone), and the page follows your thumb
+                        // The page underneath stays full size, exactly where it'll be, and brightens as you drag; the page on top slides
+                        // off sideways with a soft shadow on its edge. (Shrinking both left three hard edges and a gap with nothing behind it.)
                         val under = app.backTarget
-                        if (p > 0.001f && under != null && !split) Box(Modifier.fillMaxSize().graphicsLayer {
-                            val s = 0.94f + 0.06f * e; scaleX = s; scaleY = s; translationX = -32.dp.toPx() * (1f - e) }) {
+                        if (p > 0.001f && under != null && !split) Box(Modifier.fillMaxSize()) {
                             Screen(app, under)
-                            Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.28f * (1f - e))))
+                            Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.30f * (1f - e))))
                         }
                         AnimatedContent(app.top, modifier = Modifier.fillMaxSize().graphicsLayer {
                                 if (p > 0.001f) {
-                                    val sc = 1f - 0.12f * e; scaleX = sc; scaleY = sc
-                                    translationX = 72.dp.toPx() * e + size.width * 0.3f * x
-                                    shape = androidx.compose.foundation.shape.RoundedCornerShape(36.dp * e); clip = true
-                                    alpha = 1f - x
+                                    translationX = size.width * (0.35f * e + 0.65f * x)          // follows your thumb, then carries on out
+                                    shadowElevation = 28.dp.toPx() * e * (1f - x)
+                                    shape = androidx.compose.ui.graphics.RectangleShape; clip = false
                                 } },
                             transitionSpec = { hop(initialState, targetState, app.navDir) ?: navTransition(app.navDir, reduceMotion()) }, label = "wide") { r ->
                             Box(Modifier.fillMaxSize().graphicsLayer { alpha = if (app.navDir == 2 && r != app.top) 0f else 1f }) { Screen(app, r) }

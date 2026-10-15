@@ -9,6 +9,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
@@ -25,7 +26,7 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 
 /**
- * Appearance → Style: Glass, Mica and Breeze (stored as liquid / fluent / breeze).
+ * Appearance → Style: Glass, Mica, Breeze and Aero (stored as liquid / fluent / breeze / aero).
  *
  * Glass cards are real glass over the background: each card paints its own part of the page
  * background (your wallpaper, or Nova's glow — both drawn in window coordinates, so the part lines up
@@ -53,13 +54,22 @@ fun presetTokens(preset: String, dark: Boolean, seed: Color?): NovaColors? = whe
         else NovaColors(Color(0xFFEFF0F1), Color.Transparent, Color.Transparent, Color.White, Color(0xFFF7F7F7), Color(0xFFFCFCFC),
             lerp(Color.White, acc, .18f), Color(0xFF232629), Color(0xFF707D8A), acc, lerp(acc, Color.Black, .15f), Color(0x14000000), Color(0xFF27AE60), Color(0xFFF67400), Color(0xFFDA4453), false, preset = "breeze")
     }
+    "aero" -> {       // Windows 7: sky-blue glass over a deep blue desktop; the body text stays plain and dark on light
+        val acc = seed ?: Color(0xFF3C8FD6)
+        if (dark) NovaColors(Color(0xFF0A1B2E), lerp(acc, Color.White, .1f), Color(0xFF1A7F8E), Color(0xFF13253A), Color(0xFF1C3350), Color(0xFF142A42),
+            lerp(Color(0xFF1C3350), acc, .45f), Color.White, Color(0xFFB3C6DA), lerp(acc, Color.White, .2f), lerp(acc, Color.White, .35f), Color(0x1FFFFFFF),
+            Color(0xFF4CC24C), Color(0xFFF2B630), Color(0xFFE8584A), true, preset = "aero")
+        else NovaColors(Color(0xFFD3E5F5), lerp(acc, Color.White, .35f), Color(0xFFB9E3D3), Color(0xFFF5F9FD), Color(0xFFE8F1FA), Color(0xFFEEF5FC),
+            Color(0xFFCDE6F7), Color(0xFF1E1E1E), Color(0xFF4F5F70), lerp(acc, Color.Black, .15f), Color(0xFF0066CC), Color(0x1A0B3A66),
+            Color(0xFF2E9E2E), Color(0xFFC77C00), Color(0xFFC8321F), false, preset = "aero")
+    }
     else -> null
 }
 
 /** Corner radius for a card in the current style (Corner roundness scales the three presets). */
 @Composable fun cardRadius(default: Dp): Dp {
     val k = AppPrefs.round.coerceIn(25, 150) / 100f
-    return when (N.preset) { "liquid" -> 28.dp * k; "fluent" -> 8.dp * k; "breeze" -> 7.dp * k; else -> default }
+    return when (N.preset) { "liquid" -> 28.dp * k; "fluent" -> 8.dp * k; "breeze" -> 7.dp * k; "aero" -> 6.dp * k; else -> default }
 }
 
 // ── soft, smooth small copies ───────────────────────────────────────────────────────────
@@ -227,6 +237,9 @@ private fun lensEffect(w: Float, h: Float, radius: Float, blurPx: Float, offY: F
 }
 
 /** A Glass card: the background behind it, bent and blurred, a thin tint, and light on the rim. */
+/** How much body Glass has at a clarity (0..1): 1 at 10% (the old frosted look), 0 at 100%, a little more below 10%. */
+fun glassBody(clear: Float): Float { val x = (1f - clear) / .9f; return x * x }
+
 @Composable fun Modifier.liquidCard(shape: Shape, corner: Dp, elevation: Dp = 6.dp): Modifier {
     val t = N
     val ctx = androidx.compose.ui.platform.LocalContext.current
@@ -234,16 +247,14 @@ private fun lensEffect(w: Float, h: Float, radius: Float, blurPx: Float, offY: F
     var origin by remember { mutableStateOf(Offset.Zero) }
     val inDialog = LocalInDialog.current
     val clear = AppPrefs.glass.coerceIn(0, 100) / 100f
-    // Glass clarity sets how liquid it looks: clear glass sees the page sharply (only bent at the rim), frosted glass a
-    // soft copy. From about the middle up it's the real, sharp backdrop — that's the liquid look.
-    val wall = if (clear >= .45f) Backdrop.wallpaper(ctx) else Backdrop.frosted(ctx)
+    // Glass clarity sets how liquid it looks. 10% is the old frosted Glass (0.7.3's 100%); from there up it clears steadily
+    // until 100% is almost bare glass: no tint to speak of, the real backdrop seen sharply, bent only at the rim.
+    val f = glassBody(clear)
+    val wall = if (clear >= .4f) Backdrop.wallpaper(ctx) else Backdrop.frosted(ctx)
     // the tint thins out with Glass clarity, but over a wallpaper that clashes with the theme (bright under dark mode, dark
-    // under light) it keeps enough body that the text on the card stays easy to read
+    // under light) it keeps a little body so the text on the card stays readable. Popups keep enough to read.
     val clash = if (wall == null) 0f else if (t.dark) Backdrop.bright else 1f - Backdrop.dark
-    // tint: thick when frosted, almost nothing when clear (100% is clearer than it used to be: the old 100% is now about
-    // 50%); a clashing wallpaper adds a little body, less the clearer you ask for. Popups keep enough to read.
-    val hiA = if (t.dark) .62f else .78f; val loA = if (t.dark) .05f else .12f
-    val tint = (if (t.dark) Color(0xFF16161C) else Color(0xFFFAFAFC)).copy(alpha = maxOf(hiA + (loA - hiA) * clear + clash * .3f * (1f - clear),
+    val tint = (if (t.dark) Color(0xFF16161C) else Color(0xFFFAFAFC)).copy(alpha = maxOf((if (t.dark) .02f + .28f * f else .05f + .25f * f) + clash * (.06f + .39f * minOf(f, 1f)),
         if (inDialog) (if (t.dark) .5f else .6f) else 0f).coerceIn(0f, .9f))
     val hi = Color.White
     if (solidGlass() || lite()) return this.shadow(if (lite()) 0.dp else elevation, shape).clip(shape).background(t.card)
@@ -264,7 +275,7 @@ private fun lensEffect(w: Float, h: Float, radius: Float, blurPx: Float, offY: F
             val lh = minOf(size.height, winH + 768f)
             var lensOff = -1f
             val outline = shape.createOutline(size, layoutDirection, this)
-            val sheen = Brush.linearGradient(listOf(hi.copy(alpha = (if (t.dark) .10f else .30f) * (1f - .5f * clear)), Color.Transparent), Offset.Zero, Offset(size.width * .35f, size.height * .38f))
+            val sheen = Brush.linearGradient(listOf(hi.copy(alpha = (if (t.dark) .10f else .30f) * (1f - .6f * clear)), Color.Transparent), Offset.Zero, Offset(size.width * .35f, size.height * .38f))
             val rim = Brush.sweepGradient(0f to hi.copy(alpha = .06f), .12f to hi.copy(alpha = .03f), .35f to hi.copy(alpha = .30f), .5f to hi.copy(alpha = .06f),
                 .62f to hi.copy(alpha = .75f), .7f to hi.copy(alpha = .75f), .85f to hi.copy(alpha = .06f), 1f to hi.copy(alpha = .06f), center = Offset(size.width / 2, size.height / 2))
             val stroke = Stroke(0.7.dp.toPx())
@@ -306,3 +317,75 @@ fun Modifier.liquidRim(shape: Shape): Modifier = this.drawWithCache {
     return this.shadow(if (lite()) 0.dp else 1.dp, shape).clip(shape).background(t.card)
         .then(Modifier.drawWithCache { val o = shape.createOutline(size, layoutDirection, this); val s = Stroke(1.dp.toPx()); onDrawWithContent { drawContent(); drawOutline(o, stroke, style = s) } })
 }
+
+// ── Aero ────────────────────────────────────────────────────────────────────────────────
+/** Aero's frame color: the accent mixed into the glass; Glass clarity thins it from a deep tint to a light wash. */
+fun aeroFrame(t: NovaColors): Color {
+    val clear = AppPrefs.glass.coerceIn(0, 100) / 100f
+    return (if (t.dark) lerp(Color(0xFF0E2238), t.blue, .35f) else lerp(Color.White, t.blue, .38f)).copy(alpha = .82f - .5f * clear)
+}
+
+/** Aero's shine, drawn over the frame and under the content: a soft wash of light from the top edge,
+ *  two faint diagonal streaks, a dark outer edge and a thin light edge just inside it. */
+fun Modifier.aeroGloss(shape: Shape, dark: Boolean): Modifier = this.drawWithCache {
+    val outline = shape.createOutline(size, layoutDirection, this)
+    val w = Color.White
+    // the wash is measured from the top in dp, not as a share of the card, so a tall list gets the same shine as a small tile
+    val washH = minOf(size.height, 90.dp.toPx())
+    val wash = Brush.verticalGradient(0f to w.copy(alpha = if (dark) .16f else .34f), 1f to Color.Transparent, endY = washH)
+    val streaks = Brush.linearGradient(0f to Color.Transparent, .40f to Color.Transparent, .46f to w.copy(alpha = .11f), .52f to Color.Transparent,
+        .60f to Color.Transparent, .64f to w.copy(alpha = .08f), .69f to Color.Transparent, 1f to Color.Transparent,
+        start = Offset.Zero, end = Offset(minOf(size.width, 420.dp.toPx()), minOf(size.width, 420.dp.toPx()) * .9f), tileMode = TileMode.Clamp)
+    val px = 1.dp.toPx()
+    val inner = (if (shape is androidx.compose.foundation.shape.RoundedCornerShape) shape else androidx.compose.foundation.shape.RoundedCornerShape(6.dp))
+        .createOutline(androidx.compose.ui.geometry.Size(size.width - 2 * px, size.height - 2 * px), layoutDirection, this)
+    val edge = if (dark) Color.Black.copy(alpha = .55f) else Color(0xFF0B2E4F).copy(alpha = .40f)
+    onDrawWithContent {
+        drawOutline(outline, wash); drawOutline(outline, streaks)
+        translate(px, px) { drawOutline(inner, w.copy(alpha = if (dark) .22f else .55f), style = Stroke(px)) }
+        drawOutline(outline, edge, style = Stroke(px))
+        drawContent()
+    }
+}
+
+/** An Aero card: the wallpaper (or Nova's glow) behind it, frosted, tinted with the frame color, with the shine on top.
+ *  No lens and no live blur — the frosted copy is made once — so it's as cheap as a plain card while scrolling. */
+@Composable fun Modifier.aeroCard(shape: Shape, elevation: Dp = 6.dp): Modifier {
+    val t = N
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val win = androidx.compose.ui.platform.LocalWindowInfo.current.containerSize
+    var origin by remember { mutableStateOf(Offset.Zero) }
+    val inDialog = LocalInDialog.current
+    if (solidGlass() || lite()) return this.shadow(if (lite()) 0.dp else elevation, shape).clip(shape).background(t.card).aeroGloss(shape, t.dark)
+    val wall = Backdrop.frosted(ctx)
+    val frame = aeroFrame(t).let { if (inDialog) it.copy(alpha = maxOf(it.alpha, if (t.dark) .6f else .55f)) else it }
+    return this.onGloballyPositioned { origin = it.positionOnScreen() }
+        .shadow(elevation, shape, ambientColor = Color.Black.copy(alpha = .3f), spotColor = Color.Black.copy(alpha = .4f))
+        .clip(shape)
+        .drawBehind {
+            val shot = if (inDialog) Behind.shot else null
+            if (shot != null) {
+                drawImage(shot, dstOffset = IntOffset(-origin.x.toInt(), -origin.y.toInt()), dstSize = Behind.shotSize, filterQuality = FilterQuality.Medium)
+                drawRect(t.bg.copy(alpha = .45f))
+            } else drawBackdrop(t, origin, win, wall)
+            drawRect(frame)
+        }
+        .aeroGloss(shape, t.dark)
+}
+
+/** Aero's raised button: a two-part gloss (light on top, a step at the middle), blue and glowing when it's the main one. */
+@Composable fun Modifier.aeroButton(primary: Boolean, shape: Shape = androidx.compose.foundation.shape.RoundedCornerShape(3.dp)): Modifier {
+    val t = N
+    val (stops, edge) = when {
+        primary && t.dark -> listOf(Color(0xFF6FB3E8), Color(0xFF4A93D2), Color(0xFF2E74B5), Color(0xFF3F8ED3)) to Color(0xFF0B2F52)
+        primary -> listOf(Color(0xFFEAF6FD), Color(0xFFD9F0FC), Color(0xFFBEE6FD), Color(0xFFA7D9F5)) to Color(0xFF3C7FB1)
+        t.dark -> listOf(Color(0xFF4A5B70), Color(0xFF3A4A5E), Color(0xFF2B394A), Color(0xFF334356)) to Color(0xFF0B1520)
+        else -> listOf(Color(0xFFF2F2F2), Color(0xFFEBEBEB), Color(0xFFDDDDDD), Color(0xFFCFCFCF)) to Color(0xFF707070)
+    }
+    return this.clip(shape).background(Brush.verticalGradient(0f to stops[0], .5f to stops[1], .5f to stops[2], 1f to stops[3]))
+        .drawWithCache { val o = shape.createOutline(size, layoutDirection, this); val px = 1.dp.toPx()
+            onDrawWithContent { drawOutline(o, Color.White.copy(alpha = if (t.dark) .12f else .6f), style = Stroke(px * 3)); drawOutline(o, edge, style = Stroke(px)); drawContent() } }
+}
+
+/** Text on Aero glass carries a soft glow behind it, like a Windows 7 title bar (light mode only — dark text needs it). */
+fun aeroGlow(dark: Boolean): androidx.compose.ui.graphics.Shadow? = if (dark) null else androidx.compose.ui.graphics.Shadow(Color.White.copy(alpha = .9f), Offset.Zero, 10f)

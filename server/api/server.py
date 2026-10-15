@@ -39,7 +39,16 @@ try:                       # optional module: fan/case lighting (modules/fan-gig
 except ImportError:
     nova_rgb = None
 
-API_VERSION = "0.7.4-alpha"
+API_VERSION = "0.7.5-alpha"
+# The API contract (docs/API.md). API_LEVEL only ever goes up: each new level adds endpoints or fields, never removes or
+# changes one. MIN_LEVEL is the oldest level this server still answers in full (old apps keep working back to it).
+# MIN_CLIENT: the oldest app builds still served, per platform — 0 = all of them. Raising it is the last resort, after
+# the endpoint has been deprecated (DEPRECATED below) for at least two releases and six months.
+API_LEVEL = 1
+MIN_LEVEL = 1
+MIN_CLIENT = {"android": 0, "wear": 0, "web": 0}
+DEPRECATED = {}                                   # "/api/v1/path" → "what to use instead" (sent as a Deprecation header)
+UPDATE_PATHS = ("/api/v1/app/", "/api/v1/ping", "/api/v1/whoami", "/api/v1/server/update")    # always open, so an old app can still update
 CONFIG = "/etc/nova-api/config.json"
 DATA = "/var/lib/nova-api"
 DEVICES = f"{DATA}/devices.json"
@@ -708,6 +717,9 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("X-Nova-Api-Level", str(API_LEVEL))
+        dep = DEPRECATED.get(self.path.split("?", 1)[0])
+        if dep: self.send_header("Deprecation", "true"); self.send_header("X-Nova-Deprecated", dep[:200])
         self.end_headers()
         self.wfile.write(body)
 
@@ -863,7 +875,11 @@ class Handler(BaseHTTPRequestHandler):
         if path.startswith("/api/v1/browser/request"):
             return self.browser_request(method, path, body)
         if method == "GET" and path == "/api/v1/ping":
-            return self.send(200, {"ok": True, "name": "Nova", "api": API_VERSION})
+            return self.send(200, {"ok": True, "name": "Nova", "api": API_VERSION, "api_level": API_LEVEL, "min_level": MIN_LEVEL})
+        # an app too old for this server gets a clear "update the app" (it can still reach the update endpoints)
+        cl = re.fullmatch(r"(android|wear|web) (\d{1,9})", self.headers.get("X-Nova-Client", "") or "")
+        if cl and int(cl.group(2)) < MIN_CLIENT.get(cl.group(1), 0) and not path.startswith(UPDATE_PATHS):
+            return self.send(426, {"error": "This app is too old for the server — update the app", "update": True, "api_level": API_LEVEL})
         if method == "POST" and path == "/api/v1/pair":
             return self.pair(body)
         if method == "POST" and path == "/api/v1/crash" and not self.headers.get("X-Nova-Device"):
@@ -1198,7 +1214,7 @@ class Handler(BaseHTTPRequestHandler):
         # ── identity / device ──
         if method == "GET" and parts == ["whoami"]:
             return 200, {"device": dev["name"], "via": dev["via"], "paired": dev.get("created"), "id": dev["id"],
-                         "stepup": bool(dev.get("stepup_key")), "api": API_VERSION, "relay": True,
+                         "stepup": bool(dev.get("stepup_key")), "api": API_VERSION, "api_level": API_LEVEL, "min_level": MIN_LEVEL, "relay": True,
                          "role": role_of(dev), "user": dev.get("user", ""), "form": dev.get("form", "")}
         if method == "POST" and parts == ["device", "form"]:
             # What kind of device this is (phone, tablet or desktop) — only for showing the right icon and words.

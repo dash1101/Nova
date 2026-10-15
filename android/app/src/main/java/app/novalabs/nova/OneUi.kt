@@ -47,6 +47,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
@@ -297,7 +299,7 @@ private fun DialogButton.role(t: NovaColors) = when { color == null -> "cancel";
 @Composable private fun PresetDialog(onDismiss: () -> Unit, title: String?, text: String?, buttons: List<DialogButton>, content: (@Composable ColumnScope.() -> Unit)?) {
     val t = N
     val host = androidx.compose.ui.platform.LocalContext.current.let { c -> var x: android.content.Context? = c; while (x is android.content.ContextWrapper && x !is android.app.Activity) x = x.baseContext; x as? android.app.Activity }
-    if (t.preset == "liquid") LaunchedEffect(Unit) { Behind.take(host) }          // what the glass will bend: the page as it is now
+    if (t.preset == "liquid" || t.preset == "aero") LaunchedEffect(Unit) { Behind.take(host) }          // what the glass will bend: the page as it is now
     MotionDialog(onDismiss) {
       androidx.compose.runtime.CompositionLocalProvider(LocalInDialog provides true) {
         when (t.preset) {
@@ -342,6 +344,28 @@ private fun DialogButton.role(t: NovaColors) = when { color == null -> "cancel";
                                 .clickable(enabled = b.enabled, onClick = b.onClick), contentAlignment = Alignment.Center) {
                                 Text(b.label, color = if (!b.enabled) t.sub else if (r == "primary") (if (t.dark) Color.Black else Color.White) else if (r == "destructive") t.red else t.text,
                                     fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                        }
+                    }
+                }
+            }
+            "aero" -> {       // a Windows 7 task dialog: the title on the glass frame, a plain panel for the words, glossy buttons
+                val k = AppPrefs.round.coerceIn(25, 150) / 100f; val shape = RoundedCornerShape(8.dp * k)
+                Column(Modifier.padding(horizontal = 24.dp).widthIn(max = 480.dp).fillMaxWidth().aeroCard(shape, 20.dp).padding(8.dp)) {
+                    DialogToasts()
+                    if (title != null) Text(title, style = TextStyle(color = t.text, fontSize = 16.sp, shadow = aeroGlow(t.dark)),
+                        modifier = Modifier.padding(start = 6.dp, end = 6.dp, top = 2.dp, bottom = 8.dp))
+                    val ps = RoundedCornerShape(4.dp * k)
+                    if (text != null || content != null) Column(Modifier.fillMaxWidth().clip(ps).background(if (t.dark) Color(0xF0141E2B) else Color(0xF7FFFFFF))
+                        .border(1.dp, if (t.dark) Color(0x33000000) else Color(0x4D0B2E4F), ps).padding(vertical = if (text != null) 14.dp else 4.dp)) {
+                        if (text != null) Text(text, color = t.text, fontSize = 14.sp, lineHeight = 20.sp, modifier = Modifier.padding(horizontal = 14.dp))
+                        if (content != null) Column(Modifier.padding(top = if (text != null) 8.dp else 0.dp)) { content() }
+                    }
+                    if (buttons.isNotEmpty()) Row(Modifier.fillMaxWidth().padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)) {
+                        buttons.forEach { b -> val r = b.role(t)
+                            Box(Modifier.heightIn(min = 34.dp).widthIn(min = 84.dp).aeroButton(r == "primary").clickable(enabled = b.enabled, onClick = b.onClick)
+                                .padding(horizontal = 14.dp, vertical = 7.dp), contentAlignment = Alignment.Center) {
+                                Text(b.label, color = if (!b.enabled) t.sub else if (r == "destructive") t.red else if (t.dark) Color.White else Color(0xFF1E1E1E), fontSize = 14.sp, maxLines = 1)
                             }
                         }
                     }
@@ -421,6 +445,17 @@ private fun DialogButton.role(t: NovaColors) = when { color == null -> "cancel";
             }
             return
         }
+        "aero" -> {       // a glossy track that lights up in the accent, and a glossy knob
+            val x by animateDpAsState(if (checked) 20.dp else 0.dp, spring(0.8f, 600f), label = "sw")
+            val a = N.blue; val ts = RoundedCornerShape(11.dp)
+            Box(Modifier.size(44.dp, 22.dp).graphicsLayer { alpha = if (enabled) 1f else 0.4f }
+                .then(if (checked) Modifier.clip(ts).background(Brush.verticalGradient(0f to lerp(a, Color.White, .5f), .5f to lerp(a, Color.White, .2f), .5f to a, 1f to lerp(a, Color.White, .3f)))
+                    .border(1.dp, lerp(a, Color.Black, .45f), ts) else Modifier.aeroButton(false, ts))
+                .toggleable(checked, enabled = enabled, role = Role.Switch, onValueChange = onChange).padding(2.dp)) {
+                Box(Modifier.offset(x = x).size(18.dp).shadow(2.dp, CircleShape).aeroButton(false, CircleShape))
+            }
+            return
+        }
         "breeze" -> {     // a small framed track; the knob carries a frame too
             val x by animateDpAsState(if (checked) 18.dp else 0.dp, spring(0.85f, 600f), label = "sw")
             Box(Modifier.size(36.dp, 18.dp).graphicsLayer { alpha = if (enabled) 1f else 0.4f }.clip(CircleShape)
@@ -443,6 +478,13 @@ private fun DialogButton.role(t: NovaColors) = when { color == null -> "cancel";
     if (N.material) { androidx.compose.material3.RadioButton(selected, null, enabled = enabled); return }
     if (N.preset == "liquid") {       // Glass: a checkmark on the chosen one, nothing on the rest
         Box(Modifier.size(24.dp), contentAlignment = Alignment.Center) { if (selected) Icon(Icons.Rounded.Check, null, tint = if (enabled) N.blue else N.sub, modifier = Modifier.size(22.dp)) }
+        return
+    }
+    if (N.preset == "aero") {         // Aero: a sunken ring, and a glossy ball in the accent when chosen
+        Box(Modifier.size(20.dp).clip(CircleShape).background(Brush.verticalGradient(listOf(if (N.dark) Color(0xFF1A2533) else Color(0xFFE6E6E6), if (N.dark) Color(0xFF2B394A) else Color.White)))
+            .border(1.dp, if (N.dark) Color(0xFF0B1520) else Color(0xFF8E8F8F), CircleShape), contentAlignment = Alignment.Center) {
+            if (selected) Box(Modifier.size(10.dp).clip(CircleShape).background(Brush.radialGradient(listOf(lerp(N.blue, Color.White, .7f), N.blue, lerp(N.blue, Color.Black, .35f)),
+                center = Offset(8f, 8f), radius = 30f)).graphicsLayer { alpha = if (enabled) 1f else .5f }) }
         return
     }
     if (N.preset == "fluent") {       // Mica: a ring that fills with the accent, a white dot inside

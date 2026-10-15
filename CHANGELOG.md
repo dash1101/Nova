@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.7.5-alpha (server, Nova web, app and watch)
+- **A long-term API** ([docs/API.md](docs/API.md)): the server reports an API level (`api_level`, `min_level`, and an `X-Nova-Api-Level` header on every response) that only ever goes up, endpoints are never removed or changed within `/api/v1`, and anything retired is announced with deprecation headers for at least two releases and six months first. The apps tell the server which build they are, so a server can ask a too-old app to update instead of failing strangely; the app shows a banner when it or the server needs updating. The security test now checks the contract.
+- **Landscape back gesture, cleaned up:** the page underneath stays full size and brightens as you drag, and the page on top slides away with a soft shadow on its edge — no more hard edges or a black strip.
+- **New style: Aero** (Appearance → Style, app and web): Windows 7 glass — sky-blue frames that frost what's behind them, a soft shine with faint diagonal streaks, a dark edge with a light one inside, glossy buttons that glow blue, list rows that light up, and popups laid out like Windows 7 task dialogs. Glass clarity sets how deep the tint is; your accent color tints the glass.
+- **No more white flash in Nova web:** changing pages could briefly show a white frame — the browser's blank page showing through the page transition, or a fresh page load drawn in the device's light theme before your chosen theme was applied. Both now use Nova's own background from the first frame.
+- **Glass clarity, re-scaled again:** 10% is now the frosted Glass from before 0.7.4, and everything above it gets clearer, until 100% is almost bare glass — next to no tint, the page behind seen sharply and bent only at the rim (app and web). The default, 60%, is a clear liquid look.
+- **iPhone and iPad:** Nova web can be added to the Home Screen (Share → Add to Home Screen) and opens full screen with its own icon.
+- **Privacy policy** on the website (and in About): Nova collects nothing; the apps talk only to your server. Plus an upgrade guide ([docs/UPGRADING.md](docs/UPGRADING.md)) and a road-to-1.0 checklist in the roadmap.
+
 ## 0.7.4-alpha (server, Nova web, app and watch)
 - **Glass is liquid again:** Glass clarity now sets how sharp the page behind the glass is, not just how tinted it is. Clear glass sees the page sharply and only bends it at the rim, with a stronger bend; low clarity gives the soft, frosted look. The scale moved too: the old 100% is now about 50%, so 100% is clearer than ever (app and web).
 - **Developer options** (About → Developer options, app and web): a frame-rate meter (frames per second and the slowest frame, colored against your screen's refresh rate), a log of the last requests with their timing and route, outlines of every glass layer, the glass lens switched off for comparison, and device details you can copy into a bug report.

@@ -67,7 +67,7 @@ async function signHeaders(method, path, bodyStr, device) {
   const ts = String(Date.now()), nonce = b64url(crypto.getRandomValues(new Uint8Array(18)));
   const digest = hex(await crypto.subtle.digest("SHA-256", enc(bodyStr)));
   const sig = await crypto.subtle.sign({ name: "ECDSA", hash: "SHA-256" }, S.keys.privateKey, enc(`${method}\n${path}\n${ts}\n${nonce}\n${digest}`));
-  return { "X-Nova-Device": device, "X-Nova-Time": ts, "X-Nova-Nonce": nonce, "X-Nova-Signature": b64(sig) };
+  return { "X-Nova-Device": device, "X-Nova-Time": ts, "X-Nova-Nonce": nonce, "X-Nova-Signature": b64(sig), "X-Nova-Client": "web 1" };
 }
 
 /** A signed request; returns the raw Response (for streaming — e.g. the speed test). */
