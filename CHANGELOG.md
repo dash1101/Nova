@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.8.3-alpha (server, Nova web, app and watch)
+- **Apps in Nova windows** (Labs → This browser, Nova web): apps open in a window inside Nova instead of a new tab, with a titlebar in the look you picked — Aero's glass frame and glossy buttons, Mica's flat caption buttons, Breeze's round ones, Glass's traffic lights, Material and Default. Drag, resize, maximize (double-click the titlebar), minimize to the navigation pill and back, or open the app in a tab. On a phone they fill the screen. Nova checks first whether an app lets itself be shown inside another site (Home Assistant doesn't, out of the box) and says so, and for an app behind Cloudflare sign-in it asks you to sign in once in a tab.
+- **Fix an app that doesn't open from anywhere:** when an app's from-anywhere address gives an error such as Homepage's "Host validation failed" or Home Assistant's "400: Bad Request", Recommended now says so, and the app's **From anywhere** dialog (app and web) has a **Fix it** button that makes the one change the app needs.
+- **Stop opening from anywhere** (an app's From anywhere dialog, app and web): takes the app's from-anywhere address away again, and the Cloudflare address too if Nova made it.
+- **Rename things:** passkeys (Security & privacy), devices (web) and Wake-on-LAN computers (app and web) can now be renamed.
+- **Web app icons match the app:** every icon choice on the web (Appearance → App icon) is now drawn from the Android app's own launcher icons, and **Your color** follows your accent like the app does.
+- **See-through Glass icon** (app): launchers drew it on black; it's now a real see-through icon.
+- **Translations:** the last of Nova's words in Spanish, German, French, Portuguese, Italian, Russian, Chinese, Japanese and Korean; counts like "Update 3 containers" now read right in every language.
+
 ## 0.8.2-alpha (server, Nova web, app and watch)
 - **Hold a recommendation** (or right-click it on the web) for a quick menu: **Not now** hides it for a month, its fix opens straight away, and on Home **Hide Recommended from Home** takes the whole card off (Edit Home brings it back).
 - **No more blank flash between pages** (web): the page you're leaving stays up until the next one has something to show, instead of flashing an empty "Loading…" page. Containers now draws as soon as the list arrives; the live CPU and memory figures fill in a moment later.

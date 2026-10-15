@@ -161,6 +161,22 @@ def recommendations():
         add("stopped", "tip", f"{len(long_off)} container{'s' if len(long_off) > 1 else ''} stopped for a while", f"{', '.join(long_off[:4])}. Start {'them' if len(long_off) > 1 else 'it'} again, or remove {'them' if len(long_off) > 1 else 'it'} to free the space.",
             "Open Containers", go="containers")
 
+    # ── apps opened from anywhere that need one setting to work there (Home Assistant, Homepage) ──
+    try:
+        import appfix, urllib.parse
+        ov = (_json(f"{DATA}/apps.json", {}) or {}).get("overrides", {})
+        rc, so = _sh(["docker", "ps", "--format", "{{.Names}}"], 20)
+        names = set(so.split())
+        for aid, o in ov.items():
+            host = urllib.parse.urlparse(o.get("remote_url") or "").hostname
+            if not host or o.get("remote_off") or aid not in names: continue
+            c = appfix.check(aid, host)
+            if c.get("needed"):
+                add(f"appfix:{aid}", "warn", f"{c['app']} doesn't open at {host} yet",
+                    c["what"] + (" Nova can change that setting for you (with a backup)." if c.get("auto") else ""),
+                    "Fix it", go=f"access/{host}/{aid}")
+    except Exception: pass
+
     # ── mounts (from Storage) ──
     try:
         import storage

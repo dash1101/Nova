@@ -37,7 +37,7 @@ object AppIcon {
         Choice("bw", "Black on white", ".IconBw", R.mipmap.ic_launcher_bw),
         Choice("wb", "White on black", ".IconWb", R.mipmap.ic_launcher_wb),
         Choice("glass", "Glossy", ".IconGlass", R.mipmap.ic_launcher_glass),
-        Choice("clear", "Glass (see-through)", ".IconClear", R.mipmap.ic_launcher_clear),
+        Choice("clear", "Glass (see-through)", ".IconClear", R.drawable.ic_launcher_clear_plain),
         Choice("aero", "Aero", ".IconAero", R.mipmap.ic_launcher_aero),
         Choice("mica", "Mica", ".IconMica", R.mipmap.ic_launcher_mica),
         Choice("breeze", "Breeze", ".IconBreeze", R.mipmap.ic_launcher_breeze),

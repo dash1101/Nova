@@ -45,7 +45,7 @@ def js_fragments(src):
             def ph(_):
                 nonlocal k; k += 1; return "{%d}" % (k - 1)
             t = norm(re.sub("\x00", ph, frag))
-            if keep(re.sub(r"\{\d\}", "", t)) and len(re.sub(r"\{\d\}", "", t).strip()) > 1: out.add(t)
+            if keep(re.sub(r"\{\d\}", "N", t)) and len(re.sub(r"\{\d\}", "", t).strip()) > 1: out.add(t)
     for m in re.finditer(r'"((?:[^"\\\n]|\\.)*)"', src):
         s = m.group(1).replace('\\"', '"').replace("\\n", "\n")
         for frag in re.split(r"<[^>]*>", s):
@@ -64,7 +64,7 @@ def kt_fragments(src):
         # ${…} (balanced) and $name → {n}
         t = re.sub(r"\$\{(?:[^{}]|\{[^{}]*\})*\}|\$[a-zA-Z_][a-zA-Z0-9_.]*(?:\(\))?", ph, s)
         t = norm(t.replace('\\"', '"'))
-        if keep(re.sub(r"\{\d\}", "", t)): out.add(t)
+        if keep(re.sub(r"\{\d\}", "N", t)): out.add(t)
     return out
 
 def site_fragments(src):

@@ -736,6 +736,7 @@ private fun hourLabel(h: Int) = java.text.DateFormat.getTimeInstance(java.text.D
     var list by remember { mutableStateOf<List<JSONObject>?>(null) }
     var add by remember { mutableStateOf(false) }
     var rm by remember { mutableStateOf<JSONObject?>(null) }
+    var ren by remember { mutableStateOf<JSONObject?>(null) }
     LaunchedEffect(Unit) { list = runCatching { app.api.get("/api/v1/labs/wol").optJSONArray("devices").objs() }.getOrNull() }
     SectionLabel("Wake-on-LAN")
     Group {
@@ -744,7 +745,7 @@ private fun hourLabel(h: Int) = java.text.DateFormat.getTimeInstance(java.text.D
         else if (l.isEmpty()) Row1("No computers yet", "Add one with its MAC address")
         l?.forEachIndexed { i, e -> if (i > 0) RowDivider()
             Row1(e.optString("name"), e.optString("mac"), false, Icons.Rounded.PowerSettingsNew, onClick = { app.act { app.toast(app.api.post("/api/v1/labs/wol/${e.optString("id")}/wake").optString("note").ifEmpty { "Sent" }) } },
-                trailing = if (app.isAdmin) ({ IconButton({ rm = e }) { Icon(Icons.Rounded.Delete, "Remove", tint = N.sub) } }) else null) }
+                trailing = if (app.isAdmin) ({ Row { IconButton({ ren = e }) { Icon(Icons.Rounded.Edit, "Rename", tint = N.sub) }; IconButton({ rm = e }) { Icon(Icons.Rounded.Delete, "Remove", tint = N.sub) } } }) else null) }
         if (app.isAdmin) { if (l != null) RowDivider(); Row1("Add a computer", null, false, Icons.Rounded.Add, onClick = { add = true }) }
     }
     Note("Tap a computer to turn it on. Wake-on-LAN has to be turned on in its BIOS (and its network settings) first.", 13.sp, 4.dp)
@@ -757,6 +758,8 @@ private fun hourLabel(h: Int) = java.text.DateFormat.getTimeInstance(java.text.D
                 OneTextField(mac, { mac = it.take(17) }, "MAC, like 3c:7c:3f:12:34:56", Modifier.fillMaxWidth(), mono = true)
             }
         } }
+    ren?.let { e -> RenameDialog("Rename", e.optString("name"), "Name, like Gaming PC", onDismiss = { ren = null }) { n -> ren = null
+        app.act("Renamed") { list = app.api.post("/api/v1/labs/wol/${e.optString("id")}/rename", JSONObject().put("name", n)).optJSONArray("devices").objs() } } }
     rm?.let { e -> OneDialog({ rm = null }, "Remove ${e.optString("name")}?", "It only leaves this list.",
         listOf(DialogButton("Cancel") { rm = null }, DialogButton("Remove", N.red) { rm = null
             app.act { list = app.api.post("/api/v1/labs/wol/${e.optString("id")}/remove").optJSONArray("devices").objs() } })) }

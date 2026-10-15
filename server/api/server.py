@@ -41,7 +41,7 @@ try:                       # optional module: fan/case lighting (modules/fan-gig
 except ImportError:
     nova_rgb = None
 
-API_VERSION = "0.8.2-alpha"
+API_VERSION = "0.8.3-alpha"
 # The API contract (docs/API.md). API_LEVEL only ever goes up: each new level adds endpoints or fields, never removes or
 # changes one. MIN_LEVEL is the oldest level this server still answers in full (old apps keep working back to it).
 # MIN_CLIENT: the oldest app builds still served, per platform — 0 = all of them. Raising it is the last resort, after
@@ -131,6 +131,41 @@ def docker_present():
         _docker.update(t=time.time(), v=os.path.exists("/var/run/docker.sock") or os.path.exists("/run/docker.sock"))
     return _docker["v"]
 
+_frame_cache = {}
+def frame_check(a):
+    """{"frameable": bool, "why": str}: whether the app's own answer lets another site show it in a frame
+    (X-Frame-Options, or Content-Security-Policy frame-ancestors). Checked on this machine, cached 10 minutes."""
+    import ssl
+    if a.get("port"): url = f"{a.get('scheme') or 'http'}://127.0.0.1:{a['port']}{a.get('path') or '/'}"
+    else: url = a.get("url") or a.get("remote_url") or ""
+    if not url: return {"frameable": False, "why": "Nova doesn't know where this app is"}
+    hit = _frame_cache.get(url)
+    if hit and time.time() - hit[0] < 600: return hit[1]
+    class NoRedirect(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, *a, **k): return None
+    ctx = ssl.create_default_context(); ctx.check_hostname = False; ctx.verify_mode = ssl.CERT_NONE
+    op = urllib.request.build_opener(NoRedirect, urllib.request.HTTPSHandler(context=ctx))
+    try:
+        r = op.open(urllib.request.Request(url, headers={"User-Agent": "Nova frame check"}), timeout=5); h = r.headers
+    except urllib.error.HTTPError as e: h = e.headers
+    except Exception as e:
+        res = {"frameable": True, "why": "", "unknown": True}; _frame_cache[url] = (time.time(), res); return res
+    xfo = (h.get("X-Frame-Options") or "").strip().upper()
+    fa = next((p.strip()[len("frame-ancestors"):].strip() for p in (h.get("Content-Security-Policy") or "").split(";") if p.strip().lower().startswith("frame-ancestors")), None)
+    res = {"frameable": True, "why": ""}
+    if xfo in ("DENY", "SAMEORIGIN"): res = {"frameable": False, "why": f"it tells browsers not to show it inside another site (X-Frame-Options: {xfo})"}
+    if fa is not None and "*" not in fa.split() and "https:" not in fa.split():
+        res = {"frameable": False, "why": f"it only lets {fa or 'nobody'} show it in a frame (frame-ancestors)"}
+    # its https address behind Cloudflare sign-in: that sign-in page won't show in a frame, so you sign in once in a tab
+    rem = a.get("remote_url") or ""
+    if rem.startswith("https://"):
+        try: op.open(urllib.request.Request(rem, method="HEAD", headers={"User-Agent": "Nova frame check"}), timeout=5)
+        except urllib.error.HTTPError as e:
+            if e.code in (301, 302, 303, 307, 308) and ".cloudflareaccess.com/" in (e.headers.get("Location") or ""): res = {**res, "signin": True}
+        except Exception: pass
+    _frame_cache[url] = (time.time(), res)
+    return res
+
 def app_list():
     """Detected web apps (cached 30 s) + your custom links, with your changes applied."""
     if time.time() - _apps_cache["t"] > 30:
@@ -148,7 +183,7 @@ def app_list():
     out = []
     for a in _apps_cache["apps"]:
         o = ov.get(a["id"], {})
-        rem = o.get("remote_url") or (f"https://{pub[a['port']]}" if a.get("port") in pub else "")
+        rem = "" if o.get("remote_off") else o.get("remote_url") or (f"https://{pub[a['port']]}" if a.get("port") in pub else "")
         item = {**a, "name": o.get("name") or a["name"], "slug": o.get("icon") or a["slug"], "hidden": bool(o.get("hidden")),
                 "url": o.get("url", ""), "remote_url": rem}
         if a["id"] in comp_ids:                  # a share-link helper (Immich's share proxy): it only opens share links
@@ -1163,7 +1198,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Permissions-Policy", "camera=(), microphone=(), geolocation=(self), payment=(), usb=(), interest-cohort=()")
         self.send_header("Cross-Origin-Opener-Policy", "same-origin")
         self.send_header("Content-Security-Policy", "default-src 'self'; img-src 'self' data: blob:; style-src 'self'; style-src-attr 'unsafe-inline'; script-src 'self'; "
-                         "connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'")
+                         "connect-src 'self'; frame-src http: https:; frame-ancestors 'none'; base-uri 'none'; form-action 'none'")
         self.end_headers(); self.wfile.write(data)
 
     def browser_request(self, method, path, body):
@@ -1550,6 +1585,10 @@ class Handler(BaseHTTPRequestHandler):
                 try: passkeys.remove(str(data.get("id", "")))
                 except ValueError as e: return 404, {"error": str(e)}
                 audit(device=dev["name"], path=path, result=200, why="passkey removed"); return 200, {"ok": True}
+            if method == "POST" and parts == ["passkeys", "rename"]:
+                try: passkeys.rename(str(data.get("id", "")), data.get("name", ""))
+                except ValueError as e: return 400, {"error": str(e)}
+                return 200, {"ok": True, "passkeys": passkeys.listing()}
             return 404, {"error": "not found"}
         # ── security activity: pairings, approvals, devices, codes and passkeys (from the audit log) ──
         if method == "GET" and parts == ["security", "activity"]:
@@ -1904,6 +1943,11 @@ class Handler(BaseHTTPRequestHandler):
                 if len(parts) == 4 and re.fullmatch(r"[0-9a-f]{8}", parts[2]) and method == "POST":
                     e = next((x for x in lst if x["id"] == parts[2]), None)
                     if not e: return 404, {"error": "no such computer"}
+                    if parts[3] == "rename":
+                        name = "".join(c for c in str(data.get("name", "")) if c.isprintable()).strip()[:40]
+                        if not name: raise ValueError("give it a name")
+                        with lock: lst = [dict(x, name=name) if x["id"] == parts[2] else x for x in load_json(WOL, [])]; save_json(WOL, lst)
+                        return 200, {"devices": lst}
                     if parts[3] == "remove":
                         with lock: lst = [x for x in load_json(WOL, []) if x["id"] != parts[2]]; save_json(WOL, lst)
                         return 200, {"devices": lst}
@@ -1928,7 +1972,7 @@ class Handler(BaseHTTPRequestHandler):
                 if rc == 0 and parts[1] == "publish" and data.get("app"):
                     cfg = load_json(APPS, {"overrides": {}, "custom": []}); aid = str(data["app"])
                     if aid.startswith("custom-"): cfg["custom"] = [dict(c, remote_url=res["url"]) if c["id"] == aid else c for c in cfg.get("custom", [])]
-                    else: cfg.setdefault("overrides", {}).setdefault(aid, {})["remote_url"] = res["url"]
+                    else: cfg.setdefault("overrides", {}).setdefault(aid, {}).update(remote_url=res["url"], remote_off=False)
                     save_json(APPS, cfg)
                 return (200 if rc == 0 else 400), res
             if method == "POST" and parts == ["cloudflare", "access"]:      # who can open an address: only you · you + guests · anyone
@@ -1947,7 +1991,7 @@ class Handler(BaseHTTPRequestHandler):
                 if rc == 0 and data.get("app"):
                     cfg = load_json(APPS, {"overrides": {}, "custom": []}); aid = str(data["app"])
                     if aid.startswith("custom-"): cfg["custom"] = [dict(c, remote_url=res["url"]) if c["id"] == aid else c for c in cfg.get("custom", [])]
-                    else: cfg.setdefault("overrides", {}).setdefault(aid, {})["remote_url"] = res["url"]
+                    else: cfg.setdefault("overrides", {}).setdefault(aid, {}).update(remote_url=res["url"], remote_off=False)
                     save_json(APPS, cfg)
                 return (200 if rc == 0 else 400), res
             return 404, {"error": "no such endpoint"}
@@ -1976,6 +2020,11 @@ class Handler(BaseHTTPRequestHandler):
             if role_of(dev) != "admin": return 403, {"error": "admins only"}
             if not re.fullmatch(r"custom-[0-9a-f]{8}", parts[1]) and not plugins.command(parts[1]): return 404, {"error": "no such command app"}
             rc, res = helper("task-start", "run-command", json.dumps({"id": parts[1]})); return (202 if rc == 0 else 400), ({"task": res.get("id"), **res} if rc == 0 else res)
+        if method == "GET" and len(parts) == 3 and parts[0] == "apps" and parts[2] == "frame" and re.fullmatch(r"[A-Za-z0-9_.-]{1,64}", parts[1]):
+            # Can this app open inside a Nova window? Asks the app itself (on this machine) and reads its framing headers.
+            a = next((x for x in app_list() if x["id"] == parts[1]), None)
+            if not a: return 404, {"error": "no such app"}
+            return 200, frame_check(a)
         if len(parts) == 3 and parts[0] == "apps" and parts[2] == "public-fix" and re.fullmatch(r"[A-Za-z0-9_.-]{1,64}", parts[1]):
             # Does this app need a setting changed to work at its public address (and change it, with a backup)?
             if role_of(dev) != "admin": return 403, {"error": "admins only"}
@@ -2038,6 +2087,8 @@ class Handler(BaseHTTPRequestHandler):
                     v = str(data[k]).strip()[:300]
                     if v and not re.fullmatch(r"https?://[A-Za-z0-9.\-\[\]:]+(/[^\s]*)?", v): raise ValueError(f"{k}: a link like http://192.168.1.10:8096")
                     o[k] = v
+            if o.get("remote_url"): o["remote_off"] = False
+            if data.get("remote_off") is True: o["remote_off"], o["remote_url"] = True, ""   # "stop opening from anywhere": don't fill it back in from the tunnel
             if not aid:
                 if not o.get("url"): raise ValueError("give the app a link")
                 aid = "custom-" + secrets.token_hex(4)

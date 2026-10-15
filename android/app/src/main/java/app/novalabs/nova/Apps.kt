@@ -322,8 +322,33 @@ fun openApp(app: AppState, a: JSONObject) {
     }
     val chk = g?.optJSONObject("check")
     val host = g?.optString("remote_url")?.takeIf { it.isNotEmpty() }?.let { android.net.Uri.parse(it).host } ?: g?.optString("suggested").orEmpty()
+    val isSet = g?.optString("remote_url")?.isNotEmpty() == true
+    // set up already: does the app itself need one setting to work there (Home Assistant, Homepage)?
+    var fix by remember { mutableStateOf<JSONObject?>(null) }
+    LaunchedEffect(tick, isSet, host) { fix = if (isSet && app.isAdmin && host.isNotEmpty()) runCatching { app.api.get("/api/v1/apps/${android.net.Uri.encode(id)}/public-fix?host=${android.net.Uri.encode(host)}") }.getOrNull() else null }
+    var stop by remember { mutableStateOf<String?>(null) }           // "ask": how to stop opening it from anywhere
+    if (stop != null) {
+        val mine = remember { mutableStateOf<String?>(null) }
+        LaunchedEffect(Unit) { mine.value = runCatching { app.api.get("/api/v1/cloudflare").optJSONObject("nova_added")?.optString(host) }.getOrNull().orEmpty() }
+        val m = mine.value
+        fun forget(alsoCf: Boolean) = app.act {
+            if (alsoCf) app.stepUp("Take $host off the internet", "POST", "/api/v1/cloudflare/remove", JSONObject().put("host", host).put("allow_public", false))
+            app.api.post("/api/v1/apps", JSONObject().put("id", id).put("remote_off", true)); Cache.put("/api/v1/apps", app.api.get("/api/v1/apps"))
+            app.toast(if (alsoCf) "$host is off the internet" else "Link forgotten"); stop = null; onDone() }
+        OneDialog({ stop = null }, "Stop opening ${a.optString("name")} from anywhere?",
+            when { m == null -> "Checking…"; m == "added" -> "Nova put $host on your Cloudflare tunnel. Take it off — the route, DNS record and login it added — or only forget the link here?"
+                   m == "protected" -> "Nova added the login to $host. This forgets the link here; the address and its login stay in Cloudflare."
+                   else -> "Nova forgets $host for this app. Your Cloudflare settings stay as they are — remove the address there yourself if you want it gone." },
+            listOfNotNull(DialogButton("Cancel") { stop = null }, DialogButton(if (m == "added") "Only forget the link" else "Forget the link", if (m == "added") null else N.red, enabled = m != null) { forget(false) },
+                if (m == "added") DialogButton("Take it off Cloudflare", N.red) { forget(true) } else null))
+        return
+    }
     OneDialog(onDone, "${a.optString("name")} from anywhere", null, listOfNotNull(
         DialogButton("Close") { onDone() },
+        if (fix?.optBoolean("needed") == true && fix?.optBoolean("auto") == true) DialogButton("Fix it", N.blue) {
+            app.act { val r = app.stepUp("Change one setting in ${fix?.optString("app")} so it works at $host", "POST", "/api/v1/apps/${android.net.Uri.encode(id)}/public-fix", JSONObject().put("host", host))
+                app.toast(if (r.optBoolean("changed")) "${r.optString("app")} is set up — give it a moment to restart" else "Nothing needed changing"); tick++ } } else null,
+        if (isSet && app.isAdmin) DialogButton("Stop opening from anywhere", N.red) { stop = "ask" } else null,
         if (g?.optString("remote_url")?.isNotEmpty() == true) DialogButton("Check again") { tick++ } else null,
         if (labsCf && g?.optString("remote_url")?.isNotEmpty() == true) DialogButton("Who can open it", N.blue) {
             val h = android.net.Uri.parse(g?.optString("remote_url")).host.orEmpty(); onDone(); if (h.isNotEmpty()) app.go(Route.Access(h, id)) } else null,
@@ -333,6 +358,14 @@ fun openApp(app: AppState, a: JSONObject) {
             app.act { app.api.post("/api/v1/apps", JSONObject().put("id", id).put("remote_url", link.trim())); Cache.put("/api/v1/apps", app.api.get("/api/v1/apps")); editing = false; tick++ } }
         else DialogButton(if (g?.optString("remote_url")?.isNotEmpty() == true) "Change link" else "Set the link", N.blue) { if (link.isEmpty() && host.isNotEmpty()) link = "https://$host"; editing = true })) {
         Column(Modifier.padding(horizontal = 22.dp).heightIn(max = 520.dp).verticalScroll(androidx.compose.foundation.rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            fix?.takeIf { it.optBoolean("needed") }?.let { f ->
+                Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(N.amber.copy(alpha = 0.14f)).padding(12.dp)) {
+                    Icon(Icons.Rounded.Warning, null, tint = N.amber, modifier = Modifier.size(20.dp)); Spacer(Modifier.width(10.dp))
+                    val will = f.optJSONArray("will")?.let { w -> (0 until w.length()).joinToString(" ") { w.getString(it) } }.orEmpty()
+                    Text("${f.optString("app")} needs one setting changed. ${f.optString("what")}" + if (f.optBoolean("auto")) " Nova can do it for you — tap Fix it." else " $will",
+                        color = N.text, fontSize = 14.sp)
+                }
+            }
             if (chk != null) {
                 val st = chk.optString("state"); val col = if (st == "protected") N.green else N.amber
                 Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(col.copy(alpha = 0.14f)).padding(12.dp)) {

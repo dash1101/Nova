@@ -42,7 +42,19 @@
 ]
 },
 {
+"en": "--pc:{0}",
+"in": [
+"web"
+]
+},
+{
 "en": "-click a range.",
+"in": [
+"web"
+]
+},
+{
+"en": "-{0}ms",
 "in": [
 "web"
 ]
@@ -709,15 +721,15 @@
 ]
 },
 {
-"en": "A drive",
+"en": "a drive",
 "in": [
-"app",
 "web"
 ]
 },
 {
-"en": "a drive",
+"en": "A drive",
 "in": [
+"app",
 "web"
 ]
 },
@@ -941,6 +953,12 @@
 "en": "Access → Applications",
 "in": [
 "web"
+]
+},
+{
+"en": "access/",
+"in": [
+"app"
 ]
 },
 {
@@ -1647,6 +1665,12 @@
 ]
 },
 {
+"en": "android {0}",
+"in": [
+"app"
+]
+},
+{
 "en": "AndroidKeyStore",
 "in": [
 "app",
@@ -1891,6 +1915,13 @@
 },
 {
 "en": "Apply",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "Apply changes ({0})",
 "in": [
 "app",
 "web"
@@ -2610,7 +2641,8 @@
 {
 "en": "Blue",
 "in": [
-"app"
+"app",
+"web"
 ]
 },
 {
@@ -2872,6 +2904,12 @@
 ]
 },
 {
+"en": "by {0}",
+"in": [
+"app"
+]
+},
+{
 "en": "Cable errors (all-time)",
 "in": [
 "app",
@@ -2880,6 +2918,12 @@
 },
 {
 "en": "Cable errors never go back down — only worry if the number keeps rising.",
+"in": [
+"app"
+]
+},
+{
+"en": "cache_{0}",
 "in": [
 "app"
 ]
@@ -3468,6 +3512,18 @@
 ]
 },
 {
+"en": "col:{0}:none",
+"in": [
+"web"
+]
+},
+{
+"en": "col:{0}:{1}",
+"in": [
+"web"
+]
+},
+{
 "en": "Color",
 "in": [
 "app",
@@ -3485,6 +3541,12 @@
 "en": "Color, effects, schedules",
 "in": [
 "app",
+"web"
+]
+},
+{
+"en": "color:{0}",
+"in": [
 "web"
 ]
 },
@@ -3939,6 +4001,12 @@
 ]
 },
 {
+"en": "Couldn't ask {0} ({1})",
+"in": [
+"web"
+]
+},
+{
 "en": "Couldn't change the light",
 "in": [
 "app"
@@ -4045,6 +4113,12 @@
 ]
 },
 {
+"en": "Couldn't start pairing ({0})",
+"in": [
+"web"
+]
+},
+{
 "en": "Count the LEDs (or check the box) so effects fit the whole length.",
 "in": [
 "app",
@@ -4096,6 +4170,12 @@
 "in": [
 "app",
 "web"
+]
+},
+{
+"en": "CPU {0}",
+"in": [
+"wear"
 ]
 },
 {
@@ -4198,6 +4278,12 @@
 "en": "Crucial SSD 500GB",
 "in": [
 "app"
+]
+},
+{
+"en": "cs:{0}",
+"in": [
+"web"
 ]
 },
 {
@@ -4824,6 +4910,12 @@
 ]
 },
 {
+"en": "Download failed ({0})",
+"in": [
+"app"
+]
+},
+{
 "en": "Download the Android app",
 "in": [
 "site"
@@ -4999,6 +5091,12 @@
 "en": "Drop the disk cache",
 "in": [
 "app",
+"web"
+]
+},
+{
+"en": "dst:{0}",
+"in": [
 "web"
 ]
 },
@@ -5241,6 +5339,12 @@
 ]
 },
 {
+"en": "en:{0}",
+"in": [
+"web"
+]
+},
+{
 "en": "Ends",
 "in": [
 "app",
@@ -5419,6 +5523,12 @@
 "en": "Estimated health",
 "in": [
 "app",
+"web"
+]
+},
+{
+"en": "ev:{0}",
+"in": [
 "web"
 ]
 },
@@ -6149,6 +6259,13 @@
 ]
 },
 {
+"en": "Forget the link",
+"in": [
+"app",
+"web"
+]
+},
+{
 "en": "Forgotten — it won't be reported missing again",
 "in": [
 "app",
@@ -6364,6 +6481,12 @@
 "en": "Frosted glass, a soft glow behind every page, and a floating navigation pill that slides between tabs.",
 "in": [
 "site"
+]
+},
+{
+"en": "fs:{0}",
+"in": [
+"web"
 ]
 },
 {
@@ -6648,6 +6771,12 @@
 ]
 },
 {
+"en": "goal:{0}",
+"in": [
+"web"
+]
+},
+{
 "en": "Going back…",
 "in": [
 "app",
@@ -6754,7 +6883,8 @@
 {
 "en": "Green",
 "in": [
-"app"
+"app",
+"web"
 ]
 },
 {
@@ -7051,6 +7181,18 @@
 ]
 },
 {
+"en": "history_{0}",
+"in": [
+"app"
+]
+},
+{
+"en": "hit:{0}",
+"in": [
+"web"
+]
+},
+{
 "en": "Hitachi",
 "in": [
 "app"
@@ -7270,6 +7412,14 @@
 ]
 },
 {
+"en": "HTTP {0}",
+"in": [
+"app",
+"wear",
+"web"
+]
+},
+{
 "en": "HTTPS to the server's own certificate",
 "in": [
 "web"
@@ -7440,6 +7590,12 @@
 "in": [
 "app",
 "web"
+]
+},
+{
+"en": "ignored {0}",
+"in": [
+"app"
 ]
 },
 {
@@ -8027,13 +8183,13 @@
 ]
 },
 {
-"en": "It matches",
+"en": "it matches",
 "in": [
 "app"
 ]
 },
 {
-"en": "it matches",
+"en": "It matches",
 "in": [
 "app"
 ]
@@ -8338,6 +8494,18 @@
 },
 {
 "en": "Keep {0} behind the login and still send albums to anyone: a small share proxy serves only what you share, at its own address.",
+"in": [
+"web"
+]
+},
+{
+"en": "keep1:{0}",
+"in": [
+"web"
+]
+},
+{
+"en": "keep:{0}",
 "in": [
 "web"
 ]
@@ -8723,6 +8891,13 @@
 ]
 },
 {
+"en": "Link forgotten",
+"in": [
+"app",
+"web"
+]
+},
+{
 "en": "linkbtn press",
 "in": [
 "web"
@@ -8987,6 +9162,12 @@
 "en": "ls -la",
 "in": [
 "app",
+"web"
+]
+},
+{
+"en": "lvl:{0}",
+"in": [
 "web"
 ]
 },
@@ -9277,7 +9458,8 @@
 {
 "en": "Match my accent color",
 "in": [
-"app"
+"app",
+"web"
 ]
 },
 {
@@ -10766,6 +10948,13 @@
 ]
 },
 {
+"en": "Nothing needed changing",
+"in": [
+"app",
+"web"
+]
+},
+{
 "en": "Nothing on Docker Hub for “{0}”",
 "in": [
 "app",
@@ -10911,6 +11100,13 @@
 ]
 },
 {
+"en": "Nova can do it for you — tap Fix it.",
+"in": [
+"app",
+"web"
+]
+},
+{
 "en": "Nova can't resize {0}",
 "in": [
 "web"
@@ -10931,6 +11127,13 @@
 {
 "en": "Nova collects nothing. The apps talk only to your server",
 "in": [
+"web"
+]
+},
+{
+"en": "Nova forgets {0} for this app. Your Cloudflare settings stay as they are — remove the address there yourself if you want it gone.",
+"in": [
+"app",
 "web"
 ]
 },
@@ -11101,6 +11304,13 @@
 ]
 },
 {
+"en": "Nova put {0} on your Cloudflare tunnel. Take it off — the route, DNS record and login it added — or only forget the link here?",
+"in": [
+"app",
+"web"
+]
+},
+{
 "en": "Nova removes the login it added (if any) and forgets it. Your route and DNS record stay as they are, so share links keep working.",
 "in": [
 "app"
@@ -11217,6 +11427,42 @@
 ]
 },
 {
+"en": "nova-custom-{0}-{1}",
+"in": [
+"app"
+]
+},
+{
+"en": "nova-device-key{0}",
+"in": [
+"app"
+]
+},
+{
+"en": "nova-history-{0}.csv",
+"in": [
+"web"
+]
+},
+{
+"en": "nova-quick-approve-key{0}",
+"in": [
+"app"
+]
+},
+{
+"en": "nova-secret-key{0}",
+"in": [
+"app"
+]
+},
+{
+"en": "nova-stepup-key{0}",
+"in": [
+"app"
+]
+},
+{
 "en": "nova.dismissedUpdate",
 "in": [
 "web"
@@ -11233,6 +11479,24 @@
 "in": [
 "app",
 "wear"
+]
+},
+{
+"en": "nova_dash_{0}",
+"in": [
+"app"
+]
+},
+{
+"en": "nova_ssh-{0}",
+"in": [
+"app"
+]
+},
+{
+"en": "nova_{0}",
+"in": [
+"app"
 ]
 },
 {
@@ -11630,6 +11894,13 @@
 ]
 },
 {
+"en": "Only forget the link",
+"in": [
+"app",
+"web"
+]
+},
+{
 "en": "Only hidden files here",
 "in": [
 "app",
@@ -12000,7 +12271,8 @@
 {
 "en": "Orange",
 "in": [
-"app"
+"app",
+"web"
 ]
 },
 {
@@ -12032,7 +12304,8 @@
 {
 "en": "Outline light",
 "in": [
-"app"
+"app",
+"web"
 ]
 },
 {
@@ -12078,6 +12351,12 @@
 "en": "own Cloudflare Tunnel",
 "in": [
 "site"
+]
+},
+{
+"en": "package:{0}",
+"in": [
+"app"
 ]
 },
 {
@@ -12270,6 +12549,12 @@
 "in": [
 "app",
 "web"
+]
+},
+{
+"en": "Pairing failed ({0})",
+"in": [
+"app"
 ]
 },
 {
@@ -12626,6 +12911,18 @@
 ]
 },
 {
+"en": "pick1:{0}",
+"in": [
+"web"
+]
+},
+{
+"en": "pick:{0}",
+"in": [
+"web"
+]
+},
+{
 "en": "Picture spins the other way",
 "in": [
 "app",
@@ -12691,7 +12988,8 @@
 {
 "en": "Pink",
 "in": [
-"app"
+"app",
+"web"
 ]
 },
 {
@@ -12717,6 +13015,12 @@
 "en": "Pinned — it stays in the navigation pill",
 "in": [
 "app"
+]
+},
+{
+"en": "pk:{0}",
+"in": [
+"web"
 ]
 },
 {
@@ -12811,6 +13115,12 @@
 ]
 },
 {
+"en": "pol:{0}",
+"in": [
+"web"
+]
+},
+{
 "en": "Pool",
 "in": [
 "app",
@@ -12832,6 +13142,12 @@
 },
 {
 "en": "pool/{0}",
+"in": [
+"web"
+]
+},
+{
+"en": "pool:{0}",
 "in": [
 "web"
 ]
@@ -13451,7 +13767,8 @@
 {
 "en": "Red",
 "in": [
-"app"
+"app",
+"web"
 ]
 },
 {
@@ -13767,9 +14084,17 @@
 ]
 },
 {
+"en": "Rename this passkey",
+"in": [
+"app",
+"web"
+]
+},
+{
 "en": "Renamed",
 "in": [
-"app"
+"app",
+"web"
 ]
 },
 {
@@ -13986,6 +14311,12 @@
 },
 {
 "en": "restart:<container>",
+"in": [
+"app"
+]
+},
+{
+"en": "restart:{0}",
 "in": [
 "app"
 ]
@@ -14765,6 +15096,12 @@
 ]
 },
 {
+"en": "secure connection failed ({0})",
+"in": [
+"app"
+]
+},
+{
 "en": "Security",
 "in": [
 "app",
@@ -15025,6 +15362,12 @@
 "in": [
 "app",
 "web"
+]
+},
+{
+"en": "server {0}",
+"in": [
+"app"
 ]
 },
 {
@@ -15336,6 +15679,12 @@
 ]
 },
 {
+"en": "share:{0}",
+"in": [
+"app"
+]
+},
+{
 "en": "Shell",
 "in": [
 "app",
@@ -15426,6 +15775,12 @@
 "in": [
 "app",
 "web"
+]
+},
+{
+"en": "Show older ({0})",
+"in": [
+"app"
 ]
 },
 {
@@ -15596,7 +15951,19 @@
 ]
 },
 {
+"en": "since {0}",
+"in": [
+"app"
+]
+},
+{
 "en": "Sites you open often · hold one to edit it",
+"in": [
+"app"
+]
+},
+{
+"en": "sites {0}",
 "in": [
 "app"
 ]
@@ -15677,6 +16044,12 @@
 },
 {
 "en": "Smaller — Nova checks whether the files fit",
+"in": [
+"web"
+]
+},
+{
+"en": "Smaller — the files ({0}) are copied, the filesystems made to fit",
 "in": [
 "web"
 ]
@@ -15799,6 +16172,13 @@
 ]
 },
 {
+"en": "Speed test failed ({0})",
+"in": [
+"app",
+"web"
+]
+},
+{
 "en": "Speed, stress and network tests",
 "in": [
 "app",
@@ -15815,6 +16195,18 @@
 "en": "Square tile",
 "in": [
 "app"
+]
+},
+{
+"en": "sr:{0}",
+"in": [
+"web"
+]
+},
+{
+"en": "src:{0}",
+"in": [
+"web"
 ]
 },
 {
@@ -16065,6 +16457,19 @@
 "en": "Stop managing {0} in Nova?",
 "in": [
 "app"
+]
+},
+{
+"en": "Stop opening from anywhere",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "Stop opening {0} from anywhere?",
+"in": [
+"web"
 ]
 },
 {
@@ -16601,6 +17006,13 @@
 ]
 },
 {
+"en": "Take it off Cloudflare",
+"in": [
+"app",
+"web"
+]
+},
+{
 "en": "Take it off the internet",
 "in": [
 "app",
@@ -16625,6 +17037,12 @@
 "in": [
 "app",
 "web"
+]
+},
+{
+"en": "Take {0} off the internet",
+"in": [
+"app"
 ]
 },
 {
@@ -16925,6 +17343,12 @@
 "en": "That code is wrong or expired. Run `sudo nova add` again.",
 "in": [
 "app"
+]
+},
+{
+"en": "That didn't work ({0})",
+"in": [
+"web"
 ]
 },
 {
@@ -17719,6 +18143,12 @@
 ]
 },
 {
+"en": "thread: {0}",
+"in": [
+"app"
+]
+},
+{
 "en": "Three commands and a QR code.",
 "in": [
 "site"
@@ -18386,6 +18816,12 @@
 ]
 },
 {
+"en": "unsrc:{0}",
+"in": [
+"web"
+]
+},
+{
 "en": "Untagged image",
 "in": [
 "app",
@@ -18647,6 +19083,12 @@
 ]
 },
 {
+"en": "url({0})",
+"in": [
+"web"
+]
+},
+{
 "en": "USB devices",
 "in": [
 "app",
@@ -18755,6 +19197,12 @@
 },
 {
 "en": "Used to work out sunrise and sunset for light schedules. Nova starts from the server's time zone{0}",
+"in": [
+"web"
+]
+},
+{
+"en": "useq:{0}:r",
 "in": [
 "web"
 ]
@@ -18877,6 +19325,12 @@
 },
 {
 "en": "Very little. This app's key only works after the phone is unlocked, and anything risky needs your fingerprint too. Remove a lost phone in Users & devices from another phone, or with sudo nova remove NAME on the server, and its key stops working instantly.",
+"in": [
+"app"
+]
+},
+{
+"en": "via {0}",
 "in": [
 "app"
 ]
@@ -19030,6 +19484,12 @@
 "en": "Wear OS app",
 "in": [
 "site"
+]
+},
+{
+"en": "wear {0}",
+"in": [
+"wear"
 ]
 },
 {
@@ -20134,6 +20594,36 @@
 ]
 },
 {
+"en": "{0} (API {1})",
+"in": [
+"app"
+]
+},
+{
+"en": "{0} (fewer on a narrow screen)",
+"in": [
+"app"
+]
+},
+{
+"en": "{0} (via {1})",
+"in": [
+"web"
+]
+},
+{
+"en": "{0} ({1}) goes, once you apply.",
+"in": [
+"web"
+]
+},
+{
+"en": "{0} / {1} GB",
+"in": [
+"web"
+]
+},
+{
 "en": "{0} Add a folder",
 "in": [
 "web"
@@ -20152,13 +20642,38 @@
 ]
 },
 {
+"en": "{0} added",
+"in": [
+"app",
+"web"
+]
+},
+{
 "en": "{0} Archive",
 "in": [
 "web"
 ]
 },
 {
+"en": "{0} at {1}",
+"in": [
+"web"
+]
+},
+{
+"en": "{0} column{1}",
+"in": [
+"web"
+]
+},
+{
 "en": "{0} copied · {1} files in the backup · {2} s",
+"in": [
+"web"
+]
+},
+{
+"en": "{0} daily",
 "in": [
 "web"
 ]
@@ -20171,7 +20686,31 @@
 ]
 },
 {
+"en": "{0} dark",
+"in": [
+"app"
+]
+},
+{
+"en": "{0} days",
+"in": [
+"app"
+]
+},
+{
+"en": "{0} device{1}",
+"in": [
+"web"
+]
+},
+{
 "en": "{0} doesn't know this browser anymore — pick it under Servers to pair again",
+"in": [
+"web"
+]
+},
+{
+"en": "{0} failed: {1}",
 "in": [
 "web"
 ]
@@ -20185,6 +20724,20 @@
 {
 "en": "{0} files changed · {1} copied · {2} s",
 "in": [
+"web"
+]
+},
+{
+"en": "{0} fps",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "{0} free",
+"in": [
+"app",
 "web"
 ]
 },
@@ -20204,6 +20757,12 @@
 "en": "{0} from anywhere",
 "in": [
 "web"
+]
+},
+{
+"en": "{0} GB",
+"in": [
+"app"
 ]
 },
 {
@@ -20227,6 +20786,19 @@
 ]
 },
 {
+"en": "{0} hourly",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "{0} hours",
+"in": [
+"web"
+]
+},
+{
 "en": "{0} hours ({1} years)",
 "in": [
 "web"
@@ -20246,6 +20818,12 @@
 ]
 },
 {
+"en": "{0} is already in use",
+"in": [
+"web"
+]
+},
+{
 "en": "{0} is at {1}",
 "in": [
 "web"
@@ -20254,6 +20832,13 @@
 {
 "en": "{0} is available · install it from the Nova app on an admin phone",
 "in": [
+"web"
+]
+},
+{
+"en": "{0} is off the internet",
+"in": [
+"app",
 "web"
 ]
 },
@@ -20284,9 +20869,28 @@
 ]
 },
 {
+"en": "{0} is up to date",
+"in": [
+"app",
+"web"
+]
+},
+{
 "en": "{0} Its own Nova web",
 "in": [
 "web"
+]
+},
+{
+"en": "{0} KB",
+"in": [
+"app"
+]
+},
+{
+"en": "{0} light",
+"in": [
+"app"
 ]
 },
 {
@@ -20296,7 +20900,20 @@
 ]
 },
 {
+"en": "{0} MB",
+"in": [
+"app"
+]
+},
+{
 "en": "{0} MB liberados",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "{0} min",
 "in": [
 "app",
 "web"
@@ -20324,6 +20941,18 @@
 ]
 },
 {
+"en": "{0} monthly",
+"in": [
+"web"
+]
+},
+{
+"en": "{0} months",
+"in": [
+"app"
+]
+},
+{
 "en": "{0} needs a newer Nova first — run sudo nova update on it",
 "in": [
 "web"
@@ -20336,7 +20965,31 @@
 ]
 },
 {
+"en": "{0} needs one setting changed.",
+"in": [
+"web"
+]
+},
+{
 "en": "{0} need{1} attention",
+"in": [
+"web"
+]
+},
+{
+"en": "{0} new",
+"in": [
+"app"
+]
+},
+{
+"en": "{0} notifications",
+"in": [
+"app"
+]
+},
+{
+"en": "{0} now asks for your login",
 "in": [
 "web"
 ]
@@ -20354,9 +21007,35 @@
 ]
 },
 {
+"en": "{0} on",
+"in": [
+"web"
+]
+},
+{
 "en": "{0} per cycle",
 "in": [
 "app"
+]
+},
+{
+"en": "{0} pool",
+"in": [
+"web"
+]
+},
+{
+"en": "{0} reallocated",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "{0} restarted",
+"in": [
+"app",
+"web"
 ]
 },
 {
@@ -20380,6 +21059,13 @@
 ]
 },
 {
+"en": "{0} selected",
+"in": [
+"app",
+"web"
+]
+},
+{
 "en": "{0} stops, and its automatic restarts are off until you start it again.",
 "in": [
 "app"
@@ -20388,6 +21074,33 @@
 {
 "en": "{0} stops, and its automatic restarts are turned off until you start it again.",
 "in": [
+"web"
+]
+},
+{
+"en": "{0} uncorrectable",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "{0} unreadable",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "{0} updated",
+"in": [
+"app"
+]
+},
+{
+"en": "{0} usable",
+"in": [
+"app",
 "web"
 ]
 },
@@ -20408,6 +21121,18 @@
 "en": "{0} waiting — set a screen lock on the watch to approve here, or use your phone.",
 "in": [
 "wear"
+]
+},
+{
+"en": "{0} weekly",
+"in": [
+"web"
+]
+},
+{
+"en": "{0} weeks",
+"in": [
+"app"
 ]
 },
 {
@@ -20497,8 +21222,100 @@
 ]
 },
 {
+"en": "{0}% of free",
+"in": [
+"app"
+]
+},
+{
+"en": "{0}. A backup of the file is kept next to it. Your phone confirms it.",
+"in": [
+"web"
+]
+},
+{
+"en": "{0}/diagnose",
+"in": [
+"web"
+]
+},
+{
+"en": "{0}/fix/{1}",
+"in": [
+"web"
+]
+},
+{
+"en": "{0}/policy",
+"in": [
+"web"
+]
+},
+{
+"en": "{0}/remove-custom",
+"in": [
+"web"
+]
+},
+{
+"en": "{0}/update",
+"in": [
+"web"
+]
+},
+{
+"en": "{0}: avg {1} ms (min {2}, max {3}) · jitter {4} ms · {5}% lost",
+"in": [
+"web"
+]
+},
+{
+"en": "{0}: done",
+"in": [
+"web"
+]
+},
+{
+"en": "{0}: {1} done",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "{0}:latest",
+"in": [
+"app"
+]
+},
+{
+"en": "{0}:{1} is reachable ({2} ms)",
+"in": [
+"web"
+]
+},
+{
+"en": "{0}\\n{1}\\n{2}\\n{3}\\n{4}",
+"in": [
+"web"
+]
+},
+{
 "en": "{0}Copy",
 "in": [
+"web"
+]
+},
+{
+"en": "{0}d {1}h",
+"in": [
+"app"
+]
+},
+{
+"en": "{0}d {1}h {2}m",
+"in": [
+"app",
 "web"
 ]
 },
@@ -20506,6 +21323,18 @@
 "en": "{0}ing…",
 "in": [
 "app",
+"web"
+]
+},
+{
+"en": "{0}x{1}x{2}x{3}",
+"in": [
+"web"
+]
+},
+{
+"en": "{0}{1} min",
+"in": [
 "web"
 ]
 },

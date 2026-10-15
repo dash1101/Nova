@@ -12,6 +12,7 @@ import * as SV from "./servers.js";
 import * as FM from "./files.js";
 import * as PT from "./parts.js";
 import * as SEC from "./sec.js";
+import * as WM from "./winmgr.js";
 
 onApproval((id, code, totp, pk) => waitApproval(id, get, code, totp, post, pk));
 
@@ -80,7 +81,7 @@ async function wallpaper() {
   w.style.backgroundImage = `url("${wallUrl}")`;
   w.style.setProperty("--wblur", (prefs.wallBlur ?? 16) + "px"); w.style.setProperty("--wdim", String((prefs.wallDim ?? 35) / 100));
 }
-export { applyTheme };
+export { applyTheme, tab };
 applyTheme();
 matchMedia("(prefers-color-scheme: light)").addEventListener?.("change", applyTheme);
 
@@ -211,6 +212,7 @@ function drawNav(route) {
   const on = $$("button", nav)[i];                       // the tab you're on scrolls into view
   if (on) on.scrollIntoView({ block: "nearest", inline: "nearest", behavior: document.documentElement.classList.contains("reduce") ? "auto" : "smooth" });
   $(".nscroll", nav)?.onscroll?.();
+  WM.drawDock();
 }
 
 // ── animation speed (Appearance): every CSS transition and animation plays at the chosen rate as it starts ──

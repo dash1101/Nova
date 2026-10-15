@@ -19,7 +19,9 @@ fun routeForWeb(go: String): Route? = when {
     go == "freeup" -> Route.FreeUp; go == "status" -> Route.Status; go == "containers" -> Route.Containers; go == "updates" -> Route.Updates
     go == "backups" -> Route.Backups; go == "devices" -> Route.Devices; go == "settings" -> Route.Settings; go == "disks" -> Route.Disks
     go == "quick" -> Route.QuickPanel; go == "security" -> Route.Security; go == "files" -> Route.Hardware; go == "hardware" -> Route.Hardware
-    go.startsWith("drive/") -> Route.Drive(go.removePrefix("drive/")); else -> null
+    go.startsWith("drive/") -> Route.Drive(go.removePrefix("drive/"))
+    go.startsWith("access/") -> go.removePrefix("access/").split("/").let { p -> Route.Access(android.net.Uri.decode(p[0]), android.net.Uri.decode(p.getOrElse(1) { "" })) }
+    else -> null
 }
 
 private fun recIcon(level: String) = when (level) { "urgent" -> Icons.Rounded.Error; "warn" -> Icons.Rounded.Warning; else -> Icons.Rounded.Info }

@@ -1,5 +1,6 @@
 package app.novalabs.nova
 
+import androidx.compose.foundation.layout.Row
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.Icon
@@ -17,6 +18,7 @@ import org.json.JSONObject
     val pk = if (app.isAdmin) live(app, "/api/v1/passkeys", 60_000) else null
     val act = if (app.isAdmin) live(app, "/api/v1/security/activity", 60_000) else null
     var rmPk by remember { mutableStateOf<JSONObject?>(null) }
+    var renPk by remember { mutableStateOf<JSONObject?>(null) }
     Page("Security & privacy", app::back) {
         SectionLabel("This ${DeviceForm.noun}")
         Group {
@@ -43,7 +45,7 @@ import org.json.JSONObject
                 if (keys.isEmpty()) Row1("None yet", "Add one in Nova web, opened at its web address (Security & privacy → Passkeys): a passkey in your password manager can then add a browser or approve what it asks for, without this phone.", false, Icons.Rounded.Key, N.sub)
                 keys.forEachIndexed { i, k -> if (i > 0) RowDivider()
                     Row1(k.optString("name").ifEmpty { "Passkey" }, "${k.optString("rp")} · added ${k.optString("created")}" + (k.optString("last_used").takeIf { it.isNotEmpty() && it != "null" }?.let { " · last used $it" } ?: ""),
-                        false, Icons.Rounded.Key, N.blue) { IconButton({ rmPk = k }) { Icon(Icons.Rounded.Delete, "Remove", tint = N.red) } } }
+                        false, Icons.Rounded.Key, N.blue) { Row { IconButton({ renPk = k }) { Icon(Icons.Rounded.Edit, "Rename", tint = N.sub) }; IconButton({ rmPk = k }) { Icon(Icons.Rounded.Delete, "Remove", tint = N.red) } } } }
             }
         }
         SectionLabel("Who can reach the server")
@@ -68,6 +70,8 @@ import org.json.JSONObject
                     false, if (bad) Icons.Rounded.Warning else Icons.Rounded.CheckCircle, if (bad) N.amber else N.green) } }
         }
     }
+    renPk?.let { k -> RenameDialog("Rename this passkey", k.optString("name"), onDismiss = { renPk = null }) { n -> val id = k.optString("id"); renPk = null
+        app.act("Renamed") { pk?.value = app.api.post("/api/v1/passkeys/rename", JSONObject().put("id", id).put("name", n)) } } }
     rmPk?.let { k -> OneDialog({ rmPk = null }, "Remove ${k.optString("name").ifEmpty { "this passkey" }}?", "It can't add browsers or approve requests any more. (It stays in your password manager — delete it there too.)",
         listOf(DialogButton("Cancel") { rmPk = null }, DialogButton("Remove", N.red) { val id = k.optString("id"); rmPk = null
             app.act { app.stepUp("Remove a passkey", "POST", "/api/v1/passkeys/remove", JSONObject().put("id", id)); pk?.value = app.api.get("/api/v1/passkeys") } })) }

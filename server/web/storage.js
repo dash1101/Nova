@@ -1,7 +1,7 @@
 // Nova web — storage map, drive setup wizard, pools, background tasks, backups, diagnostics.
 // Mirrors the app's Storage.kt / Backups.kt / Diagnostics.kt.
-import { S, $, $$, esc, get, post, del, bytes, isAdmin, signedFetch, serverHost } from "./core.js";
-import { I, row, group, sec, note, radio, switchRow, segmented, bar, usageColor, toast, dialog, confirm, wireCommon, sheet, closeSheet, copyCmd } from "./ui.js";
+import { S, $, $$, esc, get, post, del, bytes, isAdmin, signedFetch, serverHost, prefs } from "./core.js";
+import { I, row, group, sec, note, radio, switchRow, segmented, bar, usageColor, toast, dialog, confirm, ask, wireCommon, sheet, closeSheet, copyCmd } from "./ui.js";
 
 const enc = encodeURIComponent;
 const viewOnly = () => toast("This browser has view-only access");
@@ -530,7 +530,7 @@ export async function apps(ctx) {
       + (S.cache["/api/v1/apps"] ? (list.length ? `<div class="appgrid">${list.map((a, i) => { const h = appHref(a);
           if (a.kind === "command") return `<button class="appcell press${a.hidden ? " dim" : ""}" data-act="runcmd:${i}" data-i="${i}" style="border:0;background:none;font:inherit;color:var(--text);cursor:pointer"><span class="appic" data-id="${esc(a.id)}" style="color:var(--green)">${I("term")}</span><span class="appname">${esc(a.name)}</span></button>`;
           if (a.companion_of) return `<button class="appcell press${a.hidden ? " dim" : ""}" data-act="companion:${i}" data-i="${i}" style="border:0;background:none;font:inherit;color:var(--text);cursor:pointer"><span class="appic" data-id="${esc(a.id)}">${esc((a.name || "?")[0].toUpperCase())}</span><span class="appname">${esc(a.name)}</span></button>`;
-          return `<a class="appcell${a.hidden ? " dim" : ""}" ${h ? `href="${esc(h)}" target="_blank" rel="noopener noreferrer"` : `data-act="noreach"`} data-i="${i}"><span class="appic" data-id="${esc(a.id)}">${esc((a.name || "?")[0].toUpperCase())}</span><span class="appname">${esc(a.name)}</span></a>`; }).join("")}${isAdmin() ? `<button class="appcell addapp press" data-act="add"><span class="appic">${I("add")}</span><span class="appname">Add</span></button>` : ""}</div>`
+          return `<a class="appcell${a.hidden ? " dim" : ""}" ${h ? `href="${esc(h)}" target="_blank" rel="noopener noreferrer" data-wid="${esc(a.id)}"` : `data-act="noreach"`} data-i="${i}"><span class="appic" data-id="${esc(a.id)}">${esc((a.name || "?")[0].toUpperCase())}</span><span class="appname">${esc(a.name)}</span></a>`; }).join("")}${isAdmin() ? `<button class="appcell addapp press" data-act="add"><span class="appic">${I("add")}</span><span class="appname">Add</span></button>` : ""}</div>`
         : group(row("No web apps found", { sub: "Install one from the Store, or add a link with +", icon: "apps" }))) : note("Looking for apps…"))
       + (all.some(a => a.hidden) ? group(switchRow("Show hidden apps", null, showHidden, "hid")) : ""),
       { title: "Apps", actions: [{ icon: "add", label: "Add an app", act: "add" }] });
@@ -620,8 +620,12 @@ export async function apps(ctx) {
     const step = (n, t) => `<li><b>${n}.</b> ${t}</li>`;
     const host = g.remote_url ? new URL(g.remote_url).hostname : g.suggested;
     const labsOn = (await get("/api/v1/labs").catch(() => ({})))?.labs?.cloudflare_sync;
-    const r = await dialog(`${a.name} from anywhere`, "", [{ label: "Close", value: null }, ...(g.remote_url ? [{ label: "Check again", value: "check" }] : []), ...(labsOn && !g.remote_url && g.service ? [{ label: "Set it up for me", value: "auto" }] : []), { label: g.remote_url ? "Change link" : "Set the link", color: "var(--blue)", value: "set" }],
-      `<div class="pad rguide">${chk}<p class="muted">Your server already has a Cloudflare tunnel. Give this app its own address on it, protected by the same Cloudflare login as Nova — nothing reaches the app until you've signed in.</p>
+    // set up already: does the app itself need one setting to work there (Home Assistant, Homepage)?
+    const fx = g.remote_url && isAdmin() ? await get(`/api/v1/apps/${enc(a.id)}/public-fix?host=${enc(host)}`).catch(() => null) : null;
+    const fixBox = fx?.needed ? `<div class="rcheck open">${I("warn")}<span><b>${esc(fx.app)} needs one setting changed.</b> ${esc(fx.what)}${fx.auto ? " Nova can do it for you — tap Fix it." : " " + esc((fx.will || []).join(" "))}</span></div>` : "";
+    const r = await dialog(`${a.name} from anywhere`, "", [{ label: "Close", value: null }, ...(fx?.needed && fx.auto ? [{ label: "Fix it", color: "var(--blue)", value: "fix" }] : []),
+      ...(g.remote_url && isAdmin() ? [{ label: "Stop opening from anywhere", color: "var(--red)", value: "off" }] : []), ...(g.remote_url ? [{ label: "Check again", value: "check" }] : []), ...(labsOn && !g.remote_url && g.service ? [{ label: "Set it up for me", value: "auto" }] : []), { label: g.remote_url ? "Change link" : "Set the link", color: "var(--blue)", value: "set" }],
+      `<div class="pad rguide">${fixBox}${chk}<p class="muted">Your server already has a Cloudflare tunnel. Give this app its own address on it, protected by the same Cloudflare login as Nova — nothing reaches the app until you've signed in.</p>
         <ol>${step(1, "Cloudflare Zero Trust → <b>Networks → Tunnels</b> → your tunnel → <b>Public hostnames</b> → <b>Add a public hostname</b>.")}
         ${step(2, `Subdomain and domain: ${host ? copyCmd(host) : "e.g. photos.yourdomain.com"}`)}
         ${step(3, `Service: ${g.service ? copyCmd(g.service) : "the app's address on the server"}${/^https:/.test(g.service || "") ? `<br><small class="muted">It uses its own certificate: under <b>Additional application settings → TLS</b>, turn on <b>No TLS Verify</b>.</small>` : ""}`)}
@@ -629,6 +633,25 @@ export async function apps(ctx) {
         ${step(5, "Set it below as the app's remote link, then <b>Check</b> — Nova makes sure Cloudflare asks for a login first.")}</ol></div>`);
     if (r === "check") return remoteSetup(a);
     if (r === "auto") return autoSetup(a, g, host);
+    if (r === "fix") {
+      if (!(await confirm(`Change ${fx.app}'s setting?`, `${(fx.will || []).join(". ")}. A backup of the file is kept next to it. Your phone confirms it.`, "Fix it", "var(--blue)"))) return remoteSetup(a);
+      try { const res = await post(`/api/v1/apps/${enc(a.id)}/public-fix`, { host }); toast(res?.changed ? `${res.app} is set up — give it a moment to restart` : "Nothing needed changing"); } catch (e) { toast(e.message); }
+      return remoteSetup(a);
+    }
+    if (r === "off") {
+      // Nova put it on Cloudflare: offer to take that off too. Otherwise it only forgets the link (your Cloudflare stays as it is).
+      const cf = await get("/api/v1/cloudflare").catch(() => null), mine = (cf?.nova_added || {})[host];
+      const how = mine ? await dialog(`Stop opening ${a.name} from anywhere?`, mine === "protected" ? `Nova added the login to ${host}. Forget the link only, or also take the login off (it would be open to anyone)?` : `Nova put ${host} on your Cloudflare tunnel. Take it off — the route, DNS record and login it added — or only forget the link here?`,
+          [{ label: "Cancel", value: null }, { label: "Only forget the link", value: "link" }, ...(mine === "protected" ? [] : [{ label: "Take it off Cloudflare", color: "var(--red)", value: "cf" }])])
+        : (await confirm(`Stop opening ${a.name} from anywhere?`, `Nova forgets ${host} for this app. Your Cloudflare settings stay as they are — remove the address there yourself if you want it gone.`, "Forget the link", "var(--red)")) ? "link" : null;
+      if (!how) return;
+      try {
+        if (how === "cf") await post("/api/v1/cloudflare/remove", { host, allow_public: false });
+        await post("/api/v1/apps", { id: a.id, remote_off: true }); await get("/api/v1/apps"); draw();
+        toast(how === "cf" ? `${host} is off the internet` : "Link forgotten");
+      } catch (e) { toast(e.message); }
+      return;
+    }
     if (r === "set") {
       let v = a.remote_url || (host ? "https://" + host : "");
       const p2 = dialog("Remote link", "The https:// address you added in Cloudflare.", [{ label: "Cancel", value: null }, { label: "Save and check", color: "var(--blue)", value: "save" }],
@@ -803,9 +826,10 @@ export async function labs(ctx, stable = false) {
         stable && l.labs.wake_on_lan ? row("Wake-on-LAN", { sub: "Turn on other computers on your network", blue: true, icon: "power", click: "go:wol" }) : "",
         !stable && l.labs.openrgb ? row("OpenRGB", { sub: "Where it runs, and the devices it has", blue: true, icon: "bulb", click: "go:openrgb" }) : "",
       ].join("")) : ""}
-      ${stable ? group(row("Experimental features (Labs)", { icon: "science", blue: true, click: "go:labs" })) : ""}`, { title });
+      ${stable ? group(row("Experimental features (Labs)", { icon: "science", blue: true, click: "go:labs" })) : sec("This browser") + group(switchRow("Apps in Nova windows", "Apps open in a window inside Nova — with minimize, maximize and close, in the look you picked — instead of a new tab. Minimized ones wait in the navigation pill. Only in this browser.", !!prefs.appWindows, "appwin"))}`, { title });
   };
   ctx.handlers({
+    appwin: () => { prefs.appWindows = !prefs.appWindows; draw(); },
     lab: async k => { try { const l = S.cache["/api/v1/labs"]; S.cache["/api/v1/labs"] = await post("/api/v1/labs", { [k]: !l.labs[k] }); } catch (e) { toast(e.message); } draw(); if (k === "auto_updates") loadSched(); },
     sched: async () => {
       let day = sched?.day ?? 6, hour = sched?.hour ?? 4;
@@ -880,11 +904,14 @@ export async function wol(ctx) {
     if (err) return ctx.show(note(err), { title: "Wake-on-LAN" });
     ctx.show(`${note("Turn on a computer that's asleep or off, from anywhere: the server sends it a wake-up packet on your network. Wake-on-LAN has to be turned on in that computer's BIOS (and its network settings) first.")}
       ${d ? group((d.devices.map(e => row(e.name, { sub: e.mac, icon: "power", click: "wake:" + e.id,
-          end: isAdmin() ? `<button class="rmbtn press" data-act="rm:${esc(e.id)}" aria-label="Remove" title="Remove">${I("del")}</button>` : "" })).join("")) || row("No computers yet", { sub: "Add one with its MAC address" }))
+          end: isAdmin() ? `<button class="rmbtn press" data-act="ren:${esc(e.id)}" aria-label="Rename" title="Rename">${I("edit")}</button><button class="rmbtn press" data-act="rm:${esc(e.id)}" aria-label="Remove" title="Remove">${I("del")}</button>` : "" })).join("")) || row("No computers yet", { sub: "Add one with its MAC address" }))
         + (isAdmin() ? group(row("Add a computer", { icon: "add", blue: true, click: "add" })) : "") : note("Loading…")}`, { title: "Wake-on-LAN" });
   };
   ctx.handlers({
     wake: async id => { try { const r = await post(`/api/v1/labs/wol/${id}/wake`, {}); toast(r.note || "Sent"); } catch (e) { toast(e.message); } },
+    ren: async id => { const e = d.devices.find(x => x.id === id); if (!e) return;
+      const n = await ask("Rename", "Name, like Gaming PC", e.name, "Save", 40); if (!n || n === e.name) return;
+      try { d = await post(`/api/v1/labs/wol/${id}/rename`, { name: n }); toast("Renamed"); } catch (er) { toast(er.message); } draw(); },
     rm: async id => { const e = d.devices.find(x => x.id === id); if (!(await confirm(`Remove ${e?.name}?`, "It only leaves this list.", "Remove"))) return;
       try { d = await post(`/api/v1/labs/wol/${id}/remove`, {}); } catch (e) { toast(e.message); } draw(); },
     add: async () => { let name = "", mac = "";

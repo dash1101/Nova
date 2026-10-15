@@ -2,7 +2,7 @@
 // how risky actions are approved (phone, authenticator codes, passkeys), devices, remote access, what Nova keeps
 // private, and the latest security activity.
 import { S, $, $$, esc, get, post, isAdmin, prefs } from "./core.js";
-import { I, row, group, sec, note, links, toast, confirm, ask, sheet, closeSheet, switchRow, wireCommon, copyCmd } from "./ui.js";
+import { I, row, group, sec, note, links, toast, confirm, ask, choose, sheet, closeSheet, switchRow, wireCommon, copyCmd } from "./ui.js";
 
 // ── passkeys (WebAuthn) in the browser ──
 const b2u = b => btoa(String.fromCharCode(...new Uint8Array(b))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
@@ -39,7 +39,7 @@ export async function security(ctx) {
         row("Your phone", { sub: "Restarts, installs, unmounting, shells and the like wait for an admin phone's fingerprint (or sudo nova approve on the server)", icon: "phone", tint: "var(--blue)" })
         + (isAdmin() ? row("Authenticator codes", { sub: tp?.enabled ? `On since ${tp.since || "—"} · a 6-digit code approves a browser, or what a browser asks for` : "Off · for a computer with no phone or SSH at hand", blue: true, icon: "clock", click: "totp" }) : "")
         + (isAdmin() ? row("Passkeys", { sub: keys.length ? `${keys.length} set up · add a browser or approve a request with your fingerprint, face or PIN` : "None yet · use your password manager's passkey instead of the phone", blue: true, icon: "key", click: "pk" }) : ""))}
-      ${isAdmin() && keys.length ? group(keys.map(k => row(k.name || "Passkey", { sub: `${k.rp} · added ${k.created || "—"}${k.last_used ? " · last used " + k.last_used : ""}`, icon: "key", tint: "var(--sub)", click: "pkrm:" + k.id,
+      ${isAdmin() && keys.length ? group(keys.map(k => row(k.name || "Passkey", { sub: `${k.rp} · added ${k.created || "—"}${k.last_used ? " · last used " + k.last_used : ""}`, icon: "key", tint: "var(--sub)", click: "pkmenu:" + k.id,
           end: `<button class="rmbtn press" data-act="pkrm:${esc(k.id)}" aria-label="Remove">${I("del")}</button>` })).join("")) : ""}
       ${isAdmin() && !passkeysHere() ? note("Passkeys belong to a web address, so they work when Nova is opened at its name (your Cloudflare address), not at an IP address.") : ""}
       ${sec("Who can reach the server")}${group(
@@ -58,6 +58,14 @@ export async function security(ctx) {
     forget: async () => (await import("./views.js")).forgetBrowser(),
     totp: async () => { await (await import("./views.js")).totpSetup(); await get("/api/v1/totp").catch(() => {}); draw(); },
     pk: async () => { await addPasskey(); await get("/api/v1/passkeys").catch(() => {}); draw(); },
+    pkmenu: async id => {
+      const k = (S.cache["/api/v1/passkeys"]?.passkeys || []).find(x => x.id === id); if (!k) return;
+      const v = await choose(k.name || "Passkey", [["rename", "Rename"], ["remove", "Remove"]], null);
+      if (v === "remove") return ctx.run("pkrm", id);
+      if (v !== "rename") return;
+      const n = await ask("Rename this passkey", "Name", k.name || "", "Save", 40); if (!n) return;
+      try { await post("/api/v1/passkeys/rename", { id, name: n }); await get("/api/v1/passkeys"); draw(); toast("Renamed"); } catch (e) { toast(e.message); }
+    },
     pkrm: async id => {
       const k = (S.cache["/api/v1/passkeys"]?.passkeys || []).find(x => x.id === id);
       if (!(await confirm(`Remove ${k?.name || "this passkey"}?`, "It can't add browsers or approve requests any more. (It stays in your password manager — delete it there too.)", "Remove"))) return;

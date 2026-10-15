@@ -1,7 +1,8 @@
 // Nova web — every screen of the app. Each view renders with ctx.show(html, options, handlers);
 // buttons carry data-act="name" or data-act="name:arg" and land in `handlers` (or the router's).
 import { gpuInfo, devLog } from "./core.js";
-import { WEB_ICONS, iconSvg, svgUrl, applyWebIcon } from "./webicon.js";
+import { webIcons, iconSvg, svgUrl, applyWebIcon } from "./webicon.js";
+let WEB_ICONS = null;                                   // the App icon choices (loaded with the artwork the first time Appearance opens)
 import { S, $, $$, esc, get, post, del, api, loadNodes, serverHost, sleep, prefs, waitTask, runningTask, levelColor, pct, rate, bytes, isAdmin, has, cleanTitle, cap,
          serverName, uptime, hm, refresh, changeFan, waitJob, kv, archiveMerge, archiveAll, archiveClear, archiveUnmark } from "./core.js";
 import { I, row, group, sec, note, sw, radio, switchRow, links, expand, slider, segmented, bar, usageColor,
@@ -301,7 +302,7 @@ export async function menu(ctx) {
     const m = S.overview?.status?.metrics || {}, cs = S.overview?.containers, f = S.fan, disk = storageList(m).sort((a, b) => b.pct - a.pct)[0];
     const tile = (icon, tint, title, sub, act) => `<button class="mtile glass press" data-act="${act}"><span style="color:${tint};display:flex">${I(icon)}</span><b>${esc(title)}</b><small class="muted">${esc(sub)}</small></button>`;
     const apps = (S.cache["/api/v1/apps"]?.apps || []).filter(a => !a.hidden).slice(0, 10);
-    const cell = (label, inner, act, href) => href ? `<a class="appcell press" href="${esc(href)}" target="_blank" rel="noopener">${inner}<span class="appname">${esc(label)}</span></a>`
+    const cell = (label, inner, act, href, wid) => href ? `<a class="appcell press" href="${esc(href)}" target="_blank" rel="noopener"${wid ? ` data-wid="${esc(wid)}"` : ""}>${inner}<span class="appname">${esc(label)}</span></a>`
       : `<button class="appcell press" data-act="${act}" style="border:0;background:none;font:inherit;color:var(--text);cursor:pointer">${inner}<span class="appname">${esc(label)}</span></button>`;
     const glyph = (ic, c) => `<span class="appic" style="background:color-mix(in srgb,${c} 18%,var(--card));color:${c}">${I(ic)}</span>`;
     ctx.show(`<button class="searchbox glass" data-act="search" style="width:calc(100% - 2*var(--gutter));text-align:left">${I("search")}<span class="muted" style="font-size:17px">Search Nova</span></button>
@@ -309,7 +310,7 @@ export async function menu(ctx) {
         ${has("lighting") ? tile("bulb", "#ffb020", "Lighting", f ? (f.on !== false ? `${cap(f.effect)} · ${f.brightness}%` : "Off") : "—", "go:lighting") : tile("status", "#3ecf6e", "Status", "Live graphs", "go:status")}
         ${tile("bell", "#ff5a5a", "Inbox", S.unread ? `${S.unread} new` : "All caught up", "go:inbox")}${favoriteTiles(tile)}</div>${favoritesLink()}
       ${sec("Apps")}<div class="mapps">${isAdmin() && has("files") ? cell("Files", glyph("folder", "#3e91ff"), "go:files") : ""}${isAdmin() && has("terminal") ? cell("Terminal", glyph("term", "#3ecf6e"), "go:term") : ""}
-        ${apps.map(a => { const h = ST.appHref(a); return a.kind === "command" ? cell(a.name, glyph("term", "#8e8e93"), "go:apps") : cell(a.name, `<span class="appic" data-ic="${esc(a.id)}">${esc((a.name || "?")[0])}</span>`, "go:apps", h); }).join("")}
+        ${apps.map(a => { const h = ST.appHref(a); return a.kind === "command" ? cell(a.name, glyph("term", "#8e8e93"), "go:apps") : cell(a.name, `<span class="appic" data-ic="${esc(a.id)}">${esc((a.name || "?")[0])}</span>`, "go:apps", h, a.id); }).join("")}
         ${cell("All apps", glyph("apps", "var(--sub)"), "go:apps")}</div>
       ${sec("Server")}${group(row("Status", { sub: "Live graphs, storage, backups", blue: true, icon: "status", tint: "#3ecf6e", click: "go:status" })
         + row("Storage & hardware", { sub: "Drives, pools, set up drives", blue: true, icon: "disk", tint: "#3ecf6e", click: "go:hardware" })
@@ -1457,7 +1458,7 @@ export async function devices(ctx) {
     ctx.show(`${Object.entries(by).sort(([a], [b]) => (a === "No name yet") - (b === "No name yet") || a.localeCompare(b)).map(([u, ds]) => sec(u) + group(ds.map(d => row(d.name + (d.current ? "  ·  this browser" : ""), {
         sub: `${formLabel(d)} · ${d.role === "viewer" ? "View only" : "Admin"} · last seen ${d.last_seen || "never"}${d.via ? " via " + d.via : ""}${d.type === "browser" ? " · risky actions approved on a phone" : ""}`,
         icon: d.type === "head" ? "dns" : { tablet: "tablet", desktop: "computer" }[formOf(d)] || "phone", tint: d.current ? "var(--green)" : d.role === "viewer" ? "var(--sub)" : "var(--blue)",
-        click: !d.current && isAdmin() ? "rm:" + d.id : "", end: !d.current && isAdmin() ? `<button class="rmbtn press" data-act="rm:${esc(d.id)}" aria-label="Remove ${esc(d.name)}" title="Remove">${I("del")}</button>` : "" })).join(""))).join("") || note("Loading…")}
+        click: isAdmin() ? "dev:" + d.id : "", end: !d.current && isAdmin() ? `<button class="rmbtn press" data-act="rm:${esc(d.id)}" aria-label="Remove ${esc(d.name)}" title="Remove">${I("del")}</button>` : "" })).join(""))).join("") || note("Loading…")}
       ${isAdmin() ? sec("Without a phone") + group(row("Security & privacy", { sub: "Authenticator codes, passkeys, recent security activity", blue: true, icon: "shield", click: "go:security" }) + row("Authenticator codes", { sub: S.cache["/api/v1/totp"]?.enabled ? `On since ${S.cache["/api/v1/totp"].since || "—"} · a code approves a browser, or what a browser asks for` : "Off · lets a computer with no phone or SSH at hand be approved with a code from an authenticator app", blue: true, icon: "key", click: "totp" })) : ""}
       ${group(row("Remove this browser", { sub: "Erases its key here and its access on the server", icon: "del", tint: "var(--red)", click: "forget" }))}
       ${note("Removing a device here is approved on an admin phone with your fingerprint. Inviting phones, approving browsers and changing roles happen in the Nova app on an admin phone (they need its fingerprint key). Admins can do everything; view-only devices see the same screens but can't change anything.")}`,
@@ -1465,6 +1466,14 @@ export async function devices(ctx) {
   };
   ctx.handlers({ forget: () => forgetBrowser(),
     totp: () => totpSetup(draw),
+    dev: async id => {
+      const d = (S.cache["/api/v1/devices"]?.devices || []).find(x => x.id === id); if (!d) return;
+      const v = await choose(d.name, [["rename", "Rename"], ...(d.current ? [] : [["remove", "Remove"]])], null);
+      if (v === "remove") return ctx.run("rm", id);
+      if (v !== "rename") return;
+      const n = await ask("Rename", "Name", d.name, "Save", 40); if (!n || n === d.name) return;
+      try { await post(`/api/v1/devices/${encodeURIComponent(id)}/rename`, { name: n }); await get("/api/v1/devices"); draw(); toast("Renamed"); } catch (e) { toast(e.message); }
+    },
     rm: async id => {
       const d = (S.cache["/api/v1/devices"]?.devices || []).find(x => x.id === id); if (!d) return;
       if (!(await confirm(`Remove ${d.name}?`, `${d.name} loses access to this server${d.type === "watch" ? "" : " (and so does a watch paired with it)"}. You'll approve this on an admin phone with your fingerprint.`, "Remove"))) return;
@@ -1524,6 +1533,14 @@ export async function settings(ctx) {
     wireCommon(ctx.root);
   };
   ctx.handlers({ forget: () => forgetBrowser(),
+    dev: async id => {
+      const d = (S.cache["/api/v1/devices"]?.devices || []).find(x => x.id === id); if (!d) return;
+      const v = await choose(d.name, [["rename", "Rename"], ...(d.current ? [] : [["remove", "Remove"]])], null);
+      if (v === "remove") return ctx.run("rm", id);
+      if (v !== "rename") return;
+      const n = await ask("Rename", "Name", d.name, "Save", 40); if (!n || n === d.name) return;
+      try { await post(`/api/v1/devices/${encodeURIComponent(id)}/rename`, { name: n }); await get("/api/v1/devices"); draw(); toast("Renamed"); } catch (e) { toast(e.message); }
+    },
     rm: async id => {
       const d = (S.cache["/api/v1/devices"]?.devices || []).find(x => x.id === id); if (!d) return;
       if (!(await confirm(`Remove ${d.name}?`, `${d.name} loses access to this server${d.type === "watch" ? "" : " (and so does a watch paired with it)"}. You'll approve this on an admin phone with your fingerprint.`, "Remove"))) return;
@@ -1633,7 +1650,7 @@ export async function appearance(ctx) {
       ${(() => { const g = gpuInfo(); if (!g.software && g.blur) return "";
         return `<div class="hint" style="margin:10px var(--gutter);border:1px solid color-mix(in srgb,var(--amber) 50%,transparent)"><b style="color:var(--amber)">${g.software ? "This browser isn't using the graphics card" : "This browser can't blur"}</b>
           <p class="muted" style="margin:6px 0 0">${g.software ? "Glass, blur and the live graphs are drawn by the processor instead, so they can stutter and use more power. Turn on hardware acceleration and restart the browser — Chrome or Edge: Settings → System → “Use graphics acceleration when available”. Firefox: Settings → Performance. Until then, Lighter effects is on automatically." : "Frosted glass shows as plain, see-through surfaces here. Update the browser, or turn on Reduce transparency for solid surfaces."}</p></div>`; })()}
-      ${sec("App icon")}<div class="group glass wicons">${WEB_ICONS.map(([k, l]) => `<button class="wicon press${(prefs.webIcon || "default") === k ? " on" : ""}" data-act="wicon:${k}"><img data-wicon="${k}" alt=""><small>${esc(l)}</small></button>`).join("")}</div>
+      ${sec("App icon")}<div class="group glass wicons">${(WEB_ICONS || [["default", "Default"]]).map(([k, l]) => `<button class="wicon press${(prefs.webIcon || "default") === k ? " on" : ""}" data-act="wicon:${k}"><img data-wicon="${k}" alt=""><small>${esc(l)}</small></button>`).join("")}</div>
       ${note("This browser's tab icon, and the icon Nova gets when you add it to an iPhone or iPad home screen. The phone app has its own (Appearance → App icon in the app).")}
       ${sec("Icons")}${group(ICON_THEMES.map(([k, l, d]) => `<div class="row click" data-act="icon:${k}"><div class="t"><b>${esc(l)}</b><small>${esc(d)}</small></div>
           <span class="icprev" aria-hidden="true">${[["status", "#3ecf6e"], ["backup", "var(--blue)"], ["del", "var(--amber)"]].map(([ic, c]) => iconSample(k, ic, c)).join("")}</span>${radio((prefs.iconTheme || "style") === k)}</div>`).join(""))}
@@ -1644,6 +1661,7 @@ export async function appearance(ctx) {
         + row("Start page", { sub: `Search, stats, apps and bookmarks · Nova opens on ${({ home: "Home", start: "the start page", status: "Status", apps: "Apps", inbox: "the Inbox", dashboard: "the dashboard" })[prefs.startRoute || "home"]}`, blue: true, icon: "home", click: "go:start-edit" })
         + row("Navigation pill", { sub: navTabs().map(s => s.label).join(", ") + " · along the bottom, or down the left on wide screens", blue: true, icon: "viewday", click: "go:edit-tabs" }))}
       ${note("These choices are saved in this browser. Each server also has its own name and accent color (Settings → Server).")}`, { title: "Appearance" });
+    if (!WEB_ICONS) webIcons().then(l => { WEB_ICONS = l; if (ctx.alive()) draw(); }).catch(() => {});
     $$("[data-wicon]", ctx.root).forEach(async im => { try { im.src = svgUrl(await iconSvg(im.dataset.wicon)); } catch {} });
     wireCommon(ctx.root, { onSeg: (k, i) => { if (k === "lite") { prefs.lite = ["auto", "on", "off"][i]; ctx.applyTheme(); draw(); } },
       onRangeInput: (k, v) => {                                   // live while dragging

@@ -58,6 +58,13 @@ def listing():
 
 def any_for(rp): return any(v.get("rp") == rp for v in _load().values())
 
+def rename(cid, name):
+    d = _load()
+    if cid not in d: raise ValueError("no such passkey")
+    name = "".join(c for c in str(name) if c.isprintable()).strip()[:40]
+    if not name: raise ValueError("give it a name")
+    d[cid]["name"] = name; _save(d)
+
 def remove(cid):
     d = _load()
     if cid not in d: raise ValueError("no such passkey")

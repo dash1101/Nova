@@ -628,3 +628,13 @@ val LocalRouteScroll = staticCompositionLocalOf<ScrollState?> { null }
 @Composable fun routeScroll(): ScrollState = LocalRouteScroll.current ?: rememberScrollState()
 /** Extra space at the bottom of a page that has the floating bottom bar over it. */
 val LocalNavPad = staticCompositionLocalOf { 0.dp }
+
+
+/** Rename something: one text field, Save. */
+@Composable fun RenameDialog(title: String, initial: String, hint: String = "Name", onDismiss: () -> Unit, onSave: (String) -> Unit) {
+    var v by remember { mutableStateOf(initial) }
+    OneDialog(onDismiss, title, null, listOf(DialogButton("Cancel") { onDismiss() },
+        DialogButton("Save", N.blue, enabled = v.isNotBlank() && v.trim() != initial) { onSave(v.trim()) })) {
+        OneTextField(v, { v = it.take(40) }, hint, Modifier.fillMaxWidth().padding(horizontal = 22.dp))
+    }
+}
