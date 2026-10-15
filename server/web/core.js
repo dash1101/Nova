@@ -128,7 +128,7 @@ export async function api(method, path, body, here = false) {
   }
   if (r.status === 403 && !("error" in j) && /cloudflare/i.test(text))
     throw new ApiError(403, "Cloudflare Access turned this browser away — log in at the Cloudflare page first");
-  if (r.status === 202 && j.approval) return approvalHook ? approvalHook(j.approval, j.code) : j;     // risky: approve on the phone
+  if (r.status === 202 && j.approval) return approvalHook ? approvalHook(j.approval, j.code, j.totp) : j;     // risky: approve on the phone
   if (r.status === 401) throw new ApiError(401, "This browser isn't authorized anymore");
   if (!r.ok) throw new ApiError(r.status, j.message || j.error || `HTTP ${r.status}`, false, j.error || "");
   S.lastContact = Date.now();

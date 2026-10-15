@@ -1,5 +1,8 @@
 # Changelog
 
+## Unreleased
+- **Authenticator codes, for computers without a phone or SSH at hand** (Users & devices → Authenticator codes, app and web): scan a QR code into any authenticator app, and a 6-digit code from it can add a browser to the server, or approve something a browser asks for. It's off until an admin turns it on with their fingerprint; every code works once, and after five wrong codes in 15 minutes codes are refused for a while (your phone still works).
+
 ## 0.7.6-alpha (server, Nova web, app and watch)
 - **Stopped containers aren't problems:** a container you stop on purpose (Stop in Nova, `docker stop`) no longer shows up as "Container down" or "needs attention". It's counted as stopped instead ("10/10 running · 4 stopped"), on Home, in Containers and in Status. A container that crashes is still an alert.
 - **Swap, clearer:** the Swap graph shows how much is in use and how big it is ("1.1 of 6.2 GB"). A server with no swap at all hides the graph and offers **Set up swap**, which makes a swap file on the system drive, switches it on and keeps it after a restart (asks for your fingerprint).

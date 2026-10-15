@@ -11,7 +11,7 @@ import * as SR from "./start.js";
 import * as SV from "./servers.js";
 import * as FM from "./files.js";
 
-onApproval((id, code) => waitApproval(id, get, code));
+onApproval((id, code, totp) => waitApproval(id, get, code, totp, post));
 
 // ── theme ────────────────────────────────────────────────────────────────────────
 let measuredSlow = (() => { try { return sessionStorage.getItem("nova-slow") === "1"; } catch { return false; } })();
@@ -323,13 +323,29 @@ async function pairScreen() {
         <p class="lead">On an admin phone open <b>Nova → Menu → Users &amp; devices → Approve a browser</b> and enter:</p>
         <div class="code">${esc(j.code)}</div>
         <p class="note" style="text-align:center">…or on the server:</p>${copyCmd("sudo nova approve " + j.code)}
+        <div id="totpbox"></div>
         <div class="center"><div class="spinner" style="margin:auto"></div><p class="note" id="left" style="font-size:16px"></p></div></div>`;
+      // no phone and no SSH at hand: the server may take a code from an admin's authenticator app instead
+      let paired = null;
+      const showTotp = () => {
+        if ($("#totpbox").innerHTML) return;
+        $("#totpbox").innerHTML = `<p class="note" style="text-align:center">…or type a code from the admin's authenticator app:</p>
+          <div class="group glass"><div style="padding:14px 16px;display:flex;gap:8px"><input class="field" id="tc" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="123456" style="flex:1;font-family:ui-monospace,monospace;letter-spacing:4px"><button class="pillbtn" id="tcgo">Approve</button></div></div><p class="note" id="tcerr" style="color:var(--red)"></p>`;
+        const go = async () => {
+          const v = $("#tc").value.trim(); if (!/^\d{6}$/.test(v)) { $("#tcerr").textContent = "Type the 6 digits the app shows"; return; }
+          const r = await fetch(`/api/v1/browser/request/${j.id}/totp`, { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code: v }) });
+          const k = await r.json().catch(() => ({}));
+          if (r.ok && k.state === "approved") paired = k; else { $("#tcerr").textContent = k.error || `That didn't work (${r.status})`; $("#tc").select(); }
+        };
+        $("#tcgo").onclick = go; $("#tc").onkeydown = e => { if (e.key === "Enter") go(); };
+      };
       const tick = () => { const s = Math.max(0, Math.round((until - Date.now()) / 1000)), el = $("#left");
         if (el) { el.innerHTML = `Waiting… <b>${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}</b> left`; el.style.color = s < 60 ? "var(--amber)" : ""; } };
       tick(); const timer = setInterval(tick, 1000);
       for (let i = 0; i < 300 && Date.now() < until; i++) {
-        await sleep(2000);
-        const s = await fetch(`/api/v1/browser/request/${j.id}`, { credentials: "same-origin" }).then(x => x.json()).catch(() => ({}));
+        for (let w = 0; w < 10 && !paired; w++) await sleep(200);
+        const s = paired || await fetch(`/api/v1/browser/request/${j.id}`, { credentials: "same-origin" }).then(x => x.json()).catch(() => ({}));
+        if (s.totp) showTotp();
         if (s.state === "approved") { clearInterval(timer); await kv("device", { id: s.device_id, keys }); toast("This browser is paired"); unauthorizedShown = false; return start(); }
         if (s.state === "expired") break;
       }

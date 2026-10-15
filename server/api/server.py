@@ -23,6 +23,7 @@ import base64, hashlib, hmac, ipaddress, json, os, re, secrets, socket, subproce
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 import nodes
+import totp
 import plugins
 
 from cryptography.exceptions import InvalidSignature
@@ -93,6 +94,7 @@ CRASH_DIR = "/var/log/nova-api/crash"
 CLOCK_SKEW_MS = 60_000
 SHELL_APPROVE = f"{DATA}/shell-approve.json"   # written by `sudo nova approve CODE` (root only)
 PENDING = f"{DATA}/pending.json"               # what's waiting for approval, for `sudo nova approve` (root/nova-api only)
+TOTP_FILE = f"{DATA}/totp.json"                # authenticator-app secret, when it's turned on (nova-api only, 0600)
 CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 APPS = f"{DATA}/apps.json"                      # your changes to the Apps grid (names, hidden, custom links)
 ICONS = f"{DATA}/icons"                         # app icons, fetched once from dashboard-icons and kept here
@@ -505,6 +507,28 @@ def write_pending():
         os.chmod(PENDING, 0o600)
     except Exception: pass
 
+# ── authenticator codes (TOTP) ──
+totp_lock = threading.Lock()
+totp_fails = []            # times of wrong codes, server-wide: 5 in 15 minutes and codes are refused for a while
+totp_pending = {}          # device id -> {secret, t}: a secret being set up, until it's confirmed with one code
+
+def totp_state():
+    return load_json(TOTP_FILE, {}) if os.path.exists(TOTP_FILE) else {}
+
+def totp_check(code):
+    """True if this is a fresh, valid authenticator code (and use it up). Wrong codes count toward a server-wide
+    limit, on top of the per-address one, so six digits can't be guessed."""
+    with totp_lock:
+        now = time.time()
+        totp_fails[:] = [t for t in totp_fails if now - t < 900]
+        if len(totp_fails) >= 5: raise PermissionError("too many wrong codes — wait 15 minutes, or approve from your phone")
+        st = totp_state()
+        if not st.get("secret"): raise PermissionError("authenticator codes aren't turned on")
+        c = totp.verify(st["secret"], code, int(st.get("last", 0)))
+        if c is None: totp_fails.append(now); return False
+        st["last"] = c; save_json(TOTP_FILE, st); os.chmod(TOTP_FILE, 0o600)
+        return True
+
 def shell_approval(code):
     """The root-written one-time approval for this code, if there is one (and use it up)."""
     try:
@@ -550,6 +574,8 @@ def describe_action(a):
     if p == ["plugins", "install"]: return "Install a plugin — its tools run as your normal account"
     if p == ["plugins", "remove"]: return "Remove a plugin"
     if p == ["cloudflare", "token", "show"]: return "Show the server's Cloudflare API token (to copy it to another server)"
+    if p == ["totp", "setup"]: return "Set up authenticator-app codes (they can approve browsers without your phone)"
+    if p == ["totp", "remove"]: return "Turn off authenticator-app codes"
     if p == ["freeup"]: return "Free up space: remove " + ", ".join(str(x) for x in (a.get("data", {}).get("items") or []))[:200]
     if p == ["cloudflare", "app-key"]: return f"Make a key that lets an app's own phone app open {a.get('data', {}).get('host', '?')} (it replaces an older key)"
     if p == ["cloudflare", "app-key", "remove"]: return f"Remove the app key for {a.get('data', {}).get('host', '?')}"
@@ -589,7 +615,7 @@ def describe_action(a):
 
 def browser_forbidden(method, parts, dev):
     """Device management and approvals are for phones only (their keys live in hardware)."""
-    if parts[:1] == ["approvals"] and method == "POST": return True
+    if parts[:1] == ["approvals"] and method == "POST" and not (len(parts) == 3 and parts[2] == "totp"): return True   # (a code for its own request is fine)
     if parts[:1] == ["browser"]: return True
     if parts == ["server", "update"] and method == "POST": return True          # updates: phones only
     if parts[:1] == ["ssh"] and method != "GET": return True                      # SSH keys: phones only
@@ -644,6 +670,9 @@ def needs_stepup(method, parts):
     if method == "DELETE" and parts[:1] == ["nodes"]: return True
     if method == "POST" and parts == ["browser", "approve"]: return True
     if method == "POST" and parts == ["server", "update"]: return True
+    # authenticator codes: making the secret and turning them off need a fingerprint. Confirming doesn't — it only works
+    # with a right code for the secret that same device was just shown.
+    if method == "POST" and parts in (["totp", "setup"], ["totp", "remove"]): return True
     if method == "POST" and parts[:1] == ["approvals"] and parts[-1:] == ["approve"]: return True
     if method == "POST" and parts[:1] == ["devices"] and parts[-1:] in (["access"], ["invite"]): return True
     if method != "POST": return False
@@ -952,7 +981,8 @@ class Handler(BaseHTTPRequestHandler):
             except ValueError: data0 = {}
             a = new_approval(dev, method, path, data0)
             audit(device=dev["name"], path=path, result=202, why="sent to a phone for approval")
-            return self.send(202, {"approval": a["id"], "code": a["code"], "message": "Approve this on your phone (Nova app), or on the server: sudo nova approve " + a["code"]})
+            return self.send(202, {"approval": a["id"], "code": a["code"], "totp": bool(totp_state().get("secret")),
+                                   "message": "Approve this on your phone (Nova app), or on the server: sudo nova approve " + a["code"]})
         if needs_stepup(method, parts) and not dev.get("stepup_ok"):
             audit(device=dev["name"], path=path, result=403, why="step-up required")
             return self.send(403, {"error": "stepup_required",
@@ -1101,6 +1131,30 @@ class Handler(BaseHTTPRequestHandler):
                                      "from": ip, "via": where, "kind": kind}
             write_pending()
             return self.send(200, {"id": rid, "code": code, "expires_in": 600})
+        if method == "POST" and re.fullmatch(r"/api/v1/browser/request/[A-Za-z0-9_-]{10,40}/totp", path):
+            # no phone and no SSH at hand: an admin's authenticator app approves this browser instead
+            rq = browser_requests.get(path.split("/")[-2])
+            if not rq or rq["state"] != "pending" or rq["expires"] < now: return self.send(404, {"state": "expired"})
+            if rq.get("kind") == "wear": return self.send(403, {"error": "a watch is added from the phone it belongs to"})
+            try: d = json.loads(body or b"{}")
+            except Exception: d = {}
+            try: ok = totp_check(str(d.get("code", ""))[:12])
+            except PermissionError as e: return self.send(429 if "wrong" in str(e) else 403, {"error": str(e)})
+            if not ok:
+                fails.setdefault(ip, []).append(now)
+                audit(device=rq["name"], path="/api/v1/browser/request/totp", result=401, why="wrong authenticator code")
+                return self.send(401, {"error": "that code isn't right (or was already used) — wait for the next one"})
+            dev_id = secrets.token_urlsafe(12)
+            with lock:
+                devs = load_json(DEVICES, {})
+                devs[dev_id] = {"name": rq["name"][:40], "public_key": rq["pem"], "type": "browser", "created": time.strftime("%Y-%m-%d %H:%M"),
+                                "paired_from": rq["from"], "role": "admin", "approved_by": "authenticator code"}
+                save_json(DEVICES, devs)
+            rq.update(state="approved", device_id=dev_id, role="admin")
+            audit(device=rq["name"], path="/api/v1/browser/approve", result=200, why="approved with an authenticator code")
+            helper("notify-paired", "".join(c for c in rq["name"] if c.isalnum() or c in " -_")[:40] or "browser")
+            write_pending()
+            return self.send(200, {"state": "approved", "device_id": dev_id, "role": "admin"})
         if method == "GET" and path.startswith("/api/v1/browser/request/"):
             rq = browser_requests.get(path.rsplit("/", 1)[1])
             if not rq: return self.send(404, {"state": "expired"})
@@ -1122,6 +1176,7 @@ class Handler(BaseHTTPRequestHandler):
                 helper("notify-paired", "".join(c for c in rq["name"] if c.isalnum() or c in " -_")[:40] or "browser")
                 write_pending()
             return self.send(200, {"state": rq["state"], "device_id": rq.get("device_id"), "role": rq.get("role"), "kind": rq.get("kind", "browser"),
+                                   "totp": bool(totp_state().get("secret")) and rq.get("kind") != "wear",
                                    "server": load_json(SETTINGS, {}).get("display_name") or os.uname().nodename})
         return self.send(404, {"error": "not found"})
 
@@ -1362,6 +1417,43 @@ class Handler(BaseHTTPRequestHandler):
             if a["state"] == "pending" and time.time() - a["created"] < 600 and shell_approval(a["code"]):
                 self.run_approval(a, "the server shell (sudo nova approve)", dev)
             return 200, {k: v for k, v in a.items() if k != "data"} | {"what": describe_action(a)}
+        if len(parts) == 3 and parts[0] == "approvals" and method == "POST" and parts[2] == "totp":
+            # a browser with no phone at hand approves its own held request with an admin's authenticator code
+            a = approvals.get(parts[1])
+            if not a or a["state"] != "pending" or a["device"] != dev["id"]: return 404, {"error": "nothing waiting with that id"}
+            if time.time() - a["created"] > 600: a["state"] = "expired"; return 410, {"error": "that request expired"}
+            try: ok = totp_check(str(data.get("code", ""))[:12])
+            except PermissionError as e: return (429 if "wrong" in str(e) else 403), {"error": str(e)}
+            if not ok: return 401, {"error": "that code isn't right (or was already used) — wait for the next one"}
+            code, res = self.run_approval(a, "an authenticator code", dev)
+            return 200, {"ok": code < 400, "result": res}
+        # ── authenticator codes: set up (shown once), confirm with one code, turn off ──
+        if parts[:1] == ["totp"]:
+            if role_of(dev) != "admin": return 403, {"error": "admins only"}
+            st = totp_state()
+            if method == "GET" and parts == ["totp"]: return 200, {"enabled": bool(st.get("secret")), "since": st.get("since")}
+            if method == "POST" and parts == ["totp", "setup"]:
+                sec = totp.new_secret(); totp_pending[dev["id"]] = {"secret": sec, "t": time.time()}
+                label = load_json(SETTINGS, {}).get("display_name") or os.uname().nodename
+                u = totp.uri(sec, label)
+                try: svg = subprocess.run(["qrencode", "-t", "SVG", "-m", "2", "-o", "-", u], capture_output=True, text=True, timeout=10).stdout
+                except Exception: svg = ""
+                return 200, {"secret": sec, "uri": u, "qr_svg": svg if svg.lstrip().startswith(("<?xml", "<svg")) else ""}
+            if method == "POST" and parts == ["totp", "confirm"]:
+                pd = totp_pending.get(dev["id"])
+                if not pd or time.time() - pd["t"] > 900: return 410, {"error": "start again — the setup ran out of time"}
+                c = totp.verify(pd["secret"], str(data.get("code", ""))[:12])
+                if c is None: return 400, {"error": "that code isn't right — check the time on the phone or computer with the app"}
+                save_json(TOTP_FILE, {"secret": pd["secret"], "last": c, "since": time.strftime("%Y-%m-%d %H:%M"), "by": dev["name"]})
+                os.chmod(TOTP_FILE, 0o600); totp_pending.pop(dev["id"], None)
+                audit(device=dev["name"], path="/api/v1/totp/confirm", result=200, why="authenticator codes turned on")
+                return 200, {"enabled": True}
+            if method == "POST" and parts == ["totp", "remove"]:
+                try: os.remove(TOTP_FILE)
+                except OSError: pass
+                audit(device=dev["name"], path="/api/v1/totp/remove", result=200, why="authenticator codes turned off")
+                return 200, {"enabled": False}
+            return 404, {"error": "not found"}
         if len(parts) == 3 and parts[0] == "approvals" and method == "POST" and parts[2] in ("approve", "deny"):
             # Only an admin *phone*, with its fingerprint key (step-up), can approve.
             a = approvals.get(parts[1])

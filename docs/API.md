@@ -81,7 +81,8 @@ Grouped by area; each is `GET` unless marked. Fields are documented by the apps 
   `alerts/dismiss`, `alerts/undismiss` (POST) · `notify`, `notify/discord` (POST, step-up), `notify/discord/test`
 - **Devices:** `devices` · `devices/<id>` (DELETE, step-up) · `devices/invite`, `devices/watch`,
   `devices/remove-all` (POST, step-up) · `device/form`, `device/stepup-key` (POST) · `browser/approve`,
-  `approvals`, `approvals/<id>/approve` (POST, step-up)
+  `approvals`, `approvals/<id>/approve` (POST, step-up) · `totp` · `totp/setup`, `totp/remove` (POST, step-up) · `totp/confirm` (POST) ·
+  `approvals/<id>/totp` (POST, the browser's own held request) · `browser/request/<id>/totp` (POST, unsigned, rate-limited)
 - **Containers and apps:** `containers` · `containers/stats` · `containers/<name>` · `containers/<name>/<stop|start|restart|…>` (POST) ·
   `containers/custom` (POST, step-up) · `apps` · `apps/command` · `store` · `store/<id>/install` (POST, step-up) ·
   `programs`, `programs/search` · `plugins`

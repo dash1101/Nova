@@ -4,7 +4,7 @@ import { gpuInfo, devLog } from "./core.js";
 import { S, $, $$, esc, get, post, del, api, loadNodes, serverHost, sleep, prefs, waitTask, runningTask, levelColor, pct, rate, bytes, isAdmin, has, cleanTitle, cap,
          serverName, uptime, hm, refresh, changeFan, waitJob, kv, archiveMerge, archiveAll, archiveClear, archiveUnmark } from "./core.js";
 import { I, row, group, sec, note, sw, radio, switchRow, links, expand, slider, segmented, bar, usageColor,
-         toast, dialog, confirm, choose, ask, sheet, closeSheet, wireCommon, reorderable, onHold, spark, swipeable, colorPicker } from "./ui.js";
+         toast, dialog, confirm, choose, ask, sheet, closeSheet, wireCommon, reorderable, onHold, spark, swipeable, colorPicker, copyCmd } from "./ui.js";
 import { animate, heroHit } from "./hero.js";
 import * as ST from "./storage.js";
 import { LANGS, pickLang } from "./i18n.js";
@@ -1377,18 +1377,38 @@ export async function devices(ctx) {
         sub: `${formLabel(d)} · ${d.role === "viewer" ? "View only" : "Admin"} · last seen ${d.last_seen || "never"}${d.via ? " via " + d.via : ""}${d.type === "browser" ? " · risky actions approved on a phone" : ""}`,
         icon: d.type === "head" ? "dns" : { tablet: "tablet", desktop: "computer" }[formOf(d)] || "phone", tint: d.current ? "var(--green)" : d.role === "viewer" ? "var(--sub)" : "var(--blue)",
         click: !d.current && isAdmin() ? "rm:" + d.id : "", end: !d.current && isAdmin() ? `<button class="rmbtn press" data-act="rm:${esc(d.id)}" aria-label="Remove ${esc(d.name)}" title="Remove">${I("del")}</button>` : "" })).join(""))).join("") || note("Loading…")}
+      ${isAdmin() ? sec("Without a phone") + group(row("Authenticator codes", { sub: S.cache["/api/v1/totp"]?.enabled ? `On since ${S.cache["/api/v1/totp"].since || "—"} · a code approves a browser, or what a browser asks for` : "Off · lets a computer with no phone or SSH at hand be approved with a code from an authenticator app", blue: true, icon: "key", click: "totp" })) : ""}
       ${group(row("Remove this browser", { sub: "Erases its key here and its access on the server", icon: "del", tint: "var(--red)", click: "forget" }))}
       ${note("Removing a device here is approved on an admin phone with your fingerprint. Inviting phones, approving browsers and changing roles happen in the Nova app on an admin phone (they need its fingerprint key). Admins can do everything; view-only devices see the same screens but can't change anything.")}`,
       { title: "Users & devices" });
   };
   ctx.handlers({ forget: () => forgetBrowser(),
+    totp: async () => {
+      try {
+        if (S.cache["/api/v1/totp"]?.enabled) {
+          if (!(await confirm("Turn off authenticator codes?", "Codes from the app stop working. Browsers are approved on an admin phone (or with sudo nova approve) again.", "Turn off", "var(--red)"))) return;
+          await post("/api/v1/totp/remove", {}); await get("/api/v1/totp"); draw(); return toast("Authenticator codes are off");
+        }
+        if (!(await confirm("Set up authenticator codes?", "Any authenticator app works (Google Authenticator, Aegis, 1Password…). Once it's on, a 6-digit code from it can add a browser to this server, or approve something a browser asks for — so keep it on a device only you use. Turning it on is approved on your phone.", "Set up"))) return;
+        const r = await post("/api/v1/totp/setup", {});
+        const box = sheet(`<h2>Scan this in your authenticator app</h2><div class="pad" style="text-align:center"><div style="display:inline-block;background:#fff;padding:10px;border-radius:12px;width:220px;max-width:100%">${r.qr_svg || ""}</div>
+          <p class="muted" style="margin:10px 0 4px">Or type this key into the app:</p>${copyCmd(r.secret.replace(/(.{4})/g, "$1 ").trim())}
+          <p style="margin:14px 0 6px">Then type the code it shows, to check it works:</p><input class="field" id="tcf" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="123456" style="font-family:ui-monospace,monospace;letter-spacing:4px;text-align:center">
+          <p class="muted" id="tcfe" style="color:var(--red)"></p></div><div class="acts"><button data-b="0" data-role="cancel">Cancel</button><i></i><button data-b="1" data-role="primary" style="color:var(--blue)">Turn on</button></div>`);
+        $$("[data-b]", box)[0].onclick = () => closeSheet();
+        $$("[data-b]", box)[1].onclick = async () => {
+          try { await post("/api/v1/totp/confirm", { code: $("#tcf", box).value.trim() }); closeSheet(); await get("/api/v1/totp"); draw(); toast("Authenticator codes are on"); }
+          catch (e) { $("#tcfe", box).textContent = e.message; }
+        };
+      } catch (e) { toast(e.message); }
+    },
     rm: async id => {
       const d = (S.cache["/api/v1/devices"]?.devices || []).find(x => x.id === id); if (!d) return;
       if (!(await confirm(`Remove ${d.name}?`, `${d.name} loses access to this server${d.type === "watch" ? "" : " (and so does a watch paired with it)"}. You'll approve this on an admin phone with your fingerprint.`, "Remove"))) return;
       try { const r = await del(`/api/v1/devices/${encodeURIComponent(id)}`); if (r?.ok !== false) { toast(`Removed ${d.name}`); await get("/api/v1/devices"); draw(); } }
       catch (e) { toast(e.message); }
     } });
-  draw(); try { await get("/api/v1/devices"); if (ctx.alive()) draw(); } catch (e) { toast(e.message); }
+  draw(); try { await Promise.all([get("/api/v1/devices"), isAdmin() ? get("/api/v1/totp").catch(() => {}) : null]); if (ctx.alive()) draw(); } catch (e) { toast(e.message); }
 }
 export async function forgetBrowser() {
   if (!(await confirm("Remove this browser?", "It loses access and its key is erased. You can add it again from an admin phone.", "Remove"))) return;
