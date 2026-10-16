@@ -16,6 +16,8 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.text.drawText
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.lifecycle.repeatOnLifecycle
@@ -164,7 +166,8 @@ private fun smoothPath(xs: List<Float>, ys: List<Float>): Path {
 }
 
 @Composable private fun MetricCard(title: String, value: String, sub: String, color: Color, values: List<Float>, max: Float?, modifier: Modifier,
-                                   tick: Int = 0, window: Int = 0, added: Int = 1, times: List<Long>? = null, fmt: ((Float) -> String)? = null, live: Boolean = true) {
+                                   tick: Int = 0, window: Int = 0, added: Int = 1, times: List<Long>? = null, fmt: ((Float) -> String)? = null, live: Boolean = true,
+                                   onDouble: (() -> Unit)? = null) {
     var big by remember { mutableStateOf(false) }
     if (big) androidx.compose.ui.window.Dialog({ big = false }, androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)) {
         Column(Modifier.fillMaxWidth().padding(16.dp).clip(RoundedCornerShape(28.dp)).background(N.card).padding(20.dp)) {
@@ -179,7 +182,8 @@ private fun smoothPath(xs: List<Float>, ys: List<Float>): Path {
             Sparkline(values, color, Modifier.fillMaxWidth().height(320.dp).padding(top = 8.dp), max, tick, window, added, times, fmt, scrub = true)
         }
     }
-    Column(modifier.glassCard(RoundedCornerShape(24.dp)).bouncy(onClick = { big = true }).padding(16.dp)) {
+    val tap = if (onDouble != null) Modifier.pointerInput(onDouble) { detectTapGestures(onTap = { big = true }, onDoubleTap = { onDouble() }) } else Modifier.bouncy(onClick = { big = true })
+    Column(modifier.glassCard(RoundedCornerShape(24.dp)).then(tap).padding(16.dp)) {
         Text(title, color = N.sub, fontSize = 13.sp)
         Text(value, color = N.text, fontSize = 24.sp, fontWeight = FontWeight.Bold)
         Text(sub, color = N.sub, fontSize = 12.sp, maxLines = 1)
@@ -188,12 +192,40 @@ private fun smoothPath(xs: List<Float>, ys: List<Float>): Path {
     }
 }
 
-@Composable private fun CoreCard(i: Int, v: Double, values: List<Float>, modifier: Modifier, tick: Int, window: Int, added: Int) {
-    Column(modifier.glassCard(RoundedCornerShape(18.dp)).padding(12.dp)) {
-        Text("Core $i", color = N.sub, fontSize = 12.sp)
-        Text("%.0f%%".format(v), color = N.text, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-        Spacer(Modifier.height(6.dp))
-        Sparkline(values, N.blue, Modifier.fillMaxWidth().height(34.dp), 100f, tick, window, added)
+/** The CPU card split into one graph per core (double-tap to join them again); columns that fill every row. */
+@Composable private fun CpuSplitCard(now: JSONObject, cores: List<List<Float>>, tick: Int, window: Int, added: Int, onJoin: () -> Unit) {
+    val k = cores.size
+    val cols = (kotlin.math.ceil(kotlin.math.sqrt(k.toDouble())).toInt()..6).firstOrNull { k % it == 0 } ?: 4
+    var big by remember { mutableStateOf(false) }
+    val grid: @Composable (Dp) -> Unit = { h ->
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            cores.indices.chunked(cols).forEach { r ->
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    r.forEach { i -> Box(Modifier.weight(1f).clip(RoundedCornerShape(8.dp)).background(N.text.copy(alpha = .05f))) {
+                        Sparkline(cores[i], N.blue, Modifier.fillMaxWidth().height(h), 100f, tick, window, added)
+                        Text("$i", color = N.sub, fontSize = 10.sp, modifier = Modifier.padding(start = 5.dp, top = 2.dp)) } }
+                    repeat(cols - r.size) { Spacer(Modifier.weight(1f)) }
+                }
+            }
+        }
+    }
+    if (big) androidx.compose.ui.window.Dialog({ big = false }, androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)) {
+        Column(Modifier.fillMaxWidth().padding(16.dp).clip(RoundedCornerShape(28.dp)).background(N.card).padding(20.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) { Text("CPU · $k cores", color = N.text, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                    Text("Live · last 2 minutes", color = N.sub, fontSize = 13.sp) }
+                androidx.compose.material3.IconButton({ big = false }) { Icon(Icons.Rounded.Close, "Close", tint = N.sub) }
+            }
+            Text("%.0f%%".format(now.optDouble("cpu")), color = N.text, fontSize = 30.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(vertical = 8.dp))
+            grid(64.dp)
+        }
+    }
+    Column(Modifier.fillMaxWidth().glassCard(RoundedCornerShape(24.dp)).pointerInput(Unit) { detectTapGestures(onTap = { big = true }, onDoubleTap = { onJoin() }) }.padding(16.dp)) {
+        Text("CPU · $k cores", color = N.sub, fontSize = 13.sp)
+        Text("%.0f%%".format(now.optDouble("cpu")), color = N.text, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+        Text("load ${now.optDouble("load")} · double-tap to join", color = N.sub, fontSize = 12.sp, maxLines = 1)
+        Spacer(Modifier.height(10.dp))
+        grid(40.dp)
     }
 }
 
@@ -246,10 +278,20 @@ private fun uptime(s: Long) = "${s / 86400}d ${s % 86400 / 3600}h ${s % 3600 / 6
         SectionLabel(if (hourView) "Last hour" else "Live · last 2 minutes")
         Segmented(listOf("Live", "Last hour"), if (hourView) 1 else 0) { hourView = it == 1 }
         Spacer(Modifier.height(6.dp))
+        // CPU: double-tap splits it into a graph per core, like Task Manager (and double-tap again joins them); remembered
+        val ctx = androidx.compose.ui.platform.LocalContext.current
+        val sp = remember { ctx.getSharedPreferences("nova_ui", android.content.Context.MODE_PRIVATE) }
+        var splitPref by remember { mutableStateOf(sp.getBoolean("cpu_split", false)) }
+        val setSplit = { on: Boolean -> splitPref = on; sp.edit().putBoolean("cpu_split", on).apply() }
+        val coreN = now?.optJSONArray("cpus")?.length() ?: 0
+        val cpuSplit = splitPref && live && coreN > 1
+        val coreSeries = (0 until coreN).map { i -> pts.map { it.optJSONArray("cpus")?.optDouble(i, 0.0)?.toFloat()?.takeIf { v -> !v.isNaN() } ?: 0f } }
         Column(Modifier.padding(horizontal = Space.gutter), verticalArrangement = Arrangement.spacedBy(Space.gap)) {
+            if (cpuSplit) CpuSplitCard(now!!, coreSeries, tick, window, ls.added) { setSplit(false) }
             Row(horizontalArrangement = Arrangement.spacedBy(Space.gap)) {
-                MetricCard("CPU", now?.let { "%.0f%%".format(it.optDouble("cpu")) } ?: "—", now?.let { "load ${it.optDouble("load")} · ${it.optInt("cores")} cores" } ?: "",
-                    N.blue, series("cpu"), 100f, Modifier.weight(1f), tick, window, ls.added, times, pctF, live)
+                if (!cpuSplit) MetricCard("CPU", now?.let { "%.0f%%".format(it.optDouble("cpu")) } ?: "—", now?.let { "load ${it.optDouble("load")} · ${it.optInt("cores")} cores" } ?: "",
+                    N.blue, series("cpu"), 100f, Modifier.weight(1f), tick, window, ls.added, times, pctF, live,
+                    onDouble = if (live && coreN > 1) ({ setSplit(true) }) else null)
                 MetricCard("Memory", now?.let { "%.0f%%".format(it.optDouble("mem")) } ?: "—", now?.let { "${it.optDouble("mem_used_gb")} of ${it.optDouble("mem_total_gb")} GB" } ?: "",
                     Color(0xFFBF5AF2), series("mem"), 100f, Modifier.weight(1f), tick, window, ls.added, times, pctF, live)
             }
@@ -272,20 +314,6 @@ private fun uptime(s: Long) = "${s / 86400}d ${s % 86400 / 3600}h ${s % 3600 / 6
             }
             if (hasGpu) MetricCard("Disk I/O", rate(now!!.optDouble("io", 0.0)), "read + write, all drives",
                 Color(0xFF64D2FF), series("io"), null, Modifier.fillMaxWidth(), tick, window, ls.added, times, { rate(it.toDouble()) }, live)
-            // one small graph per core (live view only — the hour view keeps the overall CPU)
-            val cores = now?.optJSONArray("cpus")?.length() ?: 0
-            if (live && cores > 1) {
-                Box(Modifier.offset(x = -Space.gutter)) { SectionLabel("CPU cores · $cores") }      // the page column is already inset
-                (0 until cores).chunked(3).forEach { rowIdx ->
-                    Row(horizontalArrangement = Arrangement.spacedBy(Space.gap)) {
-                        rowIdx.forEach { i ->
-                            val vals = pts.map { it.optJSONArray("cpus")?.optDouble(i, 0.0)?.toFloat()?.takeIf { v -> !v.isNaN() } ?: 0f }
-                            CoreCard(i, now!!.optJSONArray("cpus")!!.optDouble(i, 0.0), vals, Modifier.weight(1f), tick, window, ls.added)
-                        }
-                        repeat(3 - rowIdx.size) { Spacer(Modifier.weight(1f)) }
-                    }
-                }
-            }
             if (pts.size < 3 || (!hourView && !live)) Text(if (hourView) "Graphs fill in over the next few minutes." else "Connecting to the live feed…", color = N.sub, fontSize = 13.sp, modifier = Modifier.padding(start = 8.dp))
         }
         // Storage

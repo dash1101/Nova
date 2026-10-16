@@ -171,7 +171,8 @@ fun DrawScope.drawBackdrop(t: NovaColors, origin: Offset, win: IntSize, wall: Im
         drawImage(wall, dstOffset = IntOffset(((W - dw) / 2 - origin.x).toInt(), ((H - dh) / 2 - origin.y).toInt()),
             dstSize = IntSize(dw.toInt(), dh.toInt()), filterQuality = FilterQuality.Medium)
         drawRect(t.bg.copy(alpha = wallScrim(t)))
-    } else if (!t.material && t.glow != Color.Transparent) {
+    } else if (Living.showing) drawLiving(t, origin, W, H)                    // Glass bends the living scene too
+    else if (!t.material && t.glow != Color.Transparent) {
         drawRect(Brush.radialGradient(listOf(t.glow.copy(alpha = if (t.dark) 0.9f else 0.8f), Color.Transparent), center = Offset(W * 0.85f, H * 0.18f) - origin, radius = if (W < H) W * 0.95f else H * 1.25f))
         drawRect(Brush.radialGradient(listOf(t.glow2.copy(alpha = 0.6f), Color.Transparent), center = Offset(W * 0.1f, H * 0.35f) - origin, radius = if (W < H) W * 0.8f else H * 1.1f))
     }
@@ -397,11 +398,13 @@ fun Modifier.aeroGloss(shape: Shape, dark: Boolean): Modifier = this.drawWithCac
 /** Aero's raised button: a two-part gloss (light on top, a step at the middle), blue and glowing when it's the main one. */
 @Composable fun Modifier.aeroButton(primary: Boolean, shape: Shape = androidx.compose.foundation.shape.RoundedCornerShape(3.dp)): Modifier {
     val t = N
+    // every tone follows your accent color (it used to be Windows' own blue whatever you picked)
+    val a = t.blue; val w = Color.White; val k = Color.Black
     val (stops, edge) = when {
-        primary && t.dark -> listOf(Color(0xFF6FB3E8), Color(0xFF4A93D2), Color(0xFF2E74B5), Color(0xFF3F8ED3)) to Color(0xFF0B2F52)
-        primary -> listOf(Color(0xFFEAF6FD), Color(0xFFD9F0FC), Color(0xFFBEE6FD), Color(0xFFA7D9F5)) to Color(0xFF3C7FB1)
-        t.dark -> listOf(Color(0xFF4A5B70), Color(0xFF3A4A5E), Color(0xFF2B394A), Color(0xFF334356)) to Color(0xFF0B1520)
-        else -> listOf(Color(0xFFF2F2F2), Color(0xFFEBEBEB), Color(0xFFDDDDDD), Color(0xFFCFCFCF)) to Color(0xFF707070)
+        primary && t.dark -> listOf(lerp(w, a, .62f), lerp(w, a, .86f), lerp(k, a, .82f), lerp(w, a, .92f)) to lerp(k, a, .35f)
+        primary -> listOf(lerp(w, a, .10f), lerp(w, a, .18f), lerp(w, a, .32f), lerp(w, a, .42f)) to lerp(k, a, .75f)
+        t.dark -> listOf(lerp(Color(0xFF4A5464), a, .22f), lerp(Color(0xFF3A4352), a, .22f), lerp(Color(0xFF2B323E), a, .22f), lerp(Color(0xFF333B48), a, .22f)) to lerp(Color(0xFF0B0F16), a, .2f)
+        else -> listOf(lerp(Color(0xFFF2F2F2), a, .03f), lerp(Color(0xFFEBEBEB), a, .05f), lerp(Color(0xFFDDDDDD), a, .08f), lerp(Color(0xFFCFCFCF), a, .10f)) to lerp(Color(0xFF707070), a, .25f)
     }
     return this.clip(shape).background(Brush.verticalGradient(0f to stops[0], .5f to stops[1], .5f to stops[2], 1f to stops[3]))
         .drawWithCache { val o = shape.createOutline(size, layoutDirection, this); val px = 1.dp.toPx()

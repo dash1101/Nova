@@ -1,4 +1,5 @@
 // Nova web — UI kit: icons, One UI components, dialogs, toast, reorder lists, live graphs.
+import { feel, play } from "./sounds.js";
 import { S, $, $$, esc, sleep, prefs } from "./core.js";
 
 // ── icons (Material Symbols Rounded, 24px) ────────────────────────────────────────
@@ -128,12 +129,14 @@ export function toast(m) {
 }
 export function sheet(html, onClose, kind = "") {
   // kind: "alert" (a question with buttons) or "menu" (pick one) — the Glass, Mica and Breeze styles lay each out their own way
-  const s = $("#sheet"); s.innerHTML = `<div class="box glass${kind ? " " + kind : ""}">${html}</div>`; s.hidden = false; s.dataset.kind = kind;
+  const s = $("#sheet"); if (s.hidden) feel("open");
+  s.innerHTML = `<div class="box glass${kind ? " " + kind : ""}">${html}</div>`; s.hidden = false; s.dataset.kind = kind;
   s.onclick = e => { if (e.target === s) { closeSheet(); onClose?.(); } };
   return $(".box", s);
 }
 export function closeSheet() {
   const s = $("#sheet");
+  if (!s.hidden && s.innerHTML) play("close");
   // a copy fades out in its place while the real one is already free for the next dialog
   if (!s.hidden && s.innerHTML && !document.documentElement.classList.contains("reduce")) {
     const g = s.cloneNode(true); g.classList.add("ghost"); g.setAttribute("aria-hidden", "true"); s.after(g);

@@ -13,6 +13,10 @@ import * as FM from "./files.js";
 import * as PT from "./parts.js";
 import * as SEC from "./sec.js";
 import * as WM from "./winmgr.js";
+import * as SND from "./sounds.js";
+import * as LV from "./living.js";
+import * as AMB from "./ambience.js";
+import "./gamepad.js";
 
 onApproval((id, code, totp, pk) => waitApproval(id, get, code, totp, post, pk));
 
@@ -74,7 +78,7 @@ async function wallpaper() {
   const root = document.documentElement;
   let w = document.getElementById("wall");
   const data = await kv("wallpaper").catch(() => null);
-  root.classList.toggle("has-wall", !!data);
+  root.classList.toggle("has-wall", !!data); LV.update(); AMB.update();
   if (!data) { w?.remove(); if (wallUrl) { URL.revokeObjectURL(wallUrl); wallUrl = null; } return; }
   if (!w) { w = document.createElement("div"); w.id = "wall"; w.innerHTML = "<i></i>"; document.body.prepend(w); }
   if (!wallUrl || w.dataset.v !== String(data.size)) { if (wallUrl) URL.revokeObjectURL(wallUrl); wallUrl = URL.createObjectURL(data); w.dataset.v = String(data.size); }
@@ -125,6 +129,8 @@ function tab(path) {
 let pendingHome = false;
 function back() {
   if (depth > 0) { history.back(); return; }
+  if (WM.EMBED) return;                             // a Files/Terminal window: there's nothing to go back to
+
   if (parse()[0] !== "home") { saveScroll(); history.replaceState({ k: newKey(), d: 0 }, "", "#/home"); rootRoute = "home"; render(-1); }
 }
 addEventListener("popstate", e => {
@@ -184,6 +190,7 @@ function fade() { const f = Math.max(0, Math.min(1, scrollY / 36)); $$("#topbar 
 function drawNav(route) {
   const side = SIDE.matches, t = V.navTabs(), nav = $("#nav");
   if (!nav) return;
+  if (WM.EMBED) { nav.hidden = true; document.body.classList.remove("side"); return; }   // Files/Terminal in a window: no pill
   // phones: only on the tab pages; side pill: always there, the bead on the tab you came from
   const i = t.findIndex(x => x.route === route) >= 0 ? t.findIndex(x => x.route === route) : side ? t.findIndex(x => x.route === rootRoute) : -1;
   nav.hidden = (i < 0 && !side) || route === "dashboard";
@@ -226,6 +233,7 @@ const rateViewTransition = t => t.ready?.then(() => { const k = animRate(); if (
 // ── render a route ───────────────────────────────────────────────────────────────
 let lastRendered = null;
 function render(dir = 0) {
+  if (dir === 1) SND.feel("nav"); else if (dir === -1) SND.feel("back");     // going in or coming back has its own sound
   const my = ++seq, [r, ...args] = parse(), view = S.target && NOT_RELAYED.includes(r) ? notRelayed : ROUTES[r] || V.home;
   current?.leave(); closeSheet();
   if (V.navTabs().some(t => t.route === r) && depth === 0) rootRoute = r;
@@ -414,6 +422,7 @@ async function start() {
   render(0);
   // keep the overview fresh in the background (screens refresh what they show themselves)
   setInterval(() => { if (!document.hidden) refresh().catch(e => { if (e.code === 401) unauthorized(); }); }, 30000);
+  if (WM.EMBED) { document.documentElement.classList.add("embed"); return; }   // the window's Nova page already watches alerts
   watchEvents(); setInterval(watchEvents, 20000);
   addEventListener("resize", () => { const [r] = parse(); drawNav(r); });
 }
@@ -439,6 +448,9 @@ function announce(list) {
       try { const n = new Notification(cleanTitle(e.title), { body: e.detail || "", tag: "nova-" + e.t, icon: "/web/icon.svg" }); n.onclick = () => { focus(); location.hash = "#/inbox"; n.close(); }; } catch {}
     });
   }
+  // the most serious new one makes its sound (and a buzz on a phone)
+  const top = list.some(e => e.level === "critical") ? "critical" : list.some(e => e.level === "warning") ? "warning" : list.length ? "info" : "";
+  if (top) SND.feel(top);
   if (parse()[0] === "inbox") return;                     // the Inbox shows them itself
   alertQueue.push(...list); showAlert();
 }
@@ -473,6 +485,7 @@ addEventListener("keydown", e => {
 
 // Developer options → Show frame rate: frames per second over half a second, and the slowest frame
 function fpsMeter(on) {
+  if (WM.EMBED) on = false;                         // a Files/Terminal window: the page around it has the meter
   if (!on) { fpsEl?.remove(); fpsEl = null; return; }
   if (fpsEl) return;
   fpsEl = document.createElement("div"); fpsEl.className = "fpsmeter"; document.body.append(fpsEl);

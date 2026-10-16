@@ -19,8 +19,8 @@ android {
         applicationId = "app.novalabs.nova"
         minSdk = 28
         targetSdk = 36
-        versionCode = 58
-        versionName = "0.8.3-alpha"
+        versionCode = 59
+        versionName = "0.8.4-alpha"
     }
 
     signingConfigs {
@@ -75,3 +75,7 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.json:json:20240303")          // real org.json on the JVM (Android stubs it)                    // frosted-glass backdrop blur
 }
+
+// The sound packs: one recipe file shared with Nova web (server/web/sounds.json), copied in before every build
+val syncSounds by tasks.registering(Copy::class) { from("../../server/web/sounds.json"); into("src/main/assets") }
+tasks.named("preBuild") { dependsOn(syncSounds) }

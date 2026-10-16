@@ -110,7 +110,7 @@ class AppState(val activity: Activity, val pairing: Pairing, val scope: Coroutin
     /** Which way the last navigation went, so transitions slide the right way. */
     var navDir by mutableIntStateOf(0)          // 1 forward, -1 back, 0 tab switch / instant
     fun go(r: Route) { if (top == r) return                      // already here (a second shake, a double tap): don't stack a copy
-        navDir = 1; if (wide && leftPane && stack.size >= 2) pop(); stack.add(r) }
+        navDir = 1; Sounds.feel("nav"); if (wide && leftPane && stack.size >= 2) pop(); stack.add(r) }
     fun tab(r: Route) {
         // Only real tabs (in your navigation pill) reset the stack; anything else opens as a page with a back button
         if (r != Route.Home && r !is Route.AppFrame && Builtins.current(r) == null && navTabs(this).none { it.route == r }) { go(r); return }
@@ -120,6 +120,7 @@ class AppState(val activity: Activity, val pairing: Pairing, val scope: Coroutin
     }
     /** [instant]: the page underneath is already on screen (predictive back finished) — swap with no transition. */
     fun back(instant: Boolean = false) {
+        if (stack.size > 1 || top != Route.Home) Sounds.feel("back")
         if (stack.size > 1) { navDir = if (instant) 2 else -1; pop() }
         else if (top != Route.Home) {                     // back from another tab goes Home; back on Home leaves the app
             navDir = if (instant) 2 else -1; scrolls.keys.removeAll { it.second != Route.Home }; stack[0] = Route.Home
@@ -278,7 +279,7 @@ class MainActivity : ComponentActivity() {
         openUpdate = fresh && intent?.getStringExtra("open") == "update"
         intent?.removeExtra("open")
         Alerts.start(this)
-        AppPrefs.init(this); Dev.load(this); Dev.applyFpsCap(this); applySecureFlag(this)
+        AppPrefs.init(this); Living.init(this); Sounds.init(this); Ambience.init(this); Sounds.warm(); Dev.load(this); Dev.applyFpsCap(this); applySecureFlag(this)
         // Appearance → Animation speed: every Compose animation runs on this window's recomposer, so one scale covers them all
         window.decorView.compositionContext = window.decorView.createLifecycleAwareWindowRecomposer(NovaMotion, lifecycle)
         setContent { NovaTheme {
@@ -424,6 +425,7 @@ class MainActivity : ComponentActivity() {
             }
             CompositionLocalProvider(LocalRootHaze provides rootHaze) {        // so the toast is real frosted glass
                 AlertBanner(app, Modifier.align(Alignment.TopCenter))
+                LivingTicker(); AmbienceTicker()
                 if (DialogStack.depth == 0) OneToastHost(app.snack, Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = if (wide) 24.dp else 96.dp))
             }
             if (Dev.fps) FpsMeter(Modifier.align(Alignment.TopCenter))       // Developer options → Show frame rate

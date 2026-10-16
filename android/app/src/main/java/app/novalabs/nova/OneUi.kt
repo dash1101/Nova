@@ -82,7 +82,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
     val sc by animateFloatAsState(if (pressed && !reduceMotion()) 0.96f else 1f, spring(dampingRatio = 0.6f, stiffness = Spring.StiffnessMedium), label = "press")
     return this.graphicsLayer { scaleX = sc; scaleY = sc }
         .combinedClickable(interactionSource = src, indication = androidx.compose.foundation.LocalIndication.current, enabled = enabled,
-            onLongClick = onLongClick, onClick = onClick)
+            onLongClick = onLongClick, onClick = { Sounds.feel("tap"); onClick() })
 }
 
 // ── Page scaffold: big title that scrolls away, sticky back button ────────────────
@@ -233,6 +233,7 @@ data class DialogButton(val label: String, val color: Color? = null, val enabled
     val me = remember { Any().also { if (DialogStack.owners[key] == null) DialogStack.owners[key] = it } }
     DisposableEffect(key) { onDispose { if (DialogStack.owners[key] === me) DialogStack.owners.remove(key) } }
     if (DialogStack.owners[key] !== me) { if (DialogStack.owners[key] == null) SideEffect { DialogStack.owners.putIfAbsent(key, me) }; return }
+    DisposableEffect(Unit) { Sounds.play("open"); onDispose { Sounds.play("close") } }      // a pop-up opening and closing has its sound
     if (N.preset.isNotEmpty()) { PresetDialog(onDismiss, title, text, buttons, content); return }
     if (N.material) {                       // M3 dialog: centered, 28dp corners, text buttons on the right
         MotionDialog(onDismiss) {
@@ -426,7 +427,8 @@ private fun DialogButton.role(t: NovaColors) = when { color == null -> "cancel";
 
 // ── Controls ──────────────────────────────────────────────────────────────────────
 /** One UI switch: blue track with the white thumb inside; gray when off. */
-@Composable fun OneSwitch(checked: Boolean, onChange: (Boolean) -> Unit, enabled: Boolean = true) {
+@Composable fun OneSwitch(checked: Boolean, onChange0: (Boolean) -> Unit, enabled: Boolean = true) {
+    val onChange: (Boolean) -> Unit = { Sounds.feel(if (it) "toggleOn" else "toggleOff"); onChange0(it) }     // on and off sound different
     if (N.material) {
         androidx.compose.material3.Switch(checked, onChange, enabled = enabled, thumbContent = if (checked) { { Icon(Icons.Rounded.Check, null, Modifier.size(16.dp)) } } else null)
         return

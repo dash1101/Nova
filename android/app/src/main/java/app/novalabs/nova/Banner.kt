@@ -25,6 +25,7 @@ import androidx.compose.ui.unit.sp
     if (e != null) shown = e
     LaunchedEffect(app.bannerAt) {
         if (e == null) return@LaunchedEffect
+        Sounds.feel(when (e.optString("level")) { "critical" -> "critical"; "warning" -> "warning"; else -> "info" })    // its chime, and a buzz
         kotlinx.coroutines.delay(if (e.optString("level") in listOf("warning", "critical")) 12_000 else 6_000); app.banner = null
     }
     androidx.compose.animation.AnimatedVisibility(e != null, modifier.statusBarsPadding().padding(top = 8.dp, start = 12.dp, end = 12.dp).widthIn(max = 560.dp),

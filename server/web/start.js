@@ -21,6 +21,8 @@ export const PLACES = [
   ["Favorites", "favorites pinned starred screens tiles menu", "star", "favorites"], ["Home Assistant light", "home assistant ha light govee strip status color", "bulb", "ha-light"],
   ["OpenRGB", "openrgb rgb devices motherboard ram lights", "bulb", "openrgb"], ["Menu", "menu all screens", "list", "menu"], ["Start page settings", "start page edit engines new tab", "edit", "start-edit"],
   ["Server terminal", "terminal shell ssh bash console command line sudo", "term", "terminal"],
+  ["Sounds", "sounds sound pack clicks volume alert sounds chime vibration haptics", "palette", "appearance"], ["Living wallpaper", "living animated wallpaper moving background beta", "palette", "appearance"],
+  ["Ambience", "ambience ambient music background sound beta", "palette", "appearance"], ["Apps in Nova windows", "windows window apps open inside nova labs", "science", "labs"],
   ["Glass clarity", "glass clarity transparency frosted liquid", "palette", "appearance"], ["Corner roundness", "corner radius roundness rounded corners", "palette", "appearance"],
   ["Icons", "icon style tiles glossy circles outline symbols monochrome", "palette", "appearance"], ["Swap", "swap memory set up swap file", "mem", "status"],
   ["Live graphs", "graphs cpu gpu memory swap disk io network temperature", "status", "status"],

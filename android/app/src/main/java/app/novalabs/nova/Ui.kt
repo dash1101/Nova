@@ -163,6 +163,14 @@ fun levelColor(level: String, t: NovaColors) = when (level) {
 @Composable fun GlowLayer() {
     val t = N
     if (AppPrefs.wallV > 0L) { WallpaperLayer(); return }
+    if (Living.showing) {                          // living wallpaper: this layer's part of the one moving scene
+        var o by remember { mutableStateOf(Offset.Zero) }
+        val w = androidx.compose.ui.platform.LocalWindowInfo.current.containerSize
+        Canvas(Modifier.fillMaxSize().onGloballyPositioned { o = it.positionInWindow() }) {
+            drawLiving(t, o, if (w.width > 0) w.width.toFloat() else size.width, if (w.height > 0) w.height.toFloat() else size.height)
+        }
+        return
+    }
     if (t.material || t.glow == Color.Transparent) { Box(Modifier.fillMaxSize().background(t.bg)); return }
     // drawn in screen coordinates: every layer (a page, the pane beside it, the strip behind the side pill)
     // shows its own part of one glow, so there's never a seam between them

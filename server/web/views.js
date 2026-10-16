@@ -1,5 +1,7 @@
 // Nova web — every screen of the app. Each view renders with ctx.show(html, options, handlers);
 // buttons carry data-act="name" or data-act="name:arg" and land in `handlers` (or the router's).
+import * as SND from "./sounds.js";
+import * as AMB from "./ambience.js";
 import { gpuInfo, devLog } from "./core.js";
 import { webIcons, iconSvg, svgUrl, applyWebIcon } from "./webicon.js";
 let WEB_ICONS = null;                                   // the App icon choices (loaded with the artwork the first time Appearance opens)
@@ -346,6 +348,13 @@ export async function status(ctx) {
   const live = () => !hour && L.recent.length >= 2;
   const gcard = (label, id, v, sub) => `<div class="card glass" data-act="big:${id}" title="Click to enlarge"><div class="lbl">${esc(label)}</div><div class="val" id="${id}v">${esc(v)}</div><div class="sub" id="${id}s">${esc(sub)}</div><canvas id="${id}"></canvas></div>`;
   let big = null;                                    // the graph shown large (tap a card), drawn with the others
+  // CPU: double-click (or double-tap) splits it into a graph per core, like Task Manager; again to join them back
+  const split = () => !!prefs.cpuSplit && live() && (L.now?.cpus?.length || 0) > 1;
+  // columns that fill every row (12 cores → 6 × 2, 16 → 8 × 2, 8 → 4 × 2), or near-square when nothing divides evenly
+  const kcols = k => { for (let c = Math.ceil(Math.sqrt(k)); c <= 8; c++) if (k % c === 0) return c; return Math.ceil(Math.sqrt(k * 1.6)); };
+  const kgrid = (n, pre) => `<div class="kgrid" style="--kc:${kcols(n.cpus.length)}">${n.cpus.map((v, i) => `<div class="kcell"><canvas id="${pre}${i}"></canvas><small>${i}</small></div>`).join("")}</div>`;
+  const cpuCard = n => `<div class="card glass cpucard${split() ? " split" : ""}" data-act="cpuclick" title="Click to enlarge · double-click for each core"><div class="lbl">CPU${split() ? ` · ${n.cpus.length} cores` : ""}</div><div class="val" id="c1v">${n ? Math.round(n.cpu) + "%" : "—"}</div><div class="sub" id="c1s">${n ? `load ${n.load} · ${n.cores} cores` : ""}</div>${split() ? kgrid(n, "k") : `<canvas id="c1"></canvas>`}</div>`;
+  let clickT = 0;
   const GRAPH = { c1: ["CPU", "--blue", x => +(x.cpu || 0), v => Math.round(v) + "%", 100], c2: ["Memory", "#bf5af2", x => +(x.mem || 0), v => Math.round(v) + "%", 100],
                   c3: ["CPU temperature", "--amber", x => +(x.temp || 0), v => Math.round(v) + "°C", null], c4: ["Network", "--green", x => (x.rx || 0) + (x.tx || 0), v => rate(v), null],
                   c5: ["Graphics", "--red", x => +(x.gpu || 0), v => Math.round(v) + "%", 100], c6: ["Swap", "#ff9f0a", x => +(x.swap || 0), v => Math.round(v) + "%", 100],
@@ -365,7 +374,7 @@ export async function status(ctx) {
       ${segmented(["Live", "Last hour"], hour ? 1 : 0, "range")}
       <div style="height:6px"></div>
       <div class="grid four">
-        ${gcard("CPU", "c1", n ? Math.round(n.cpu) + "%" : "—", n ? `load ${n.load} · ${n.cores} cores` : "")}
+        ${cpuCard(n)}
         ${gcard("Memory", "c2", n ? Math.round(n.mem) + "%" : "—", n ? `${n.mem_used_gb} of ${n.mem_total_gb} GB` : "")}
         ${gcard("CPU temperature", "c3", n?.temp ? Math.round(n.temp) + "°C" : m.cpu_temp || "—", n?.nvme_temp ? `NVMe ${Math.round(n.nvme_temp)}°C` : "")}
         ${gcard("Network", "c4", n ? "↓ " + rate(n.rx) : "—", n ? "↑ " + rate(n.tx) : "")}
@@ -373,7 +382,6 @@ export async function status(ctx) {
         ${n?.swap_total_gb === 0 ? "" : gcard("Swap", "c6", n ? Math.round(n.swap || 0) + "%" : "—", n?.swap_total_gb ? `${n.swap_used_gb} of ${n.swap_total_gb} GB` : "of swap in use")}
         ${gcard("Disk I/O", "c7", n ? rate(n.io || 0) : "—", "read + write, all drives")}
       </div>
-      ${live() && n?.cpus?.length > 1 ? sec(`CPU cores · ${n.cpus.length}`) + `<div class="grid cores">${n.cpus.map((v, i) => `<div class="card glass core"><div class="lbl">Core ${i}</div><div class="val" id="k${i}v">${Math.round(v)}%</div><canvas id="k${i}"></canvas></div>`).join("")}</div>` : ""}
       <p class="note" id="gnote">${pts().length < 3 ? (hour ? "Graphs fill in over the next few minutes." : "Connecting to the live feed…") : ""}</p>
       ${sec("Storage")}${group(storage.map(x => { const p = x.pct / 100; return `<div class="row" style="display:block"><div style="display:flex"><span style="flex:1;font-size:16px">${esc(x.name)}</span><span class="muted" style="font-size:14px">${Math.round(x.pct)}% · ${esc(x.free)}</span></div><div style="margin-top:8px">${bar(p, usageColor(p))}</div></div>`; }).join("")
         + row("Drives", { sub: `${m.drives || "—"} · ${m.drive_temps || ""}`, blue: true, icon: "disk", click: "go:hardware" }))}
@@ -391,10 +399,13 @@ export async function status(ctx) {
   const graphs = () => {
     const p = pts(), n = L.now, opts = { ...(live() ? { window: 120, tick: L.tick, added: L.added } : { tick: 0 }), times: p.map(x => x.t) };
     for (const [id, [, col, val, fmt, max]] of Object.entries(GRAPH)) spark($("#" + id), p.map(val), col, { ...opts, fmt, max });
-    if (live()) (n?.cpus || []).forEach((v, i) => { const c = $("#k" + i); if (!c) return;          // per-core graphs (live view only)
-      spark(c, p.map(x => +(x.cpus?.[i] || 0)), "--blue", { ...opts, fmt: v => Math.round(v) + "%", max: 100 });
-      const e = $(`#k${i}v`); if (e) e.textContent = Math.round(v) + "%"; });
-    if (big && big.canvas.isConnected) { const [, col, val, fmt, max] = GRAPH[big.id]; spark(big.canvas, p.map(val), col, { ...opts, fmt, max, scrub: "all" }); }
+    // each core's graph (the split CPU card, or the enlarged CPU view on "Each core"); the hour history has no per-core points
+    const cores = (pre, o = {}) => (n?.cpus || []).forEach((_, i) => { const c = $("#" + pre + i); if (c) spark(c, p.map(x => +(x.cpus?.[i] || 0)), "--blue", { ...opts, fmt: v => Math.round(v) + "%", max: 100, ...o }); });
+    cores("k");
+    if (big && big.canvas.isConnected) {
+      if (big.id === "c1" && big.each && $("#bk0")) cores("bk", { scrub: "all" });
+      else { const [, col, val, fmt, max] = GRAPH[big.id]; spark(big.canvas, p.map(val), col, { ...opts, fmt, max, scrub: "all" }); }
+    }
     const gn = $("#gnote"); if (gn) gn.textContent = p.length < 3 ? (hour ? "Graphs fill in over the next few minutes." : "Connecting to the live feed…") : "";
     if (!n) return;
     const set = (id, v) => { const e = $("#" + id); if (e) e.textContent = v; };
@@ -409,8 +420,24 @@ export async function status(ctx) {
       const gb = await choose("Set up swap", [["2", "2 GB"], ["4", "4 GB", "A good size for most servers"], ["8", "8 GB"], ["16", "16 GB"]], "4");
       if (gb) ST.startTask(ctx, "/api/v1/storage/task/swap-setup", { spec: { gb: +gb } });
     },
+    cpuclick: () => {
+      // one click enlarges the graph; a second within a moment means double-click: split into cores (or join them)
+      if (clickT) { clearTimeout(clickT); clickT = 0; if ((L.now?.cpus?.length || 0) > 1) { prefs.cpuSplit = !prefs.cpuSplit; draw(); } return; }
+      clickT = setTimeout(() => { clickT = 0; ctx.run("big", "c1"); }, 260);
+    },
     big: id => {
       const [label] = GRAPH[id];
+      if (id === "c1" && (L.now?.cpus?.length || 0) > 1) {
+        const n = L.now, each = split();
+        const box = sheet(`<h2>CPU</h2><div class="pad" style="padding-bottom:0">${segmented(["Overall", `Each core · ${n.cpus.length}`], each ? 1 : 0, "cpuview")}</div>
+          <p class="muted" style="margin:8px 24px 0">${hour ? "Last hour" : "Live · last 2 minutes"} — ${matchMedia("(any-pointer: fine)").matches ? "point at" : "drag along"} a line to see the value at that time.</p>
+          <div class="pad" style="position:relative" id="bigwrap">${each && live() ? kgrid(n, "bk").replace('class="kgrid"', 'class="kgrid big"') : `<canvas class="bigchart" id="bigc"></canvas>`}</div><div class="acts"><button data-b="0">Close</button></div>`, () => { big = null; });
+        $("[data-b]", box).onclick = () => { big = null; closeSheet(); };
+        wireCommon(box, { onSeg: (_, i) => { prefs.cpuSplit = i === 1; const w = $("#bigwrap", box); w.innerHTML = i === 1 && live() ? kgrid(L.now, "bk").replace('class="kgrid"', 'class="kgrid big"') : `<canvas class="bigchart" id="bigc"></canvas>`;
+          big = { id, each: i === 1, canvas: $("#bigc", box) || $("#bk0", box) }; draw(); } });
+        big = { id, each: each && live(), canvas: $("#bigc", box) || $("#bk0", box) }; graphs();
+        return;
+      }
       const box = sheet(`<h2>${esc(label)}</h2><p class="muted" style="margin:0 24px">${hour ? "Last hour" : "Live · last 2 minutes"} — ${matchMedia("(any-pointer: fine)").matches ? "point at" : "drag along"} the line to see the value at that time.</p>
         <div class="pad" style="position:relative"><canvas class="bigchart" id="bigc"></canvas></div><div class="acts"><button data-b="0">Close</button></div>`, () => { big = null; });
       $("[data-b]", box).onclick = () => { big = null; closeSheet(); };
@@ -437,7 +464,7 @@ export async function status(ctx) {
       const add = r.recent || [];
       if (add.length) { L.recent = L.recent.concat(add).slice(-180); L.tick++; L.added = add.length; }
       // the per-core section appears once the live feed carries cores (and goes with the hour view)
-      if (ctx.alive()) { if (!!$("#k0") !== (live() && L.now?.cpus?.length > 1)) draw(); else graphs(); }
+      if (ctx.alive()) { if (!!$("#k0") !== (live() && split())) draw(); else graphs(); }
     } catch { /* offline for a moment: keep the last graph */ }
   }
 }
@@ -1618,6 +1645,7 @@ export async function dev(ctx) {
   });
   draw(); ctx.every(2000, () => draw());
 }
+const PACKS = { default: "Droplets", material: "Material", aero: "Aero", fluent: "Mica", breeze: "Breeze", liquid: "Glass" };
 export async function appearance(ctx) {
   const draw = () => {
     const rmax = prefs.style === "liquid" ? 200 : 400;     // Glass stops at 200%: past that its cards turn into ovals
@@ -1636,12 +1664,20 @@ export async function appearance(ctx) {
       ${group(switchRow("Reduce motion", "Simple fades instead of slides and bounces", prefs.reduceMotion, "motion", { blue: false })
         + `<div class="range-row"><div class="h"><span>Animation speed</span><span id="speedl">${speedText(prefs.animSpeed ?? 100)}</span></div><input type="range" min="25" max="300" step="25" value="${prefs.animSpeed ?? 100}" data-range="animSpeed" style="--p:${((prefs.animSpeed ?? 100) - 25) / 275 * 100}%"></div>`
         + switchRow("Reduce transparency", "Solid surfaces instead of glass — easier to read, lighter to draw", !!prefs.reduceTransparency, "solid", { blue: false }))}
+      ${sec("Sounds & haptics")}${group(switchRow("Sounds", "Clicks, switches, pages, pop-ups and windows — each look has its own sound pack", SND.soundsOn(), "snd")
+        + (SND.soundsOn() ? row("Sound pack", { sub: (prefs.soundPack || "auto") === "auto" ? `Match the look (${PACKS[SND.packId()]})` : PACKS[prefs.soundPack] || "Match the look", blue: true, icon: "tune", click: "spack" })
+          + `<div class="range-row"><div class="h"><span>Volume</span><span id="voll">${prefs.soundVol ?? 60}%</span></div><input type="range" min="0" max="100" step="5" value="${prefs.soundVol ?? 60}" data-range="soundVol" style="--p:${prefs.soundVol ?? 60}%"></div>`
+          + switchRow("Alert sounds", "A chime when something needs you — a more urgent one when it's serious", prefs.alertSounds ?? true, "asnd") : "")
+        + switchRow("Ambience · Beta", "Soft, slowly changing music under everything, in the mood of the look you picked", !!prefs.ambience, "amb")
+        + (prefs.ambience ? `<div class="range-row"><div class="h"><span>Ambience volume</span><span id="ambl">${prefs.ambVol ?? 35}%</span></div><input type="range" min="0" max="100" step="5" value="${prefs.ambVol ?? 35}" data-range="ambVol" style="--p:${prefs.ambVol ?? 35}%"></div>` : "")
+        + ("vibrate" in navigator ? switchRow("Vibration", "A light buzz with taps, switches and alerts (on phones)", prefs.haptics ?? true, "hap") : ""))}
       ${sec("Colors")}${group(row("Accent color", { sub: prefs.accentLocal ? "This browser's own color" : `The server's color${S.overview?.server?.accent ? "" : " (Nova blue)"} — tap to pick your own`, blue: !!prefs.accentLocal,
             end: `<span class="swatch" style="background:${esc(prefs.accentLocal || S.overview?.server?.accent || "#3e91ff")}"></span>`, click: "accent" })
           + `<div class="swatches pad">${ACCENTS.filter(Boolean).map(c => `<button class="swatch press${prefs.accentLocal === c ? " on" : ""}" style="background:${c}" data-act="acc:${c}" aria-label="${c}"></button>`).join("")}</div>`
           + (prefs.accentLocal ? row("Use the server's color", { icon: "refresh", click: "acc:" }) : "")
           + `<div class="range-row"><div class="h"><span>Color strength${mat ? "" : " (Material You)"}</span><span id="tintl">${prefs.tint ?? 50}%</span></div>${`<input type="range" min="0" max="100" value="${prefs.tint ?? 50}" data-range="tint" style="--p:${prefs.tint ?? 50}%">`}</div>`)}
-      ${sec("Wallpaper")}${wallHas ? group(`<div class="range-row"><div class="h"><span>Blur</span><span id="blurl">${prefs.wallBlur ?? 16}px</span></div><input type="range" min="0" max="40" value="${prefs.wallBlur ?? 16}" data-range="wallBlur" style="--p:${(prefs.wallBlur ?? 16) / 40 * 100}%"></div>
+      ${sec("Wallpaper")}${group(switchRow("Living wallpaper · Beta", wallHas ? "An animated wallpaper for each look, in your accent color — your picture shows instead while it's set" : "An animated wallpaper for each look, in your accent color: Aero's ribbons of light, Mica's bloom, Breeze's waves, Glass's liquid color and more", !!prefs.livingWall, "livewall"))}
+      ${wallHas ? group(`<div class="range-row"><div class="h"><span>Blur</span><span id="blurl">${prefs.wallBlur ?? 16}px</span></div><input type="range" min="0" max="40" value="${prefs.wallBlur ?? 16}" data-range="wallBlur" style="--p:${(prefs.wallBlur ?? 16) / 40 * 100}%"></div>
             <div class="range-row"><div class="h"><span>Dim</span><span id="diml">${prefs.wallDim ?? 35}%</span></div><input type="range" min="0" max="90" value="${prefs.wallDim ?? 35}" data-range="wallDim" style="--p:${(prefs.wallDim ?? 35) / 90 * 100}%"></div>`
             + row("Change the picture", { icon: "image", blue: true, click: "wall" }) + row("Remove the wallpaper", { icon: "del", tint: "var(--red)", click: "unwall" }))
           : group(row("Choose a picture", { sub: "Behind every page, blurred and dimmed as you like. Kept in this browser only.", icon: "image", blue: true, click: "wall" }))}
@@ -1667,10 +1703,12 @@ export async function appearance(ctx) {
       onRangeInput: (k, v) => {                                   // live while dragging
         prefs[k] = v; ctx.applyTheme();
         if (k === "animSpeed" && $("#speedl")) $("#speedl").textContent = speedText(v);
+        if (k === "ambVol") { if ($("#ambl")) $("#ambl").textContent = v + "%"; AMB.update(); }
+        if (k === "soundVol") { if ($("#voll")) $("#voll").textContent = v + "%"; clearTimeout(volT); volT = setTimeout(() => SND.play("tap"), 60); }
         const l = { tint: ["tintl", "%"], wallBlur: ["blurl", "px"], wallDim: ["diml", "%"], glass: ["glassl", "%"], round: ["roundl", "%"] }[k]; if (l && $("#" + l[0])) $("#" + l[0]).textContent = v + l[1];
       } });
   };
-  let wallHas = false;
+  let wallHas = false, volT = 0;
   const checkWall = async () => { wallHas = !!(await kv("wallpaper").catch(() => null)); if (ctx.alive()) draw(); };
   const setAccent = c => {
     prefs.accentLocal = c || "";
@@ -1680,6 +1718,15 @@ export async function appearance(ctx) {
   };
   ctx.handlers({
     icon: k => { prefs.iconTheme = k; ctx.applyTheme(); draw(); },
+    livewall: () => { prefs.livingWall = !prefs.livingWall; ctx.applyTheme(); draw(); },
+    amb: () => { prefs.ambience = !prefs.ambience; AMB.update(); draw(); },
+    snd: () => { prefs.sounds = !SND.soundsOn(); draw(); if (prefs.sounds) SND.play("toggleOn", { force: true }); },
+    asnd: () => { prefs.alertSounds = !(prefs.alertSounds ?? true); draw(); if (prefs.alertSounds) SND.play("info"); },
+    hap: () => { prefs.haptics = !(prefs.haptics ?? true); draw(); SND.buzz("success"); },
+    spack: async () => {
+      const v = await choose("Sound pack", [["auto", "Match the look", "Changes with the style you pick"], ...Object.entries(PACKS).map(([k, n]) => [k, n])], prefs.soundPack || "auto");
+      if (!v) return; prefs.soundPack = v; draw(); SND.play("info", { force: true });       // a taste of it
+    },
     wicon: async k => { prefs.webIcon = k; await applyWebIcon(); draw(); },
     accent: async () => { const c = await colorPicker(prefs.accentLocal || S.overview?.server?.accent || "#3e91ff"); if (c) setAccent(c); },
     acc: c => setAccent(c && /^#[0-9a-f]{6}$/i.test(c) ? c : ""),

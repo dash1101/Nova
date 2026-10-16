@@ -221,6 +221,7 @@ object AppLock {
             RowDivider()
             SwitchRow("Reduce transparency", "Solid surfaces instead of glass — easier to read, lighter to draw", AppPrefs.solid) { AppPrefs.set("solid", it) }
         }
+        SoundSettings()
         ColorsAndWallpaper()
         LanguageRow()
         IconThemePicker()
@@ -299,6 +300,10 @@ private val MY_ACCENTS = listOf("#3e91ff", "#5e5ce6", "#bf5af2", "#ff2d55", "#ff
     }
     SectionLabel("Wallpaper")
     Group {
+        SwitchRow("Living wallpaper · Beta", if (AppPrefs.wallV > 0L) "An animated wallpaper for each look, in your accent color — your picture shows instead while it's set"
+            else "An animated wallpaper for each look, in your accent color: Aero's ribbons of light, Mica's bloom, Breeze's waves, Glass's liquid color and more", Living.on) { Living.set(it) }
+    }
+    Group {
         if (AppPrefs.wallV > 0L) {
             Column(Modifier.padding(horizontal = 22.dp, vertical = 12.dp)) {
                 Row { Text("Blur", color = N.sub, fontSize = 14.sp, modifier = Modifier.weight(1f)); Text("${AppPrefs.wallBlur}", color = N.sub, fontSize = 14.sp) }
@@ -373,6 +378,38 @@ val ICON_THEMES = listOf("style" to "Matches the style", "tonal" to "Tonal", "ti
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) { samples.forEach { (ic, c) -> RowIcon(ic, c, k) } }
                 Spacer(Modifier.width(12.dp)); OneRadio(AppPrefs.iconTheme == k)
             }
+        }
+    }
+}
+
+/** Appearance → Sounds & haptics: a sound pack for each look (or one you pick), volume, alert chimes, vibration. */
+@Composable fun SoundSettings() {
+    SectionLabel("Sounds & haptics")
+    var pick by remember { mutableStateOf(false) }
+    Group {
+        SwitchRow("Sounds", "Taps, switches, pages and alerts — each look has its own sound pack", Sounds.on) { Sounds.set("on", it); if (it) { Sounds.warm(); Sounds.play("toggleOn", force = true) } }
+        if (Sounds.on) {
+            RowDivider()
+            Row1("Sound pack", if (Sounds.pack == "auto") "Match the look (${Sounds.PACKS[Sounds.packId()]})" else Sounds.PACKS[Sounds.pack] ?: "Match the look", subtitleBlue = true, onClick = { pick = true })
+            RowDivider()
+            var v by remember { mutableFloatStateOf(Sounds.volume.toFloat()) }
+            SliderRow("Volume", v, 0f..100f, "${v.toInt()}%", steps = 19, onChange = { v = it; Sounds.set("vol", it.toInt()) }, onDone = { Sounds.play("tap") })
+            RowDivider()
+            SwitchRow("Alert sounds", "A chime when something needs you — a more urgent one when it's serious", Sounds.alerts) { Sounds.set("alerts", it); if (it) Sounds.play("info") }
+        }
+        RowDivider()
+        SwitchRow("Ambience · Beta", "Soft, slowly changing music while Nova is open, in the mood of the look you picked", Ambience.on) { Ambience.set("on", it) }
+        if (Ambience.on) {
+            RowDivider()
+            var av by remember { mutableFloatStateOf(Ambience.volume.toFloat()) }
+            SliderRow("Ambience volume", av, 0f..100f, "${av.toInt()}%", steps = 19, onChange = { av = it; Ambience.set("vol", it.toInt()) }, onDone = {})
+        }
+        RowDivider()
+        SwitchRow("Vibration", "A light buzz with taps and switches (when the phone's touch feedback is on) and with alerts", Sounds.haptics) { Sounds.set("haptics", it); Sounds.buzz("success") }
+    }
+    if (pick) OneDialog({ pick = false }, "Sound pack") {
+        (listOf("auto" to "Match the look") + Sounds.PACKS.toList()).forEach { (k, n) ->
+            DialogChoice(n, selected = Sounds.pack == k) { Sounds.set("pack", k); pick = false; Sounds.play("info", force = true) }     // a taste of it
         }
     }
 }

@@ -459,9 +459,15 @@ private fun survives(level: String, n: Int) = when (level) { "raid1" -> n - 1; "
     var t by remember { mutableStateOf<JSONObject?>(null) }
     var stopping by remember { mutableStateOf(false) }
     LaunchedEffect(r.id) {
+        var seenRunning = false
         while (true) {
             runCatching { app.api.get("/api/v1/tasks/${r.id}") }.onSuccess { t = it }
-            if (t != null && t!!.optString("state") != "running") break
+            val st = t?.optString("state")
+            if (st == "running") seenRunning = true
+            if (t != null && st != "running") {            // it just finished while you watched: its sound
+                if (seenRunning) Sounds.feel(when (st) { "done" -> "success"; "stopped" -> "tap"; else -> "error" })
+                break
+            }
             delay(1000)
         }
     }

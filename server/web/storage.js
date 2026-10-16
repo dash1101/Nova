@@ -1,5 +1,6 @@
 // Nova web — storage map, drive setup wizard, pools, background tasks, backups, diagnostics.
 // Mirrors the app's Storage.kt / Backups.kt / Diagnostics.kt.
+import * as SND from "./sounds.js";
 import { S, $, $$, esc, get, post, del, bytes, isAdmin, signedFetch, serverHost, prefs } from "./core.js";
 import { I, row, group, sec, note, radio, switchRow, segmented, bar, usageColor, toast, dialog, confirm, ask, wireCommon, sheet, closeSheet, copyCmd } from "./ui.js";
 
@@ -217,9 +218,11 @@ function capacity(lv, ds) {
 
 // ── one background task ────────────────────────────────────────────────────────
 export async function task(ctx) {
-  const [id, then] = ctx.args; let t = null, stopping = false;
+  const [id, then] = ctx.args; let t = null, stopping = false, was = null;
   const draw = () => {
     const state = t?.state || "running", kind = t?.kind || "";
+    if (was === "running" && state !== "running") SND.feel(state === "done" ? "success" : state === "stopped" ? "tap" : "error");   // it just finished
+    was = state;
     const icon = state === "running" ? `<div class="spinner"></div>` : state === "done" ? `<span style="color:var(--green)">${I("okc")}</span>` : `<span style="color:${state === "stopped" ? "var(--sub)" : "var(--red)"}">${I(t?.refused ? "block" : "err")}</span>`;
     ctx.show(group(`<div style="padding:22px"><div style="display:flex;align-items:center;gap:14px">${icon}<b style="font-size:18px">${esc(state === "running" ? (t?.step || "Starting…") : state === "done" ? "Done" : state === "stopped" ? "Stopped" : t?.refused ? "Not started" : "Didn't finish")}</b></div>
         ${state === "running" ? `<div style="margin-top:14px">${bar((t?.pct || 0) / 100)}</div>${t?.note ? `<small class="muted">${esc(t.note)}</small>` : ""}` : ""}

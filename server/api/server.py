@@ -41,7 +41,7 @@ try:                       # optional module: fan/case lighting (modules/fan-gig
 except ImportError:
     nova_rgb = None
 
-API_VERSION = "0.8.3-alpha"
+API_VERSION = "0.8.4-alpha"
 # The API contract (docs/API.md). API_LEVEL only ever goes up: each new level adds endpoints or fields, never removes or
 # changes one. MIN_LEVEL is the oldest level this server still answers in full (old apps keep working back to it).
 # MIN_CLIENT: the oldest app builds still served, per platform — 0 = all of them. Raising it is the last resort, after
@@ -131,6 +131,25 @@ def docker_present():
         _docker.update(t=time.time(), v=os.path.exists("/var/run/docker.sock") or os.path.exists("/run/docker.sock"))
     return _docker["v"]
 
+_origins = [0, [], []]
+def app_origins(host=""):
+    """The web addresses (scheme://host:port) of every app Nova lists, for the page's security policy. Cached a minute."""
+    if time.time() - _origins[0] >= 60:
+        out, ports = set(), set()
+        try:
+            for a in app_list():
+                for u in (a.get("url"), a.get("remote_url")):
+                    m = re.match(r"^(https?://[A-Za-z0-9.-]+(?::\d{1,5})?)(?:/|$)", u or "")
+                    if m: out.add(m.group(1).lower())
+                if a.get("port"):
+                    ports.add((a.get("scheme") or "http", int(a["port"])))
+                    if re.fullmatch(r"[A-Za-z0-9.-]+", a.get("host_ip") or ""): out.add(f"{a.get('scheme') or 'http'}://{a['host_ip']}:{a['port']}")
+        except Exception: pass
+        _origins[:] = [time.time(), sorted(out), sorted(ports)]
+    # an app on this server is reached at the same name the browser used for Nova (its home or Tailscale address)
+    extra = [f"{sch}://{host}:{p}" for sch, p in _origins[2]] if re.fullmatch(r"[A-Za-z0-9.-]+|\[[0-9a-fA-F:]+\]", host or "") else []
+    return sorted(set(_origins[1] + extra))
+
 _frame_cache = {}
 def frame_check(a):
     """{"frameable": bool, "why": str}: whether the app's own answer lets another site show it in a frame
@@ -156,13 +175,6 @@ def frame_check(a):
     if xfo in ("DENY", "SAMEORIGIN"): res = {"frameable": False, "why": f"it tells browsers not to show it inside another site (X-Frame-Options: {xfo})"}
     if fa is not None and "*" not in fa.split() and "https:" not in fa.split():
         res = {"frameable": False, "why": f"it only lets {fa or 'nobody'} show it in a frame (frame-ancestors)"}
-    # its https address behind Cloudflare sign-in: that sign-in page won't show in a frame, so you sign in once in a tab
-    rem = a.get("remote_url") or ""
-    if rem.startswith("https://"):
-        try: op.open(urllib.request.Request(rem, method="HEAD", headers={"User-Agent": "Nova frame check"}), timeout=5)
-        except urllib.error.HTTPError as e:
-            if e.code in (301, 302, 303, 307, 308) and ".cloudflareaccess.com/" in (e.headers.get("Location") or ""): res = {**res, "signin": True}
-        except Exception: pass
     _frame_cache[url] = (time.time(), res)
     return res
 
@@ -1194,11 +1206,15 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Cache-Control", "no-cache")
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Referrer-Policy", "no-referrer")
-        self.send_header("X-Frame-Options", "DENY")
+        self.send_header("X-Frame-Options", "SAMEORIGIN")         # only Nova itself frames Nova (Files and Terminal in their own windows)
         self.send_header("Permissions-Policy", "camera=(), microphone=(), geolocation=(self), payment=(), usb=(), interest-cohort=()")
         self.send_header("Cross-Origin-Opener-Policy", "same-origin")
+        # apps can open in Nova windows (frame-src), and the page may ask an app's own address whether you're signed in
+        # to it (connect-src) — only the addresses of apps Nova knows, nothing else
+        host = re.sub(r":\d+$", "", self.headers.get("Host") or "")
+        ao = " ".join(app_origins(host)); fs = "'self' " + ao
         self.send_header("Content-Security-Policy", "default-src 'self'; img-src 'self' data: blob:; style-src 'self'; style-src-attr 'unsafe-inline'; script-src 'self'; "
-                         "connect-src 'self'; frame-src http: https:; frame-ancestors 'none'; base-uri 'none'; form-action 'none'")
+                         f"connect-src 'self' {ao}; frame-src {fs}; frame-ancestors 'self'; base-uri 'none'; form-action 'none'")
         self.end_headers(); self.wfile.write(data)
 
     def browser_request(self, method, path, body):
@@ -1666,7 +1682,7 @@ class Handler(BaseHTTPRequestHandler):
                          "server": {"name": os.uname().nodename, "display_name": cfg.get("display_name", ""),
                                     "accent": cfg.get("accent", ""), "board": board_name(), "cpu": cpu,
                                     "ram_gb": round(mem.get("MemTotal", 0) / 1048576), "kernel": os.uname().release,
-                                    "uptime_s": int(float(open("/proc/uptime").read().split()[0])), "tailnet_host": TAILNET_HOST},
+                                    "uptime_s": int(float(open("/proc/uptime").read().split()[0])), "tailnet_host": TAILNET_HOST, "remote_url": CFG.get("remote_url", "")},
                          "status": {k: st.get(k) for k in ("level", "headline", "status", "active_count", "active", "ignored", "metrics", "updated_local")},
                          "fan": fan, "containers": {"running": sum(1 for c in cl if c["state"] == "running"), "total": sum(1 for c in cl if not c.get("stopped")),
                                         "stopped": sum(1 for c in cl if c.get("stopped"))},      # stopped on purpose: not counted as missing
