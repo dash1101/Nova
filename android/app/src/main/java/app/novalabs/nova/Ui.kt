@@ -291,6 +291,10 @@ fun levelColor(level: String, t: NovaColors) = when (level) {
 @Composable fun OneSlider(value: Float, onChange: (Float) -> Unit, range: ClosedFloatingPointRange<Float>, enabled: Boolean = true,
                           steps: Int = 0, onDone: () -> Unit = {}, modifier: Modifier = Modifier) {
     val t = N
+    // a light tick as the slider passes each twentieth of its range (like the system's own sliders)
+    var lastTick by remember { mutableIntStateOf(-1) }
+    val onChange: (Float) -> Unit = { v -> val k = (((v - range.start) / (range.endInclusive - range.start)) * 20).toInt()
+        if (k != lastTick) { if (lastTick >= 0) Sounds.buzz("slide"); lastTick = k }; onChange(v) }
     Slider(value = value, onValueChange = onChange, modifier = modifier, enabled = enabled, valueRange = range,
         steps = steps, onValueChangeFinished = onDone,
         thumb = { Box(Modifier.size(28.dp).clip(CircleShape).background(if (enabled) Color.White else t.sub)

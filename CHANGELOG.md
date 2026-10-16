@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.7-alpha (server, Nova web, app and watch)
+- **Glass splits the light like iOS:** at the rim, white separates ever so slightly into its colors — red bends a touch more, blue a touch less, more so toward the very edge (app and web; on the web it's off with Lighter effects).
+- **No more double sounds or buzzes** (app): a tap that comes with a switch or a page change is folded into it — one sound, one buzz.
+- **Sliders tick** as you drag them, a light haptic every twentieth of the way (app, and phone browsers).
+- **Smoother back gesture with a living wallpaper** (app): the scene holds still while you drag back, since two pages are drawing it at once.
+- **Dashboard tiles resize in place** (app): hold one to go small → wide → the whole row.
+
 ## 0.8.6-alpha (server, Nova web, app and watch)
 - **Sounds and haptics on every tap** (app): they come from the press itself now, so tapping a switch's row (not just the switch), a list item or any button makes its sound and buzz.
 - **Icon shape** (Appearance, app and web): rounded square, squircle (like One UI), circle, square or teardrop — your apps' icons inside Nova, and on the web Nova's own tab and home-screen icon. (On Android the launcher decides the shape of Nova's own icon.)

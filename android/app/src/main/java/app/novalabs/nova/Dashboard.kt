@@ -16,6 +16,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -123,8 +125,9 @@ private val LocalDash = staticCompositionLocalOf<DashPrefs?> { null }
             val cols = if (prefs.cols > 0) minOf(prefs.cols, maxOf(fit, 1)) else fit.coerceAtLeast(2)
             Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Spacer(Modifier.height(if (chrome) 56.dp else 4.dp))
-                // Pack tiles into rows of `cols` columns, honoring each tile's span.
-                val rows = mutableListOf<MutableList<DashTile>>(); var used = cols
+                // Pack tiles into rows of `cols` columns, honoring each tile's span (sizeV: repack after a tile is resized).
+                var sizeV by remember { mutableIntStateOf(0) }
+                val rows = mutableListOf<MutableList<DashTile>>(); var used = cols + sizeV * 0
                 tiles.mapNotNull { id -> DASH_TILES.firstOrNull { it.id == id } }.forEach { t ->
                     val span = prefs.span(t).coerceAtMost(cols)
                     if (used + span > cols) { rows.add(mutableListOf()); used = 0 }
@@ -132,7 +135,13 @@ private val LocalDash = staticCompositionLocalOf<DashPrefs?> { null }
                 }
                 rows.forEach { row ->
                     Row(Modifier.fillMaxWidth().height(190.dp * k), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        row.forEach { t -> Box(Modifier.weight(prefs.span(t).coerceAtMost(cols).toFloat()).fillMaxHeight()) { DashTileView(app, t, stats, events, now) } }
+                        // hold a tile to change its size, like a home-screen widget: small → wide → the whole row → small
+                        row.forEach { t -> Box(Modifier.weight(prefs.span(t).coerceAtMost(cols).toFloat()).fillMaxHeight()
+                            .pointerInput(t.id, cols) { detectTapGestures(onLongPress = {
+                                val cur = prefs.span(t).coerceAtMost(cols); val next = when { cur < 2 && cols >= 2 -> 2; cur < cols -> cols; else -> 1 }
+                                prefs.sizes = prefs.sizes + (t.id to next); Sounds.feel("toggleOn"); sizeV++
+                                app.toast(when (next) { 1 -> "${t.label}: small"; cols -> "${t.label}: the whole row"; else -> "${t.label}: wide" }) }) }) {
+                            key(sizeV) { DashTileView(app, t, stats, events, now) } } }
                         val left = cols - row.sumOf { prefs.span(it).coerceAtMost(cols) }
                         if (left > 0) Spacer(Modifier.weight(left.toFloat()))
                     }

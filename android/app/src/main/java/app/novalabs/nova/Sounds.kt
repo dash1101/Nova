@@ -191,7 +191,16 @@ object Sounds {
         }
         runCatching { vib.vibrate(effect) }
     }
-    fun feel(ev: String) { play(ev); buzz(ev) }
+    private var lastAt = 0L; private var lastBuzzAt = 0L
+    /** One press, one sound and one buzz: a tap that comes with a switch or a page change (they arrive together) is
+     *  folded into it, so nothing doubles up. */
+    fun feel(ev: String) {
+        val now = android.os.SystemClock.uptimeMillis()
+        if (ev == "tap" && now - lastAt < 160) return                 // something more specific already sounded for this press
+        lastAt = now
+        play(ev)
+        if (now - lastBuzzAt >= 90 || ev in setOf("info", "warning", "critical")) { lastBuzzAt = now; buzz(ev) }
+    }
 }
 
 /**

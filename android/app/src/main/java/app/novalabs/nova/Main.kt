@@ -343,6 +343,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {   // FragmentAct
     androidx.activity.compose.BackHandler(enabled = app.backTarget != null && plainBack) { app.back() }
     androidx.activity.compose.PredictiveBackHandler(enabled = app.backTarget != null && !plainBack) { events ->
         try {
+            Living.paused = true                                   // the scene holds still while you drag: two pages are on screen
             events.collect { e -> backEdge = e.swipeEdge; backP.snapTo(e.progress) }
             val finish = androidx.compose.animation.core.tween<Float>(if (reduceMotion()) 0 else 200, easing = androidx.compose.animation.core.FastOutSlowInEasing)
             kotlinx.coroutines.coroutineScope {
@@ -350,9 +351,10 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {   // FragmentAct
                 backExit.animateTo(1f, finish)
             }
             app.back(instant = true)
-            backP.snapTo(0f); backExit.snapTo(0f)
+            backP.snapTo(0f); backExit.snapTo(0f); Living.paused = false
         } catch (e: kotlin.coroutines.cancellation.CancellationException) {
             // gesture canceled: glide back into place
+            Living.paused = false
             backScope.launch { backExit.snapTo(0f); backP.animateTo(0f, androidx.compose.animation.core.spring(stiffness = 700f)) }
             throw e
         }

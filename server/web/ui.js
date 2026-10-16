@@ -466,3 +466,11 @@ export function edgeFades(el) {
   el.addEventListener("scroll", upd, { passive: true }); addEventListener("resize", upd); requestAnimationFrame(upd);
 }
 new MutationObserver(() => document.querySelectorAll(".mapps, .fdrives, .chips").forEach(edgeFades)).observe(document.documentElement, { childList: true, subtree: true });
+// a light tick on phones as a slider passes each twentieth of its range
+let tickK = new WeakMap();
+document.addEventListener("input", e => {
+  const r = e.target; if (!r.matches?.('input[type="range"]') || !navigator.vibrate || !matchMedia("(pointer: coarse)").matches || prefs.haptics === false) return;
+  const k = Math.floor((r.value - r.min) / ((r.max - r.min) || 1) * 20);
+  if (tickK.has(r) && tickK.get(r) !== k) try { navigator.vibrate(4); } catch {}
+  tickK.set(r, k);
+}, true);

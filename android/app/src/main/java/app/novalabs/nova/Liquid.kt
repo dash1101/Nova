@@ -232,8 +232,10 @@ half4 main(float2 p0) {
     half4 c = content.eval(p0 + d);
     half glint0 = half(e * e * 0.10);
     if (fringe < 0.5) return half4(min(c.rgb + glint0, 1.0), c.a);
-    half r = content.eval(p0 + d * 1.06).r;                      // a faint prism fringe at the edge
-    half b = content.eval(p0 + d * 0.94).b;
+    // the prism: white splits into its colors at the rim, like iOS — red bends a little more, blue a little less,
+    // and the split grows toward the very edge
+    half r = content.eval(p0 + d * (1.0 + 0.16 * e)).r;
+    half b = content.eval(p0 + d * (1.0 - 0.16 * e)).b;
     half glint = half(e * e * 0.10);                             // the curved edge catches a little light, on all four sides
     return half4(min(r + glint, 1.0), min(c.g + glint, 1.0), min(b + glint, 1.0), c.a);
 }

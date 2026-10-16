@@ -93,17 +93,26 @@ function maps(w, h, r, bevel, thick) {
 
 function filterFor(w, h, r, soft) {
   w = Math.round(w / 4) * 4; h = Math.round(h / 4) * 4; r = Math.round(Math.min(r, w / 2, h / 2));
-  const key = `${w}x${h}x${r}x${soft}`;
+  const key = `${w}x${h}x${r}x${soft}x${document.documentElement.classList.contains("lite") ? 0 : 1}`;
   if (cache.has(key)) return cache.get(key);
   const small = Math.min(w, h);
   const bevel = Math.min(Math.max(small * .3, 10), 34, r * 1.6 || 34), thick = bevel * 1.4;
   const m = maps(w, h, r, bevel, thick);
   const scale = Math.min(80, m.max * 2);                                     // the map spans −½…+½ of scale, so ×2 = the strongest bend in pixels
+  // the prism (white splitting into its colors at the rim, like iOS): three bends instead of one, so not with Lighter effects
+  const prism = !document.documentElement.classList.contains("lite");
   const id = "lg" + (++seq).toString(36);
   const f = document.createElementNS(NS, "filter");
   for (const [a, v] of Object.entries({ id, x: 0, y: 0, width: w, height: h, filterUnits: "userSpaceOnUse", "color-interpolation-filters": "sRGB" })) f.setAttribute(a, v);
   f.innerHTML = `<feImage x="0" y="0" width="${w}" height="${h}" preserveAspectRatio="none" result="map" href="${m.disp}"/>
-    <feDisplacementMap in="SourceGraphic" in2="map" scale="${scale.toFixed(1)}" xChannelSelector="R" yChannelSelector="G" result="bent0"/>
+    <feDisplacementMap in="SourceGraphic" in2="map" scale="${scale.toFixed(1)}" xChannelSelector="R" yChannelSelector="G" result="${prism ? "bentG" : "bent0"}"/>${prism ? `
+    <feDisplacementMap in="SourceGraphic" in2="map" scale="${(scale * 1.14).toFixed(1)}" xChannelSelector="R" yChannelSelector="G" result="dR"/>
+    <feDisplacementMap in="SourceGraphic" in2="map" scale="${(scale * .86).toFixed(1)}" xChannelSelector="R" yChannelSelector="G" result="dB"/>
+    <feColorMatrix in="dR" values="1 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0 0" result="cR"/>
+    <feColorMatrix in="bentG" values="0 0 0 0 0  0 1 0 0 0  0 0 0 0 0  0 0 0 1 0" result="cG"/>
+    <feColorMatrix in="dB" values="0 0 0 0 0  0 0 0 0 0  0 0 1 0 0  0 0 0 0 0" result="cB"/>
+    <feComposite in="cR" in2="cG" operator="arithmetic" k2="1" k3="1" result="cRG"/>
+    <feComposite in="cRG" in2="cB" operator="arithmetic" k2="1" k3="1" result="bent0"/>` : ""}
     <feGaussianBlur in="bent0" stdDeviation="${soft}" edgeMode="duplicate" result="bent"/>
     <feImage x="0" y="0" width="${w}" height="${h}" preserveAspectRatio="none" result="rim" href="${m.spec}"/>
     <feBlend in="rim" in2="bent" mode="screen"/>`;

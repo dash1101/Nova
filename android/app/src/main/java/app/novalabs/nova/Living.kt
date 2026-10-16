@@ -25,6 +25,7 @@ object Living {
     private lateinit var sp: android.content.SharedPreferences
     var on by mutableStateOf(false); private set
     var time by mutableFloatStateOf(20f)                // seconds of scene time
+    @Volatile var paused = false                         // during a back gesture (two pages draw the scene at once)
     var scene by mutableStateOf("auto"); private set     // auto = match the look, or one of SCENES
     var speed by mutableIntStateOf(100); private set     // % of normal
     var accent by mutableStateOf(""); private set        // its own color, or "" for the accent
@@ -49,7 +50,7 @@ object Living {
         while (true) {
             withFrameNanos { now ->
                 if (t0 == 0L) t0 = now - (Living.time * 1e9f / speed()).toLong()
-                if (now - last >= (if (AppPrefs.lite == "on" || (AppPrefs.lite == "auto" && AppPrefs.slowDevice)) 66_000_000L else 33_000_000L)) { last = now; Living.time = (now - t0) / 1e9f * speed() }   // Lighter effects: 15 a second
+                if (now - last >= (if (AppPrefs.lite == "on" || (AppPrefs.lite == "auto" && AppPrefs.slowDevice)) 66_000_000L else 33_000_000L)) { last = now; if (Living.paused) t0 += 33_000_000L else Living.time = (now - t0) / 1e9f * speed() }   // Lighter effects: 15 a second
             }
         }
     }
