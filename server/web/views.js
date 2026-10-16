@@ -4,7 +4,7 @@ import * as SND from "./sounds.js";
 import * as AMB from "./ambience.js";
 import * as LV from "./living.js";
 import { gpuInfo, devLog } from "./core.js";
-import { webIcons, iconSvg, svgUrl, applyWebIcon } from "./webicon.js";
+import { webIcons, iconSvg, svgUrl, applyWebIcon , SHAPES } from "./webicon.js";
 let WEB_ICONS = null;                                   // the App icon choices (loaded with the artwork the first time Appearance opens)
 import { S, $, $$, esc, get, post, del, api, loadNodes, serverHost, sleep, prefs, waitTask, runningTask, levelColor, pct, rate, bytes, isAdmin, has, cleanTitle, cap,
          serverName, uptime, hm, refresh, changeFan, waitJob, kv, archiveMerge, archiveAll, archiveClear, archiveUnmark } from "./core.js";
@@ -1708,6 +1708,7 @@ export async function appearance(ctx) {
         return `<div class="hint" style="margin:10px var(--gutter);border:1px solid color-mix(in srgb,var(--amber) 50%,transparent)"><b style="color:var(--amber)">${g.software ? "This browser isn't using the graphics card" : "This browser can't blur"}</b>
           <p class="muted" style="margin:6px 0 0">${g.software ? "Glass, blur and the live graphs are drawn by the processor instead, so they can stutter and use more power. Turn on hardware acceleration and restart the browser — Chrome or Edge: Settings → System → “Use graphics acceleration when available”. Firefox: Settings → Performance. Until then, Lighter effects is on automatically." : "Frosted glass shows as plain, see-through surfaces here. Update the browser, or turn on Reduce transparency for solid surfaces."}</p></div>`; })()}
       ${sec("App icon")}<div class="group glass wicons">${(WEB_ICONS || [["default", "Default"]]).map(([k, l]) => `<button class="wicon press${(prefs.webIcon || "default") === k ? " on" : ""}" data-act="wicon:${k}"><img data-wicon="${k}" alt=""><small>${esc(l)}</small></button>`).join("")}</div>
+      ${group(row("Icon shape", { sub: `${SHAPES[prefs.iconShape || "rounded"]} — Nova's own icon here and your apps' icons inside Nova`, blue: true, icon: "apps", click: "ishape" }))}
       ${note("This browser's tab icon, and the icon Nova gets when you add it to an iPhone or iPad home screen. The phone app has its own (Appearance → App icon in the app).")}
       ${sec("Icons")}${group(ICON_THEMES.map(([k, l, d]) => `<div class="row click" data-act="icon:${k}"><div class="t"><b>${esc(l)}</b><small>${esc(d)}</small></div>
           <span class="icprev" aria-hidden="true">${[["status", "#3ecf6e"], ["backup", "var(--blue)"], ["del", "var(--amber)"]].map(([ic, c]) => iconSample(k, ic, c)).join("")}</span>${radio((prefs.iconTheme || "style") === k)}</div>`).join(""))}
@@ -1770,6 +1771,8 @@ export async function appearance(ctx) {
       const v = await choose("Sound pack", [["auto", "Match the look", "Changes with the style you pick"], ...Object.entries(PACKS).map(([k, n]) => [k, n])], prefs.soundPack || "auto");
       if (!v) return; prefs.soundPack = v; draw(); SND.play("info", { force: true });       // a taste of it
     },
+    ishape: async () => { const v = await choose("Icon shape", Object.entries(SHAPES), prefs.iconShape || "rounded"); if (!v) return;
+      prefs.iconShape = v; document.documentElement.dataset.icshape = v; await applyWebIcon(); draw(); },
     wicon: async k => { prefs.webIcon = k; await applyWebIcon(); draw(); },
     accent: async () => { const c = await colorPicker(prefs.accentLocal || S.overview?.server?.accent || "#3e91ff"); if (c) setAccent(c); },
     acc: c => setAccent(c && /^#[0-9a-f]{6}$/i.test(c) ? c : ""),

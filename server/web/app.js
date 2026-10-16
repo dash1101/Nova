@@ -53,6 +53,7 @@ function applyTheme() {
   root.classList.toggle("material", material); root.classList.toggle("m-dark", material && dark); root.classList.toggle("m-light", material && !dark);
   for (const p of ["liquid", "fluent", "breeze", "aero"]) root.classList.toggle(p, preset === p);
   root.classList.toggle("l-light", !dark);
+  root.dataset.icshape = prefs.iconShape || "rounded";             // Appearance → Icon shape
   // Reduce transparency: every glass surface solid (also when the system asks for it)
   const solid = !!prefs.reduceTransparency || matchMedia("(prefers-reduced-transparency: reduce)").matches;
   root.classList.toggle("solid", solid);

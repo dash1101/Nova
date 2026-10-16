@@ -36,8 +36,14 @@ export async function iconSvg(id) {
   if (id === "accent") { const k = forAccent(accent(), dark()) || "default"; body = k.startsWith("tone:") ? TONE_ICONS[k.slice(5)] : APP_ICONS[k]?.svg; }
   else body = APP_ICONS[id]?.svg;
   body = body || APP_ICONS.default.svg;
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="18 18 72 72"><defs><clipPath id="cl"><rect x="18" y="18" width="72" height="72" rx="20"/></clipPath></defs><g clip-path="url(#cl)">${body}</g></svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="18 18 72 72"><defs><clipPath id="cl">${SHAPE_PATHS[prefs.iconShape] || SHAPE_PATHS.rounded}</clipPath></defs><g clip-path="url(#cl)">${body}</g></svg>`;
 }
+/** Icon shapes (Appearance → Icon shape), on the 72×72 middle of the canvas. The squircle is a superellipse, like One UI's. */
+const squircle = (() => { const pts = []; for (let i = 0; i <= 64; i++) { const t = i / 64 * Math.PI * 2, c = Math.cos(t), s = Math.sin(t), n = 4.2;
+  pts.push(`${(54 + 36 * Math.sign(c) * Math.pow(Math.abs(c), 2 / n)).toFixed(2)},${(54 + 36 * Math.sign(s) * Math.pow(Math.abs(s), 2 / n)).toFixed(2)}`); } return `M${pts.join("L")}Z`; })();
+export const SHAPES = { rounded: "Rounded square", squircle: "Squircle", circle: "Circle", square: "Square", teardrop: "Teardrop" };
+const SHAPE_PATHS = { rounded: '<rect x="18" y="18" width="72" height="72" rx="20"/>', squircle: `<path d="${squircle}"/>`, circle: '<circle cx="54" cy="54" r="36"/>',
+  square: '<rect x="18" y="18" width="72" height="72" rx="6"/>', teardrop: '<path d="M54 18a36 36 0 0 1 36 36v36H54a36 36 0 0 1 0-72z"/>' };
 export const svgUrl = s => "data:image/svg+xml;charset=utf-8," + encodeURIComponent(s);
 
 /** Puts the chosen icon on the tab (and the home-screen icon link). Default: the shipped files. */

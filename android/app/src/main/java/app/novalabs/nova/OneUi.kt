@@ -82,7 +82,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
     val sc by animateFloatAsState(if (pressed && !reduceMotion()) 0.96f else 1f, spring(dampingRatio = 0.6f, stiffness = Spring.StiffnessMedium), label = "press")
     return this.graphicsLayer { scaleX = sc; scaleY = sc }
         .combinedClickable(interactionSource = src, indication = androidx.compose.foundation.LocalIndication.current, enabled = enabled,
-            onLongClick = onLongClick, onClick = { Sounds.feel("tap"); onClick() })
+            onLongClick = onLongClick, onClick = onClick)        // (the tap sound comes from the press effect: SoundIndication)
 }
 
 // ── Page scaffold: big title that scrolls away, sticky back button ────────────────

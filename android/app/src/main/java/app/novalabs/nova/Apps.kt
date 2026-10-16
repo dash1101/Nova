@@ -143,6 +143,23 @@ fun appUrl(app: AppState, a: JSONObject): String? {
     return "${a.optString("scheme", "http")}://${if (':' in host) "[$host]" else host}:${a.optInt("port")}${a.optString("path", "/")}"
 }
 
+/** Icon shape (Appearance): the shape of your apps' icons inside Nova. (The launcher decides the shape of Nova's own icon.) */
+object IconShape {
+    private lateinit var sp: android.content.SharedPreferences
+    var id by mutableStateOf("rounded"); private set
+    val NAMES = linkedMapOf("rounded" to "Rounded square", "squircle" to "Squircle", "circle" to "Circle", "square" to "Square", "teardrop" to "Teardrop")
+    fun init(ctx: android.content.Context) { sp = ctx.getSharedPreferences("nova_ui", 0); id = sp.getString("icon_shape", "rounded")!! }
+    fun set(v: String) { id = v; sp.edit().putString("icon_shape", v).apply() }
+    private val squircle = androidx.compose.foundation.shape.GenericShape { sz, _ ->     // a superellipse, like One UI's
+        val n = 4.2; for (i in 0..64) { val t = i / 64.0 * 2 * Math.PI; val c = Math.cos(t); val s = Math.sin(t)
+            val x = (sz.width / 2 * (1 + Math.signum(c) * Math.pow(Math.abs(c), 2 / n))).toFloat(); val y = (sz.height / 2 * (1 + Math.signum(s) * Math.pow(Math.abs(s), 2 / n))).toFloat()
+            if (i == 0) moveTo(x, y) else lineTo(x, y) }; close() }
+    fun shape(): androidx.compose.ui.graphics.Shape = when (id) {
+        "squircle" -> squircle; "circle" -> androidx.compose.foundation.shape.CircleShape
+        "square" -> RoundedCornerShape(12); "teardrop" -> RoundedCornerShape(50, 50, 14, 50); else -> RoundedCornerShape(28)
+    }
+}
+
 @Composable fun AppIcon(app: AppState, a: JSONObject, size: androidx.compose.ui.unit.Dp) {
     val id = a.optString("id")
     LaunchedEffect(id) {
@@ -152,7 +169,7 @@ fun appUrl(app: AppState, a: JSONObject): String? {
         AppSessions.get(id)?.icon = AppSessions.icons[id]
     }
     val bmp = AppSessions.icons[id]
-    Box(Modifier.size(size).clip(RoundedCornerShape(size * 0.28f)).background(if (bmp == null) N.blue.copy(alpha = 0.18f) else N.card), contentAlignment = Alignment.Center) {
+    Box(Modifier.size(size).clip(IconShape.shape()).background(if (bmp == null) N.blue.copy(alpha = 0.18f) else N.card), contentAlignment = Alignment.Center) {
         if (bmp != null) Image(bmp, null, Modifier.fillMaxSize().padding(size * 0.12f))
         else Text(a.optString("name").take(1).uppercase(), color = N.blue, fontSize = (size.value * 0.42f).sp, fontWeight = FontWeight.Bold)
     }

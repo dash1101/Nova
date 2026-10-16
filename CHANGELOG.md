@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.6-alpha (server, Nova web, app and watch)
+- **Sounds and haptics on every tap** (app): they come from the press itself now, so tapping a switch's row (not just the switch), a list item or any button makes its sound and buzz.
+- **Icon shape** (Appearance, app and web): rounded square, squircle (like One UI), circle, square or teardrop — your apps' icons inside Nova, and on the web Nova's own tab and home-screen icon. (On Android the launcher decides the shape of Nova's own icon.)
+- **More to see? Now it shows:** a full dock or navigation pill, and the Menu's apps row, fade at the edge and show a small arrow where there's more (app and web).
+- **Tablets:** the dashboard and app pages fill the screen instead of keeping the previous page's list beside them.
+- **Living wallpaper is lighter:** no full-screen blur on every frame (the scenes are drawn soft already), fewer layers in Aero's ribbons, and 15 frames a second with Lighter effects on (app and web).
+
 ## 0.8.5-alpha (server, Nova web, app and watch)
 - **Android 7.0 and newer** (was 9): the app now installs on older phones and tablets; on Android 7–8 the fingerprint prompt is AndroidX's own.
 - **Android sounds and haptics:** sounds now play at media volume (the system volume was muted on many phones), and taps use the phone's own touch feedback, which feels crisper.

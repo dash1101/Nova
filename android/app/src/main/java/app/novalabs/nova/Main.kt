@@ -279,12 +279,12 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {   // FragmentAct
         openUpdate = fresh && intent?.getStringExtra("open") == "update"
         intent?.removeExtra("open")
         Alerts.start(this)
-        AppPrefs.init(this); Living.init(this); Sounds.init(this); Sounds.view = java.lang.ref.WeakReference(window.decorView); Ambience.init(this); Sounds.warm(); Dev.load(this); Dev.applyFpsCap(this); applySecureFlag(this)
+        AppPrefs.init(this); Living.init(this); IconShape.init(this); Sounds.init(this); Sounds.view = java.lang.ref.WeakReference(window.decorView); Ambience.init(this); Sounds.warm(); Dev.load(this); Dev.applyFpsCap(this); applySecureFlag(this)
         // Appearance → Animation speed: every Compose animation runs on this window's recomposer, so one scale covers them all
         window.decorView.compositionContext = window.decorView.createLifecycleAwareWindowRecomposer(NovaMotion, lifecycle)
-        setContent { NovaTheme {
+        setContent { NovaTheme { androidx.compose.runtime.CompositionLocalProvider(androidx.compose.foundation.LocalIndication provides SoundIndication(androidx.compose.material3.ripple())) {
             if (AppPrefs.appLock && !AppLock.unlocked) LockScreen(this) else NovaRoot(this, openInbox)
-        } }
+        } } }
     }
     override fun onStart() { super.onStart(); AppLock.onStart() }
     override fun onStop() { super.onStop(); AppLock.onStop()

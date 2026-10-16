@@ -481,6 +481,16 @@ fun Modifier.fadeEdges(s: androidx.compose.foundation.ScrollState, horizontal: B
         val start = if (s.value > 0) Color.Transparent else Color.Black; val end = if (s.value < s.maxValue) Color.Transparent else Color.Black
         val stops = arrayOf(0f to start, f to Color.Black, 1f - f to Color.Black, 1f to end)
         drawRect(if (horizontal) Brush.horizontalGradient(*stops) else Brush.verticalGradient(*stops), blendMode = androidx.compose.ui.graphics.BlendMode.DstIn)
+        // and a small arrow at an end with more beyond it, so a full dock or row says there's more
+        val a = 4.dp.toPx(); val inset = 7.dp.toPx(); val c = Color(0xB3999999); val w = 2.dp.toPx()
+        fun chevron(cx: Float, cy: Float, dx: Float, dy: Float) {
+            val p = androidx.compose.ui.graphics.Path().apply { moveTo(cx - a * dy - a * dx, cy - a * dx - a * dy); lineTo(cx + a * dx * .2f, cy + a * dy * .2f); lineTo(cx + a * dy - a * dx, cy + a * dx - a * dy) }
+            drawPath(p, c, style = androidx.compose.ui.graphics.drawscope.Stroke(w, cap = androidx.compose.ui.graphics.StrokeCap.Round, join = androidx.compose.ui.graphics.StrokeJoin.Round))
+        }
+        if (s.maxValue > 0) {
+            if (horizontal) { if (s.value > 0) chevron(inset, size.height / 2, -1f, 0f); if (s.value < s.maxValue) chevron(size.width - inset, size.height / 2, 1f, 0f) }
+            else { if (s.value > 0) chevron(size.width / 2, inset, 0f, -1f); if (s.value < s.maxValue) chevron(size.width / 2, size.height - inset, 0f, 1f) }
+        }
     }
 
 @Composable fun CancelSavePill(onCancel: () -> Unit, onSave: () -> Unit, saveEnabled: Boolean = true,

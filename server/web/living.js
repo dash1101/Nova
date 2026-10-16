@@ -13,7 +13,7 @@ const root = () => document.documentElement;
 const look = () => { const c = root().classList; return c.contains("aero") ? "aero" : c.contains("fluent") ? "fluent" : c.contains("breeze") ? "breeze" : c.contains("liquid") ? "liquid" : c.contains("material") ? "material" : "default"; };
 const dark = () => !root().classList.contains("l-light");
 export const sceneId = () => { const p = prefs.livingScene || "auto"; return p === "auto" ? look() : p; };
-const fpsCap = () => Math.max(10, Math.min(120, +(prefs.livingFps || 30)));
+const fpsCap = () => Math.min(root().classList.contains("lite") ? 15 : 120, Math.max(10, Math.min(120, +(prefs.livingFps || 30))));   // Lighter effects: 15
 
 function hex2hsl(hex) {
   const m = /^#?([0-9a-f]{6})$/i.exec(String(hex).trim()); const n = m ? parseInt(m[1], 16) : 0x3e91ff;
@@ -65,7 +65,9 @@ export async function update() {
   media?.remove(); media = null;
   if (!cv) { cv = document.createElement("canvas"); box.prepend(cv); g = cv.getContext("2d", { alpha: false }); }
   size();
-  const base = scene === "material" ? 0 : scene === "fluent" ? 12 : scene === "liquid" ? 18 : 10;     // plus your Blur setting
+  // the scenes are drawn small and come out soft when scaled up; a blur over the whole screen on every frame cost too much
+  // on slower graphics, so only Mica and Glass keep a little (plus your Blur setting)
+  const base = scene === "fluent" ? 6 : scene === "liquid" ? 8 : 0;
   cv.style.filter = `blur(calc(${base}px + var(--lvblur, 0px)))`;
   if (!raf) raf = requestAnimationFrame(frame);
 }
@@ -121,9 +123,9 @@ function draw(t) {
         g.beginPath(); g.moveTo(-w * .1, y0 + Math.sin(ph) * hh * .2);
         g.bezierCurveTo(w * .3, y0 - hh * .35 * Math.cos(ph * .8), w * .65, y0 + hh * .35 * Math.sin(ph * .9), w * 1.1, y0 - hh * .15 * Math.cos(ph));
         g.stroke();
-        g.lineWidth *= .18; g.strokeStyle = `rgba(255,255,255,${d ? .12 : .2})`; g.stroke();
+        if (i % 2 === 0) { g.lineWidth *= .18; g.strokeStyle = `rgba(255,255,255,${d ? .12 : .2})`; g.stroke(); }   // a bright core on every other ribbon
       }
-      for (let i = 0; i < 14; i++) {                                         // bokeh
+      for (let i = 0; i < 9; i++) {                                          // bokeh
         const sp = .008 + (i % 4) * .004, y = (1.1 - ((t * sp + i * .137) % 1.2)) * hh, x = w * ((i * .618) % 1) + Math.sin(t * .2 + i) * w * .03;
         blob(x, y, m * (.02 + (i % 3) * .015), `rgba(255,255,255,${d ? .14 : .22})`);
       }

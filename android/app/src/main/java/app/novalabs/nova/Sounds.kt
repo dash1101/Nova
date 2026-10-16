@@ -13,6 +13,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import kotlin.math.*
+import kotlinx.coroutines.launch
 
 /**
  * Sounds and haptics, one sound pack per look (Aero's glassy chimes and clicks, Mica's soft taps, Breeze's plucks,
@@ -191,4 +192,20 @@ object Sounds {
         runCatching { vib.vibrate(effect) }
     }
     fun feel(ev: String) { play(ev); buzz(ev) }
+}
+
+/**
+ * Every tap in the app makes its sound and buzz: wrapped around the press effect (the ripple) that every clickable,
+ * switch row and list item already uses — so it doesn't matter whether you tap the switch itself or the row around it.
+ */
+class SoundIndication(private val inner: androidx.compose.foundation.IndicationNodeFactory) : androidx.compose.foundation.IndicationNodeFactory {
+    override fun create(interactionSource: androidx.compose.foundation.interaction.InteractionSource): androidx.compose.ui.node.DelegatableNode =
+        object : androidx.compose.ui.node.DelegatingNode() {
+            init { delegate(inner.create(interactionSource)) }
+            override fun onAttach() {
+                coroutineScope.launch { interactionSource.interactions.collect { if (it is androidx.compose.foundation.interaction.PressInteraction.Release) Sounds.feel("tap") } }
+            }
+        }
+    override fun equals(other: Any?) = other is SoundIndication && other.inner == inner
+    override fun hashCode() = inner.hashCode()
 }

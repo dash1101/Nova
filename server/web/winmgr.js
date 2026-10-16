@@ -192,7 +192,10 @@ export function drawDock() {
   let d = $(".wdock", nav);
   const pins = enabled() ? pinned().filter(id => !wins.some(w => w.app.id === id)).map(id => appById(id)).filter(Boolean) : [];
   if (!wins.length && !pins.length) { d?.remove(); return; }
-  if (!d) { d = document.createElement("div"); d.className = "wdock"; nav.append(d);
+  // inside the pill's scrolling part, so a full dock scrolls with the tabs and gets the same fades and arrows
+  const host = $(".nscroll", nav) || nav;
+  if (d && d.parentElement !== host) { d.remove(); d = null; }
+  if (!d) { d = document.createElement("div"); d.className = "wdock"; host.append(d);
     // the pill's own hold / right-click (edit the pill) isn't for the dock's apps
     d.addEventListener("pointerdown", e => e.stopPropagation()); d.addEventListener("contextmenu", e => { e.preventDefault(); e.stopPropagation(); }); }
   const front = wins.filter(w => !w.min).sort((a, b) => b.z - a.z)[0];
@@ -207,6 +210,7 @@ export function drawDock() {
   });
   for (const w of wins) icon(w);
   for (const a of pins) if (!a.glyph) iconFor(a.id);
+  requestAnimationFrame(() => host.onscroll?.());              // the edge fades and arrows notice the new length
 }
 async function iconFor(id) { try { const { appIconUrl } = await import("./storage.js"), u = await appIconUrl(id); if (u) for (const el of $$(`.wdock [data-ic="${CSS.escape(id)}"]`)) { el.classList.add("img"); el.style.backgroundImage = `url(${u})`; el.textContent = ""; } } catch {} }
 

@@ -202,7 +202,8 @@ import org.json.JSONObject
         }
         // your apps, right here
         SectionLabel("Apps")
-        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = Space.gutter), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+        val appsScroll = rememberScrollState()              // fades and a small arrow at an end with more apps beyond it
+        Row(Modifier.fillMaxWidth().fadeEdges(appsScroll, true, 40.dp).horizontalScroll(appsScroll).padding(horizontal = Space.gutter), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
             @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
             @Composable fun Cell(label: String, onClick: () -> Unit, onHold: (() -> Unit)? = null, icon: @Composable () -> Unit) =
                 Column(Modifier.width(68.dp).clip(androidx.compose.foundation.shape.RoundedCornerShape(16.dp)).combinedClickable(onLongClick = onHold, onClick = onClick).padding(vertical = 6.dp), horizontalAlignment = Alignment.CenterHorizontally) {

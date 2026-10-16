@@ -49,7 +49,7 @@ object Living {
         while (true) {
             withFrameNanos { now ->
                 if (t0 == 0L) t0 = now - (Living.time * 1e9f / speed()).toLong()
-                if (now - last >= 33_000_000L) { last = now; Living.time = (now - t0) / 1e9f * speed() }
+                if (now - last >= (if (AppPrefs.lite == "on" || (AppPrefs.lite == "auto" && AppPrefs.slowDevice)) 66_000_000L else 33_000_000L)) { last = now; Living.time = (now - t0) / 1e9f * speed() }   // Lighter effects: 15 a second
             }
         }
     }
@@ -98,11 +98,10 @@ fun DrawScope.drawLiving(t: NovaColors, origin: Offset, W: Float, H: Float, time
                         cubicTo(W * .3f, y0 - H * .35f * cos(ph * .8f), W * .65f, y0 + H * .35f * sin(ph * .9f), W * 1.1f, y0 - H * .15f * cos(ph)) }
                     val br = Brush.horizontalGradient(listOf(hsl(h + i * 8, s, 70f, 0f), hsl(h + i * 8 - 10, s * .7f, 78f, .2f), hsl(h + i * 8, s, 70f, 0f)), 0f, W)
                     val wdt = m * (.05f + .03f * sin(ph * 1.3f))
-                    drawPath(p, br, style = Stroke(wdt * 1.8f, cap = StrokeCap.Round), alpha = .45f, blendMode = BlendMode.Plus)       // soft outer glow
-                    drawPath(p, br, style = Stroke(wdt, cap = StrokeCap.Round), blendMode = BlendMode.Plus)
-                    drawPath(p, Color.White.copy(alpha = if (d) .1f else .18f), style = Stroke(wdt * .18f, cap = StrokeCap.Round), blendMode = BlendMode.Plus)
+                    drawPath(p, br, style = Stroke(wdt * 1.4f, cap = StrokeCap.Round), blendMode = BlendMode.Plus)        // one wide soft pass (it was three)
+                    if (i % 2 == 0) drawPath(p, Color.White.copy(alpha = if (d) .1f else .18f), style = Stroke(wdt * .18f, cap = StrokeCap.Round), blendMode = BlendMode.Plus)
                 }
-                for (i in 0 until 14) {
+                for (i in 0 until 9) {
                     val sp = .008f + (i % 4) * .004f; val y = (1.1f - ((time * sp + i * .137f) % 1.2f)) * H
                     blob(W * ((i * .618f) % 1f) + sin(time * .2f + i) * W * .03f, y, m * (.02f + (i % 3) * .015f), Color.White.copy(alpha = if (d) .14f else .22f), BlendMode.Plus)
                 }

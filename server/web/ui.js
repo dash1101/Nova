@@ -456,3 +456,13 @@ document.addEventListener("click", async e => {
   inp.style.setProperty("--p", ((n - inp.min) / (inp.max - inp.min) * 100) + "%");
   inp.dispatchEvent(new Event("input", { bubbles: true })); inp.dispatchEvent(new Event("change", { bubbles: true }));
 });
+
+// Rows and columns that scroll sideways (the Menu's apps, chip rows): fade at an edge with more beyond it, and a small
+// arrow there — so it's clear there's more to see
+const edgeWatch = new WeakSet();
+export function edgeFades(el) {
+  if (!el || edgeWatch.has(el)) return; edgeWatch.add(el);
+  const upd = () => { const max = el.scrollWidth - el.clientWidth; el.classList.toggle("fs", el.scrollLeft > 2); el.classList.toggle("fe", el.scrollLeft < max - 2); };
+  el.addEventListener("scroll", upd, { passive: true }); addEventListener("resize", upd); requestAnimationFrame(upd);
+}
+new MutationObserver(() => document.querySelectorAll(".mapps, .fdrives, .chips").forEach(edgeFades)).observe(document.documentElement, { childList: true, subtree: true });

@@ -226,6 +226,11 @@ object AppLock {
         Segmented(listOf("Automatic", "On", "Off"), listOf("auto", "on", "off").indexOf(AppPrefs.lite).let { if (it < 0) 0 else it }) { AppPrefs.set("lite", listOf("auto", "on", "off")[it]) }
         Note("No frosted-glass blur or soft shadows, and calmer animations — much smoother on older phones. Automatic turns it on for this phone ${if (AppPrefs.slowDevice) "(it's on now)" else "only if it's an older or low-memory one (it's off now)"}.", 13.sp, 4.dp)
         AppIconPicker(app)
+        run {                                   // the shape of your apps' icons inside Nova
+            var pick by remember { mutableStateOf(false) }
+            Group { Row1("Icon shape", "${IconShape.NAMES[IconShape.id]} — your apps' icons inside Nova (the launcher picks the shape of Nova's own icon)", true, Icons.Rounded.Apps, onClick = { pick = true }) }
+            if (pick) OneDialog({ pick = false }, "Icon shape") { IconShape.NAMES.forEach { (k, n) -> DialogChoice(n, selected = IconShape.id == k) { IconShape.set(k); pick = false } } }
+        }
         SectionLabel("Shake")
         ShakeSettings()
         SectionLabel("Home")

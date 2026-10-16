@@ -1221,3 +1221,18 @@ html.party .card, html.party .group { animation: partybob .6s ease-in-out infini
 html.turbo #fh { animation: turbo .07s linear infinite; }
 @keyframes turbo { 25% { transform: translate(1px, -1px); } 75% { transform: translate(-1px, 1px); } }
 html.reduce.party *, html.reduce.turbo * { animation: none !important; }
+/* the pill: the dock's apps scroll along with the tabs; a small arrow shows which way there's more */
+.nav .nscroll { display: flex; } .nav.vertical .nscroll { flex-direction: column; }
+.nav::before, .nav::after { content: ""; position: absolute; width: 7px; height: 7px; border: solid var(--sub); border-width: 0 2px 2px 0; opacity: 0; transition: opacity .25s; pointer-events: none; z-index: 2; }
+.nav:not(.vertical)::before { left: 6px; top: 50%; transform: translateY(-50%) rotate(135deg); } .nav:not(.vertical)::after { right: 6px; top: 50%; transform: translateY(-50%) rotate(-45deg); }
+.nav.vertical::before { top: 6px; left: 50%; transform: translateX(-50%) rotate(-135deg); } .nav.vertical::after { bottom: 6px; left: 50%; transform: translateX(-50%) rotate(45deg); }
+.nav:has(.nscroll.fs)::before, .nav:has(.nscroll.fe)::after { opacity: .7; }
+/* the Menu's apps and other sideways rows: fade where there's more, with the same small arrow */
+:is(.mapps, .fdrives, .chips).fe { -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 48px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 48px), transparent); }
+:is(.mapps, .fdrives, .chips).fs { -webkit-mask-image: linear-gradient(90deg, transparent, #000 48px); mask-image: linear-gradient(90deg, transparent, #000 48px); }
+:is(.mapps, .fdrives, .chips).fs.fe { -webkit-mask-image: linear-gradient(90deg, transparent, #000 48px, #000 calc(100% - 48px), transparent); mask-image: linear-gradient(90deg, transparent, #000 48px, #000 calc(100% - 48px), transparent); }
+/* Icon shape (Appearance): your apps' icons inside Nova */
+html[data-icshape="circle"] :is(.appic, .wic) { border-radius: 50% !important; }
+html[data-icshape="square"] :is(.appic, .wic) { border-radius: 12% !important; }
+html[data-icshape="squircle"] :is(.appic, .wic) { border-radius: 38% !important; }   /* close to One UI's squircle at icon sizes */
+html[data-icshape="teardrop"] :is(.appic, .wic) { border-radius: 50% 50% 14% 50% !important; }
