@@ -37,12 +37,12 @@ class DeviceKey(profile: String) {
             val spec = KeyGenParameterSpec.Builder(DEVICE_KEY, KeyProperties.PURPOSE_SIGN)
                 .setAlgorithmParameterSpec(ECGenParameterSpec("secp256r1"))
                 .setDigests(KeyProperties.DIGEST_SHA256)
-                .setIsStrongBoxBacked(strongBox)
+                .let { if (android.os.Build.VERSION.SDK_INT >= 28) it.setIsStrongBoxBacked(strongBox) else it }
                 .build()
             KeyPairGenerator.getInstance(KeyProperties.KEY_ALGORITHM_EC, "AndroidKeyStore")
                 .apply { initialize(spec) }.generateKeyPair()
         }
-        return try { gen(true); true } catch (e: StrongBoxUnavailableException) { gen(false); false }
+        return try { gen(true); true } catch (e: java.security.ProviderException) { gen(false); false }
     }
 
     private fun isStrongBox(): Boolean = try {
@@ -77,8 +77,8 @@ class DeviceKey(profile: String) {
         if (!hasQuick()) {
             fun gen(sb: Boolean) = KeyPairGenerator.getInstance(KeyProperties.KEY_ALGORITHM_EC, "AndroidKeyStore").apply {
                 initialize(KeyGenParameterSpec.Builder(QUICK_KEY, KeyProperties.PURPOSE_SIGN).setAlgorithmParameterSpec(ECGenParameterSpec("secp256r1"))
-                    .setDigests(KeyProperties.DIGEST_SHA256).setIsStrongBoxBacked(sb).build()) }.generateKeyPair()
-            try { gen(true) } catch (e: StrongBoxUnavailableException) { gen(false) }
+                    .setDigests(KeyProperties.DIGEST_SHA256).let { if (android.os.Build.VERSION.SDK_INT >= 28) it.setIsStrongBoxBacked(sb) else it }.build()) }.generateKeyPair()
+            try { gen(true) } catch (e: java.security.ProviderException) { gen(false) }
         }
         val b64 = Base64.encodeToString(ks.getCertificate(QUICK_KEY).publicKey.encoded, Base64.NO_WRAP).chunked(64).joinToString("\n")
         return "-----BEGIN PUBLIC KEY-----\n$b64\n-----END PUBLIC KEY-----\n"
@@ -99,12 +99,12 @@ class DeviceKey(profile: String) {
                 .setDigests(KeyProperties.DIGEST_SHA256)
                 .let { Compat.userAuth(it, 0) }           // 0 = a fresh confirmation for every signature
                 .setInvalidatedByBiometricEnrollment(false)
-                .setIsStrongBoxBacked(strongBox)
+                .let { if (android.os.Build.VERSION.SDK_INT >= 28) it.setIsStrongBoxBacked(strongBox) else it }
                 .build()
             KeyPairGenerator.getInstance(KeyProperties.KEY_ALGORITHM_EC, "AndroidKeyStore")
                 .apply { initialize(spec) }.generateKeyPair()
         }
-        try { gen(true) } catch (e: StrongBoxUnavailableException) { gen(false) }
+        try { gen(true) } catch (e: java.security.ProviderException) { gen(false) }
     }
 
     fun stepUpPublicKeyPem(): String {

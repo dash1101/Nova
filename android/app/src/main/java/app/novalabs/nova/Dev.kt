@@ -43,8 +43,9 @@ object Dev {
         val w = a.window ?: return
         w.attributes = w.attributes.apply {
             preferredRefreshRate = fpsCap.toFloat()
-            val modes = a.display?.supportedModes.orEmpty().toList()
-            val cur = a.display?.mode
+            val disp = if (android.os.Build.VERSION.SDK_INT >= 30) a.display else @Suppress("DEPRECATION") a.windowManager.defaultDisplay
+            val modes = disp?.supportedModes.orEmpty().toList()
+            val cur = disp?.mode
             // same resolution, the highest rate that's no faster than the cap (or the fastest, with no cap)
             val pick = modes.filter { cur == null || (it.physicalWidth == cur.physicalWidth && it.physicalHeight == cur.physicalHeight) }
                 .filter { fpsCap == 0 || it.refreshRate <= fpsCap + 0.5f }.maxByOrNull { it.refreshRate }

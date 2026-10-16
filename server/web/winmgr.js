@@ -14,6 +14,7 @@ const frameOk = {};              // app id → the server's answer, once per pag
 
 export const EMBED = /[?&]embed=1/.test(location.search);      // this page is Files or Terminal inside a Nova window
 if (EMBED) document.documentElement.classList.add("embed");
+document.documentElement.style.setProperty("--wrk", String((prefs.winRound ?? 100) / 100));   // Labs → Window corners
 export const enabled = () => !!prefs.appWindows && !EMBED;
 // Nova's own apps: Files and the server terminal open in their own windows too, with a place in the dock
 const NOVA_APPS = { files: { id: "nova:files", name: "Files", glyph: "folder", tint: "#3e91ff" }, term: { id: "nova:term", name: "Terminal", glyph: "term", tint: "#3ecf6e" } };
@@ -63,7 +64,7 @@ export function openApp(a, href, own = false) {
       <span class="wbtns"><button class="wb wtab" data-w="tab" title="Open in a new tab">${I("open")}</button><button class="wb wmin" data-w="min" title="Minimize">${glyph.min}</button><button class="wb wmax" data-w="max" title="Maximize">${glyph.max}</button><button class="wb wclose" data-w="close" title="Close">${glyph.close}</button></span>
     </header>
     <div class="wbody"><iframe src="${esc(href)}" title="${esc(a.name)}" referrerpolicy="no-referrer" allow="fullscreen; clipboard-write; autoplay"></iframe><div class="wmsg" hidden></div></div>
-    <span class="wgrip" aria-hidden="true"></span>`;
+    ${["n", "s", "e", "w", "ne", "nw", "se", "sw"].map(d => `<span class="wgrip g-${d}" data-g="${d}" aria-hidden="true"></span>`).join("")}`;
   w.el = el; wins.push(w); layer().append(el); feel("open");
   wire(w); place(w); focus(w); drawDock(); icon(w);
   if (!reduce()) el.animate([{ opacity: 0, transform: "scale(.94) translateY(12px)" }, { opacity: 1, transform: "none" }], { duration: 220, easing: "cubic-bezier(.2,.9,.3,1)" });
@@ -112,13 +113,20 @@ function wire(w) {
       if (kind === "move") {
         const fw = parseFloat(el.style.width);
         el.style.left = `${Math.min(innerWidth - 80, Math.max(80 - fw, l0 + dx))}px`; el.style.top = `${Math.min(innerHeight - 40, Math.max(0, t0 + dy))}px`;
-      } else { el.style.width = `${Math.max(320, r0.width + dx)}px`; el.style.height = `${Math.max(220, r0.height + dy)}px`; }
+      } else {                                             // any edge or corner: that side follows the pointer
+        let L = r0.left, T = r0.top, Wd = r0.width, Hd = r0.height;
+        if (kind.includes("e")) Wd = Math.max(320, r0.width + dx);
+        if (kind.includes("s")) Hd = Math.max(220, r0.height + dy);
+        if (kind.includes("w")) { Wd = Math.max(320, r0.width - dx); L = r0.right - Wd; }
+        if (kind.includes("n")) { Hd = Math.max(220, r0.height - dy); T = Math.max(0, r0.bottom - Hd); }
+        Object.assign(el.style, { left: L + "px", top: T + "px", width: Wd + "px", height: Hd + "px" });
+      }
     };
     const up = () => { removeEventListener("pointermove", move); removeEventListener("pointerup", up); layer().classList.remove("dragging"); };
     addEventListener("pointermove", move); addEventListener("pointerup", up);
   };
   bar.onpointerdown = e => drag(e, "move");
-  $(".wgrip", el).onpointerdown = e => drag(e, "size");
+  $$(".wgrip", el).forEach(g => g.onpointerdown = e => drag(e, g.dataset.g));
 }
 
 function place(w) {
@@ -160,16 +168,58 @@ function anim(w, change) {
   w.el.animate([{ transformOrigin: "0 0", transform: `translate(${a.x - b.x}px, ${a.y - b.y}px) scale(${a.width / b.width}, ${a.height / b.height})` }, { transformOrigin: "0 0", transform: "none" }], { duration: 220, easing: "cubic-bezier(.2,.9,.3,1)" });
 }
 
-/** The open windows in the navigation pill: tap one to bring it up, tap the one in front to minimize it. */
+/** Opens an app by its id the way a click on it would: a Nova app (Files, Terminal), a command app, or a web app. */
+export async function launch(id) {
+  const route = Object.keys(NOVA_APPS).find(k => NOVA_APPS[k].id === id);
+  if (route) return openNova(route);
+  const a = (S.cache["/api/v1/apps"]?.apps || []).find(x => x.id === id); if (!a) return toast("That app isn't on this server any more");
+  if (a.kind === "command") return openCommand(a);
+  const { appHrefFor } = await import("./storage.js");
+  let h = appHrefFor(a);
+  if (h && location.protocol === "https:" && h.startsWith("http:") && /^https:/.test(a.remote_url || "")) h = a.remote_url;
+  if (!openApp(a, h)) toast("This app isn't reachable from here");
+}
+/** A command app (like Temperatures) in its own window: the same page as before, framed like an app. */
+export function openCommand(a) { return openApp({ id: a.id, name: a.name, glyph: "term", tint: "#8e8e93" }, `/?embed=1#/cmdapp/${encodeURIComponent(a.id)}`, true); }
+
+const pinned = () => prefs.pinnedWins || [];
+const appById = id => Object.values(NOVA_APPS).find(x => x.id === id) || (S.cache["/api/v1/apps"]?.apps || []).find(x => x.id === id);
+
+/** The dock in the navigation pill: apps you pinned there, and the open windows. Tap one to bring it up (or open it),
+ *  tap the one in front to minimize it; right-click or hold it for more. */
 export function drawDock() {
   const nav = $("#nav"); if (!nav) return;
   let d = $(".wdock", nav);
-  if (!wins.length) { d?.remove(); return; }
-  if (!d) { d = document.createElement("div"); d.className = "wdock"; nav.append(d); }
+  const pins = enabled() ? pinned().filter(id => !wins.some(w => w.app.id === id)).map(id => appById(id)).filter(Boolean) : [];
+  if (!wins.length && !pins.length) { d?.remove(); return; }
+  if (!d) { d = document.createElement("div"); d.className = "wdock"; nav.append(d);
+    // the pill's own hold / right-click (edit the pill) isn't for the dock's apps
+    d.addEventListener("pointerdown", e => e.stopPropagation()); d.addEventListener("contextmenu", e => { e.preventDefault(); e.stopPropagation(); }); }
   const front = wins.filter(w => !w.min).sort((a, b) => b.z - a.z)[0];
-  d.innerHTML = wins.map(w => `<button class="press${w === front ? " on" : ""}${w.min ? " mini" : ""}" data-win="${w.id}" title="${esc(w.app.name)}">${glyphIc(w.app, "appic")}</button>`).join("");
-  $$("button", d).forEach(b => b.onclick = () => { const w = wins.find(x => x.id === b.dataset.win); if (!w) return; w === front && !w.min ? minimize(w) : restore(w); });
-  wins.forEach(icon);
+  d.innerHTML = pins.map(a => `<button class="press pin" data-pin="${esc(a.id)}" title="${esc(a.name)}">${glyphIc(a.glyph ? a : { ...a, glyph: a.kind === "command" ? "term" : "", tint: "#8e8e93" }, "appic")}</button>`).join("")
+    + wins.map(w => `<button class="press${w === front ? " on" : ""}${w.min ? " mini" : ""}" data-win="${w.id}" title="${esc(w.app.name)}">${glyphIc(w.app, "appic")}</button>`).join("");
+  $$("button", d).forEach(b => {
+    const w = wins.find(x => x.id === b.dataset.win), id = w ? w.app.id : b.dataset.pin;
+    b.onclick = () => { if (!w) return launch(id); w === front && !w.min ? minimize(w) : restore(w); };
+    b.oncontextmenu = e => { e.preventDefault(); menu(w, id); };
+    let t; b.onpointerdown = () => { t = setTimeout(() => { navigator.vibrate?.(10); menu(w, id); }, 550); };
+    b.onpointerup = b.onpointerleave = () => clearTimeout(t);
+  });
+  for (const w of wins) icon(w);
+  for (const a of pins) if (!a.glyph) iconFor(a.id);
+}
+async function iconFor(id) { try { const { appIconUrl } = await import("./storage.js"), u = await appIconUrl(id); if (u) for (const el of $$(`.wdock [data-ic="${CSS.escape(id)}"]`)) { el.classList.add("img"); el.style.backgroundImage = `url(${u})`; el.textContent = ""; } } catch {} }
+
+async function menu(w, id) {
+  const { choose } = await import("./ui.js");
+  const pin = pinned().includes(id), a = w ? w.app : appById(id);
+  const opts = [...(w ? [[w.min ? "restore" : "min", w.min ? "Show" : "Minimize"], ...(phone() ? [] : [["max", w.max ? "Restore size" : "Maximize"]]), ...(w.own ? [] : [["tab", "Open in a new tab"]])] : [["open", "Open"]]),
+    [pin ? "unpin" : "pin", pin ? "Unpin from the dock" : "Pin to the dock", pin ? "" : "It stays here after you close it"], ...(w ? [["close", "Close"]] : [])];
+  const v = await choose(a?.name || "App", opts, null); if (!v) return;
+  if (v === "pin") prefs.pinnedWins = [...pinned(), id]; else if (v === "unpin") prefs.pinnedWins = pinned().filter(x => x !== id);
+  else if (v === "open") launch(id); else if (v === "min") minimize(w); else if (v === "restore") restore(w); else if (v === "max") toggleMax(w);
+  else if (v === "tab") window.open(w.href, "_blank", "noopener"); else if (v === "close") close(w);
+  drawDock();
 }
 
 addEventListener("resize", () => wins.forEach(place));
@@ -187,7 +237,8 @@ document.addEventListener("click", async e => {
   if (own && !S.target) { e.preventDefault(); e.stopPropagation(); openNova(own.dataset.act.split(":")[1]); return; }
   const el = e.target.closest("[data-wid], [data-app]"); if (!el) return;
   const id = el.dataset.wid || el.dataset.app, a = (S.cache["/api/v1/apps"]?.apps || []).find(x => x.id === id);
-  if (!a || a.kind === "command" || a.companion_of || S.target) return;
+  if (!a || a.companion_of || S.target) return;
+  if (a.kind === "command") { e.preventDefault(); e.stopPropagation(); openCommand(a); return; }
   e.preventDefault(); e.stopPropagation();
   const { appHrefFor } = await import("./storage.js");
   let h = appHrefFor(a);

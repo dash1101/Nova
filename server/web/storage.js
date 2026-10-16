@@ -531,7 +531,7 @@ export async function apps(ctx) {
       + (isAdmin() ? `${sec("Built in")}<div class="appgrid">${[["files", "Files", "folder", "#3e91ff"], ["term", "Terminal", "term", "#3ecf6e"]].map(([r, n, ic, c]) =>
           `<button class="appcell press" data-act="go:${r}" style="border:0;background:none;font:inherit;color:var(--text);cursor:pointer"><span class="appic" style="background:color-mix(in srgb,${c} 18%,var(--card));color:${c}">${I(ic)}</span><span class="appname">${n}</span></button>`).join("")}</div>${sec("On your server")}` : "")
       + (S.cache["/api/v1/apps"] ? (list.length ? `<div class="appgrid">${list.map((a, i) => { const h = appHref(a);
-          if (a.kind === "command") return `<button class="appcell press${a.hidden ? " dim" : ""}" data-act="runcmd:${i}" data-i="${i}" style="border:0;background:none;font:inherit;color:var(--text);cursor:pointer"><span class="appic" data-id="${esc(a.id)}" style="color:var(--green)">${I("term")}</span><span class="appname">${esc(a.name)}</span></button>`;
+          if (a.kind === "command") return `<button class="appcell press${a.hidden ? " dim" : ""}" data-act="runcmd:${i}" data-wid="${esc(a.id)}" data-i="${i}" style="border:0;background:none;font:inherit;color:var(--text);cursor:pointer"><span class="appic" data-id="${esc(a.id)}" style="color:var(--green)">${I("term")}</span><span class="appname">${esc(a.name)}</span></button>`;
           if (a.companion_of) return `<button class="appcell press${a.hidden ? " dim" : ""}" data-act="companion:${i}" data-i="${i}" style="border:0;background:none;font:inherit;color:var(--text);cursor:pointer"><span class="appic" data-id="${esc(a.id)}">${esc((a.name || "?")[0].toUpperCase())}</span><span class="appname">${esc(a.name)}</span></button>`;
           return `<a class="appcell${a.hidden ? " dim" : ""}" ${h ? `href="${esc(h)}" target="_blank" rel="noopener noreferrer" data-wid="${esc(a.id)}"` : `data-act="noreach"`} data-i="${i}"><span class="appic" data-id="${esc(a.id)}">${esc((a.name || "?")[0].toUpperCase())}</span><span class="appname">${esc(a.name)}</span></a>`; }).join("")}${isAdmin() ? `<button class="appcell addapp press" data-act="add"><span class="appic">${I("add")}</span><span class="appname">Add</span></button>` : ""}</div>`
         : group(row("No web apps found", { sub: "Install one from the Store, or add a link with +", icon: "apps" }))) : note("Looking for apps…"))
@@ -829,8 +829,11 @@ export async function labs(ctx, stable = false) {
         stable && l.labs.wake_on_lan ? row("Wake-on-LAN", { sub: "Turn on other computers on your network", blue: true, icon: "power", click: "go:wol" }) : "",
         !stable && l.labs.openrgb ? row("OpenRGB", { sub: "Where it runs, and the devices it has", blue: true, icon: "bulb", click: "go:openrgb" }) : "",
       ].join("")) : ""}
-      ${stable ? group(row("Experimental features (Labs)", { icon: "science", blue: true, click: "go:labs" })) : sec("This browser") + group(switchRow("Apps in Nova windows", "Apps open in a window inside Nova — with minimize, maximize and close, in the look you picked — instead of a new tab. Minimized ones wait in the navigation pill. Only in this browser.", !!prefs.appWindows, "appwin"))}`, { title });
+      ${stable ? group(row("Experimental features (Labs)", { icon: "science", blue: true, click: "go:labs" })) : sec("This browser") + group(switchRow("Apps in Nova windows", "Apps open in a window inside Nova — with minimize, maximize and close, in the look you picked — instead of a new tab. Minimized ones wait in the navigation pill. Only in this browser.", !!prefs.appWindows, "appwin")
+        + (prefs.appWindows ? `<div class="range-row"><div class="h"><span>Window corners</span><span id="wrl">${prefs.winRound ?? 100}%</span></div><input type="range" min="0" max="300" step="5" value="${prefs.winRound ?? 100}" id="wround" style="--p:${(prefs.winRound ?? 100) / 3}%"></div>` : ""))}`, { title }); wireRound();
   };
+  const wireRound = () => { const r = $("#wround", ctx.root); if (r) r.oninput = () => { prefs.winRound = +r.value; r.style.setProperty("--p", r.value / 3 + "%"); $("#wrl").textContent = r.value + "%";
+    document.documentElement.style.setProperty("--wrk", String(r.value / 100)); }; };
   ctx.handlers({
     appwin: () => { prefs.appWindows = !prefs.appWindows; draw(); },
     lab: async k => { try { const l = S.cache["/api/v1/labs"]; S.cache["/api/v1/labs"] = await post("/api/v1/labs", { [k]: !l.labs[k] }); } catch (e) { toast(e.message); } draw(); if (k === "auto_updates") loadSched(); },
@@ -1123,4 +1126,19 @@ export async function cloudflare(ctx) {
       try { await post("/api/v1/cloudflare/remove", { host: h, allow_public: pub }); toast("Done"); } catch (e) { toast(e.message); } load(); },
   });
   draw(); await load();
+}
+
+// ── a command app in its own window (apps in Nova windows): runs it, then shows its output like before ───────────
+export async function cmdApp(ctx) {
+  const id = ctx.args[0], a = (S.cache["/api/v1/apps"]?.apps || (await get("/api/v1/apps")).apps || []).find(x => x.id === id);
+  if (!a) return ctx.show(note("That app isn't on this server any more."), { title: "App" });
+  if (!isAdmin()) return ctx.show(note("Only admins can run command apps."), { title: a.name });
+  const run = async () => {
+    ctx.show(note("Starting…"), { title: a.name });
+    try { const r = await post(`/api/v1/apps/${enc(a.id)}/run`); if (r?.task) location.replace(location.pathname + location.search + "#/task/" + r.task); }
+    catch (e) { ctx.show(note(e.message) + group(row("Try again", { icon: "refresh", blue: true, click: "run" })), { title: a.name }); }
+  };
+  ctx.handlers({ run });
+  if (a.confirm) return ctx.show(note(`Run ${a.name}? It runs: ${a.command.slice(0, 200)}`) + group(row("Run", { icon: "play", blue: true, click: "run" })), { title: a.name });
+  run();
 }

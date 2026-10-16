@@ -19,9 +19,11 @@ object Ambience {
     private lateinit var sp: android.content.SharedPreferences
     var on by mutableStateOf(false); private set
     var volume by mutableStateOf(35); private set
-    fun init(ctx: Context) { sp = ctx.getSharedPreferences("nova_sound", Context.MODE_PRIVATE); on = sp.getBoolean("amb", false); volume = sp.getInt("amb_vol", 35) }
+    var track by mutableStateOf("auto"); private set
+    val TRACKS = linkedMapOf("default" to "Dreamy (Default)", "aero" to "Glassy (Aero)", "fluent" to "Warm (Mica)", "breeze" to "Open (Breeze)", "liquid" to "Airy (Glass)", "material" to "Clean (Material)")
+    fun init(ctx: Context) { sp = ctx.getSharedPreferences("nova_sound", Context.MODE_PRIVATE); on = sp.getBoolean("amb", false); volume = sp.getInt("amb_vol", 35); track = sp.getString("amb_track", "auto")!! }
     fun set(key: String, v: Any) {
-        when (key) { "on" -> { on = v as Boolean; sp.edit().putBoolean("amb", on).apply() }; "vol" -> { volume = v as Int; sp.edit().putInt("amb_vol", volume).apply() } }
+        when (key) { "on" -> { on = v as Boolean; sp.edit().putBoolean("amb", on).apply() }; "vol" -> { volume = v as Int; sp.edit().putInt("amb_vol", volume).apply() }; "track" -> { track = v as String; sp.edit().putString("amb_track", track).apply() } }
     }
 
     private class Song(val w1: Int, val w2: Int, val cut: Float, val glint: Boolean, val chords: List<IntArray>)
@@ -114,7 +116,7 @@ object Ambience {
                 val noise = seed.toDouble() / 0x3fffffff - 1
                 airLo += kLo * (noise - airLo); airHi += kHi * (airLo - airHi)
                 x += (airLo - airHi) * .05
-                gain += (target - gain) * .00005                               // fades in and follows the volume smoothly
+                gain += (target - gain) * .0004                                // follows the volume smoothly, in about a tenth of a second
                 buf[i] = (tanh(x * gain * 4) / 4 * 32767 * 1.0).toInt().coerceIn(-32768, 32767).toShort()
                 n++
             }
@@ -127,7 +129,7 @@ object Ambience {
 /** Plays the ambience while it's on and Nova is on screen, in the look in use. Put once near the root. */
 @Composable fun AmbienceTicker() {
     val t = N
-    val song = if (t.material) "material" else t.preset.ifEmpty { "default" }
+    val song = if (Ambience.track != "auto") Ambience.track else if (t.material) "material" else t.preset.ifEmpty { "default" }
     val owner = androidx.lifecycle.compose.LocalLifecycleOwner.current
     var visible by remember { mutableStateOf(owner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) }
     DisposableEffect(owner) {

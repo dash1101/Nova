@@ -2,6 +2,7 @@
 // buttons carry data-act="name" or data-act="name:arg" and land in `handlers` (or the router's).
 import * as SND from "./sounds.js";
 import * as AMB from "./ambience.js";
+import * as LV from "./living.js";
 import { gpuInfo, devLog } from "./core.js";
 import { webIcons, iconSvg, svgUrl, applyWebIcon } from "./webicon.js";
 let WEB_ICONS = null;                                   // the App icon choices (loaded with the artwork the first time Appearance opens)
@@ -50,6 +51,20 @@ const DASH_TILES = [["clock", "Clock", "clock", 1], ["health", "Health", "okc", 
   ["net", "Network graph", "net", 1], ["storage", "Storage", "disk", 2], ["containers", "Containers", "box", 1], ["backup", "Backups", "backup", 1], ["fan", "Fan light", "bulb", 2],
   ["alerts", "Recent alerts", "bell", 2], ["uptime", "Uptime", "clock", 1], ["gpu", "Graphics graph", "speed", 1], ["swap", "Swap graph", "mem", 1], ["io", "Disk I/O graph", "disk", 1],
   ["top", "Top containers", "box", 1], ["server", "Server info", "dns", 1]];
+// tile sizes: 1 small, 2 wide, 3 tall, 4 big (two by two)
+const SIZE_CLS = { 2: "span2", 3: "tall", 4: "span2 tall" }, SIZE_NAMES = { 1: "Small", 2: "Wide", 3: "Tall", 4: "Big" };
+let arranging = false, dashUrl = "";
+/** How dark the dashboard is right now: it fades in over the half hour before "From" and out over the half hour after "Until". */
+function nightLevel() {
+  if (!prefs.dashDim) return 0;
+  const d = new Date(), now = d.getHours() * 60 + d.getMinutes() + d.getSeconds() / 60, F = (prefs.dashFade ?? 30) || .01;
+  const from = prefs.dashFrom * 60, to = prefs.dashTo * 60, rel = x => ((now - x) % 1440 + 1440) % 1440;
+  const inNight = prefs.dashFrom > prefs.dashTo ? now >= from || now < to : now >= from && now < to;
+  let k = inNight ? 1 : 0;
+  if (rel(from - F) < F) k = rel(from - F) / F;                      // getting darker toward "From"
+  else if (rel(to) < F) k = 1 - rel(to) / F;                         // lightening after "Until"
+  return k * (prefs.dashDimLevel ?? 40) / 100;
+}
 const dashSpan = id => prefs.dashSize?.[id] ?? (DASH_TILES.find(t => t[0] === id)?.[3] || 1);
 const dashTime = (d, sec) => d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", ...(sec ? { second: "2-digit" } : {}), ...(prefs.dashClock24 == null ? {} : { hour12: !prefs.dashClock24 }) });
 const SWATCHES = ["#ffffff", "#ff3b30", "#ff9500", "#ffcc00", "#34c759", "#00c7be", "#005aff", "#3e91ff", "#5e5ce6", "#bf5af2", "#ff2d55", "#ff6b9a"];
@@ -1662,21 +1677,27 @@ export async function appearance(ctx) {
       ${st === "liquid" && !canRefract() ? note("This browser shows Glass frosted, without the bending at the edges — that part needs a Chromium-based browser.") : ""}
       ${sec("Theme")}${group([["system", "Same as this device"], ["light", `${look} light`], ["dark", `${look} dark`]].map(([k, l]) => row(l, { end: radio(t === k), click: "theme:" + k })).join(""))}
       ${group(switchRow("Reduce motion", "Simple fades instead of slides and bounces", prefs.reduceMotion, "motion", { blue: false })
-        + `<div class="range-row"><div class="h"><span>Animation speed</span><span id="speedl">${speedText(prefs.animSpeed ?? 100)}</span></div><input type="range" min="25" max="300" step="25" value="${prefs.animSpeed ?? 100}" data-range="animSpeed" style="--p:${((prefs.animSpeed ?? 100) - 25) / 275 * 100}%"></div>`
+        + `<div class="range-row"><div class="h"><span>Animation speed</span><span id="speedl">${speedText(prefs.animSpeed ?? 100)}</span></div><input type="range" min="25" max="300" step="5" value="${prefs.animSpeed ?? 100}" data-range="animSpeed" style="--p:${((prefs.animSpeed ?? 100) - 25) / 275 * 100}%"></div>`
         + switchRow("Reduce transparency", "Solid surfaces instead of glass — easier to read, lighter to draw", !!prefs.reduceTransparency, "solid", { blue: false }))}
       ${sec("Sounds & haptics")}${group(switchRow("Sounds", "Clicks, switches, pages, pop-ups and windows — each look has its own sound pack", SND.soundsOn(), "snd")
         + (SND.soundsOn() ? row("Sound pack", { sub: (prefs.soundPack || "auto") === "auto" ? `Match the look (${PACKS[SND.packId()]})` : PACKS[prefs.soundPack] || "Match the look", blue: true, icon: "tune", click: "spack" })
           + `<div class="range-row"><div class="h"><span>Volume</span><span id="voll">${prefs.soundVol ?? 60}%</span></div><input type="range" min="0" max="100" step="5" value="${prefs.soundVol ?? 60}" data-range="soundVol" style="--p:${prefs.soundVol ?? 60}%"></div>`
-          + switchRow("Alert sounds", "A chime when something needs you — a more urgent one when it's serious", prefs.alertSounds ?? true, "asnd") : "")
+          + switchRow("Alert sounds", "A chime when something needs you — a more urgent one when it's serious", prefs.alertSounds ?? true, "asnd")
+          + Object.entries(SND.KINDS).map(([k, [l, d]]) => switchRow(l, d, SND.kindOn(k), "skind:" + k, { blue: false })).join("") : "")
         + switchRow("Ambience · Beta", "Soft, slowly changing music under everything, in the mood of the look you picked", !!prefs.ambience, "amb")
-        + (prefs.ambience ? `<div class="range-row"><div class="h"><span>Ambience volume</span><span id="ambl">${prefs.ambVol ?? 35}%</span></div><input type="range" min="0" max="100" step="5" value="${prefs.ambVol ?? 35}" data-range="ambVol" style="--p:${prefs.ambVol ?? 35}%"></div>` : "")
+        + (prefs.ambience ? row("Track", { sub: (prefs.ambTrack || "auto") === "auto" ? `Match the look (${AMB.TRACKS[AMB.trackId()]})` : AMB.TRACKS[prefs.ambTrack], blue: true, icon: "tune", click: "ambtrack" }) + `<div class="range-row"><div class="h"><span>Ambience volume</span><span id="ambl">${prefs.ambVol ?? 35}%</span></div><input type="range" min="0" max="100" step="5" value="${prefs.ambVol ?? 35}" data-range="ambVol" style="--p:${prefs.ambVol ?? 35}%"></div>` : "")
         + ("vibrate" in navigator ? switchRow("Vibration", "A light buzz with taps, switches and alerts (on phones)", prefs.haptics ?? true, "hap") : ""))}
       ${sec("Colors")}${group(row("Accent color", { sub: prefs.accentLocal ? "This browser's own color" : `The server's color${S.overview?.server?.accent ? "" : " (Nova blue)"} — tap to pick your own`, blue: !!prefs.accentLocal,
             end: `<span class="swatch" style="background:${esc(prefs.accentLocal || S.overview?.server?.accent || "#3e91ff")}"></span>`, click: "accent" })
           + `<div class="swatches pad">${ACCENTS.filter(Boolean).map(c => `<button class="swatch press${prefs.accentLocal === c ? " on" : ""}" style="background:${c}" data-act="acc:${c}" aria-label="${c}"></button>`).join("")}</div>`
           + (prefs.accentLocal ? row("Use the server's color", { icon: "refresh", click: "acc:" }) : "")
           + `<div class="range-row"><div class="h"><span>Color strength${mat ? "" : " (Material You)"}</span><span id="tintl">${prefs.tint ?? 50}%</span></div>${`<input type="range" min="0" max="100" value="${prefs.tint ?? 50}" data-range="tint" style="--p:${prefs.tint ?? 50}%">`}</div>`)}
-      ${sec("Wallpaper")}${group(switchRow("Living wallpaper · Beta", wallHas ? "An animated wallpaper for each look, in your accent color — your picture shows instead while it's set" : "An animated wallpaper for each look, in your accent color: Aero's ribbons of light, Mica's bloom, Breeze's waves, Glass's liquid color and more", !!prefs.livingWall, "livewall"))}
+      ${sec("Wallpaper")}${group(switchRow("Living wallpaper · Beta", wallHas ? "An animated wallpaper for each look, in your accent color — your picture shows instead while it's set" : "An animated wallpaper for each look, in your accent color: Aero's ribbons of light, Mica's bloom, Breeze's waves, Glass's liquid color and more", !!prefs.livingWall, "livewall")
+        + (prefs.livingWall ? row("Scene", { sub: (prefs.livingScene || "auto") === "auto" ? `Match the look (${LV.SCENES[LV.sceneId()]})` : prefs.livingScene === "media" ? "Your own GIF or video" : LV.SCENES[prefs.livingScene], blue: true, icon: "image", click: "lvscene" })
+          + (prefs.livingScene === "media" ? row("Choose a GIF or video", { sub: "Kept in this browser only (up to 60 MB)", icon: "image", blue: true, click: "lvmedia" }) : "")
+          + row("Color", { sub: prefs.livingAccent ? "Its own color" : "Same as the accent color", blue: !!prefs.livingAccent, end: `<span class="swatch" style="background:${esc(prefs.livingAccent || "var(--blue)")}"></span>`, click: "lvcolor" })
+          + [["livingSpeed", "Speed", 10, 300, 100, "%"], ["livingBlur", "Blur", 0, 40, 0, "px"], ["livingTint", "Tint", 0, 80, 0, "%"], ["livingFps", "Frame rate limit", 10, 120, 30, " fps"]].map(([k, l, a, b, d, u]) =>
+              `<div class="range-row"><div class="h"><span>${l}</span><span id="${k}l">${prefs[k] ?? d}${u}</span></div><input type="range" min="${a}" max="${b}" step="${k === "livingFps" ? 5 : 1}" value="${prefs[k] ?? d}" data-range="${k}" style="--p:${((prefs[k] ?? d) - a) / (b - a) * 100}%"></div>`).join("") : ""))}
       ${wallHas ? group(`<div class="range-row"><div class="h"><span>Blur</span><span id="blurl">${prefs.wallBlur ?? 16}px</span></div><input type="range" min="0" max="40" value="${prefs.wallBlur ?? 16}" data-range="wallBlur" style="--p:${(prefs.wallBlur ?? 16) / 40 * 100}%"></div>
             <div class="range-row"><div class="h"><span>Dim</span><span id="diml">${prefs.wallDim ?? 35}%</span></div><input type="range" min="0" max="90" value="${prefs.wallDim ?? 35}" data-range="wallDim" style="--p:${(prefs.wallDim ?? 35) / 90 * 100}%"></div>`
             + row("Change the picture", { icon: "image", blue: true, click: "wall" }) + row("Remove the wallpaper", { icon: "del", tint: "var(--red)", click: "unwall" }))
@@ -1703,6 +1724,7 @@ export async function appearance(ctx) {
       onRangeInput: (k, v) => {                                   // live while dragging
         prefs[k] = v; ctx.applyTheme();
         if (k === "animSpeed" && $("#speedl")) $("#speedl").textContent = speedText(v);
+        if (/^living/.test(k)) { const u = { livingSpeed: "%", livingBlur: "px", livingTint: "%", livingFps: " fps" }[k]; if ($("#" + k + "l")) $("#" + k + "l").textContent = v + u; LV.update(); }
         if (k === "ambVol") { if ($("#ambl")) $("#ambl").textContent = v + "%"; AMB.update(); }
         if (k === "soundVol") { if ($("#voll")) $("#voll").textContent = v + "%"; clearTimeout(volT); volT = setTimeout(() => SND.play("tap"), 60); }
         const l = { tint: ["tintl", "%"], wallBlur: ["blurl", "px"], wallDim: ["diml", "%"], glass: ["glassl", "%"], round: ["roundl", "%"] }[k]; if (l && $("#" + l[0])) $("#" + l[0]).textContent = v + l[1];
@@ -1718,9 +1740,30 @@ export async function appearance(ctx) {
   };
   ctx.handlers({
     icon: k => { prefs.iconTheme = k; ctx.applyTheme(); draw(); },
+    lvscene: async () => {
+      const v = await choose("Scene", [["auto", "Match the look", "Changes with the style you pick"], ...Object.entries(LV.SCENES), ["media", "Your own GIF or video"]], prefs.livingScene || "auto");
+      if (!v) return; prefs.livingScene = v; if (v === "media" && !(await kv("livemedia").catch(() => null))) return ctx.run("lvmedia"); LV.update(); draw();
+    },
+    lvmedia: () => {
+      const inp = document.createElement("input"); inp.type = "file"; inp.accept = "image/gif,image/webp,image/apng,video/mp4,video/webm";
+      inp.onchange = async () => { const f = inp.files?.[0]; if (!f) return;
+        if (f.size > 60e6) return toast("That file is over 60 MB — pick a shorter or smaller one");
+        await kv("livemedia", f); prefs.livingScene = "media"; LV.update(); draw(); toast("Living wallpaper set"); };
+      inp.click();
+    },
+    lvcolor: async () => {
+      const v = await choose("Living wallpaper color", [["", "Same as the accent color"], ["pick", "Pick a color…"]], prefs.livingAccent ? "pick" : "");
+      if (v == null) return; if (v === "") prefs.livingAccent = ""; else { const c = await colorPicker(prefs.livingAccent || "#3e91ff"); if (!c) return; prefs.livingAccent = c; }
+      LV.update(); draw();
+    },
+    ambtrack: async () => {
+      const v = await choose("Ambience", [["auto", "Match the look", "Changes with the style you pick"], ...Object.entries(AMB.TRACKS)], prefs.ambTrack || "auto");
+      if (!v) return; prefs.ambTrack = v; AMB.update(); draw();
+    },
     livewall: () => { prefs.livingWall = !prefs.livingWall; ctx.applyTheme(); draw(); },
     amb: () => { prefs.ambience = !prefs.ambience; AMB.update(); draw(); },
     snd: () => { prefs.sounds = !SND.soundsOn(); draw(); if (prefs.sounds) SND.play("toggleOn", { force: true }); },
+    skind: k => { const o = { ...(prefs.sndOff || {}) }; o[k] = !o[k]; prefs.sndOff = o; draw(); },
     asnd: () => { prefs.alertSounds = !(prefs.alertSounds ?? true); draw(); if (prefs.alertSounds) SND.play("info"); },
     hap: () => { prefs.haptics = !(prefs.haptics ?? true); draw(); SND.buzz("success"); },
     spack: async () => {
@@ -1877,6 +1920,9 @@ export async function hostTerminal(ctx) {
 
 // ═════════════════════════════════ DASHBOARD MODE ═══════════════════════════════
 export async function dashboard(ctx) {
+  // "Living wallpaper" as the dashboard's background: shown while it's open, even if it's off for the rest of Nova
+  const forceLive = on => { document.documentElement.classList.toggle("force-living", on); LV.update(); };
+  forceLive(prefs.dashBg === "living"); ctx.onLeave(() => forceLive(false));
   let wake; try { wake = await navigator.wakeLock?.request("screen"); } catch {}
   ctx.onLeave(() => wake?.release?.());
   const L = { recent: [], history: [], tick: 0, added: 1 };
@@ -1910,11 +1956,17 @@ export async function dashboard(ctx) {
     return "";
   };
   const draw = () => {
-    const h = new Date().getHours(), night = prefs.dashDim && (prefs.dashFrom > prefs.dashTo ? h >= prefs.dashFrom || h < prefs.dashTo : h >= prefs.dashFrom && h < prefs.dashTo);
+    const dim = nightLevel();
     const cols = prefs.dashCols ? Math.min(prefs.dashCols, Math.max(1, Math.floor(innerWidth / 150))) : Math.max(2, Math.min(6, Math.floor(innerWidth / 260)));
     ctx.raw(`<div class="dash${prefs.dashPlain ? " plain" : ""} bg-${esc(prefs.dashBg || "theme")}" id="dash" style="--dscale:${(prefs.dashScale || 100) / 100}"><div class="top${chrome ? "" : " hide"}" id="dtop"><button class="circle frost" data-act="back" aria-label="Leave">${I("back")}</button><b style="font-size:18px;flex:1">${esc(serverName())}</b>
         <button class="circle frost" data-act="edit" aria-label="Customize">${I("edit")}</button>${document.fullscreenEnabled ? `<button class="circle frost" data-act="fs" aria-label="Full screen">${I("full")}</button>` : ""}</div>
-      <div class="dgrid" style="--cols:${cols};transform:translate(${(shift * 7) % 9 - 4}px,${(shift * 5) % 7 - 3}px)">${prefs.dashTiles.map(id => tileHtml(id).replace(/^<div class="card glass( span2)?/, `<div class="card glass${dashSpan(id) > 1 ? " span2" : ""}`)).join("")}</div>${night ? `<div class="night" style="background:rgba(0,0,0,${(prefs.dashDimLevel ?? 40) / 100})"></div>` : ""}</div>`);
+      <div class="dgrid${arranging ? " arrange" : ""}" style="--cols:${cols};transform:translate(${(shift * 7) % 9 - 4}px,${(shift * 5) % 7 - 3}px)">${prefs.dashTiles.map(id => tileHtml(id).replace(/^<div class="card glass( span2)?/, `<div data-tile="${id}" class="card glass ${SIZE_CLS[dashSpan(id)] || ""}`)
+          .replace(/<\/div>$/, arranging ? `<button class="tsize" data-act="tsize:${id}" title="Size: ${SIZE_NAMES[dashSpan(id)]}">${I("full")}</button><button class="trm" data-act="trm:${id}" title="Remove">${I("close")}</button></div>` : "</div>")).join("")}</div>
+      ${arranging ? `<button class="arrdone btn" data-act="arrdone">Done</button>` : ""}<div class="night" style="background:rgba(0,0,0,${dim.toFixed(3)})"></div></div>`);
+    if (prefs.dashBg === "picture") kv("dashwall").then(b => { const d = $("#dash"); if (b && d) { dashUrl ||= URL.createObjectURL(b); d.style.backgroundImage = `url("${dashUrl}")`; } }).catch(() => {});
+    // hold (or right-click) a tile: arrange the dashboard like a phone's home screen — resize and remove tiles in place
+    $$("[data-tile]", $("#dash")).forEach(t => { let tm; t.onpointerdown = () => { tm = setTimeout(() => { navigator.vibrate?.(12); arranging = true; draw(); }, 600); };
+      t.onpointerup = t.onpointerleave = () => clearTimeout(tm); t.oncontextmenu = e => { e.preventDefault(); arranging = true; draw(); }; });
     $("#dash").onclick = e => { if (e.target.closest("[data-act]")) return;
       // "Full screen when tapped": browsers only allow full screen from a tap, so the first one asks for it
       if (prefs.dashFull && document.fullscreenEnabled && !document.fullscreenElement) document.documentElement.requestFullscreen?.().catch(() => {});
@@ -1934,6 +1986,9 @@ export async function dashboard(ctx) {
   };
   ctx.handlers({
     edit: () => ctx.go("edit-dash"),
+    tsize: id => { const c = dashSpan(id); prefs.dashSize = { ...(prefs.dashSize || {}), [id]: c >= 4 ? 1 : c + 1 }; draw(); },
+    trm: id => { prefs.dashTiles = prefs.dashTiles.filter(x => x !== id); draw(); },
+    arrdone: () => { arranging = false; draw(); },
     fs: () => document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen?.(),
   });
   if (prefs.dashTiles.includes("top")) await get("/api/v1/containers/stats").catch(() => {});
@@ -1944,6 +1999,7 @@ export async function dashboard(ctx) {
     tick++;
     if (tick % 15 === 0) { await Promise.all([refresh(), get("/api/v1/events?since=0"), ...(prefs.dashTiles.includes("top") ? [get("/api/v1/containers/stats")] : [])].map(p => p.catch(() => {}))); }
     if (tick % 60 === 0) shift++;
+    if (tick % 20 === 0) { const nl = $("#dash .night"); if (nl) nl.style.background = `rgba(0,0,0,${nightLevel().toFixed(3)})`; }   // the night fade, step by step
     if (L.recent.length) try { const r = await api("GET", "/api/v1/stats?since=" + L.recent.at(-1).t); if (r.now) S.lastNow = r.now; if (r.recent?.length) { L.recent = L.recent.concat(r.recent).slice(-180); L.tick++; L.added = r.recent.length; } } catch {}
     if (tick % 15 === 0) draw(); else graphs();
   });
@@ -1952,27 +2008,34 @@ export async function editDash(ctx) {
   const all = DASH_TILES.map(([id, label, icon]) => ({ id, label, icon }));
   const draw = () => {
     const ids = prefs.dashTiles, more = all.filter(t => !ids.includes(t.id));
-    ctx.show(`${sec("Tiles · hold and drag to reorder")}<div class="group glass rl" id="rl">${ids.map(id => { const t = all.find(x => x.id === id); return t ? `<div class="row" data-key="${id}"><span class="handle">${I("drag")}</span><span style="color:var(--blue);display:flex">${I(t.icon)}</span><div class="t"><b>${t.label}</b></div><button data-noreorder class="pillbtn press" data-act="size:${id}" title="Tile width" style="margin-right:6px">${dashSpan(id) > 1 ? "Wide" : "Small"}</button><button data-noreorder data-act="rm:${id}" style="color:var(--red)">${I("remc")}</button></div>` : ""; }).join("")}</div>
+    ctx.show(`${sec("Tiles · hold and drag to reorder")}<div class="group glass rl" id="rl">${ids.map(id => { const t = all.find(x => x.id === id); return t ? `<div class="row" data-key="${id}"><span class="handle">${I("drag")}</span><span style="color:var(--blue);display:flex">${I(t.icon)}</span><div class="t"><b>${t.label}</b></div><button data-noreorder class="pillbtn press" data-act="size:${id}" title="Tile size" style="margin-right:6px">${SIZE_NAMES[dashSpan(id)] || "Small"}</button><button data-noreorder data-act="rm:${id}" style="color:var(--red)">${I("remc")}</button></div>` : ""; }).join("")}</div>
       ${more.length ? sec("Add") + group(more.map(t => row(t.label, { icon: t.icon, click: "add:" + t.id, end: `<span style="color:var(--green)">${I("addc")}</span>` })).join("")) : ""}
       ${sec("Layout")}${group(row("Columns", { sub: prefs.dashCols ? `${prefs.dashCols} columns (fewer on a narrow screen)` : "Automatic — as many as fit", icon: "viewday", click: "cols" })
         + slider("Text size", "scale", prefs.dashScale || 100, 80, 160, (prefs.dashScale || 100) + "%")
-        + row("Background", { sub: { theme: "Same as Nova", black: "Black — best for OLED screens and dark rooms", wallpaper: "Your wallpaper" }[prefs.dashBg || "theme"], icon: "palette", click: "bg" })
+        + row("Background", { sub: { theme: "Same as Nova (your living wallpaper too, when it's on)", black: "Black — best for OLED screens and dark rooms", wallpaper: "Your wallpaper", living: "Living wallpaper", picture: "Its own picture" }[prefs.dashBg || "theme"], icon: "palette", click: "bg" })
         + switchRow("Plain tiles", "No glass or borders — just the numbers", prefs.dashPlain, "plain"))}
       ${sec("Clock")}${group(row("Time format", { sub: prefs.dashClock24 == null ? "Same as this device" : prefs.dashClock24 ? "24-hour" : "12-hour", icon: "clock", click: "c24" })
         + switchRow("Show seconds", "", prefs.dashSeconds, "secs"))}
       ${sec("Night")}${group(switchRow("Dim at night", `${String(prefs.dashFrom).padStart(2, "0")}:00 – ${String(prefs.dashTo).padStart(2, "0")}:00`, prefs.dashDim, "dim")
-        + (prefs.dashDim ? slider("How dark", "dimlvl", prefs.dashDimLevel ?? 40, 10, 90, (prefs.dashDimLevel ?? 40) + "%") + slider("From", "from", prefs.dashFrom, 0, 23, prefs.dashFrom + ":00") + slider("Until", "to", prefs.dashTo, 0, 23, prefs.dashTo + ":00") : ""))}
+        + (prefs.dashDim ? slider("How dark", "dimlvl", prefs.dashDimLevel ?? 40, 10, 90, (prefs.dashDimLevel ?? 40) + "%") + slider("Fade in and out over", "fade", prefs.dashFade ?? 30, 0, 120, (prefs.dashFade ?? 30) + " min") + slider("From", "from", prefs.dashFrom, 0, 23, prefs.dashFrom + ":00") + slider("Until", "to", prefs.dashTo, 0, 23, prefs.dashTo + ":00") : ""))}
       ${document.fullscreenEnabled ? sec("Full screen") + group(switchRow("Full screen when tapped", "The first tap on the dashboard fills the screen (browsers only allow it from a tap). Esc or the button leaves it.", prefs.dashFull, "full")) : ""}
       ${note("The dashboard keeps the screen awake, drifts a few pixels every minute so nothing burns in, and hides its buttons until you tap.")}
       ${links([["Reset the dashboard", "reset"]])}`, { title: "Customize dashboard" });
     reorderable($("#rl"), keys => { prefs.dashTiles = keys; draw(); });
-    wireCommon(ctx.root, { onRangeInput: (k, v) => { $(`[data-lbl="${k}"]`).textContent = k === "scale" || k === "dimlvl" ? v + "%" : v + ":00"; },
-      onRange: (k, v) => { if (k === "scale") prefs.dashScale = v; else if (k === "dimlvl") prefs.dashDimLevel = v; else prefs[k === "from" ? "dashFrom" : "dashTo"] = v; draw(); } });
+    wireCommon(ctx.root, { onRangeInput: (k, v) => { $(`[data-lbl="${k}"]`).textContent = k === "scale" || k === "dimlvl" ? v + "%" : k === "fade" ? v + " min" : v + ":00"; },
+      onRange: (k, v) => { if (k === "scale") prefs.dashScale = v; else if (k === "dimlvl") prefs.dashDimLevel = v; else if (k === "fade") prefs.dashFade = v; else prefs[k === "from" ? "dashFrom" : "dashTo"] = v; draw(); } });
   };
   ctx.handlers({ rm: id => { prefs.dashTiles = prefs.dashTiles.filter(x => x !== id); draw(); }, add: id => { prefs.dashTiles = [...prefs.dashTiles, id]; draw(); },
-    size: id => { prefs.dashSize = { ...(prefs.dashSize || {}), [id]: dashSpan(id) > 1 ? 1 : 2 }; draw(); },
+    size: id => { const c = dashSpan(id); prefs.dashSize = { ...(prefs.dashSize || {}), [id]: c >= 4 ? 1 : c + 1 }; draw(); },
     cols: async () => { const v = await choose("Columns", [[0, "Automatic"], ...[1, 2, 3, 4, 5, 6].map(n => [n, `${n} column${n > 1 ? "s" : ""}`])], prefs.dashCols || 0); if (v != null) { prefs.dashCols = v; draw(); } },
-    bg: async () => { const v = await choose("Background", [["theme", "Same as Nova"], ["black", "Black", "Best for OLED screens and dark rooms"], ["wallpaper", "Your wallpaper", "Set one in Appearance"]], prefs.dashBg || "theme"); if (v) { prefs.dashBg = v; draw(); } },
+    bg: async () => {
+      const v = await choose("Background", [["theme", "Same as Nova"], ["black", "Black", "Best for OLED screens and dark rooms"], ["wallpaper", "Your wallpaper", "Set one in Appearance"],
+        ["living", "Living wallpaper", "The animated one, even if it's off for the rest of Nova"], ["picture", "Its own picture", "Just for the dashboard"]], prefs.dashBg || "theme");
+      if (!v) return;
+      if (v === "picture") { const inp = document.createElement("input"); inp.type = "file"; inp.accept = "image/*";
+        inp.onchange = async () => { const f = inp.files?.[0]; if (!f) return; await kv("dashwall", f); prefs.dashBg = "picture"; draw(); toast("Dashboard picture set"); }; inp.click(); return; }
+      prefs.dashBg = v; draw();
+    },
     plain: () => { prefs.dashPlain = !prefs.dashPlain; draw(); }, full: () => { prefs.dashFull = !prefs.dashFull; draw(); }, secs: () => { prefs.dashSeconds = !prefs.dashSeconds; draw(); },
     c24: async () => { const v = await choose("Time format", [["auto", "Same as this device"], ["24", "24-hour"], ["12", "12-hour"]], prefs.dashClock24 == null ? "auto" : prefs.dashClock24 ? "24" : "12"); if (v) { prefs.dashClock24 = v === "auto" ? null : v === "24"; draw(); } },
     dim: () => { prefs.dashDim = !prefs.dashDim; draw(); }, reset: () => { ["dashTiles", "dashDim", "dashFrom", "dashTo", "dashCols", "dashSize", "dashClock24", "dashSeconds", "dashScale", "dashBg", "dashPlain", "dashDimLevel", "dashFull"].forEach(k => localStorage.removeItem("nova." + k)); draw(); } });

@@ -43,7 +43,7 @@ class SshKey(profile: String) {
         fun spec(strong: Boolean) = KeyGenParameterSpec.Builder(ALIAS, KeyProperties.PURPOSE_SIGN)
             .setAlgorithmParameterSpec(ECGenParameterSpec("secp256r1")).setDigests(KeyProperties.DIGEST_SHA256)
             .let { Compat.userAuth(it, 30) }
-            .setIsStrongBoxBacked(strong).build()
+            .let { if (android.os.Build.VERSION.SDK_INT >= 28) it.setIsStrongBoxBacked(strong) else it }.build()
         try { g.initialize(spec(true)); g.generateKeyPair() }
         catch (e: Exception) { g.initialize(spec(false)); g.generateKeyPair() }      // no StrongBox: TEE
     }
@@ -239,13 +239,9 @@ object SshSession {
 
     /** Fingerprint/PIN unlocks the SSH key for 30 s (no crypto object: time-bound key). */
     suspend fun unlock(activity: Activity) = suspendCancellableCoroutine { cont ->
-        val cancel = CancellationSignal(); cont.invokeOnCancellation { cancel.cancel() }
-        Compat.prompt(activity, "Open a terminal on the server", "Nova · confirm it's you", crypto = false).build()
-            .authenticate(cancel, activity.mainExecutor, object : BiometricPrompt.AuthenticationCallback() {
-                override fun onAuthenticationSucceeded(r: BiometricPrompt.AuthenticationResult) { cont.resume(Unit) }
-                override fun onAuthenticationError(code: Int, msg: CharSequence) {
-                    if (cont.isActive) cont.resumeWithException(ApiException(0, msg.toString())) }
-            })
+        val cancel = Compat.authenticate(activity, "Open a terminal on the server", "Nova · confirm it's you", null, { cont.resume(Unit) },
+            { m -> if (cont.isActive) cont.resumeWithException(ApiException(0, m)) })
+        cont.invokeOnCancellation { cancel.cancel() }
     }
 
     fun connect(name: String, host: String, port: Int, user: String, pinned: List<String>, key: SshKey) {

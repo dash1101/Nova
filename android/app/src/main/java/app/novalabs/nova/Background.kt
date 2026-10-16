@@ -64,10 +64,10 @@ object Notifier {
     private val levels = listOf("info", "warning", "critical")
     fun createChannels(ctx: Context) {
         val nm = ctx.getSystemService(NotificationManager::class.java)
-        nm.createNotificationChannel(NotificationChannel("critical", "Critical alerts", NotificationManager.IMPORTANCE_HIGH)
+        if (android.os.Build.VERSION.SDK_INT >= 26) nm.createNotificationChannel(NotificationChannel("critical", "Critical alerts", NotificationManager.IMPORTANCE_HIGH)
             .apply { description = "A drive dropped out, a service is down…" })
-        nm.createNotificationChannel(NotificationChannel("warning", "Warnings", NotificationManager.IMPORTANCE_DEFAULT))
-        nm.createNotificationChannel(NotificationChannel("info", "Info & logins", NotificationManager.IMPORTANCE_LOW))
+        if (android.os.Build.VERSION.SDK_INT >= 26) nm.createNotificationChannel(NotificationChannel("warning", "Warnings", NotificationManager.IMPORTANCE_DEFAULT))
+        if (android.os.Build.VERSION.SDK_INT >= 26) nm.createNotificationChannel(NotificationChannel("info", "Info & logins", NotificationManager.IMPORTANCE_LOW))
     }
     fun atLeast(level: String, min: String) =
         levels.indexOf(if (level == "resolved") "info" else level) >= levels.indexOf(min)
@@ -77,7 +77,7 @@ object Notifier {
     private val progressShown = mutableSetOf<String>()
     fun tasks(ctx: Context, profile: String, list: org.json.JSONArray?) {
         val nm = ctx.getSystemService(NotificationManager::class.java)
-        nm.createNotificationChannel(NotificationChannel("progress", "Progress", NotificationManager.IMPORTANCE_LOW)
+        if (android.os.Build.VERSION.SDK_INT >= 26) nm.createNotificationChannel(NotificationChannel("progress", "Progress", NotificationManager.IMPORTANCE_LOW)
             .apply { description = "Installs, backups and updates while they run" })
         val open = PendingIntent.getActivity(ctx, 7, AppIcon.launch(ctx).putExtra("open", "inbox")
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
@@ -102,7 +102,7 @@ object Notifier {
     /** A browser asked for something risky: open Nova's Approvals screen. */
     fun approval(ctx: Context, id: Int, title: String, text: String, approvalId: String = "", profile: String = "") {
         val nm = ctx.getSystemService(NotificationManager::class.java)
-        nm.createNotificationChannel(NotificationChannel("approvals", "Approval requests", NotificationManager.IMPORTANCE_HIGH)
+        if (android.os.Build.VERSION.SDK_INT >= 26) nm.createNotificationChannel(NotificationChannel("approvals", "Approval requests", NotificationManager.IMPORTANCE_HIGH)
             .apply { description = "A paired browser wants to do something that needs your fingerprint" })
         val open = PendingIntent.getActivity(ctx, id, AppIcon.launch(ctx).putExtra("open", "approvals")
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
@@ -184,7 +184,7 @@ object Updater {
         runCatching { api.get("/api/v1/app/latest") }.getOrNull()?.takeIf { it.optInt("version_code", 0) > 0 }
 
     fun isNewer(meta: JSONObject, ctx: Context): Boolean {
-        val mine = ctx.packageManager.getPackageInfo(ctx.packageName, 0).longVersionCode
+        val mine = androidx.core.content.pm.PackageInfoCompat.getLongVersionCode(ctx.packageManager.getPackageInfo(ctx.packageName, 0))
         return meta.optLong("version_code") > mine
     }
 

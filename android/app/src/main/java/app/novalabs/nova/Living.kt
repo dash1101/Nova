@@ -25,10 +25,20 @@ object Living {
     private lateinit var sp: android.content.SharedPreferences
     var on by mutableStateOf(false); private set
     var time by mutableFloatStateOf(20f)                // seconds of scene time
-    fun init(ctx: Context) { sp = ctx.getSharedPreferences("nova_ui", Context.MODE_PRIVATE); on = sp.getBoolean("living_wall", false) }
+    var scene by mutableStateOf("auto"); private set     // auto = match the look, or one of SCENES
+    var speed by mutableIntStateOf(100); private set     // % of normal
+    var accent by mutableStateOf(""); private set        // its own color, or "" for the accent
+    val SCENES = linkedMapOf("default" to "Nebula", "aero" to "Harmony (Aero)", "fluent" to "Bloom (Mica)", "breeze" to "Flow (Breeze)", "liquid" to "Liquid (Glass)", "material" to "Shapes (Material)")
+    fun init(ctx: Context) { sp = ctx.getSharedPreferences("nova_ui", Context.MODE_PRIVATE); on = sp.getBoolean("living_wall", false)
+        scene = sp.getString("living_scene", "auto")!!; speed = sp.getInt("living_speed", 100); accent = sp.getString("living_accent", "")!! }
     fun set(v: Boolean) { on = v; sp.edit().putBoolean("living_wall", v).apply() }
+    fun chooseScene(v: String) { scene = v; sp.edit().putString("living_scene", v).apply() }
+    fun chooseSpeed(v: Int) { speed = v; sp.edit().putInt("living_speed", v).apply() }
+    fun chooseAccent(v: String) { accent = v; sp.edit().putString("living_accent", v).apply() }
+    /** The scene in use: the one picked, or the look's own. */
+    fun sceneFor(t: NovaColors) = if (scene != "auto") scene else if (t.material) "material" else t.preset.ifEmpty { "default" }
     /** Drawn where the glow would be: on, and no picture set. */
-    val showing get() = on && AppPrefs.wallV == 0L && !AppPrefs.solid
+    val showing get() = on && AppPrefs.wallV == 0L
 }
 
 /** The app-wide clock. Put once near the root. */
@@ -44,7 +54,7 @@ object Living {
         }
     }
 }
-private fun speed() = (AppPrefs.animSpeed / 100f).coerceIn(.25f, 3f)
+private fun speed() = (Living.speed / 100f).coerceIn(.1f, 3f)
 
 private fun hsl(h: Float, s: Float, l: Float, a: Float = 1f) = Color.hsl(((h % 360) + 360) % 360, (s / 100f).coerceIn(0f, 1f), (l / 100f).coerceIn(0f, 1f), a.coerceIn(0f, 1f))
 private fun hueSat(c: Color): Pair<Float, Float> {
@@ -61,10 +71,11 @@ private fun DrawScope.blob(x: Float, y: Float, r: Float, c: Color, blend: BlendM
 
 /** The scene at this spot: [origin] is where this layer sits on the screen, [W]×[H] the whole window. */
 fun DrawScope.drawLiving(t: NovaColors, origin: Offset, W: Float, H: Float, time: Float = Living.time) {
-    val (h, s) = hueSat(t.blue); val d = t.dark; val m = max(W, H)
+    val own = Living.accent.takeIf { it.length == 7 }?.let { runCatching { Color(android.graphics.Color.parseColor(it)) }.getOrNull() }
+    val (h, s) = hueSat(own ?: t.blue); val d = t.dark; val m = max(W, H); val sc = Living.sceneFor(t)
     translate(-origin.x, -origin.y) {
         when {
-            t.material -> {                            // soft shapes in the accent's tones
+            sc == "material" -> {                            // soft shapes in the accent's tones
                 drawRect(if (d) hsl(h, s * .25f, 7f) else hsl(h, s * .35f, 96f), size = Size(W, H))
                 for (i in 0 until 9) {
                     val x = (((i * .37f + time * (.004f + i % 3 * .002f)) % 1.3f) - .15f) * W
@@ -79,7 +90,7 @@ fun DrawScope.drawLiving(t: NovaColors, origin: Offset, W: Float, H: Float, time
                     } }
                 }
             }
-            t.preset == "aero" -> {                    // ribbons of light, and bokeh drifting up
+            sc == "aero" -> {                    // ribbons of light, and bokeh drifting up
                 drawRect(Brush.linearGradient(listOf(if (d) hsl(h, s * .9f, 14f) else hsl(h, s * .8f, 62f), if (d) hsl(h + 10, s, 5f) else hsl(h + 10, s * .9f, 40f)), Offset.Zero, Offset(W, H)), size = Size(W, H))
                 for (i in 0 until 5) {
                     val ph = time * (.05f + i * .012f) + i * 1.7f; val y0 = H * (.25f + i * .13f)
@@ -96,7 +107,7 @@ fun DrawScope.drawLiving(t: NovaColors, origin: Offset, W: Float, H: Float, time
                     blob(W * ((i * .618f) % 1f) + sin(time * .2f + i) * W * .03f, y, m * (.02f + (i % 3) * .015f), Color.White.copy(alpha = if (d) .14f else .22f), BlendMode.Plus)
                 }
             }
-            t.preset == "fluent" -> {                  // a bloom turning slowly, breathing
+            sc == "fluent" -> {                  // a bloom turning slowly, breathing
                 drawRect(if (d) hsl(h, s * .35f, 8f) else hsl(h, s * .3f, 94f), size = Size(W, H))
                 val cx = W * .55f; val cy = H * .55f
                 for (i in 0 until 7) {
@@ -107,7 +118,7 @@ fun DrawScope.drawLiving(t: NovaColors, origin: Offset, W: Float, H: Float, time
                 }
                 blob(cx, cy, m * .2f, if (d) hsl(h + 15, s * .7f, 70f, .3f) else hsl(h + 15, s * .5f, 92f, .65f))
             }
-            t.preset == "breeze" -> {                  // layered waves flowing across
+            sc == "breeze" -> {                  // layered waves flowing across
                 drawRect(Brush.verticalGradient(listOf(if (d) hsl(h, s * .5f, 12f) else hsl(h, s * .5f, 90f), if (d) hsl(h, s * .6f, 6f) else hsl(h, s * .55f, 76f)), 0f, H), size = Size(W, H))
                 for (k in 0 until 5) {
                     val y0 = H * (.45f + k * .1f); val amp = H * (.08f - k * .008f); val sp = .12f + k * .05f
@@ -117,7 +128,7 @@ fun DrawScope.drawLiving(t: NovaColors, origin: Offset, W: Float, H: Float, time
                     drawPath(p, if (d) hsl(h - k * 6, s * (.6f + k * .08f), 18f + k * 7, .55f) else hsl(h - k * 6, s * (.5f + k * .1f), 75f - k * 7, .55f))
                 }
             }
-            t.preset == "liquid" -> {                  // liquid color under the glass
+            sc == "liquid" -> {                  // liquid color under the glass
                 drawRect(if (d) hsl(h, s * .4f, 6f) else hsl(h, s * .3f, 94f), size = Size(W, H))
                 listOf(h, h + 40, h - 50, h + 160, h + 20).forEachIndexed { i, hu ->
                     val x = W * (.5f + .38f * sin(time * (.05f + i * .013f) + i * 1.3f)); val y = H * (.5f + .38f * cos(time * (.04f + i * .011f) + i * 2.1f))

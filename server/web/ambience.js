@@ -17,6 +17,9 @@ const hz = n => 440 * Math.pow(2, (n - 69) / 12);
 
 let ctx = null, master = null, timer = 0, step = 0, song = "", air = null, playing = false;
 
+export const TRACKS = { default: "Dreamy (Default)", aero: "Glassy (Aero)", fluent: "Warm (Mica)", breeze: "Open (Breeze)", liquid: "Airy (Glass)", material: "Clean (Material)" };
+export const trackId = () => track();
+const track = () => { const p = prefs.ambTrack || "auto"; return p === "auto" ? look() : p; };
 const look = () => { const c = document.documentElement.classList; return c.contains("aero") ? "aero" : c.contains("fluent") ? "fluent" : c.contains("breeze") ? "breeze" : c.contains("liquid") ? "liquid" : c.contains("material") ? "material" : "default"; };
 const level = () => Math.max(0, Math.min(100, +(prefs.ambVol ?? 35))) / 100 * .16;
 export const enabled = () => !!prefs.ambience && !/[?&]embed=1/.test(location.search);
@@ -24,23 +27,23 @@ export const enabled = () => !!prefs.ambience && !/[?&]embed=1/.test(location.se
 /** Start, stop or change the music to fit the settings and the look. */
 export function update() {
   if (!enabled()) return stop();
-  if (playing && song === look()) { master && master.gain.setTargetAtTime(level(), ctx.currentTime, .4); return; }
+  if (playing && song === track()) { master && master.gain.setTargetAtTime(level(), ctx.currentTime, .12); return; }
   start();
 }
 
 function start() {
   try { ctx ||= new (window.AudioContext || window.webkitAudioContext)(); } catch { return; }
   if (ctx.state !== "running") { ctx.resume().then(() => { if (ctx.state === "running" && enabled()) start(); }).catch(() => {}); if (ctx.state !== "running") return; }
-  stop(true);
-  song = look(); playing = true; step = 0;
+  stop(false);                                              // the old track fades out slowly under the new one
+  song = track(); playing = true; step = 0;
   master = ctx.createGain(); master.gain.value = 0; master.connect(ctx.destination);
-  master.gain.setTargetAtTime(level(), ctx.currentTime, 2);
+  master.gain.setTargetAtTime(level(), ctx.currentTime + .5, 3);     // and the new one eases in over several seconds
   airStart();
   chord(); timer = setInterval(chord, CHORD_S * 1000);
 }
 export function stop(quick = false) {
   clearInterval(timer); timer = 0; playing = false;
-  if (master && ctx) { const m = master; m.gain.setTargetAtTime(0, ctx.currentTime, quick ? .05 : .8); setTimeout(() => m.disconnect(), quick ? 300 : 4000); }
+  if (master && ctx) { const m = master; m.gain.cancelScheduledValues(ctx.currentTime); m.gain.setTargetAtTime(0, ctx.currentTime, quick ? .3 : 2.2); setTimeout(() => m.disconnect(), quick ? 2000 : 12000); }
   master = null; air = null;
 }
 

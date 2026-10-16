@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.8.5-alpha (server, Nova web, app and watch)
+- **Android 7.0 and newer** (was 9): the app now installs on older phones and tablets; on Android 7–8 the fingerprint prompt is AndroidX's own.
+- **Android sounds and haptics:** sounds now play at media volume (the system volume was muted on many phones), and taps use the phone's own touch feedback, which feels crisper.
+- **Living wallpaper:** pick any scene for any look, or your own GIF or video (web); its own color, speed, blur, tint and frame rate limit (web; scene, color and speed in the app). Reduce transparency no longer turns wallpapers off. Material's shapes are no longer pixelated (web). On tablets, the living wallpaper no longer covers the list pane and the dock's fades.
+- **Ambience:** choose the track separately from the look; switching crossfades gently, and the volume follows the slider much faster.
+- **Sounds:** turn each kind on or off (taps, switches, pages, pop-ups, windows, finished tasks), and a soft sound when the navigation pill's selection slides.
+- **Type a value into any slider** (tap its number): e.g. 0.8× animation speed. Animation speed now moves in steps of 0.05.
+- **Apps in Nova windows:** resize from any edge or corner; Window corners slider in Labs; right-click or hold an app in the dock for Minimize, Maximize, Open in a tab, Pin to the dock (it stays after you close it) and Close; command apps like Temperatures open in their own window too; Files has back and forward buttons (back greyed out when there's nowhere to go).
+- **Dashboard:** hold (or right-click) a tile to arrange it like a phone home screen — four tile sizes, remove in place; night dimming fades in and out gradually (choose over how long); the living wallpaper or its own picture as the background.
+- **Fixed:** the Inbox selection bar is properly frosted in Mica and the other looks.
+- A few things to find, too.
+
 ## 0.8.4-alpha (server, Nova web, app and watch)
 - **Sounds and haptics** (Appearance → Sounds & haptics, app and web): taps, switches, going into and back out of pages, pop-ups, windows, finished tasks and alerts each have their sound, with a sound pack for every look — Aero's glassy chimes and classic click, Mica's soft taps, Breeze's plucks, Glass's pings, Material's quiet ticks and the Default look's droplets — or pick one pack for all of them. Alerts chime (a more urgent one when it's serious), and on phones taps and alerts give a light buzz. Every sound is made on the device; there are no sound files.
 - **Living wallpaper · Beta** (Appearance → Wallpaper, app and web): an animated wallpaper for each look, in your accent color — Aero's ribbons of light and drifting bokeh, Mica's slowly turning bloom, Breeze's flowing waves, Glass's liquid color (which the glass bends, as it should), Material's floating shapes and a drifting nebula for Default. Drawn small and at 30 frames a second, paused when Nova isn't on screen and still with Reduce motion.

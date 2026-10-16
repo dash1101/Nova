@@ -241,8 +241,9 @@ import java.util.*
             }
         }
         LinksCard(listOf("Inbox" to { app.go(Route.Inbox) }, "Phone notification settings" to {
-            app.activity.startActivity(android.content.Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS)
-                .putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, app.activity.packageName)) }))
+            app.activity.startActivity(if (android.os.Build.VERSION.SDK_INT >= 26) android.content.Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                .putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, app.activity.packageName)
+                else android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, android.net.Uri.parse("package:${app.activity.packageName}"))) }))
     }
     if (levelDialog) OneDialog({ levelDialog = false }, "Send to Discord", buttons = listOf(DialogButton("Cancel") { levelDialog = false })) {
         levels.forEach { (k, label) -> DialogChoice(label, null, s?.optString("push_min_level") == k) { levelDialog = false; set("push_min_level", k) } }
@@ -266,7 +267,7 @@ import java.util.*
                 when { checking -> "Checking…"; installing -> "Downloading…"; newer -> update!!.optString("notes").ifEmpty { "Tap to install" }
                        else -> "Version $APP_VERSION" }, newer, Icons.Rounded.SystemUpdate, onClick = {
                 if (newer && !installing) {
-                    if (!ctx.packageManager.canRequestPackageInstalls()) {
+                    if (android.os.Build.VERSION.SDK_INT >= 26 && !ctx.packageManager.canRequestPackageInstalls()) {
                         app.toast("Allow Nova to install updates, then tap again")
                         ctx.startActivity(android.content.Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
                             android.net.Uri.parse("package:${ctx.packageName}")))

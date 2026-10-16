@@ -1070,7 +1070,7 @@ html.aero #sheet .box { --sr: calc(8px * var(--rk, 1)); --spx: 18px; --spb: 10px
 #wins { position: fixed; inset: 0; pointer-events: none; z-index: 8; }
 #wins.dragging iframe { pointer-events: none; }
 #wins.dragging { cursor: grabbing; user-select: none; }
-.win { position: absolute; pointer-events: auto; display: flex; flex-direction: column; border-radius: calc(var(--wr, 20px) * var(--rk, 1)); overflow: hidden;
+.win { position: absolute; pointer-events: auto; display: flex; flex-direction: column; border-radius: calc(var(--wr, 20px) * var(--rk, 1) * var(--wrk, 1)); overflow: hidden;
   /* frosted: how see-through follows Glass clarity (--ga) where the look has it */
   background: color-mix(in srgb, var(--frost-solid, var(--card)) calc(var(--wga, var(--ga, .9)) * 100%), transparent); backdrop-filter: blur(28px) saturate(1.3); -webkit-backdrop-filter: blur(28px) saturate(1.3); border: 1px solid color-mix(in srgb, var(--text) 12%, transparent); box-shadow: 0 18px 60px rgb(0 0 0 / .35), 0 2px 8px rgb(0 0 0 / .2); min-width: 320px; min-height: 220px; }
 .win:not(.on) { box-shadow: 0 8px 30px rgb(0 0 0 / .25); }
@@ -1100,7 +1100,11 @@ html.aero #sheet .box { --sr: calc(8px * var(--rk, 1)); --spx: 18px; --spb: 10px
 .whint.fade { opacity: 0; pointer-events: none; }
 .whint button { border: 0; background: color-mix(in srgb, var(--blue) 18%, transparent); color: var(--blue); border-radius: 14px; padding: 4px 10px; font: inherit; cursor: pointer; white-space: nowrap; }
 .whint button[data-w=x] { background: none; color: var(--sub); padding: 4px; display: grid; } .whint button svg { width: 10px; height: 10px; stroke: currentColor; stroke-width: 1.4; fill: none; }
-.wgrip { position: absolute; right: 0; bottom: 0; width: 18px; height: 18px; cursor: nwse-resize; touch-action: none; }
+.wgrip { position: absolute; touch-action: none; z-index: 2; }
+.g-n, .g-s { left: 10px; right: 10px; height: 7px; cursor: ns-resize; } .g-n { top: -3px; } .g-s { bottom: -3px; }
+.g-e, .g-w { top: 10px; bottom: 10px; width: 7px; cursor: ew-resize; } .g-e { right: -3px; } .g-w { left: -3px; }
+.g-ne, .g-nw, .g-se, .g-sw { width: 16px; height: 16px; } .g-ne { top: -3px; right: -3px; cursor: nesw-resize; } .g-sw { bottom: -3px; left: -3px; cursor: nesw-resize; }
+.g-nw { top: -3px; left: -3px; cursor: nwse-resize; } .g-se { bottom: -3px; right: -3px; cursor: nwse-resize; }
 .win.max .wgrip { display: none; }
 /* the open windows in the navigation pill, after a thin line */
 .nav .wdock { display: flex; gap: 4px; align-items: center; padding-left: 8px; margin-left: 4px; border-left: 1px solid color-mix(in srgb, var(--text) 18%, transparent); }
@@ -1187,3 +1191,33 @@ html.pad .padfocus { outline: 3px solid var(--blue) !important; outline-offset: 
 @keyframes padglow { 50% { outline-color: color-mix(in srgb, var(--blue) 60%, #fff); } }
 html.pad, html.pad * { cursor: none; }
 html.reduce.pad .padfocus { animation: none; }
+/* the selection bar floats over the list it selects from: always properly frosted, so the rows behind don't show through */
+html:root .selbar.glass { background: color-mix(in srgb, var(--frost-solid, var(--card)) 94%, transparent); backdrop-filter: blur(26px) saturate(1.3); -webkit-backdrop-filter: blur(26px) saturate(1.3); }
+#live { overflow: hidden; } #live canvas, #live .lvmedia { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+#live .lvmedia { filter: blur(var(--lvblur, 0px)); transform: scale(1.04); }
+#live canvas { image-rendering: auto; }
+#live i { position: absolute; inset: 0; background: var(--bg); opacity: var(--lvtint, 0); pointer-events: none; }
+#topbar .circle.off { opacity: .35; pointer-events: none; }
+#topbar .circle.fwd .i { transform: scaleX(-1); }
+html.embed #topbar .circle.fwd { margin-left: -4px; }
+/* dashboard: tall and big tiles, arranging in place (hold a tile), the living wallpaper or its own picture behind it */
+.dash .card.tall { grid-row: span 2; }
+.dash .dgrid.arrange .card { animation: jiggle .32s ease-in-out infinite alternate; position: relative; }
+.dash .dgrid.arrange .card:nth-child(2n) { animation-delay: -.16s; }
+@keyframes jiggle { from { transform: rotate(-.6deg); } to { transform: rotate(.6deg); } }
+.dash .tsize, .dash .trm { position: absolute; top: 8px; width: 32px; height: 32px; border-radius: 16px; border: 0; display: grid; place-items: center; cursor: pointer; background: var(--frost-solid, var(--card)); color: var(--text); box-shadow: 0 2px 8px rgb(0 0 0 / .3); }
+.dash .tsize { right: 46px; } .dash .trm { right: 8px; color: var(--red); } .dash .tsize .i, .dash .trm .i { width: 18px; height: 18px; }
+.dash .arrdone { position: fixed; bottom: calc(24px + env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%); z-index: 3; }
+.dash .night { transition: background 20s linear; }
+html.living .dash.bg-theme, .dash.bg-living { background: transparent; } html.living .dash.bg-theme::before, .dash.bg-living::before { display: none; }
+.dash.bg-picture { background: #000 center / cover no-repeat; } .dash.bg-picture::before { display: none; }
+html.reduce .dash .dgrid.arrange .card { animation: none; }
+html.force-living #wall { display: none; }
+/* easter eggs */
+html.party #live, html.party body::before, html.party .nav { animation: partyhue 1.2s linear infinite; }
+html.party .card, html.party .group { animation: partybob .6s ease-in-out infinite alternate; }
+@keyframes partyhue { to { filter: hue-rotate(360deg) saturate(1.6); } }
+@keyframes partybob { to { transform: translateY(-3px) rotate(.3deg); } }
+html.turbo #fh { animation: turbo .07s linear infinite; }
+@keyframes turbo { 25% { transform: translate(1px, -1px); } 75% { transform: translate(-1px, 1px); } }
+html.reduce.party *, html.reduce.turbo * { animation: none !important; }

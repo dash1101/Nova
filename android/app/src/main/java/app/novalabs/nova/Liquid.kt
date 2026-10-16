@@ -191,6 +191,7 @@ object Behind {
         if (System.currentTimeMillis() - taken < 300 && shot != null) return              // dialogs opening one after another
         val v = w.decorView; if (v.width <= 0 || v.height <= 0) return
         val full = runCatching { android.graphics.Bitmap.createBitmap(v.width, v.height, android.graphics.Bitmap.Config.ARGB_8888) }.getOrNull() ?: return
+        if (android.os.Build.VERSION.SDK_INT < 26) { full.recycle(); return }      // Android 7: no window snapshot (dialogs show plain frost)
         runCatching {
             android.view.PixelCopy.request(w, full, { r ->
                 if (r == android.view.PixelCopy.SUCCESS) {

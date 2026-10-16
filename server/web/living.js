@@ -3,14 +3,17 @@
 // color moving under the glass. Material: soft shapes floating by. Default: a drifting nebula with a few stars.
 // Drawn small (a quarter of the screen) at 30 frames a second and scaled up soft, paused when the page is hidden, still
 // with Reduce motion — so it stays light. A picture you set (Wallpaper) shows instead.
-import { prefs } from "./core.js";
+import { prefs, kv } from "./core.js";
 
-let cv = null, g = null, raf = 0, last = 0, t0 = performance.now(), scene = "", pal = null;
-const DPR = .3;                                    // drawing scale: soft scenes look the same, at a tenth of the cost
+let cv = null, g = null, box = null, media = null, mediaUrl = "", raf = 0, last = 0, t0 = performance.now(), scene = "", pal = null;
+const SOFT = .3;                                   // soft scenes are drawn this small (they look the same, at a tenth of the cost)
+export const SCENES = { default: "Nebula", aero: "Harmony (Aero)", fluent: "Bloom (Mica)", breeze: "Flow (Breeze)", liquid: "Liquid (Glass)", material: "Shapes (Material)" };
 
 const root = () => document.documentElement;
 const look = () => { const c = root().classList; return c.contains("aero") ? "aero" : c.contains("fluent") ? "fluent" : c.contains("breeze") ? "breeze" : c.contains("liquid") ? "liquid" : c.contains("material") ? "material" : "default"; };
 const dark = () => !root().classList.contains("l-light");
+export const sceneId = () => { const p = prefs.livingScene || "auto"; return p === "auto" ? look() : p; };
+const fpsCap = () => Math.max(10, Math.min(120, +(prefs.livingFps || 30)));
 
 function hex2hsl(hex) {
   const m = /^#?([0-9a-f]{6})$/i.exec(String(hex).trim()); const n = m ? parseInt(m[1], 16) : 0x3e91ff;
@@ -21,39 +24,65 @@ function hex2hsl(hex) {
 }
 const hsl = (h, s, l, a = 1) => `hsla(${(h % 360 + 360) % 360},${s}%,${l}%,${a})`;
 
-/** Colors for this frame's scene from the accent and light/dark. */
+/** Colors for the scene: its own color (Living wallpaper → Color) or the accent, and light/dark. */
 function palette() {
-  const acc = getComputedStyle(root()).getPropertyValue("--blue").trim() || "#3e91ff";
+  const acc = /^#[0-9a-f]{6}$/i.test(prefs.livingAccent || "") ? prefs.livingAccent : getComputedStyle(root()).getPropertyValue("--blue").trim() || "#3e91ff";
   const [h, s0] = hex2hsl(acc), s = Math.max(35, Math.min(90, s0)), d = dark();
-  return { h, s, d, bg: getComputedStyle(root()).getPropertyValue("--bg").trim() || (d ? "#000" : "#f2f2f7") };
+  return { h, s, d };
 }
 
 export function enabled() {
-  return !!prefs.livingWall && !/[?&]embed=1/.test(location.search) && !root().classList.contains("has-wall") && !root().classList.contains("solid");
+  if (/[?&]embed=1/.test(location.search)) return false;
+  return root().classList.contains("force-living") || (!!prefs.livingWall && !root().classList.contains("has-wall"));   // the dashboard can ask for it
 }
 
-/** Start, stop or change scene to match the settings (called whenever the look changes). */
-export function update() {
+/** Start, stop or change scene to match the settings (called whenever the look changes). [into]: another place to
+ *  show it (the dashboard), instead of behind the pages. */
+export async function update() {
   const on = enabled();
   root().classList.toggle("living", on);
-  if (!on) { cancelAnimationFrame(raf); raf = 0; cv?.remove(); cv = null; return; }
-  if (!cv) {
-    cv = document.createElement("canvas"); cv.id = "live"; cv.setAttribute("aria-hidden", "true");
-    document.body.prepend(cv); g = cv.getContext("2d", { alpha: false });
-    addEventListener("resize", size); size();
+  if (!on) { cancelAnimationFrame(raf); raf = 0; box?.remove(); box = cv = g = media = null; return; }
+  if (!box) { box = document.createElement("div"); box.id = "live"; box.setAttribute("aria-hidden", "true"); box.innerHTML = "<i></i>"; document.body.prepend(box); addEventListener("resize", size); }
+  box.style.setProperty("--lvblur", (+(prefs.livingBlur ?? 0)) + "px");
+  box.style.setProperty("--lvtint", String((+(prefs.livingTint ?? 0)) / 100));
+  scene = sceneId(); pal = palette();
+  if (scene === "media") {                                         // your own GIF or video
+    cancelAnimationFrame(raf); raf = 0; cv?.remove(); cv = g = null;
+    const blob = await kv("livemedia").catch(() => null);
+    if (!blob) { scene = look(); }
+    else {
+      const isVid = /^video\//.test(blob.type);
+      if (!media || media.dataset.v !== String(blob.size)) {
+        media?.remove(); if (mediaUrl) URL.revokeObjectURL(mediaUrl); mediaUrl = URL.createObjectURL(blob);
+        media = document.createElement(isVid ? "video" : "img"); media.dataset.v = String(blob.size); media.className = "lvmedia"; media.src = mediaUrl;
+        if (isVid) Object.assign(media, { muted: true, loop: true, autoplay: true, playsInline: true });
+        box.prepend(media);
+      }
+      if (isVid) { media.playbackRate = Math.max(.1, Math.min(4, (+(prefs.livingSpeed ?? 100)) / 100)); root().classList.contains("reduce") ? media.pause() : media.play().catch(() => {}); }
+      return;
+    }
   }
-  scene = look(); pal = palette();
-  cv.style.filter = scene === "material" ? "none" : `blur(${scene === "fluent" ? 12 : scene === "liquid" ? 18 : 10}px)`;
+  media?.remove(); media = null;
+  if (!cv) { cv = document.createElement("canvas"); box.prepend(cv); g = cv.getContext("2d", { alpha: false }); }
+  size();
+  const base = scene === "material" ? 0 : scene === "fluent" ? 12 : scene === "liquid" ? 18 : 10;     // plus your Blur setting
+  cv.style.filter = `blur(calc(${base}px + var(--lvblur, 0px)))`;
   if (!raf) raf = requestAnimationFrame(frame);
 }
-function size() { if (!cv) return; cv.width = Math.max(64, Math.round(innerWidth * DPR)); cv.height = Math.max(64, Math.round(innerHeight * DPR)); }
+function size() {
+  if (!cv) return;
+  // Material's shapes have crisp edges: drawn at the screen's real size (soft scenes are drawn small and blurred up)
+  const k = scene === "material" ? Math.min(2, devicePixelRatio || 1) : SOFT;
+  cv.width = Math.max(64, Math.round(innerWidth * k)); cv.height = Math.max(64, Math.round(innerHeight * k));
+}
 
 function frame(now) {
   raf = requestAnimationFrame(frame);
-  if (document.hidden || now - last < 33) return;                          // 30 frames a second is plenty
+  if (document.hidden || now - last < 1000 / fpsCap() - 2) return;          // the frame rate limit (30 by default)
   last = now;
   const still = root().classList.contains("reduce");
-  const t = still ? 20 : (now - t0) / 1000 * Math.max(.25, (+prefs.animSpeed || 100) / 100);
+  const sp = Math.max(.1, Math.min(3, (+(prefs.livingSpeed ?? 100)) / 100));
+  const t = still ? 20 : (now - t0) / 1000 * sp;
   draw(t);
   if (still) { cancelAnimationFrame(raf); raf = 0; }                       // Reduce motion: one still frame
 }

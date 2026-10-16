@@ -30,7 +30,7 @@ object Alerts {
 
     fun start(ctx: Context) {
         if (!enabled(ctx) || Servers.all(ctx).none { Pairing(ctx, it).paired }) return
-        runCatching { ctx.startForegroundService(Intent(ctx, AlertService::class.java)) }
+        runCatching { androidx.core.content.ContextCompat.startForegroundService(ctx, Intent(ctx, AlertService::class.java)) }
     }
     fun stop(ctx: Context) { ctx.stopService(Intent(ctx, AlertService::class.java)) }
 
@@ -54,7 +54,7 @@ object Alerts {
             val cat = e.optString("category")
             if (cat.startsWith("app-update:")) {           // a new app: only if this phone doesn't have it yet
                 val code = cat.substringAfter(":").toIntOrNull() ?: 0
-                if (code > ctx.packageManager.getPackageInfo(ctx.packageName, 0).longVersionCode && since > 0)
+                if (code > androidx.core.content.pm.PackageInfoCompat.getLongVersionCode(ctx.packageManager.getPackageInfo(ctx.packageName, 0)) && since > 0)
                     Notifier.post(ctx, 4242, "info", e.optString("title"), e.optString("detail"), open = "update")
                 continue
             }
@@ -82,7 +82,7 @@ class AlertService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val nm = getSystemService(NotificationManager::class.java)
-        nm.createNotificationChannel(NotificationChannel("watch", "Instant alerts (silent)", NotificationManager.IMPORTANCE_MIN)
+        if (android.os.Build.VERSION.SDK_INT >= 26) nm.createNotificationChannel(NotificationChannel("watch", "Instant alerts (silent)", NotificationManager.IMPORTANCE_MIN)
             .apply { description = "Keeps a quiet connection open so alerts arrive right away. You can hide this notification." })
         val open = PendingIntent.getActivity(this, 0, AppIcon.launch(this), PendingIntent.FLAG_IMMUTABLE)
         val n: Notification = NotificationCompat.Builder(this, "watch").setSmallIcon(R.drawable.ic_notification)

@@ -17,6 +17,7 @@ import * as SND from "./sounds.js";
 import * as LV from "./living.js";
 import * as AMB from "./ambience.js";
 import "./gamepad.js";
+import "./eggs.js";
 
 onApproval((id, code, totp, pk) => waitApproval(id, get, code, totp, post, pk));
 
@@ -96,7 +97,7 @@ const ROUTES = {
   partitions: PT.partitions, disks: PT.disks, recommended: V.recommended, security: SEC.security, devices: V.devices, settings: V.settings, server: V.serverSettings, appearance: V.appearance, "edit-home": V.editHome,
   "edit-shortcuts": V.editShortcuts, "edit-tabs": V.editTabs, about: V.about, guide: V.guide, faq: V.faq, terminal: V.terminal,
   dashboard: V.dashboard, "edit-dash": V.editDash, archive: V.archive,
-  apps: ST.apps, updates: ST.updates, search: SR.search, start: SR.start, "start-edit": SR.startEdit, favorites: SR.favorites, servers: SV.servers, "container-new": ST.containerNew, term: V.hostTerminal, files: FM.files, labs: ST.labs, freeup: ST.freeup, automation: ST.automation, features: ST.features, plugins: ST.plugins, "labs-images": ST.labsImages, wol: ST.wol, openrgb: ST.openrgb, access: ST.access, cloudflare: ST.cloudflare, setup: ST.setup, pool: ST.pool, task: ST.task, backups: ST.backups, backup: ST.backup, "backup-edit": ST.backupEdit, dev: V.dev, "ha-light": V.haLight, "backup-script": ST.backupScript, restore: ST.restore, diag: ST.diag,
+  apps: ST.apps, updates: ST.updates, search: SR.search, start: SR.start, "start-edit": SR.startEdit, favorites: SR.favorites, servers: SV.servers, "container-new": ST.containerNew, term: V.hostTerminal, files: FM.files, cmdapp: ST.cmdApp, labs: ST.labs, freeup: ST.freeup, automation: ST.automation, features: ST.features, plugins: ST.plugins, "labs-images": ST.labsImages, wol: ST.wol, openrgb: ST.openrgb, access: ST.access, cloudflare: ST.cloudflare, setup: ST.setup, pool: ST.pool, task: ST.task, backups: ST.backups, backup: ST.backup, "backup-edit": ST.backupEdit, dev: V.dev, "ha-light": V.haLight, "backup-script": ST.backupScript, restore: ST.restore, diag: ST.diag,
 };
 // Wide screens and phones in landscape: the bottom bar's pill stands on its end down the left edge.
 const SIDE = matchMedia("(min-width: 900px), (orientation: landscape) and (max-height: 540px)");
@@ -111,7 +112,8 @@ function saveScroll() { scrolls[keyNow()] = scrollY; try { sessionStorage.setIte
 const newKey = () => Math.random().toString(36).slice(2, 10);
 if (!history.state) history.replaceState({ k: newKey(), d: 0 }, "");
 
-function go(path) { saveScroll(); history.pushState({ k: newKey(), d: depth + 1 }, "", "#/" + path); depth++; render(1); }
+let maxDepth = depth;                                 // how far forward you can go again (Files windows have a forward button)
+function go(path) { saveScroll(); history.pushState({ k: newKey(), d: depth + 1 }, "", "#/" + path); depth++; maxDepth = depth; render(1); }
 function tab(path) {
   // Only real tabs (in your navigation pill) reset the stack; anything else opens as a page with a back button
   if (path.split("/")[0] !== "home" && !V.navTabs().some(t => t.route === path.split("/")[0])) return go(path);
@@ -213,6 +215,7 @@ function drawNav(route) {
   }
   const bead = $(".bead", nav);
   if (was == null) { bead.style.transition = "none"; requestAnimationFrame(() => bead.style.transition = ""); }
+  if (was != null && String(i) !== was && i >= 0) SND.play("slide");           // the selection sliding along the pill
   bead.style.opacity = i < 0 ? "0" : "1";
   $$("button", nav).forEach((btn, k) => btn.classList.toggle("on", k === i));
   bead.style.transform = side ? `translateY(${Math.max(0, i) * 60}px)` : `translateX(${Math.max(0, i) * 80}px)`; nav.dataset.sel = i;
@@ -270,7 +273,9 @@ function render(dir = 0) {
       main.innerHTML = `<div class="page${wide ? "" : " narrow"}${V.navTabs().some(t => t.route === r) ? " tabroot" : ""}${window.__filesHop ? "" : first && dir !== 0 && !document.startViewTransition ? ` enter-${dir}` : first ? " enter-0" : ""}"><div class="col">${header}${html}</div></div>`;
       main.dataset.seq = my; ctx.root = main;
       syncSpinners(main);
-      $("#topbar").innerHTML = (o.root || o.noHeader ? "" : `<button class="circle press" data-act="back" aria-label="Back"><span class="bgc frost"></span>${I("back")}</button>`)
+      // in a Files/Terminal window: back is greyed out with nowhere to go, and forward sits beside it
+      $("#topbar").innerHTML = (WM.EMBED ? `<button class="circle press${depth > 0 ? "" : " off"}" data-act="back" aria-label="Back"${depth > 0 ? "" : " disabled"}><span class="bgc frost"></span>${I("back")}</button><button class="circle press fwd${depth < maxDepth ? "" : " off"}" data-act="fwd" aria-label="Forward"${depth < maxDepth ? "" : " disabled"}><span class="bgc frost"></span>${I("back")}</button>`
+        : o.root || o.noHeader ? "" : `<button class="circle press" data-act="back" aria-label="Back"><span class="bgc frost"></span>${I("back")}</button>`)
         + `<span class="sp"></span>` + (o.actions || []).map(a => `<button class="circle press" data-act="${esc(a.act)}" aria-label="${esc(a.label)}"><span class="bgc frost"></span>${I(a.icon)}</button>`).join("");
       drawNav(r);
       if (first) {
@@ -311,6 +316,7 @@ document.addEventListener("click", e => {
   if (name === "go") return go(a.join(":"));
   if (name === "tab") return tab(a.join(":"));
   if (name === "back") return back();
+  if (name === "fwd") return history.forward();
 });
 let unauthorizedShown = false;
 async function unauthorized() {

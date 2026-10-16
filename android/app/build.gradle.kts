@@ -17,10 +17,10 @@ android {
 
     defaultConfig {
         applicationId = "app.novalabs.nova"
-        minSdk = 28
+        minSdk = 24
         targetSdk = 36
-        versionCode = 59
-        versionName = "0.8.4-alpha"
+        versionCode = 60
+        versionName = "0.8.5-alpha"
     }
 
     signingConfigs {
@@ -50,6 +50,7 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+        isCoreLibraryDesugaringEnabled = true            // java.time and java.util.Base64 on Android 7
     }
     buildFeatures { compose = true; buildConfig = true }
 }
@@ -62,6 +63,9 @@ dependencies {
     implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.activity:activity-compose:1.13.0")
     implementation("androidx.core:core-ktx:1.19.1")
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
+    implementation("androidx.biometric:biometric:1.1.0")                 // the fingerprint prompt on Android 7–8 (9+ uses the system's own)
+    implementation("androidx.fragment:fragment-ktx:1.8.9")
     implementation("com.squareup.okhttp3:okhttp:5.5.0")
     implementation("com.google.mlkit:barcode-scanning:17.3.0")          // bundled model: no Play-services download
     implementation("androidx.camera:camera-camera2:1.6.2")

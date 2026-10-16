@@ -166,7 +166,8 @@ fun levelColor(level: String, t: NovaColors) = when (level) {
     if (Living.showing) {                          // living wallpaper: this layer's part of the one moving scene
         var o by remember { mutableStateOf(Offset.Zero) }
         val w = androidx.compose.ui.platform.LocalWindowInfo.current.containerSize
-        Canvas(Modifier.fillMaxSize().onGloballyPositioned { o = it.positionInWindow() }) {
+        // clipped to this layer: the scene is drawn window-sized (so the panes line up), and unclipped one pane painted over the next
+        Canvas(Modifier.fillMaxSize().clipToBounds().onGloballyPositioned { o = it.positionInWindow() }) {
             drawLiving(t, o, if (w.width > 0) w.width.toFloat() else size.width, if (w.height > 0) w.height.toFloat() else size.height)
         }
         return
@@ -323,10 +324,18 @@ val LocalCompactHeight = staticCompositionLocalOf { false }
 
 @Composable fun SliderRow(title: String, value: Float, range: ClosedFloatingPointRange<Float>, label: String,
                           enabled: Boolean = true, steps: Int = 0, onChange: (Float) -> Unit, onDone: () -> Unit) {
+    // tap the number to type your own (e.g. 0.8× or 37%), anywhere in the slider's range
+    var typing by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 14.dp)) {
         Row { Text(title, fontSize = 17.sp, color = if (enabled) N.text else N.sub, modifier = Modifier.weight(1f))
-              Text(label, fontSize = 15.sp, color = N.blue) }
+              Text(label, fontSize = 15.sp, color = N.blue, modifier = if (enabled) Modifier.clickable { typing = true } else Modifier) }
         OneSlider(value, onChange, range, enabled, steps, onDone)
+    }
+    if (typing) RenameDialog(title, "", label, { typing = false }) { txt ->
+        typing = false
+        var n = txt.replace(",", ".").filter { it.isDigit() || it == '.' || it == '-' }.toFloatOrNull() ?: return@RenameDialog
+        if (label.contains("×") && n <= 4f) n *= 100f                  // "0.8" on a speed means 80%
+        onChange(n.coerceIn(range.start, range.endInclusive)); onDone()
     }
 }
 

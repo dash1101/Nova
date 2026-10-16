@@ -261,7 +261,7 @@ class AppState(val activity: Activity, val pairing: Pairing, val scope: Coroutin
 var openApprovals by mutableStateOf(false)
 var openUpdate by mutableStateOf(false)
 
-class MainActivity : ComponentActivity() {
+class MainActivity : androidx.fragment.app.FragmentActivity() {   // FragmentActivity: the fingerprint prompt on Android 7–8
     override fun onNewIntent(intent: android.content.Intent) {
         super.onNewIntent(intent); if (intent.getStringExtra("open") == "approvals") openApprovals = true
         if (intent.getStringExtra("open") == "update") openUpdate = true
@@ -279,7 +279,7 @@ class MainActivity : ComponentActivity() {
         openUpdate = fresh && intent?.getStringExtra("open") == "update"
         intent?.removeExtra("open")
         Alerts.start(this)
-        AppPrefs.init(this); Living.init(this); Sounds.init(this); Ambience.init(this); Sounds.warm(); Dev.load(this); Dev.applyFpsCap(this); applySecureFlag(this)
+        AppPrefs.init(this); Living.init(this); Sounds.init(this); Sounds.view = java.lang.ref.WeakReference(window.decorView); Ambience.init(this); Sounds.warm(); Dev.load(this); Dev.applyFpsCap(this); applySecureFlag(this)
         // Appearance → Animation speed: every Compose animation runs on this window's recomposer, so one scale covers them all
         window.decorView.compositionContext = window.decorView.createLifecycleAwareWindowRecomposer(NovaMotion, lifecycle)
         setContent { NovaTheme {
@@ -509,7 +509,7 @@ private fun Modifier.paneTouch(app: AppState, left: Boolean) = pointerInput(left
         if (hasNav) Spacer(Modifier.width(with(density) { navW.toDp() }))
         val parent = app.stack.getOrNull(app.stack.size - 2)
         // full-screen pages (Home, the dashboard, Status) are never squeezed into the list pane: going back to them is a whole page
-        val split = parent != null && width >= 900.dp && parent != Route.Home && parent != Route.Dashboard && parent != Route.Status
+        val split = parent != null && width >= 900.dp && parent != Route.Home && parent != Route.Dashboard && parent != Route.Status && app.top != Route.Dashboard && app.top !is Route.AppFrame
         var lastParent by remember { mutableStateOf<Route?>(null) }
         if (split) lastParent = parent
         val p = backP(); val x = backExit(); val e = 1f - (1f - p) * (1f - p)

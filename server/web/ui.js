@@ -441,3 +441,18 @@ export function colorPicker(initial = "#3e91ff") {
     sync();
   });
 }
+
+// Any slider's number can be clicked to type an exact value (e.g. 0.8× for Animation speed, 37% for Dim)
+document.addEventListener("click", async e => {
+  const lab = e.target.closest(".range-row .h span:last-child"); if (!lab) return;
+  const inp = lab.closest(".range-row").querySelector("input[type=range]"); if (!inp) return;
+  const name = lab.parentElement.firstElementChild?.textContent || "Value";
+  const v = await ask(name, lab.textContent.trim(), "", "Set", 12); if (v == null || v === "") return;
+  let n = parseFloat(String(v).replace(",", "."));
+  if (!isFinite(n)) return;
+  if (/×/.test(lab.textContent) && n <= 4) n *= 100;              // "0.8" or "0.8×" on a speed means 80%
+  n = Math.max(+inp.min, Math.min(+inp.max, n));
+  inp.step = "any"; inp.value = String(n);
+  inp.style.setProperty("--p", ((n - inp.min) / (inp.max - inp.min) * 100) + "%");
+  inp.dispatchEvent(new Event("input", { bubbles: true })); inp.dispatchEvent(new Event("change", { bubbles: true }));
+});

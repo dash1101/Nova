@@ -66,9 +66,16 @@ async function buffers(pack) {
 }
 
 /** Plays one of the events (tap, toggleOn, nav, info, warning, critical, success, …) in this look's pack. */
+/** Which switch (Appearance → Sounds) each sound belongs to. */
+export const KINDS = { taps: ["Taps", "Buttons, rows and links"], switches: ["Switches", "On and off"], pages: ["Pages", "Going into a page and back, and the navigation pill sliding"],
+  popups: ["Pop-ups", "Dialogs and menus opening and closing"], windows: ["Windows", "App windows opening, minimizing and closing"], tasks: ["Finished tasks", "Done, or didn't finish"] };
+const KIND = { tap: "taps", toggleOn: "switches", toggleOff: "switches", nav: "pages", back: "pages", slide: "pages", open: "popups", close: "popups",
+  minimize: "windows", maximize: "windows", winclose: "windows", success: "tasks", error: "tasks" };
+export const kindOn = k => !(prefs.sndOff || {})[k];
 export async function play(ev, { force = false, pack } = {}) {
   if (!force && !soundsOn()) return;
   if (!force && /^(info|warning|critical)$/.test(ev) && !pref("alertSounds", true)) return;
+  if (!force && KIND[ev] && !kindOn(KIND[ev])) return;
   try {
     ctx ||= new (window.AudioContext || window.webkitAudioContext)();
     if (ctx.state === "suspended") { await ctx.resume().catch(() => {}); if (ctx.state !== "running") return; }   // not until you've clicked once

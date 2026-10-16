@@ -36,6 +36,13 @@ object Sounds {
     var pack by mutableStateOf("auto"); private set
     var alerts by mutableStateOf(true); private set
     var haptics by mutableStateOf(true); private set
+    /** Kinds of sound turned off (Appearance → Sounds): taps, switches, pages, popups, tasks. */
+    var off by mutableStateOf(setOf<String>()); private set
+    val KINDS = linkedMapOf("taps" to ("Taps" to "Buttons, rows and links"), "switches" to ("Switches" to "On and off"), "pages" to ("Pages" to "Going into a page and back"),
+        "popups" to ("Pop-ups" to "Dialogs opening and closing"), "tasks" to ("Finished tasks" to "Done, or didn't finish"))
+    private val KIND = mapOf("tap" to "taps", "toggleOn" to "switches", "toggleOff" to "switches", "nav" to "pages", "back" to "pages", "slide" to "pages",
+        "open" to "popups", "close" to "popups", "success" to "tasks", "error" to "tasks")
+    fun setKind(k: String, on: Boolean) { off = if (on) off - k else off + k; sp.edit().putStringSet("off", off).apply() }
 
     val PACKS = linkedMapOf("default" to "Droplets", "material" to "Material", "aero" to "Aero", "fluent" to "Mica", "breeze" to "Breeze", "liquid" to "Glass")
 
@@ -43,7 +50,7 @@ object Sounds {
         app = ctx.applicationContext
         sp = app.getSharedPreferences("nova_sound", Context.MODE_PRIVATE)
         on = sp.getBoolean("on", true); volume = sp.getInt("vol", 60); pack = sp.getString("pack", "auto")!!
-        alerts = sp.getBoolean("alerts", true); haptics = sp.getBoolean("haptics", true)
+        alerts = sp.getBoolean("alerts", true); haptics = sp.getBoolean("haptics", true); off = sp.getStringSet("off", emptySet())!!.toSet()
     }
     fun set(key: String, v: Any) {
         when (key) { "on" -> on = v as Boolean; "vol" -> volume = v as Int; "pack" -> pack = v as String; "alerts" -> alerts = v as Boolean; "haptics" -> haptics = v as Boolean }
@@ -54,7 +61,7 @@ object Sounds {
     fun packId(): String = if (pack != "auto") pack else when { materialStyle() -> "material"; else -> presetStyle().ifEmpty { "default" } }
 
     private fun pool(): SoundPool = pool ?: SoundPool.Builder().setMaxStreams(6)
-        .setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ASSISTANCE_SONIFICATION).setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build())
+        .setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_GAME).setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build())
         .build().also { p -> p.setOnLoadCompleteListener { _, id, st -> if (st == 0) ready.add(id) }; pool = p }
 
     private fun recipes(): JSONObject? = data ?: runCatching { JSONObject(app.assets.open("sounds.json").bufferedReader().readText()) }.getOrNull()?.also { data = it }
@@ -128,6 +135,7 @@ object Sounds {
     fun play(ev: String, force: Boolean = false, packOverride: String? = null) {
         if (!::app.isInitialized || (!force && !on)) return
         if (!force && ev in setOf("info", "warning", "critical") && !alerts) return
+        if (!force && KIND[ev] in off) return
         val id = packOverride ?: packId()
         worker.execute {
             runCatching {
@@ -138,19 +146,39 @@ object Sounds {
                 var tries = 0; while (s !in ready && tries++ < 40) Thread.sleep(10)        // first use: wait for it to load
                 val v = volume / 100f
                 val stream = pool().play(s, v, v, 1, 0, 1f)
+                if (stream == 0) android.util.Log.w("NovaSound", "couldn't play $ev ($id)") else if (BuildConfig.DEBUG) android.util.Log.d("NovaSound", "played $ev ($id)")
                 if (ev == "tap") { lastTap = stream; lastTapAt = now }
             }
         }
     }
 
     /** A short buzz to go with it (Vibration setting). */
+    /** The app's window, for the system's own touch feedback (crisper than a raw buzz, and it follows the phone's settings). */
+    var view: java.lang.ref.WeakReference<android.view.View>? = null
     fun buzz(ev: String) {
         if (!::app.isInitialized || !haptics) return
+        val v = view?.get()
+        if (v != null && ev in setOf("tap", "nav", "back", "slide", "toggleOn", "toggleOff", "open")) {
+            val c = android.view.HapticFeedbackConstants::class.java
+            val kind = when (ev) {
+                "toggleOn" -> if (Build.VERSION.SDK_INT >= 34) c.getField("TOGGLE_ON").getInt(null) else android.view.HapticFeedbackConstants.CONTEXT_CLICK
+                "toggleOff" -> if (Build.VERSION.SDK_INT >= 34) c.getField("TOGGLE_OFF").getInt(null) else android.view.HapticFeedbackConstants.CONTEXT_CLICK
+                "nav", "back", "slide" -> android.view.HapticFeedbackConstants.CLOCK_TICK
+                "open" -> android.view.HapticFeedbackConstants.CONTEXT_CLICK
+                else -> android.view.HapticFeedbackConstants.KEYBOARD_TAP
+            }
+            v.post { v.performHapticFeedback(kind) }
+            return
+        }
         val vib = (if (Build.VERSION.SDK_INT >= 31) app.getSystemService(android.os.VibratorManager::class.java)?.defaultVibrator else @Suppress("DEPRECATION") app.getSystemService(Vibrator::class.java)) ?: return
         if (!vib.hasVibrator()) return
         // taps follow the phone's own "touch feedback" setting; alerts always buzz (when Vibration is on)
         if (ev in setOf("tap", "nav", "back", "toggleOn", "toggleOff", "open") &&
             android.provider.Settings.System.getInt(app.contentResolver, android.provider.Settings.System.HAPTIC_FEEDBACK_ENABLED, 1) == 0) return
+        if (Build.VERSION.SDK_INT < 26) {          // Android 7: plain buzzes
+            val ms = when (ev) { "tap", "nav", "back" -> 8L; "toggleOn", "toggleOff", "open" -> 14L; "critical" -> 220L; "warning", "error" -> 90L; "info", "success" -> 40L; else -> return }
+            @Suppress("DEPRECATION") runCatching { vib.vibrate(ms) }; return
+        }
         val effect = when (ev) {
             "tap", "nav", "back" -> if (Build.VERSION.SDK_INT >= 29) VibrationEffect.createPredefined(VibrationEffect.EFFECT_TICK) else VibrationEffect.createOneShot(6, 60)
             "toggleOn", "toggleOff", "open" -> if (Build.VERSION.SDK_INT >= 29) VibrationEffect.createPredefined(VibrationEffect.EFFECT_CLICK) else VibrationEffect.createOneShot(12, 120)

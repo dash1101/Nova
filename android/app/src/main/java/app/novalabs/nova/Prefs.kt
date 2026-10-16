@@ -155,11 +155,7 @@ object AppLock {
     fun onStop() { leftAt = System.currentTimeMillis() }
     fun onStart() { if (AppPrefs.appLock && leftAt > 0 && System.currentTimeMillis() - leftAt > 5 * 60_000) unlocked = false }
     fun prompt(a: Activity, onDone: (Boolean) -> Unit) {
-        Compat.prompt(a, "Unlock Nova", "Confirm it's you", crypto = false).build()
-            .authenticate(CancellationSignal(), a.mainExecutor, object : BiometricPrompt.AuthenticationCallback() {
-                override fun onAuthenticationSucceeded(r: BiometricPrompt.AuthenticationResult) { unlocked = true; onDone(true) }
-                override fun onAuthenticationError(code: Int, msg: CharSequence) { onDone(false) }
-            })
+        Compat.authenticate(a, "Unlock Nova", "Confirm it's you", null, { unlocked = true; onDone(true) }, { onDone(false) })
     }
 }
 
@@ -265,6 +261,7 @@ private val MY_ACCENTS = listOf("#3e91ff", "#5e5ce6", "#bf5af2", "#ff2d55", "#ff
 /** Appearance → Colors (your own accent, how strongly it tints) and Wallpaper (a picture, blurred and dimmed). */
 @Composable private fun ColorsAndWallpaper() {
     val ctx = androidx.compose.ui.platform.LocalContext.current
+    var pickingLive by remember { mutableStateOf(false) }
     var picking by remember { mutableStateOf(false) }
     val pick = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.GetContent()) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
@@ -302,7 +299,25 @@ private val MY_ACCENTS = listOf("#3e91ff", "#5e5ce6", "#bf5af2", "#ff2d55", "#ff
     Group {
         SwitchRow("Living wallpaper · Beta", if (AppPrefs.wallV > 0L) "An animated wallpaper for each look, in your accent color — your picture shows instead while it's set"
             else "An animated wallpaper for each look, in your accent color: Aero's ribbons of light, Mica's bloom, Breeze's waves, Glass's liquid color and more", Living.on) { Living.set(it) }
+        if (Living.on) {
+            var pickScene by remember { mutableStateOf(false) }; var pickColor by remember { mutableStateOf(false) }
+            RowDivider()
+            Row1("Scene", if (Living.scene == "auto") "Match the look (${Living.SCENES[Living.sceneFor(N)]})" else Living.SCENES[Living.scene] ?: "", true, Icons.Rounded.Image, onClick = { pickScene = true })
+            RowDivider()
+            Row1("Color", if (Living.accent.isEmpty()) "Same as the accent color" else "Its own color", Living.accent.isNotEmpty(), Icons.Rounded.Palette, onClick = { pickColor = true })
+            RowDivider()
+            var lsp by remember { mutableFloatStateOf(Living.speed.toFloat()) }
+            SliderRow("Speed", lsp, 10f..300f, "${lsp.toInt()}%", onChange = { lsp = it; Living.chooseSpeed(it.toInt()) }, onDone = {})
+            if (pickScene) OneDialog({ pickScene = false }, "Scene") {
+                (listOf("auto" to "Match the look") + Living.SCENES.toList()).forEach { (k, n) -> DialogChoice(n, selected = Living.scene == k) { Living.chooseScene(k); pickScene = false } }
+            }
+            if (pickColor) OneDialog({ pickColor = false }, "Living wallpaper color") {
+                DialogChoice("Same as the accent color", selected = Living.accent.isEmpty()) { Living.chooseAccent(""); pickColor = false }
+                DialogChoice("Pick a color…", selected = Living.accent.isNotEmpty()) { pickColor = false; pickingLive = true }
+            }
+        }
     }
+    if (pickingLive) ColorPickerDialog(Living.accent.ifEmpty { "#3e91ff" }, { pickingLive = false }) { Living.chooseAccent(it); pickingLive = false }
     Group {
         if (AppPrefs.wallV > 0L) {
             Column(Modifier.padding(horizontal = 22.dp, vertical = 12.dp)) {
@@ -396,10 +411,17 @@ val ICON_THEMES = listOf("style" to "Matches the style", "tonal" to "Tonal", "ti
             SliderRow("Volume", v, 0f..100f, "${v.toInt()}%", steps = 19, onChange = { v = it; Sounds.set("vol", it.toInt()) }, onDone = { Sounds.play("tap") })
             RowDivider()
             SwitchRow("Alert sounds", "A chime when something needs you — a more urgent one when it's serious", Sounds.alerts) { Sounds.set("alerts", it); if (it) Sounds.play("info") }
+            Sounds.KINDS.forEach { (k, ld) -> RowDivider(); SwitchRow(ld.first, ld.second, k !in Sounds.off) { Sounds.setKind(k, it) } }
         }
         RowDivider()
         SwitchRow("Ambience · Beta", "Soft, slowly changing music while Nova is open, in the mood of the look you picked", Ambience.on) { Ambience.set("on", it) }
         if (Ambience.on) {
+            var pickTrack by remember { mutableStateOf(false) }
+            RowDivider()
+            Row1("Track", if (Ambience.track == "auto") "Match the look" else Ambience.TRACKS[Ambience.track] ?: "", true, onClick = { pickTrack = true })
+            if (pickTrack) OneDialog({ pickTrack = false }, "Ambience") {
+                (listOf("auto" to "Match the look") + Ambience.TRACKS.toList()).forEach { (k, n) -> DialogChoice(n, selected = Ambience.track == k) { Ambience.set("track", k); pickTrack = false } }
+            }
             RowDivider()
             var av by remember { mutableFloatStateOf(Ambience.volume.toFloat()) }
             SliderRow("Ambience volume", av, 0f..100f, "${av.toInt()}%", steps = 19, onChange = { av = it; Ambience.set("vol", it.toInt()) }, onDone = {})
