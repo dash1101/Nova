@@ -16,6 +16,7 @@ head key never authorizes anything on its own; the node checks the browser's sig
   probe(host)               the node's name, Nova version and certificate fingerprint (to compare
                             with the "Certificate" line that `sudo nova add` shows on that node)
   pair(host, code, pin)     pair with a one-time code from `sudo nova add` on the node
+  link_start / link_poll    or ask the node, and its owner approves (Nova app, or sudo nova approve CODE there)
   status()                  every node with its latest overview (polled in the background)
   remove(id)                unpair (the node forgets this head too, if it can be reached)
   relay(id, …)              carry one browser-signed request to a node (see above)
@@ -124,6 +125,81 @@ def pair(host, code, pin, head_name):
         d = _load(); d["nodes"].append(n); _save(d)
     threading.Thread(target=_poll_one, args=(n,), daemon=True).start()
     return _public(n)
+
+# ── finding them: the same "NOVA?" call the app makes on the home network ──────────────────
+def discover(own_hosts=(), wait=1.5):
+    """Nova servers that answer on the home network (not this one, not ones already here): [{"name", "host", "api"}]."""
+    linked = {n["host"] for n in _load()["nodes"]} | set(own_hosts)
+    found = {}
+    sk = socket.socket(socket.AF_INET, socket.SOCK_DGRAM); sk.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1); sk.settimeout(.25)
+    try:
+        sk.sendto(b"NOVA?", ("255.255.255.255", PORT + 1))
+        end = time.time() + wait
+        while time.time() < end:
+            try: msg, (ip, _) = sk.recvfrom(2048)
+            except socket.timeout: continue
+            try: j = json.loads(msg)
+            except ValueError: continue
+            if j.get("nova") != 1 or ip in linked or ip in found: continue
+            try: check_address(ip)
+            except ValueError: continue
+            found[ip] = {"name": str(j.get("name") or ip)[:60], "host": ip, "api": str(j.get("api", ""))[:20]}
+    except OSError: pass
+    finally: sk.close()
+    return list(found.values())
+
+
+# ── linking by approval: no code to fetch from the other server first ─────────────────────
+# This server asks the other one to be added; the other server's owner approves it in the Nova app (or with
+# sudo nova approve CODE there). The certificate seen when checking the server (probe) is pinned for every
+# step, so nobody in the middle can swap in their own key; whoever approves, it's only ever the read-only window.
+_links = {}            # link id -> {"host", "pin", "key", "rid", "code", "expires"}
+
+def link_start(host, pin, head_name):
+    host = check_address(host)
+    if not (isinstance(pin, str) and len(pin) == 64 and all(ch in "0123456789abcdef" for ch in pin)): raise ValueError("check the server again first")
+    with _lock:
+        d = _load()
+        if len(d["nodes"]) >= MAX_NODES: raise ValueError(f"up to {MAX_NODES} servers")
+        if any(n["host"] == host for n in d["nodes"]): raise ValueError("that server is already here")
+        now = time.time()
+        for k in [k for k, v in _links.items() if v["expires"] < now]: _links.pop(k, None)
+        if len(_links) >= 8: raise ValueError("too many links waiting — finish or wait for one first")
+    key = ec.generate_private_key(ec.SECP256R1())
+    pub = key.public_key().public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo).decode()
+    c, _ = _conn(host, pin)
+    c.request("POST", "/api/v1/browser/request", body=json.dumps({"kind": "head", "name": f"{head_name} (Nova server)"[:40], "public_key": pub}),
+              headers={"Content-Type": "application/json"})
+    st, j = _read(c)
+    if st != 200 or not j.get("id"):
+        raise ValueError({403: j.get("error") or "that server won't take links from here", 429: "too many tries — wait a few minutes"}.get(st, j.get("error") or f"linking failed ({st})"))
+    lid = secrets.token_hex(6)
+    with _lock:
+        _links[lid] = {"host": host, "pin": pin, "rid": j["id"], "code": j.get("code", ""), "expires": time.time() + int(j.get("expires_in", 600)),
+                       "key": key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, serialization.NoEncryption()).decode()}
+    return {"id": lid, "code": j.get("code", ""), "expires_in": int(j.get("expires_in", 600))}
+
+def link_poll(lid):
+    """"pending" | "expired" | "approved" (then the server is in the list) — or raises if the server answered strangely."""
+    with _lock: lk = _links.get(lid)
+    if not lk or lk["expires"] < time.time(): _links.pop(lid, None); return {"state": "expired"}
+    c, _ = _conn(lk["host"], lk["pin"])
+    c.request("GET", f"/api/v1/browser/request/{lk['rid']}"); st, j = _read(c)
+    if st == 404: _links.pop(lid, None); return {"state": "expired"}
+    if j.get("state") != "approved": return {"state": "pending", "code": lk["code"]}
+    if j.get("kind") != "head" or not j.get("device_id"):
+        _links.pop(lid, None); raise ValueError("that server's Nova is too old to link this way — run sudo nova update on it first")
+    n = {"id": secrets.token_hex(6), "host": lk["host"], "pin": lk["pin"], "device_id": str(j["device_id"])[:40], "key": lk["key"],
+         "name": str(j.get("name") or lk["host"])[:60], "lan_url": str(j.get("lan_url") or f"https://{lk['host']}:{PORT}")[:200],
+         "remote_url": str(j.get("remote_url") or "")[:200], "added": time.strftime("%Y-%m-%d %H:%M")}
+    with _lock:
+        _links.pop(lid, None)
+        d = _load()
+        if any(x["host"] == n["host"] for x in d["nodes"]): return {"state": "approved", "node": next(_public(x) for x in d["nodes"] if x["host"] == n["host"])}
+        d["nodes"].append(n); _save(d)
+    threading.Thread(target=_poll_one, args=(n,), daemon=True).start()
+    return {"state": "approved", "node": _public(n)}
+
 
 def remove(nid):
     with _lock:

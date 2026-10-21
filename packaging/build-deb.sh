@@ -9,7 +9,7 @@ install -d "$P$L/web" "$P$L/store" "$P$L/monitor" "$P/usr/bin" "$P/usr/sbin" "$P
            "$P/etc/logrotate.d" "$P/usr/share/doc/nova-server" "$P/DEBIAN"
 install -m 755 "$S/api/server.py" "$P$L/server.py"
 install -m 755 "$S/api/helper.py" "$P$L/helper"
-install -m 644 "$S/api/plugins.py" "$S/api/safeio.py" "$S/api/nova_tz.py" "$S/api/storage.py" "$S/api/diag.py" "$S/api/apps.py" "$S/api/apkver.py" "$S/api/updates.py" "$S/api/nodes.py" "$S/api/installs.py" "$S/api/files.py" "$S/api/cfsync.py" "$S/api/appfix.py" "$S/api/pkg.py" "$S/api/preflight.py" "$S/api/totp.py" "$S/api/partitions.py" "$S/api/recommend.py" "$S/api/passkeys.py" "$P$L/"
+install -m 644 "$S/api/plugins.py" "$S/api/safeio.py" "$S/api/nova_tz.py" "$S/api/storage.py" "$S/api/diag.py" "$S/api/apps.py" "$S/api/apkver.py" "$S/api/updates.py" "$S/api/nodes.py" "$S/api/installs.py" "$S/api/files.py" "$S/api/cfsync.py" "$S/api/appfix.py" "$S/api/pkg.py" "$S/api/preflight.py" "$S/api/totp.py" "$S/api/partitions.py" "$S/api/recommend.py" "$S/api/passkeys.py" "$S/api/guides.py" "$P$L/"
 install -m 755 "$S/api/backups.py" "$S/api/tasks.py" "$S/api/labs.py" "$S/api/freeup.py" "$P$L/"
 install -m 755 "$S/api/helper-sock.py" "$P$L/helper-sock"
 install -m 755 "$S/monitor/nova_alerts.py" "$P$L/monitor/nova_alerts.py"
@@ -31,6 +31,14 @@ for u in "$S"/systemd/*.service "$S"/systemd/*.socket "$S"/systemd/*.timer "$M"/
     sed -e "s#/usr/local/lib/nova-api#$L#g" -e "s#/usr/local/lib/nova-rgb#/usr/lib/nova-rgb#g" "$u" > "$P/lib/systemd/system/$(basename "$u")"
 done
 install -m 644 "$ROOT/packaging/logrotate" "$P/etc/logrotate.d/nova-api"
+# the desktop: "Set up Nova" in the app menu (asks for your password, opens the setup in your browser), Nova's icon,
+# and on servers a line at login until Nova is set up
+install -d "$P/usr/share/applications" "$P/usr/share/polkit-1/actions" "$P/usr/share/icons/hicolor/scalable/apps" "$P/etc/update-motd.d"
+install -m 644 "$ROOT/packaging/desktop/nova-setup.desktop" "$P/usr/share/applications/nova-setup.desktop"
+install -m 644 "$ROOT/packaging/desktop/app.novalabs.nova.policy" "$P/usr/share/polkit-1/actions/app.novalabs.nova.policy"
+install -m 755 "$ROOT/packaging/desktop/setup-desktop" "$P$L/setup-desktop"
+install -m 644 "$S/web/icon.svg" "$P/usr/share/icons/hicolor/scalable/apps/nova.svg"
+install -m 755 "$ROOT/packaging/desktop/60-nova" "$P/etc/update-motd.d/60-nova"
 install -m 644 "$ROOT/README.md" "$ROOT"/docs/*.md "$P/usr/share/doc/nova-server/"
 install -m 644 "$S/config.example.json" "$P/usr/share/doc/nova-server/"
 [ -f "$ROOT/LICENSE" ] && install -m 644 "$ROOT/LICENSE" "$P/usr/share/doc/nova-server/copyright"
@@ -40,7 +48,7 @@ if [ -n "${NOVA_STAGE:-}" ]; then cp -a "$P/." "$NOVA_STAGE/"; rm -rf "$NOVA_STA
 SIZE=$(du -sk "$P" | cut -f1)
 sed -e "s/@VERSION@/$VERSION/" -e "s/@SIZE@/$SIZE/" "$ROOT/packaging/deb/control" > "$P/DEBIAN/control"
 for f in postinst prerm postrm; do install -m 755 "$ROOT/packaging/deb/$f" "$P/DEBIAN/$f"; done
-echo "/etc/logrotate.d/nova-api" > "$P/DEBIAN/conffiles"
+printf '/etc/logrotate.d/nova-api\n/etc/update-motd.d/60-nova\n' > "$P/DEBIAN/conffiles"
 mkdir -p "$ROOT/dist"; OUT="$ROOT/dist/nova-server_${VERSION}_all.deb"
 dpkg-deb --root-owner-group --build "$P" "$OUT" >/dev/null
 echo "built $OUT ($(du -h "$OUT" | cut -f1))"

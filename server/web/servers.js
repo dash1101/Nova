@@ -90,13 +90,44 @@ export async function servers(ctx) {
         ${isAdmin() && !S.target ? `<button class="srv add glass press" data-act="add">${I("add")}<b>Add a server</b><small>Another machine running Nova, on your home network or tailnet</small></button>` : ""}</div>
       ${list ? "" : note("Loading…")}`, { title: "Servers", actions: isAdmin() && !S.target ? [{ icon: "add", label: "Add a server", act: "add" }] : [] });
   };
+  // Add a server: pick one Nova found at home (or type its address), check its certificate, then that server's
+  // owner approves the link there — in the Nova app or with sudo nova approve CODE. (Or the old way: a code from sudo nova add.)
   const add = async () => {
-    let host = "";
-    const p1 = dialog("Add a server", "Its address on your home network or tailnet. Nova must be installed on it.", [{ label: "Cancel", value: null }, { label: "Next", color: "var(--blue)", value: "next" }],
-      `<div class="pad"><input class="field" id="nh" placeholder="192.168.1.20" autocomplete="off" autocapitalize="off" spellcheck="false"></div>`);
+    let host = "", found = [];
+    const p1 = dialog("Add a server", "Another machine running Nova, on your home network or tailnet.", [{ label: "Cancel", value: null }, { label: "Next", color: "var(--blue)", value: "next" }],
+      `<div class="pad"><div id="nfound" class="muted" style="margin:0 0 10px">Looking for Nova servers at home…</div>
+        <input class="field" id="nh" placeholder="Or type its address, e.g. 192.168.1.20" autocomplete="off" autocapitalize="off" spellcheck="false"></div>`);
     $("#nh").oninput = e => host = e.target.value.trim(); $("#nh").focus();
+    hereApi("GET", "/api/v1/nodes/discover").then(r => {
+      found = r.found || []; const box = $("#nfound"); if (!box) return;
+      box.innerHTML = found.length ? `<b style="color:var(--text)">Found at home</b>` + found.map((f, i) => `<button class="row click press" data-fi="${i}" style="width:100%;text-align:left;padding:10px 0">
+          <span class="t"><b>${esc(f.name)}</b><small>${esc(f.host)} · Nova ${esc(f.api)}</small></span></button>`).join("") : "No other Nova servers answered at home — type one's address below.";
+      box.querySelectorAll("[data-fi]").forEach(b => b.onclick = () => { host = found[+b.dataset.fi].host; $("#nh").value = host; document.querySelector("#sheet [data-b=\"1\"]")?.click(); });
+    }).catch(() => { const box = $("#nfound"); if (box) box.textContent = "Type the server's address below."; });
     if ((await p1) !== "next" || !host) return;
     let pr; try { pr = await hereApi("POST", "/api/v1/nodes/probe", { host }); } catch (e) { return toast(e.message); }
+    const how = await dialog(`Link ${pr.host}`, "", [{ label: "Cancel", value: null }, { label: "I have a code", value: "code" }, { label: "Link", color: "var(--blue)", value: "link" }],
+      `<div class="pad"><p class="muted" style="margin-top:0">Its certificate — to be sure it's that server, this should match the <b>Certificate</b> line of <b>sudo nova status</b> there:</p>
+        <div class="pinbox">${esc(pr.pin_short)}</div><p class="muted">It shows here read-only: status, numbers and alerts. Its owner approves the link on that server.</p></div>`);
+    if (how === "code") return addWithCode(pr);
+    if (how !== "link") return;
+    let lk; try { lk = await hereApi("POST", "/api/v1/nodes/link", { host: pr.host, pin: pr.pin }); } catch (e) { return toast(e.message); }
+    let stop = false;
+    const wait = dialog(`Approve it on ${pr.host}`, "", [{ label: "Cancel", value: null }],
+      `<div class="pad"><p class="muted" style="margin-top:0">Any one of these, within 10 minutes:</p>
+        <p>• In the Nova app connected to that server: <b>Menu → Users &amp; devices → Approve a browser</b>, code</p><div class="pinbox">${esc(lk.code)}</div>
+        <p>• Or on that server: ${copyCmd("sudo nova approve " + lk.code)}</p><p class="muted" id="lkst">Waiting…</p></div>`);
+    wait.then(() => { stop = true; });
+    while (!stop) {
+      await new Promise(r => setTimeout(r, 2000)); if (stop) break;
+      let r; try { r = await hereApi("GET", `/api/v1/nodes/link/${lk.id}`); } catch (e) { closeSheet(); return toast(e.message); }
+      if (r.state === "approved") { closeSheet(); toast(`Linked ${r.node?.name || pr.host}`); break; }
+      if (r.state === "expired") { closeSheet(); toast("That request expired — try again"); break; }
+      if (r.note && $("#lkst")) $("#lkst").textContent = r.note;
+    }
+    await loadNodes().catch(() => {}); if (ctx.alive()) draw();
+  };
+  const addWithCode = async pr => {
     let code = "";
     const p2 = dialog(`Pair with ${pr.host}`, "", [{ label: "Cancel", value: null }, { label: "Add", color: "var(--blue)", value: "add" }],
       `<div class="pad"><p class="muted" style="margin-top:0">On that server run <b>sudo nova add</b>, check that its <b>Certificate</b> line says</p>

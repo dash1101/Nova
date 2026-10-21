@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
+<policyconfig>
+  <vendor>Nova</vendor>
+  <vendor_url>https://github.com/dash1101/Nova</vendor_url>
+  <action id="app.novalabs.nova.setup">
+    <description>Set up Nova</description>
+    <message>Nova's setup changes this computer's settings (network access, firewall, services), so it needs your password.</message>
+    <icon_name>nova</icon_name>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/sbin/nova-setup-gui</annotate>
+  </action>
+</policyconfig>

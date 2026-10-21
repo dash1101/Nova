@@ -16,7 +16,7 @@ if command -v apt-get >/dev/null; then PM=apt; DEPS="python3 python3-cryptograph
 elif command -v dnf >/dev/null; then PM=dnf; DEPS="python3 python3-cryptography qrencode iproute rsync parted util-linux"
 elif command -v pacman >/dev/null; then PM=pacman; DEPS="python python-cryptography qrencode iproute2 rsync parted util-linux"
 elif command -v zypper >/dev/null; then PM=zypper; DEPS="python3 python3-cryptography qrencode iproute2 rsync parted util-linux"
-else echo "No package manager Nova knows (apt, dnf, pacman, zypper). Install by hand: python3 (3.11+), python3-cryptography, qrencode, iproute2, rsync, parted."; PM=""; fi
+else echo "No package manager Nova knows (apt, dnf, pacman, zypper). Install by hand: python3 (3.10+), python3-cryptography, qrencode, iproute2, rsync, parted."; PM=""; fi
 if [ "$UPGRADE" = 0 ] && [ -n "$PM" ]; then
     say "Installing what Nova needs ($PM)…"
     case "$PM" in
@@ -26,7 +26,7 @@ if [ "$UPGRADE" = 0 ] && [ -n "$PM" ]; then
         zypper) zypper --non-interactive install $DEPS >/dev/null ;;
     esac
 fi
-python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)' || { echo "Nova needs Python 3.11 or newer."; exit 1; }
+python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)' || { echo "Nova needs Python 3.10 or newer."; exit 1; }
 python3 -c 'import cryptography' 2>/dev/null || { echo "Nova needs the Python cryptography module (python3-cryptography)."; exit 1; }
 
 say "Copying Nova's files…"
@@ -35,6 +35,7 @@ tar -C "$HERE/root/usr" -cf - . | tar -C /usr --keep-directory-symlink --no-same
 mkdir -p /usr/lib/systemd/system /etc/logrotate.d
 tar -C "$HERE/root/lib/systemd/system" -cf - . | tar -C /usr/lib/systemd/system --keep-directory-symlink --no-same-owner -xf -
 [ -f /etc/logrotate.d/nova-api ] || cp "$HERE/root/etc/logrotate.d/nova-api" /etc/logrotate.d/
+[ -d /etc/update-motd.d ] && cp "$HERE/root/etc/update-motd.d/60-nova" /etc/update-motd.d/ 2>/dev/null || true   # "not set up yet" at login
 chown -R root:root /usr/lib/nova-api /usr/lib/nova-rgb 2>/dev/null || true
 # the same first-time setup the .deb does (user, folders, timers), then start
 sed 's/^if \[ "\$1" = configure \]; then/if true; then/' "$HERE/postinst" > /tmp/nova-postinst.$$ && sh /tmp/nova-postinst.$$; rm -f /tmp/nova-postinst.$$

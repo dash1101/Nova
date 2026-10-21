@@ -41,7 +41,7 @@ try:                       # optional module: fan/case lighting (modules/fan-gig
 except ImportError:
     nova_rgb = None
 
-API_VERSION = "0.8.11-alpha"
+API_VERSION = "0.8.12-alpha"
 # The API contract (docs/API.md). API_LEVEL only ever goes up: each new level adds endpoints or fields, never removes or
 # changes one. MIN_LEVEL is the oldest level this server still answers in full (old apps keep working back to it).
 # MIN_CLIENT: the oldest app builds still served, per platform — 0 = all of them. Raising it is the last resort, after
@@ -586,7 +586,7 @@ def write_pending():
     now = time.time()
     try:
         save_json(PENDING, {"t": now,
-            "browsers": [{"code": v["code"], "name": v["name"], "from": v["from"], "expires": v["expires"]}
+            "browsers": [{"code": v["code"], "name": v["name"], "from": v["from"], "expires": v["expires"], "kind": v.get("kind", "browser")}
                          for v in browser_requests.values() if v["state"] == "pending" and v["expires"] > now],
             "approvals": [{"code": a["code"], "what": describe_action(a), "device": a["device_name"], "expires": a["created"] + 600}
                           for a in approvals.values() if a["state"] == "pending" and now - a["created"] < 600]})
@@ -689,6 +689,7 @@ def describe_action(a):
         return f"Remove “{d.get('name', 'a device')}” from this server" if d else "Remove a device"
     if p[:1] == ["devices"]: return "Change paired devices"
     if p == ["nodes"]: return f"Show the server at {a.get('data', {}).get('host', '?')} in this Nova web"
+    if p == ["nodes", "link"]: return f"Ask the server at {a.get('data', {}).get('host', '?')} to be shown in this Nova web"
     if p[:1] == ["nodes"]: return "Remove a server from this Nova web"
     if p[:1] == ["ssh"]: return "Let this phone log in over SSH"
     if p == ["alerts", "dismiss"]: return f"Ignore the alert “{a.get('data', {}).get('key', '')}”"
@@ -774,6 +775,7 @@ def needs_stepup(method, parts):
     if method == "POST" and parts == ["devices", "remove-all"]: return True
     if method == "POST" and parts == ["devices", "watch"]: return True
     if method == "POST" and parts == ["nodes"]: return True                        # add a server here
+    if method == "POST" and parts == ["nodes", "link"]: return True                # ask a server to be shown here
     if method == "DELETE" and parts[:1] == ["nodes"]: return True
     if method == "POST" and parts == ["browser", "approve"]: return True
     if method == "POST" and parts == ["server", "update"]: return True
@@ -1246,7 +1248,11 @@ class Handler(BaseHTTPRequestHandler):
             rid = secrets.token_urlsafe(18)
             code = "".join(secrets.choice("ABCDEFGHJKLMNPQRSTUVWXYZ23456789") for _ in range(6))
             kind = "wear" if d.get("kind") == "wear" else "browser"        # a Wear OS watch pairs the same way, then gets a watch's narrow access
-            browser_requests[rid] = {"pem": pem, "name": name or ("Watch" if kind == "wear" else "Browser"), "code": code, "expires": now + 600, "state": "pending",
+            if d.get("kind") == "head":
+                # another Nova server asking to show this one (read-only, see nodes.py) — from home or the tailnet only
+                if where not in ("lan", "tailnet") or self.relayed: return self.send(403, {"error": "another server can only link from your home network or tailnet"})
+                kind = "head"
+            browser_requests[rid] = {"pem": pem, "name": name or {"wear": "Watch", "head": "Nova server"}.get(kind, "Browser"), "code": code, "expires": now + 600, "state": "pending",
                                      "from": ip, "via": where, "kind": kind}
             write_pending()
             return self.send(200, {"id": rid, "code": code, "expires_in": 600})
@@ -1255,6 +1261,7 @@ class Handler(BaseHTTPRequestHandler):
             rq = browser_requests.get(path.split("/")[-2])
             if not rq or rq["state"] != "pending" or rq["expires"] < now: return self.send(404, {"state": "expired"})
             if rq.get("kind") == "wear": return self.send(403, {"error": "a watch is added from the phone it belongs to"})
+            if rq.get("kind") == "head": return self.send(403, {"error": "approve another server from the Nova app or with sudo nova approve"})
             try: d = json.loads(body or b"{}")
             except Exception: d = {}
             try: ok = totp_check(str(d.get("code", ""))[:12])
@@ -1280,6 +1287,7 @@ class Handler(BaseHTTPRequestHandler):
             rq = browser_requests.get(m.group(1)); rp = passkey_rp(self.headers)
             if not rq or rq["state"] != "pending" or rq["expires"] < now: return self.send(404, {"state": "expired"})
             if rq.get("kind") == "wear": return self.send(403, {"error": "a watch is added from the phone it belongs to"})
+            if rq.get("kind") == "head": return self.send(403, {"error": "approve another server from the Nova app or with sudo nova approve"})
             if not rp: return self.send(400, {"error": "passkeys work at Nova's web address, not at an IP address"})
             try: d = json.loads(body or b"{}")
             except Exception: d = {}
@@ -1312,16 +1320,22 @@ class Handler(BaseHTTPRequestHandler):
             if ap:
                 role = ap.get("role") if ap.get("role") in ROLES else "admin"
                 dev_id = secrets.token_urlsafe(12)
+                if rq.get("kind") == "head": role = "viewer"         # another server: always the read-only window, nothing more
                 with lock:
                     devs = load_json(DEVICES, {})
-                    devs[dev_id] = {"name": rq["name"][:40], "public_key": rq["pem"], "type": "browser", "created": time.strftime("%Y-%m-%d %H:%M"),
-                                    "paired_from": rq["from"], "role": role, "approved_by": "shell",
+                    devs[dev_id] = {"name": rq["name"][:40], "public_key": rq["pem"], "type": "head" if rq.get("kind") == "head" else "browser",
+                                    "created": time.strftime("%Y-%m-%d %H:%M"), "paired_from": rq["from"], "role": role, "approved_by": "shell",
                                     "user": "".join(c for c in str(ap.get("user", "")) if c.isprintable()).strip()[:40]}
                     save_json(DEVICES, devs)
                 rq.update(state="approved", device_id=dev_id, role=role)
                 audit(device=rq["name"], path="/api/v1/browser/approve", result=200, why="approved from the server shell")
                 helper("notify-paired", "".join(c for c in rq["name"] if c.isalnum() or c in " -_")[:40] or "browser")
                 write_pending()
+            if rq.get("kind") == "head":
+                tls = lan_tls()
+                return self.send(200, {"state": rq["state"], "device_id": rq.get("device_id"), "kind": "head",
+                                       "name": load_json(SETTINGS, {}).get("display_name") or os.uname().nodename,
+                                       **({"lan_url": tls.get("url") or CFG.get("lan_url", ""), "remote_url": CFG.get("remote_url", "")} if rq["state"] == "approved" else {})})
             return self.send(200, {"state": rq["state"], "device_id": rq.get("device_id"), "role": rq.get("role"), "kind": rq.get("kind", "browser"),
                                    "totp": bool(totp_state().get("secret")) and rq.get("kind") != "wear",
                                    "passkey": bool(passkey_rp(self.headers)) and passkeys.any_for(passkey_rp(self.headers)) and rq.get("kind") != "wear",
@@ -1540,7 +1554,12 @@ class Handler(BaseHTTPRequestHandler):
             dev_id = secrets.token_urlsafe(12)
             with lock:
                 devs = load_json(DEVICES, {})
-                if rq.get("kind") == "wear":
+                if rq.get("kind") == "head":
+                    if dev.get("type") in ("watch", "wear", "head") or role_of(dev) != "admin": raise ValueError("approve another server from an admin phone or browser")
+                    role = "viewer"
+                    devs[dev_id] = {"name": str(rq["name"])[:40], "public_key": rq["pem"], "type": "head", "role": "viewer",
+                                    "created": time.strftime("%Y-%m-%d %H:%M"), "paired_from": rq["from"], "approved_by": dev["name"][:40]}
+                elif rq.get("kind") == "wear":
                     # A watch belongs to the admin phone that approved it, and can only do what a watch may (see the wear gate)
                     if dev.get("type") in ("browser", "watch", "wear", "head") or role_of(dev) != "admin": raise ValueError("approve a watch from an admin phone")
                     devs[dev_id] = {"name": str(data.get("name") or rq["name"])[:40], "public_key": rq["pem"], "type": "wear", "form": "watch",
@@ -1880,6 +1899,19 @@ class Handler(BaseHTTPRequestHandler):
             if role_of(dev) != "admin": return 403, {"error": "admins only"}
             head = load_json(SETTINGS, {}).get("display_name") or os.uname().nodename
             return 200, nodes.pair(str(data.get("host", "")), str(data.get("code", "")), str(data.get("pin", "")), head)
+        if method == "GET" and parts == ["nodes", "discover"]:
+            if role_of(dev) != "admin" or dev.get("type") in ("head", "watch", "wear"): return 403, {"error": "admins only"}
+            return 200, {"found": nodes.discover({LAN_HOST, "127.0.0.1"})}
+        if method == "POST" and parts == ["nodes", "link"]:
+            # ask that server to be shown here; its owner approves it there (Nova app, or sudo nova approve CODE)
+            if role_of(dev) != "admin" or dev.get("type") in ("head", "watch", "wear"): return 403, {"error": "admins only"}
+            head = load_json(SETTINGS, {}).get("display_name") or os.uname().nodename
+            try: return 200, nodes.link_start(str(data.get("host", "")), str(data.get("pin", "")), head)
+            except OSError: return 502, {"error": "couldn't reach that server — is Nova running there, and is it on your home network?"}
+        if method == "GET" and len(parts) == 3 and parts[:2] == ["nodes", "link"] and re.fullmatch(r"[0-9a-f]{12}", parts[2]):
+            if role_of(dev) != "admin" or dev.get("type") in ("head", "watch", "wear"): return 403, {"error": "admins only"}
+            try: return 200, nodes.link_poll(parts[2])
+            except OSError: return 200, {"state": "pending", "note": "couldn't reach that server just now — trying again"}
         if method == "POST" and len(parts) == 3 and parts[0] == "nodes" and parts[2] == "relay" and re.fullmatch(r"[0-9a-f]{12}", parts[1]):
             # This browser controlling another Nova server: carry its request (signed by the browser for that
             # server) there. That server checks the browser itself and asks its own phones for risky actions.

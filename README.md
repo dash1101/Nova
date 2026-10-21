@@ -46,7 +46,7 @@ network, and optionally from anywhere through Cloudflare Access, without a VPN.
 | **Your look** | Six looks — Default, Material You, Glass, Mica, Breeze and Aero — light/dark, corner roundness per look, icon shapes, and app icons (Material You, outline, black and white, glass, colors…) |
 | **Living wallpaper & sound** | An animated wallpaper per look (or your own GIF/video on the web), soft ambience, and a sound and haptic pack per look — each part can be turned off |
 | **Watch** | A Wear OS app, two tiles and a complication: health at a glance, recent events, approve or deny on your wrist, lights on/off ([docs/WEAR.md](docs/WEAR.md)) |
-| **Several servers** | Pair with as many machines as you like and switch between them, each with its own name and color |
+| **Several servers** | Pair with as many machines as you like and switch between them, each with its own name and color; link them in Nova web (or `sudo nova link`) and approve it on the other one |
 | **Users & roles** | Named users, each Admin or View only; invite phones by QR, approve browsers from your phone |
 | **Tablets & dashboard** | Tablet layout (rail + list/detail) and an always-on, customizable dashboard mode |
 | **Nova web** | The same design in any browser, at `https://<server>:8495/`, installable as an app. Risky actions are approved on your phone; apps can open in windows inside Nova (Labs); game controllers work, with Xbox / PlayStation button hints |
@@ -74,13 +74,18 @@ the one-file installer elsewhere):
 curl -fsSL https://raw.githubusercontent.com/dash1101/Nova/main/get.sh | sh
 ```
 
-Or by hand:
+Or download **[nova-server.deb](https://github.com/dash1101/Nova/releases/latest/download/nova-server.deb)** — one package
+for x86-64 and ARM (Raspberry Pi 4/5 and other 64-bit boards). On a desktop, open it with your software app, then
+choose **Set up Nova** in your apps menu. In a terminal:
 
 ```bash
-sudo apt install ./nova-server_*_all.deb    # from https://github.com/dash1101/Nova/releases/latest (or: sudo sh nova-installer.run)
-sudo nova setup                             # guided setup: network, Tailscale, remote, location, tools, firewall
+sudo apt install ./nova-server.deb          # (other Linux: sudo sh nova-installer.run, from the same release)
+sudo nova setup                             # guided setup — type ? at any question for help (or: sudo nova setup --gui)
 sudo nova add                               # shows a QR code: scan it with the app
 ```
+
+Lost? `nova` shows what you can do, `nova help pair` (or `browser`, `servers`, `remote`, …) gives a short guide,
+and `sudo nova doctor` checks everything and says how to fix what it finds.
 
 Full walkthrough, extras and troubleshooting: **[docs/SETUP.md](docs/SETUP.md)**.
 

@@ -12,6 +12,7 @@
 
   Server
     sudo nova status               version, services and addresses
+    sudo nova doctor               check everything; each problem comes with how to fix it
     sudo nova setup                guided setup (network, remote access, location, tools…)
     sudo nova update [--check]     install the newest signed release
     sudo nova lighting             set up the fan/case lighting module
@@ -19,6 +20,10 @@
     sudo nova log [N]              the last N actions from the audit log
     sudo nova alert LEVEL TITLE [DETAIL]   send an alert (info, warning, critical)
     sudo nova publish APK [NOTES]  put an app build in the in-app updater
+
+  Several servers
+    sudo nova link SERVER          show another Nova server here (it asks for approval on its side)
+    sudo nova link                 list linked servers        sudo nova link --remove NAME   unlink one
 
   Plugins (docs/PLUGINS.md)
     sudo nova plugin list          what's installed
@@ -54,7 +59,55 @@ def clock(sec): sec = max(0, int(sec)); return f"{sec // 60}:{sec % 60:02d}"
 
 def run(*cmd): os.execvp(cmd[0], list(cmd))
 
-def help_(): print(__doc__.rstrip()); sys.exit(0)
+def help_(): print(__doc__.rstrip()); print(f"\n  Short guides:  nova help TOPIC   ({', '.join(_guides().topics())})"); sys.exit(0)
+
+def _guides():
+    sys.path[:0] = [LIB, os.path.dirname(os.path.realpath(__file__))]
+    import guides
+    return guides
+
+def menu():
+    """Plain `nova`: the few things most people come for, not every command."""
+    st = subprocess.run(["systemctl", "is-active", "nova-api.service"], capture_output=True, text=True).stdout.strip()
+    ver = (open(f"{LIB}/VERSION").read().strip() if os.path.exists(f"{LIB}/VERSION") else "")
+    setup = os.path.exists("/etc/nova-api/config.json") if os.geteuid() == 0 else st == "active"
+    print(f"\n  {B}Nova {ver}{X}  " + (f"{G}● running{X}" if st == "active" else f"{Y}● not set up yet{X}" if not setup else f"{R}● stopped{X}"))
+    rows = ([("sudo nova setup", "set Nova up (or: sudo nova setup --gui, in a browser)")] if not setup else []) + [
+        ("sudo nova add", "pair a phone or tablet"), ("sudo nova approve CODE", "let in a browser that shows a code"),
+        ("sudo nova status", "is everything running, and where"), ("sudo nova doctor", "find what's wrong, and how to fix it"),
+        ("sudo nova link SERVER", "show another Nova server here"), ("sudo nova update", "install the newest version")] + (
+        [("sudo nova setup", "change settings")] if setup else [])
+    print(f"\n  {D}What would you like to do?{X}\n")
+    for c, d in rows: print(f"    {B}{c:<24}{X} {d}")
+    print(f"\n    {B}{'nova help':<24}{X} every command        {B}nova help TOPIC{X}  a short guide:")
+    print(f"    {D}{' ' * 24} {', '.join(_guides().topics())}{X}\n")
+    sys.exit(0)
+
+def help_topic(t):
+    g = _guides().guide(t.lower())
+    if not g:
+        import difflib
+        near = difflib.get_close_matches(t.lower(), _guides().topics() + list(_guides().ALIASES), 1)
+        sys.exit(f"No guide called \"{t}\"." + (f" Did you mean:  nova help {near[0]}" if near else "") + f"\nGuides: {', '.join(_guides().topics())}")
+    title, body = g
+    print(f"\n  {B}{title}{X}\n"); print("\n".join("  " + l if l else "" for l in body.splitlines())); print()
+    sys.exit(0)
+
+def doctor(args):
+    found = _guides().doctor()
+    try:                                                   # plus the machine checks setup runs (ports, systemd, clock…)
+        import preflight
+        found += [{"level": c["level"], "title": c["title"], "fix": c["fix"]} for c in preflight.checks() if c["level"] != "ok"]
+    except Exception: pass
+    mark = {"ok": f"{G}✓{X}", "warn": f"{Y}!{X}", "stop": f"{R}✗{X}"}
+    print(f"\n  {B}Nova doctor{X}\n")
+    for c in found:
+        print(f"  {mark.get(c['level'], '·')} {c['title']}")
+        if c.get("fix"): print(f"      {D}→ {c['fix']}{X}")
+    bad = [c for c in found if c["level"] != "ok"]
+    print(f"\n  {G + 'All good.' + X if not bad else f'{len(bad)} thing' + ('s' if len(bad) > 1 else '') + ' to look at — the arrows say how.'}"
+          f"  {D}More: nova help troubleshoot{X}\n")
+    sys.exit(1 if any(c["level"] == "stop" for c in found) else 0)
 
 
 def add(args):
@@ -108,7 +161,7 @@ def approve(args):
     if not codes:
         if not browsers and not actions:
             print("Nothing is waiting for approval."); print(f"{D}A browser shows its code under “Get a code”; an action it's waiting on shows one too.{X}"); return
-        for b in browsers: print(f"  {B}{b['code']}{X}  add the browser “{b['name']}” (from {b['from']}) · {clock(b['expires'] - now)} left")
+        for b in browsers: print(f"  {B}{b['code']}{X}  " + (f"let the Nova server “{b['name']}” (from {b['from']}) show this one, read-only" if b.get("kind") == "head" else f"add the browser “{b['name']}” (from {b['from']})") + f" · {clock(b['expires'] - now)} left")
         for a in actions: print(f"  {B}{a['code']}{X}  {a['what']} — asked by {a['device']} · {clock(a['expires'] - now)} left")
         print(f"\nApprove one with: {B}sudo nova approve CODE{X}"); return
     code = codes[0].strip().upper().replace("-", "").replace(" ", "")
@@ -117,11 +170,12 @@ def approve(args):
     if b: code = b["code"]
     role = "viewer" if "--viewer" in args else opt(args, "--role", "admin")
     if role not in ("admin", "viewer"): sys.exit("--role must be admin or viewer")
-    what = (f"add the browser “{b['name']}” as {'Admin' if role == 'admin' else 'View only'}" if b else a["what"] if a else f"code {code}")
+    what = (f"let the Nova server “{b['name']}” show this one (read-only)" if b and b.get("kind") == "head" else
+            f"add the browser “{b['name']}” as {'Admin' if role == 'admin' else 'View only'}" if b else a["what"] if a else f"code {code}")
     if pend and not b and not a and now - pend.get("t", 0) < 600:
         print(f"{Y}Nothing is waiting with that code{X} (they expire after 10 minutes). Waiting codes:"); return approve([])
     save(SHELL_APPROVE, {"code": code, "role": role, "user": (opt(args, "--user", "") or "")[:40], "t": now}, mode=0o640, owner="root")
-    print(f"Approving: {what}  {D}(the browser picks it up within a few seconds — keep its page open){X}")
+    print(f"Approving: {what}  {D}(it's picked up within a few seconds){X}")
     try:
         for i in range(45):
             time.sleep(1)
@@ -167,7 +221,64 @@ def status(args):
     print(f"  Home network   {cfg.get('lan_url', '—')}")
     if cfg.get("tailnet_host"): print(f"  Tailscale      https://{cfg['tailnet_host']}:{cfg.get('tls_port', 8495)}")
     if cfg.get("remote_url"): print(f"  Remote         {cfg['remote_url']}")
+    print(f"  Certificate    {short_pin(my_pin())}   (what phones and other servers check when they pair)")
     print(f"  Devices        {len(load(DEVICES, {}))}   (sudo nova devices)")
+    print(f"\n  {D}Something wrong?  sudo nova doctor{X}")
+
+
+def my_pin():
+    try:
+        from cryptography import x509
+        from cryptography.hazmat.primitives import serialization
+        der = x509.load_pem_x509_certificate(open(f"{DATA}/tls/cert.pem", "rb").read()).public_bytes(serialization.Encoding.DER)
+        return hashlib.sha256(der).hexdigest()
+    except Exception: return ""
+
+def short_pin(p): return " ".join(p[i:i + 4].upper() for i in (0, 4, 8)) if p else "—"
+
+def link(args):
+    """Show another Nova server here (read-only, like Nova web's Servers page). That server's owner approves it
+    there — in the Nova app, or with  sudo nova approve CODE  on that server."""
+    sys.path[:0] = [LIB, os.path.dirname(os.path.realpath(__file__))]
+    import nodes, pwd, grp
+    def own():                                            # nodes.json belongs to the service, readable by it alone
+        try: os.chown(nodes.FILE, pwd.getpwnam("nova-api").pw_uid, grp.getgrnam("nova-api").gr_gid); os.chmod(nodes.FILE, 0o600)
+        except (OSError, KeyError): pass
+    if not args:
+        ns = nodes.status()
+        if not ns: print("No other servers are linked here.  Add one:  sudo nova link SERVER   (its address, e.g. 192.168.1.20)"); return
+        for n in ns: print(f"  {B}{n['name']:<24}{X} {n['host']:<18} {D}added {n.get('added', '')}{X}")
+        print(f"\n  {D}Unlink one:  sudo nova link --remove NAME{X}"); return
+    if args[0] == "--remove":
+        name = " ".join(args[1:]).strip()
+        n = next((x for x in nodes.status() if name and (x["name"] == name or x["host"] == name or x["id"] == name)), None)
+        if not n: sys.exit(f"No linked server called \"{name}\".  See them:  sudo nova link")
+        nodes.remove(n["id"]); own(); print(f"{G}✓{X} {n['name']} is no longer shown here."); return
+    host = args[0]
+    try: p = nodes.probe(host)
+    except (ValueError, OSError) as e: sys.exit(f"{R}Couldn't reach Nova at {host}:{X} {e}\n  Is Nova running there, on your home network or tailnet?  (nova help servers)")
+    print(f"\n  Found Nova {p.get('api', '')} at {B}{p['host']}{X}")
+    print(f"  Its certificate:  {B}{p['pin_short']}{X}")
+    print(f"  {D}To be sure it's really that server, check this matches the \"Certificate\" line of  sudo nova status  there.{X}")
+    if input("\n  Link it? [Y/n]: ").strip().lower().startswith("n"): print("Nothing changed."); return
+    cfg = load("/var/lib/nova-api/settings.json", {})
+    try: lk = nodes.link_start(p["host"], p["pin"], cfg.get("display_name") or os.uname().nodename)
+    except (ValueError, OSError) as e: sys.exit(f"{R}{e}{X}")
+    print(f"\n  Now approve it on that server, any one of:")
+    print(f"    • the Nova app connected to it:  Menu → Users & devices → Approve a browser, code {B}{lk['code']}{X}")
+    print(f"    • on that server:  {B}sudo nova approve {lk['code']}{X}")
+    print(f"\n  {D}Waiting (up to 10 minutes, Ctrl-C to stop)…{X}", end="", flush=True)
+    try:
+        while True:
+            time.sleep(2)
+            try: r = nodes.link_poll(lk["id"])
+            except OSError: continue
+            except ValueError as e: sys.exit(f"\n{R}{e}{X}")
+            if r["state"] == "approved":
+                own()
+                print(f"\n\n  {G}✓{X} {r['node']['name']} is linked: it shows in Nova web (Servers) on this server."); return
+            if r["state"] == "expired": sys.exit("\n  That request expired. Run it again:  sudo nova link " + host)
+    except KeyboardInterrupt: print("\n  Stopped — nothing was linked."); sys.exit(130)
 
 
 def backup(args):
@@ -242,8 +353,16 @@ def cloudflare(args):
 
 if __name__ == "__main__":
     a = sys.argv[1:]
-    cmd = a[0] if a else "help"
-    if cmd in ("help", "-h", "--help"): help_()
+    if not a: menu()
+    cmd = a[0]
+    if cmd in ("help", "-h", "--help", "?"): help_topic(a[1]) if len(a) > 1 else help_()
+    if len(a) > 1 and a[1] in ("-h", "--help", "help", "?") and a[0] in _guides().topics() + list(_guides().ALIASES): help_topic(a[0])
+    NAMES = ["add", "approve", "devices", "remove", "status", "setup", "update", "lighting", "backup", "log", "alert", "publish",
+             "plugin", "cloudflare", "doctor", "link", "help", "pair", "revoke", "approve-browser", "rm", "list"]
+    if cmd not in NAMES:
+        import difflib
+        near = difflib.get_close_matches(cmd, NAMES, 1)
+        sys.exit(f"{Y}There's no \"nova {cmd}\".{X}" + (f"  Did you mean:  {'' if near[0] == 'help' else 'sudo '}nova {near[0]}" if near else "") + "\nSee them all:  nova help")
     if os.geteuid() != 0: sys.exit(f"Run it with sudo:  sudo nova {' '.join(a)}")
     rest = a[1:]
     # the old command names still work (nova-api pair, revoke, approve-browser)
@@ -262,4 +381,6 @@ if __name__ == "__main__":
     elif cmd == "publish": run("/usr/sbin/nova-app-publish", *rest)
     elif cmd == "plugin": plugin(rest)
     elif cmd == "cloudflare": cloudflare(rest)
-    else: print(f"{Y}Unknown command: {cmd}{X}\n"); help_()
+    elif cmd == "doctor": doctor(rest)
+    elif cmd == "link": link(rest)
+

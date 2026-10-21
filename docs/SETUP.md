@@ -7,13 +7,17 @@ Nova has two parts: the **server package** on the Linux machine you want to cont
 
 ## 1. Install the server package
 
-Requirements: Linux with systemd and Python 3.11+ — Debian 12+, Ubuntu 22.04+, Fedora 39+, RHEL/Rocky/Alma 9+,
+Requirements: Linux with systemd and Python 3.10+, on x86-64 or ARM (Raspberry Pi 4/5 and other 64-bit ARM boards) — Debian 12+, Ubuntu 22.04+, Raspberry Pi OS (Bookworm), Fedora 39+, RHEL/Rocky/Alma 10+,
 Arch, openSUSE. Nothing else: Docker, Tailscale and cloudflared are optional, and the setup offers to install
 each one that's missing (Docker for containers and the container store; Tailscale to reach Nova and your apps
 from anywhere privately; cloudflared for a Cloudflare Tunnel on your own domain). Without Docker, Containers
 says so and the store's Programs tab still works — with apt, dnf, pacman or zypper, whichever your Linux has.
 
-The easiest way, on any of them — one file from the [latest release](https://github.com/dash1101/Nova/releases/latest):
+**On a computer with a desktop:** download [nova-server.deb](https://github.com/dash1101/Nova/releases/latest/download/nova-server.deb),
+open it with your software app (Software, Discover…), then choose **Set up Nova** in your apps menu — it asks for
+your password and opens the setup in your browser. The same package works on x86-64 and ARM.
+
+**In a terminal**, the easiest way on any of them — one file from the [latest release](https://github.com/dash1101/Nova/releases/latest):
 
 ```bash
 sudo sh nova-installer.run          # installs, then asks: set up in this terminal, or in a browser
@@ -53,7 +57,7 @@ Both ask the same few questions, with the suggestions filled in:
 | This server | The account the in-app terminal signs in as, your location for sunrise/sunset light schedules, and (advanced) protected mounts and where updates come from. |
 | Start | Saves everything, opens Nova's ports (tcp 8495, udp 8496) to your home network only if `ufw` or `firewalld` is on, and starts Nova. |
 
-Run `sudo nova-setup` again whenever you want to change something: it asks which part, and your current
+Type `?` at any question for a short explanation of that step. Run `sudo nova-setup` again whenever you want to change something: it asks which part, and your current
 answers are the defaults. For unattended installs: `sudo nova-setup --yes`, or `--answers answers.json --yes`.
 
 ## 3. Pair your phone
@@ -73,8 +77,17 @@ answers are the defaults. For unattended installs: `sudo nova-setup --yes`, or `
 | **Always-on screen** | App → Menu → *Dashboard mode*. Pair a spare tablet as View only and pin the screen |
 | **Fan / case lighting** (Gigabyte RGB Fusion 2) | `sudo nova-setup-lighting` |
 | **Alerts, Discord, what's watched** | Built in — see [MONITOR.md](MONITOR.md) |
-| **More servers** | Install Nova on each; in the app, Settings → Servers lists the ones it finds on your network |
+| **More servers** | Install Nova on each; in the app, Settings → Servers lists the ones it finds on your network. To see them together in Nova web: Servers → pick one it found → Link, then approve it on that server (in the app, or `sudo nova approve CODE` there). From a terminal: `sudo nova link OTHER-SERVER` |
 | **Your own look** | App → Settings → *Appearance & privacy* (theme, Home layout, app lock); *Server* (name, accent color) |
+
+## Help
+
+| | |
+|---|---|
+| `nova` | the few things most people come for |
+| `nova help` · `nova help TOPIC` | every command · a short guide: start, pair, browser, servers, remote, backup, update, troubleshoot, uninstall |
+| `sudo nova doctor` | checks Nova, the network, the firewall, the clock and disk space — each problem with how to fix it |
+| `sudo nova status` | what's running, the addresses, and this server's certificate |
 
 ## Updating
 

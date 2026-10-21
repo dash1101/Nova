@@ -1,0 +1,7 @@
+#!/bin/sh
+# "Set up Nova" in the app menu: asks for your password (the desktop's own prompt), starts Nova's setup on this
+# computer only, and opens it in your browser. Same questions as `sudo nova setup` in a terminal.
+URL=$(pkexec /usr/sbin/nova-setup-gui --print-url) || exit 0      # (cancelled at the password prompt: nothing to do)
+case "$URL" in http://localhost:*) ;; *) exit 1 ;; esac
+xdg-open "$URL" >/dev/null 2>&1 || gio open "$URL" >/dev/null 2>&1 || {
+  command -v zenity >/dev/null && zenity --info --title "Set up Nova" --text "Open this address in your browser:\n\n$URL"; }

@@ -1,0 +1,5 @@
+#!/bin/sh
+# Shown when you log in (Debian/Ubuntu message of the day) until Nova is set up; silent after that.
+[ -x /usr/bin/nova ] || exit 0
+[ -f /etc/nova-api/config.json ] && exit 0
+printf '\n  Nova is installed but not set up yet:  sudo nova setup   (or in a browser: sudo nova setup --gui)\n\n'

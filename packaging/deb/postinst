@@ -32,9 +32,24 @@ if [ "$1" = configure ]; then
         fi
         echo "Nova updated and restarted."
     else
+        command -v gtk-update-icon-cache >/dev/null 2>&1 && gtk-update-icon-cache -q /usr/share/icons/hicolor >/dev/null 2>&1 || true
         echo ""
-        echo "  Nova is installed.  Next:  sudo nova-setup"
+        echo "  Nova is installed. Next, set it up (about five minutes):"
         echo ""
+        echo "    sudo nova setup            questions in this terminal"
+        echo "    sudo nova setup --gui      the same in a browser (this computer, or a phone or laptop at home)"
+        echo "    Set up Nova                in your apps menu, on a computer with a desktop"
+        echo ""
+        echo "  Stuck?  nova help"
+        echo ""
+        # installed from a desktop's software app (no terminal to read the above): a notification on each signed-in desktop
+        for s in $(loginctl list-sessions --no-legend 2>/dev/null | awk '{print $1}'); do
+            t=$(loginctl show-session "$s" -p Type --value 2>/dev/null); case "$t" in x11|wayland) ;; *) continue ;; esac
+            uid=$(loginctl show-session "$s" -p User --value 2>/dev/null); u=$(id -nu "$uid" 2>/dev/null) || continue
+            command -v notify-send >/dev/null 2>&1 || break
+            timeout 5 runuser -u "$u" -- env DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$uid/bus" notify-send -i nova \
+                "Nova is installed" "Open “Set up Nova” from your apps to finish setting it up." >/dev/null 2>&1 || true
+        done
     fi
 fi
 exit 0

@@ -19,7 +19,7 @@ NOVA_PORTS = {8095, 8495, 8496}
 PKG_RE = r"[a-z0-9][a-z0-9+.-]{0,100}"
 # Removing these would take the server (or Nova) down with it.
 ESSENTIAL = {"nova-server", "systemd", "systemd-sysv", "openssh-server", "sudo", "apt", "dpkg", "bash", "coreutils", "libc6", "python3",
-             "python3-cryptography", "docker-ce", "docker.io", "containerd.io", "linux-image-amd64", "grub-pc", "grub-efi-amd64", "network-manager",
+             "python3-cryptography", "docker-ce", "docker.io", "containerd.io", "linux-image-amd64", "linux-image-arm64", "grub-pc", "grub-efi-amd64", "grub-efi-arm64", "raspberrypi-kernel", "raspberrypi-bootloader", "linux-image-rpi-v8", "linux-image-rpi-2712", "network-manager",
              "ifupdown", "cloudflared", "tailscale", "login", "passwd", "util-linux", "mount", "init", "base-files", "base-passwd"}
 
 

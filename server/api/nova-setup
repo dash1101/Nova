@@ -29,19 +29,46 @@ if "--answers" in sys.argv:
     try: ANSWERS = json.load(open(sys.argv[sys.argv.index("--answers") + 1]))
     except (IndexError, OSError, ValueError) as e: sys.exit(f"can't read the answers file: {e}")
 
+# `?` at any question: what this step is about, in plain words (then the question again)
+STEP_HELP = {
+    "Network": "Phones and browsers at home reach Nova at this server's address. Only devices on the home network you\n"
+               "  name here may pair — a phone away from home can't add itself. The suggestions come from this machine's\n"
+               "  network; Enter keeps them. If the address changes later (a new router), run sudo nova setup again.",
+    "Away from home": "All optional — Nova works at home without either.\n"
+                      "  Tailscale: a private network between your own devices; nothing opens to the internet. Easiest.\n"
+                      "  Cloudflare Tunnel: a web address on your own domain, behind Cloudflare's login (needs a free account).\n"
+                      "  Either way every request is still signed by your phone. More: nova help remote",
+    "Notifications": "Alerts (a drive failing, a container crashing, a login) always show in the Nova app.\n"
+                     "  Discord is an optional second copy: paste a channel's webhook address, or leave it empty.",
+    "Tools": "Docker runs containers and the app store's apps; the drive tools (mergerfs, mdadm, smartmontools…) make\n"
+             "  pools, RAID, NAS backups and drive tests work. Skipping is fine: Nova offers each one when you first need it.",
+    "This server": "The account the in-app terminal signs in as (yours, not root); your town, for sunrise and sunset light\n"
+                   "  schedules. The defaults are fine — Enter keeps them.",
+    "Start Nova": "Saves your answers, opens Nova's ports (8495, 8496) to your home network only if a firewall is on, and\n"
+                  "  starts Nova. Nothing outside your home network is opened.",
+}
+CUR = [""]
+
+def _helped(a):
+    if a.strip() not in ("?", "help"): return False
+    print(f"\n  {B}{CUR[0] or 'Nova setup'}{X}\n  {STEP_HELP.get(CUR[0], 'Press Enter to keep the suggestion in [brackets]. More: nova help start')}\n")
+    return True
+
 def ask(q, default="", secret=False, key=None):
     if key in ANSWERS: return str(ANSWERS[key]).strip()
     if YES: return default
     shown = (" [" + ("•" * 6 if secret and default else default) + "]") if default else ""
-    a = (getpass.getpass if secret else input)(f"  {q}{D}{shown}{X}: ").strip()
-    return a or default
+    while True:
+        a = (getpass.getpass if secret else input)(f"  {q}{D}{shown}{X}: ").strip()
+        if not _helped(a): return a or default
 
 
 def yes(q, default=True, key=None):
     if key in ANSWERS: return bool(ANSWERS[key])
     if YES: return default
-    a = input(f"  {q} {D}[{'Y/n' if default else 'y/N'}]{X}: ").strip().lower()
-    return default if not a else a.startswith("y")
+    while True:
+        a = input(f"  {q} {D}[{'Y/n' if default else 'y/N'}]{X}: ").strip().lower()
+        if not _helped(a): return default if not a else a.startswith("y")
 
 
 SECTIONS = ["Network", "Away from home", "Notifications", "Tools", "This server", "Start Nova"]
@@ -50,7 +77,8 @@ def step(n, title, about=""):
     """A clear header for each part: where you are, what it's for."""
     i = SECTIONS.index(title) + 1 if title in SECTIONS else n
     bar = "".join(f"{G}●{X}" if k < i else f"{B}●{X}" if k == i else f"{D}○{X}" for k in range(1, len(SECTIONS) + 1))
-    print(f"\n{bar}  {B}Step {i} of {len(SECTIONS)} · {title}{X}")
+    CUR[0] = title
+    print(f"\n{bar}  {B}Step {i} of {len(SECTIONS)} · {title}{X}  {D}(? for help){X}")
     if about: print(f"  {D}{about}{X}")
 
 def ok(msg): print(f"  {G}✓{X} {msg}")
@@ -303,7 +331,7 @@ def main():
             sh("systemctl", "restart", "nova-api.service"); ok("Nova restarted with the new settings")
             return
     else:
-        print(f"  {D}Six short steps. Press Enter to keep the suggestion in [brackets] — you can change everything later.{X}")
+        print(f"  {D}Six short steps. Press Enter to keep the suggestion in [brackets], or type ? for help — you can change everything later.{X}")
     for _, fn in STEPS: fn(cfg, st)
     s_start(cfg, st)
 

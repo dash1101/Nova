@@ -228,8 +228,24 @@ async function run() {
 </script></body></html>"""
 
 
+def desktop():
+    """--print-url: for the "Set up Nova" launcher in the desktop's app menu. That runs as you and asks for your password
+    (pkexec) to start this; here setup listens on this computer only, the address is printed and this returns at once
+    (the setup keeps running in the background), and the launcher opens the address in your own browser."""
+    port = next((p for p in [*range(8490, 8495), *range(8497, 8500)] if socket.socket().connect_ex(("127.0.0.1", p)) != 0), 8490)
+    srv = http.server.ThreadingHTTPServer(("127.0.0.1", port), H)
+    if os.fork():                                       # the launcher gets the address; the setup carries on without it
+        print(f"http://localhost:{port}/setup/{KEY}", flush=True); os._exit(0)
+    os.setsid()
+    fd = os.open(os.devnull, os.O_RDWR)
+    for n in (0, 1, 2): os.dup2(fd, n)
+    threading.Thread(target=lambda: (time.sleep(max(0, DEADLINE - time.time())), os._exit(0)), daemon=True).start()
+    srv.serve_forever()
+
+
 def main():
     sys.stdout.reconfigure(line_buffering=True)
+    if "--print-url" in sys.argv[1:]: return desktop()
     port = next((p for p in [*range(8490, 8495), *range(8497, 8500)] if socket.socket().connect_ex(("127.0.0.1", p)) != 0), 8490)
     srv = http.server.ThreadingHTTPServer(("0.0.0.0", port), H)
     ip, _ = lan_guess()

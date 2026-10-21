@@ -12,7 +12,9 @@ VER="$(grep -oP 'API_VERSION = "\K[^"]+' "$ROOT/server/api/server.py")"
 cd "$D"
 ls nova-*.apk >/dev/null 2>&1 || echo "note: no APKs in dist/ — this release only updates the server"
 rm -f SHA256SUMS SHA256SUMS.sig
-sha256sum nova-server_*.deb nova-server_*.tar.gz nova-installer.run $(ls nova-*.apk 2>/dev/null) > SHA256SUMS
+# a stable name too, so a link can always point at the newest: releases/latest/download/nova-server.deb
+cp "nova-server_$(echo "$VER" | sed 's/-/~/')_all.deb" nova-server.deb
+sha256sum nova-server_*.deb nova-server.deb nova-server_*.tar.gz nova-installer.run $(ls nova-*.apk 2>/dev/null) > SHA256SUMS
 python3 - "$KEY" <<'PY'
 import base64, sys
 from cryptography.hazmat.primitives import serialization

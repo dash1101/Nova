@@ -4,9 +4,9 @@ Section: admin
 Priority: optional
 Architecture: all
 Installed-Size: @SIZE@
-Depends: python3 (>= 3.11), python3-cryptography, qrencode, iproute2, systemd, rsync, parted, util-linux
+Depends: python3 (>= 3.10), python3-cryptography, qrencode, iproute2, systemd, rsync, parted, util-linux
 Recommends: ufw, smartmontools, mergerfs, mdadm, xfsprogs, btrfs-progs, exfatprogs, nfs-common, cifs-utils, fio, stress-ng, iputils-tracepath, iputils-ping, attr
-Suggests: docker.io | docker-ce, docker-compose, tailscale, cloudflared
+Suggests: docker.io | docker-ce, docker-compose, tailscale, cloudflared, pkexec | policykit-1, libnotify-bin
 Maintainer: Nova contributors <nova@localhost>
 Homepage: https://github.com/dash1101/Nova
 Description: secure phone & web remote for your home server
@@ -18,4 +18,4 @@ Description: secure phone & web remote for your home server
  need your fingerprint. The API runs unprivileged in a systemd sandbox, and the
  only privileged code is a root helper with a fixed list of commands.
  .
- After installing, run:  sudo nova-setup
+ After installing: "Set up Nova" in your apps (on a desktop), or  sudo nova setup

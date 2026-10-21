@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Set up Nova
+GenericName=Home server remote
+Comment=Set up Nova on this computer: network, remote access, alerts, and pairing your phone
+Exec=/usr/lib/nova-api/setup-desktop
+Icon=nova
+Terminal=false
+Categories=System;Settings;
+Keywords=nova;server;remote;setup;pair;phone;

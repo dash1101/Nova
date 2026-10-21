@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.8.12-alpha (server, Nova web, app and watch)
+- **Install from a desktop, no terminal:** open `nova-server.deb` with your software app, then **Set up Nova** in your apps menu — it asks for your password and opens the setup in your browser. A notification says so when it's installed that way.
+- **One package for every machine:** `nova-server.deb` (a stable download link: releases/latest/download/nova-server.deb) installs on x86-64 and ARM alike, and now on **Ubuntu 22.04** too (Python 3.10 is enough).
+- **Link two servers by approving it:** in Nova web, Servers → Add a server lists the Nova servers it finds at home; pick one → Link, then approve it on that server (in the Nova app, or `sudo nova approve CODE`). Or from the terminal: `sudo nova link OTHER-SERVER`. The certificate is checked the whole way, and a linked server only ever reads.
+- **A friendlier `nova` command:** plain `nova` shows the few things you'd come for; `nova help TOPIC` gives short guides (pair, browser, servers, remote, backup, update, troubleshoot, uninstall); a typo gets "did you mean"; `sudo nova status` shows this server's certificate.
+- **`sudo nova doctor`:** checks Nova, its ports, the home address, the firewall, the clock, disk space and Tailscale — each problem with how to fix it.
+- **Setup explains itself:** type `?` at any question in `sudo nova setup` for what that step means. On a server that isn't set up yet, logging in says how to start.
+
 ## 0.8.11-alpha (server, Nova web, app and watch)
 - **Living wallpaper is sharp on the web:** Aero's ribbons, Breeze's waves, Material's shapes and the nebula's stars are drawn at your screen's real sharpness, like the app (Mica's bloom and Glass's liquid color stay soft; Lighter effects still draws small).
 - **Glass is much lighter with a living wallpaper** (app): the scene is drawn once per tick on a background thread and every Glass card copies its part, instead of each card drawing the whole scene again — that was the scene a dozen times a frame during a back gesture.
