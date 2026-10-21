@@ -367,7 +367,7 @@ export async function status(ctx) {
   const split = () => !!prefs.cpuSplit && live() && (L.now?.cpus?.length || 0) > 1;
   // columns that fill every row (12 cores → 6 × 2, 16 → 8 × 2, 8 → 4 × 2), or near-square when nothing divides evenly
   const kcols = k => { for (let c = Math.ceil(Math.sqrt(k)); c <= 8; c++) if (k % c === 0) return c; return Math.ceil(Math.sqrt(k * 1.6)); };
-  const kgrid = (n, pre) => `<div class="kgrid" style="--kc:${kcols(n.cpus.length)}">${n.cpus.map((v, i) => `<div class="kcell"><canvas id="${pre}${i}"></canvas><small>${i}</small></div>`).join("")}</div>`;
+  const kgrid = (n, pre) => `<div class="kgrid" style="--kc:${kcols(n.cpus.length)}">${n.cpus.map((v, i) => `<div class="kcell"><canvas id="${pre}${i}"></canvas><small id="${pre}${i}l">${i} · ${Math.round(n.cpus[i] || 0)}%</small></div>`).join("")}</div>`;
   const cpuCard = n => `<div class="card glass cpucard${split() ? " split" : ""}" data-act="cpuclick" title="Click to enlarge · double-click for each core"><div class="lbl">CPU${split() ? ` · ${n.cpus.length} cores` : ""}</div><div class="val" id="c1v">${n ? Math.round(n.cpu) + "%" : "—"}</div><div class="sub" id="c1s">${n ? `load ${n.load} · ${n.cores} cores` : ""}</div>${split() ? kgrid(n, "k") : `<canvas id="c1"></canvas>`}</div>`;
   let clickT = 0;
   const GRAPH = { c1: ["CPU", "--blue", x => +(x.cpu || 0), v => Math.round(v) + "%", 100], c2: ["Memory", "#bf5af2", x => +(x.mem || 0), v => Math.round(v) + "%", 100],
@@ -415,7 +415,9 @@ export async function status(ctx) {
     const p = pts(), n = L.now, opts = { ...(live() ? { window: 120, tick: L.tick, added: L.added } : { tick: 0 }), times: p.map(x => x.t) };
     for (const [id, [, col, val, fmt, max]] of Object.entries(GRAPH)) spark($("#" + id), p.map(val), col, { ...opts, fmt, max });
     // each core's graph (the split CPU card, or the enlarged CPU view on "Each core"); the hour history has no per-core points
-    const cores = (pre, o = {}) => (n?.cpus || []).forEach((_, i) => { const c = $("#" + pre + i); if (c) spark(c, p.map(x => +(x.cpus?.[i] || 0)), "--blue", { ...opts, fmt: v => Math.round(v) + "%", max: 100, ...o }); });
+    const cores = (pre, o = {}) => (n?.cpus || []).forEach((v, i) => { const c = $("#" + pre + i); if (!c) return;
+      spark(c, p.map(x => +(x.cpus?.[i] || 0)), "--blue", { ...opts, fmt: v => Math.round(v) + "%", max: 100, ...o });
+      const l = $("#" + pre + i + "l"); if (l) l.textContent = `${i} · ${Math.round(v || 0)}%`; });           // each core's percent, always shown
     cores("k");
     if (big && big.canvas.isConnected) {
       if (big.id === "c1" && big.each && $("#bk0")) cores("bk", { scrub: "all" });
@@ -790,18 +792,32 @@ const TASK_ROUTE = t => t.kind.startsWith("store-") ? `store/${t.key}` : t.kind.
   : t.kind === "backup-run" || t.kind === "restore" ? "backups" : t.kind.startsWith("custom-") ? "containers" : `task/${t.id}`;
 // A task slides in the first time you see it (never again), and once it ends it shows "Done" for a
 // moment and moves on — the server writes it into the Inbox as an ordinary event.
-const liveSeen = new Set(), liveHidden = new Set();
+const liveSeen = new Set(), liveHidden = new Set();     // hidden: dismissed here (a running one keeps running on the server)
 let liveFresh = new Set();
 function liveHtml() {
-  const now = Date.now() / 1000, l = (S.cache["/api/v1/tasks"]?.tasks || []).filter(t => t.state === "running" || (t.finished && now - t.finished < 6 && liveSeen.has(t.id) && !liveHidden.has(t.id)));
+  const now = Date.now() / 1000, l = (S.cache["/api/v1/tasks"]?.tasks || []).filter(t => !liveHidden.has(t.id) && t.state === "running" || (t.finished && now - t.finished < 6 && liveSeen.has(t.id) && !liveHidden.has(t.id)));
   liveFresh = new Set(l.filter(t => !liveSeen.has(t.id)).map(t => t.id)); l.forEach(t => liveSeen.add(t.id));
   if (!l.length) return "";
   const rowOf = t => `<div class="row click livetask${liveFresh.has(t.id) ? " livein" : ""}${t.state !== "running" ? " liveend" : ""}" data-id="${esc(t.id)}" data-act="go:${esc(TASK_ROUTE(t))}"><div class="t" style="gap:6px"><div class="tb-top"><b>${esc(t.title)}</b>
       <span class="muted" style="font-variant-numeric:tabular-nums">${t.state === "running" ? Math.round(t.pct || 0) + "%" : t.state === "done" ? "Done" : t.state === "stopped" ? "Stopped" : "Failed"}</span></div>
-      ${t.state === "running" ? bar((t.pct || 0) / 100) : ""}<small>${esc(t.state === "running" ? (t.note || t.step || "") : t.state === "done" ? "Moved to your Inbox" : (t.error || t.step || ""))}</small></div>${t.state !== "running" ? `<button class="rmbtn press" data-act="livehide:${esc(t.id)}" aria-label="Dismiss" title="Dismiss">${I("close")}</button>` : ""}</div>`;
+      ${t.state === "running" ? bar((t.pct || 0) / 100) : ""}<small>${esc(t.state === "running" ? (t.note || t.step || "") : t.state === "done" ? "Moved to your Inbox" : (t.error || t.step || ""))}</small></div><button class="rmbtn press" data-act="livehide:${esc(t.id)}" aria-label="Dismiss" title="${t.state === "running" ? "Hide (it keeps running)" : "Dismiss"}">${I("close")}</button></div>`;
   // finished ones swipe away (either way), like any Inbox event
   return sec(l.length > 1 ? `In progress · ${l.length}` : "In progress") + group(l.map(t => t.state === "running" ? rowOf(t)
     : `<div class="swipe" data-key="live:${esc(t.id)}" data-right="Dismiss" data-left="Dismiss"><div class="swbg"></div><div class="swfg">${rowOf(t)}</div></div>`).join(""));
+}
+/** Where an Inbox event takes you: its category, or what its title is about. (The app has the same rules: Inbox.kt evRoute.) */
+export function evRoute(e) {
+  const c = (e.category || "").split(":")[0], t = (e.title || "") + " " + (e.detail || "");
+  const m = /^Container (?:crashed|unhealthy|ran out of memory|stopped|restarted)[^:]*: (\S+)/i.exec(e.title || "");
+  if (m) return "containers/" + encodeURIComponent(m[1]);
+  if (c === "container" || /container/i.test(t)) return "containers";
+  if (c === "login" || c === "security" || /\b(login|ssh|sudo|fail2ban|passkey|authenticator)\b/i.test(t)) return "security";
+  if (/paired|new device|device removed/i.test(t)) return "devices";
+  if (c === "device" || /drive|disk|smart|sector|raid|pool|mount|nvme|usb/i.test(t)) return "hardware";
+  if (/backup|restore/i.test(t)) return "backups";
+  if (/update|upgrade|nova app .* ready|new version/i.test(t)) return "updates";
+  if (c === "memory" || c === "service" || /memory|cpu|temperature|swap|service/i.test(t)) return "status";
+  return "";
 }
 const dayOf = e => { const d = new Date(e.t * 1000), now = new Date(), y = new Date(now - 86400000);
   return d.toDateString() === now.toDateString() ? "Today" : d.toDateString() === y.toDateString() ? "Yesterday" : d.toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" }); };
@@ -830,7 +846,7 @@ export async function inbox(ctx) {
           return `<div class="swipe fadeok${mouse ? " mouse" : ""}${on ? " picked" : ""}" data-key="${e.t}" data-left="Archive" data-right="Archive" tabindex="0"><div class="swbg"></div><div class="swfg"><div class="row" style="align-items:flex-start">
             ${mouse ? `<button class="tick fadeok${on ? " on" : ""}" data-act="pick:${k}" aria-label="Select" aria-pressed="${on}">${I("check")}</button>` : `<span class="dot" style="margin-top:7px;background:${levelColor(e.level)}"></span>`}
             <div class="t evt" data-act="evx:${k}">${mouse ? `<span class="dot" style="display:inline-block;margin-right:8px;background:${levelColor(e.level)}"></span>` : ""}<b style="font-size:16px;display:inline">${esc(cleanTitle(e.title))}</b>${e.detail ? `<small class="evd${openEv.has(k) ? " open" : ""}">${esc(e.detail)}</small>` : ""}</div>
-            <span class="end" style="font-size:13px">${hm(e.t)}</span><button class="xbtn" data-act="del:${e.t}" aria-label="Archive" title="Archive">${I("archive")}</button></div></div></div>`; }).join(""))).join("")
+            <span class="end" style="font-size:13px">${hm(e.t)}</span>${evRoute(e) ? `<button class="xbtn" data-act="go:${esc(evRoute(e))}" aria-label="Open" title="Open">${I("back").replace('class="i ', 'style="transform:scaleX(-1)" class="i ')}</button>` : ""}<button class="xbtn" data-act="del:${e.t}" aria-label="Archive" title="Archive">${I("archive")}</button></div></div></div>`; }).join(""))).join("")
         || note(all ? "Nothing here — all quiet." : "Loading…")}`,
       { title: "Inbox", actions: [{ icon: "book", label: "Archive", act: "go:archive" }, { icon: "del", label: "Archive everything", act: "clear" }, { icon: "gear", label: "Notification settings", act: "go:notify" }] });
     wireCommon(ctx.root, { onSeg: (_, i) => { filter = i; picked.clear(); draw(); } });
@@ -1663,7 +1679,7 @@ export async function dev(ctx) {
 const PACKS = { default: "Droplets", material: "Material", aero: "Aero", fluent: "Mica", breeze: "Breeze", liquid: "Glass" };
 export async function appearance(ctx) {
   const draw = () => {
-    const rmax = prefs.style === "liquid" ? 200 : 400;     // Glass stops at 200%: past that its cards turn into ovals
+    const rnow = Math.max(25, Math.min(200, prefs["round_" + prefs.style] ?? prefs.round ?? 100));   // each look keeps its own roundness
     const t = prefs.theme, st = prefs.style, mat = document.documentElement.classList.contains("material"), look = mat ? "Material" : ({ liquid: "Glass", fluent: "Mica", breeze: "Breeze", aero: "Aero" })[st] || "Default";
     const autoMat = /Android/i.test(navigator.userAgent) && !/SamsungBrowser|SM-[A-Z0-9]|Xiaomi|Redmi|POCO|HUAWEI|HONOR|vivo|OPPO|realme/i.test(navigator.userAgent);
     ctx.show(`${sec("Style")}${group([["auto", "Automatic", `${autoMat ? "Material You" : "Default"} — picked to suit this device`], ["default", "Default", "Nova's own look: frosted glass and a soft glow"],
@@ -1673,8 +1689,9 @@ export async function appearance(ctx) {
         ["breeze", "Breeze", "Flat and tidy: a thin frame, gentle corners, the accent as the focus color"],
         ["aero", "Aero", "Tinted frosted glass frames with a glossy shine and glowing buttons"]].map(([k, l, d]) => row(l, { sub: d, end: radio(st === k), click: "style:" + k })).join(""))}
       ${["liquid", "fluent", "breeze", "aero"].includes(st) ? group((st !== "breeze" ? `<div class="range-row"><div class="h"><span>Glass clarity</span><span id="glassl">${prefs.glass ?? 60}%</span></div><input type="range" min="0" max="100" value="${prefs.glass ?? 60}" data-range="glass" style="--p:${prefs.glass ?? 60}%"></div>` : "")
-        + `<div class="range-row"><div class="h"><span>Corner roundness</span><span id="roundl">${Math.min(prefs.round ?? 100, rmax)}%</span></div><input type="range" min="25" max="${rmax}" value="${Math.min(prefs.round ?? 100, rmax)}" data-range="round" style="--p:${(Math.min(prefs.round ?? 100, rmax) - 25) / (rmax - 25) * 100}%"></div>`) : ""}
+        + `<div class="range-row"><div class="h"><span>Corner roundness</span><span id="roundl">${rnow}%</span></div><input type="range" min="25" max="200" value="${rnow}" data-range="round_${st}" style="--p:${(rnow - 25) / 175 * 100}%"></div>`) : ""}
       ${st === "liquid" && !canRefract() ? note("This browser shows Glass frosted, without the bending at the edges — that part needs a Chromium-based browser.") : ""}
+      ${st === "liquid" ? note("Glass is the most demanding look: on some devices it can make things warm, use more battery or stutter. Lighter effects (below) keeps the look with less work.") : ""}
       ${sec("Theme")}${group([["system", "Same as this device"], ["light", `${look} light`], ["dark", `${look} dark`]].map(([k, l]) => row(l, { end: radio(t === k), click: "theme:" + k })).join(""))}
       ${group(switchRow("Reduce motion", "Simple fades instead of slides and bounces", prefs.reduceMotion, "motion", { blue: false })
         + `<div class="range-row"><div class="h"><span>Animation speed</span><span id="speedl">${speedText(prefs.animSpeed ?? 100)}</span></div><input type="range" min="25" max="300" step="5" value="${prefs.animSpeed ?? 100}" data-range="animSpeed" style="--p:${((prefs.animSpeed ?? 100) - 25) / 275 * 100}%"></div>`
@@ -1728,7 +1745,7 @@ export async function appearance(ctx) {
         if (/^living/.test(k)) { const u = { livingSpeed: "%", livingBlur: "px", livingTint: "%", livingFps: " fps" }[k]; if ($("#" + k + "l")) $("#" + k + "l").textContent = v + u; LV.update(); }
         if (k === "ambVol") { if ($("#ambl")) $("#ambl").textContent = v + "%"; AMB.update(); }
         if (k === "soundVol") { if ($("#voll")) $("#voll").textContent = v + "%"; clearTimeout(volT); volT = setTimeout(() => SND.play("tap"), 60); }
-        const l = { tint: ["tintl", "%"], wallBlur: ["blurl", "px"], wallDim: ["diml", "%"], glass: ["glassl", "%"], round: ["roundl", "%"] }[k]; if (l && $("#" + l[0])) $("#" + l[0]).textContent = v + l[1];
+        const l = { tint: ["tintl", "%"], wallBlur: ["blurl", "px"], wallDim: ["diml", "%"], glass: ["glassl", "%"], round: ["roundl", "%"] }[/^round_/.test(k) ? "round" : k]; if (l && $("#" + l[0])) $("#" + l[0]).textContent = v + l[1];
       } });
   };
   let wallHas = false, volT = 0;
@@ -1901,8 +1918,18 @@ export async function hostTerminal(ctx) {
       <div class="vtkeys">${[["Esc", "\x1b"], ["Tab", "\t"], ["Ctrl-C", "\x03"], ["Ctrl-D", "\x04"], ["Ctrl-Z", "\x1a"], ["↑", "\x1b[A"], ["↓", "\x1b[B"], ["←", "\x1b[D"], ["→", "\x1b[C"]].map(([l, v]) => `<button class="chip press" data-act="key:${encodeURIComponent(v)}">${esc(l)}</button>`).join("")}</div>
       <p class="muted vtnote" id="vtstate">Asking your phone to approve…</p></div>`, { title: "Server terminal", narrow: false });
   let sid = null, off = 0, size = null;
-  const send = t => sid && post(`/api/v1/shell/${sid}`, { input: t }).catch(e => toast(e.message));
+  // keystrokes go one request at a time, in order: what you type while one is on its way follows in the next
+  let queue = "", busy = false;
+  const flush = async () => {
+    if (busy || !queue || !sid) return; busy = true;
+    const t = queue; queue = "";
+    try { await post(`/api/v1/shell/${sid}`, { input: t }); } catch (e) { toast(e.message); }
+    busy = false; if (queue) flush();
+  };
+  const send = t => { queue += t; flush(); };
   const term = new Term($("#vt"), { onInput: send, onResize: (c, r) => { size = [c, r]; if (sid) send(`\x1b]7799;${c};${r}\x07`); } });
+  // power commands and multi-line pastes ask first (term.js decides when)
+  term.onConfirm = (what, paste) => confirm(paste ? "Paste and run these lines?" : "Run this on the server?", what, paste ? "Paste" : "Run it", "var(--red)");
   ctx.handlers({ key: v => { send(decodeURIComponent(v)); term.focus(); } });
   try { sid = (await post("/api/v1/terminal")).session; } catch (e) { $("#vtstate").textContent = e.message; return; }
   if (!sid) { $("#vtstate").textContent = "Not approved."; return; }

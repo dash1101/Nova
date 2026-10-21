@@ -66,7 +66,11 @@ object AppPrefs {
     var solid by mutableStateOf(false); private set                        // Reduce transparency: solid surfaces, no glass
     var lang by mutableStateOf("auto"); private set                        // Appearance → Language: auto (the phone's) or a code (I18n.kt)
     var glass by mutableStateOf(60); private set                           // Liquid Glass / Fluent: how clear the glass is (0–100)
-    var round by mutableStateOf(100); private set                          // Liquid Glass / Fluent / Breeze: corner roundness (25–150 %)
+    var round by mutableStateOf(100); private set                          // the old single roundness (before each look kept its own)
+    private var roundV by mutableIntStateOf(0)
+    /** Corner roundness for one look (25–200 % on the slider; see roundK()). */
+    fun roundFor(style: String): Int { roundV; return sp.getString("round_$style", null)?.toIntOrNull() ?: round.coerceAtMost(200) }
+    fun setRound(style: String, v: Int) { sp.edit().putString("round_$style", v.toString()).apply(); roundV++ }
     /** Worked out once at start: an older or low-memory phone, where the live blur and 60 fps animations cost too much. */
     var slowDevice = false; private set
 
@@ -196,10 +200,12 @@ object AppLock {
                     Row { Text("Glass clarity", color = N.sub, fontSize = 14.sp, modifier = Modifier.weight(1f)); Text("${AppPrefs.glass}%", color = N.sub, fontSize = 14.sp) }
                     OneSlider(AppPrefs.glass.toFloat(), { AppPrefs.set("glass", it.toInt()) }, 0f..100f)
                 }
-                Row { Text("Corner roundness", color = N.sub, fontSize = 14.sp, modifier = Modifier.weight(1f)); Text("${(roundK() * 100).toInt()}%", color = N.sub, fontSize = 14.sp) }
-                OneSlider(roundK() * 100, { AppPrefs.set("round", it.toInt()) }, 25f..(if (presetStyle() == "liquid") 200f else 400f))   // Glass stops at 200%
+                val rs = presetStyle()                 // each look keeps its own roundness
+                Row { Text("Corner roundness", color = N.sub, fontSize = 14.sp, modifier = Modifier.weight(1f)); Text("${AppPrefs.roundFor(rs)}%", color = N.sub, fontSize = 14.sp) }
+                OneSlider(AppPrefs.roundFor(rs).toFloat(), { AppPrefs.setRound(rs, it.toInt()) }, 25f..200f)
             }
         }
+        if (presetStyle() == "liquid") Note("Glass is the most demanding look: on some phones it can make things warm, use more battery or stutter. Lighter effects (below) keeps the look with less work.", 13.sp, 4.dp)
         SectionLabel("Theme")
         Group {
             val look = if (materialStyle()) "Material" else mapOf("liquid" to "Glass", "fluent" to "Mica", "breeze" to "Breeze", "aero" to "Aero")[presetStyle()] ?: "Default"

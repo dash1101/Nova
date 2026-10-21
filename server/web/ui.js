@@ -280,7 +280,14 @@ export function onHold(el, fn) {
     const stop = e => { e.stopPropagation(); e.preventDefault(); };
     addEventListener("click", stop, { capture: true, once: true }); setTimeout(() => removeEventListener("click", stop, { capture: true }), 600);
   };
-  let t; el.addEventListener("pointerdown", () => { t = setTimeout(() => { t = null; navigator.vibrate?.(10); swallow(); fn(); }, 500); });
+  // a hold is pressing still: moving more than a few pixels (dragging a slider, scrolling) isn't one, and sliders and
+  // text boxes never start one
+  let t, x0 = 0, y0 = 0;
+  el.addEventListener("pointerdown", e => {
+    if (e.target.closest?.('input, textarea, select, [contenteditable]')) return;
+    x0 = e.clientX; y0 = e.clientY; t = setTimeout(() => { t = null; navigator.vibrate?.(10); swallow(); fn(); }, 500);
+  });
+  el.addEventListener("pointermove", e => { if (t && Math.hypot(e.clientX - x0, e.clientY - y0) > 8) { clearTimeout(t); t = null; } });
   ["pointerup", "pointerleave", "pointercancel"].forEach(ev => el.addEventListener(ev, () => clearTimeout(t)));
   el.addEventListener("contextmenu", e => { e.preventDefault(); fn(); });
 }

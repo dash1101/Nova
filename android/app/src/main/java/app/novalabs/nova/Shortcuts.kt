@@ -166,14 +166,14 @@ fun sectionOn(id: String) = when (id) { "hero" -> AppPrefs.homeHero; "shortcuts"
 // ── Bottom bar tabs ──────────────────────────────────────────────────────────────
 /** Pages that can be a tab in the bottom bar (Home is always there). */
 val NAV_TABS = listOf(
-    Shortcut("home", Icons.Rounded.Dns, "Home", Route.Home),
+    Shortcut("home", Icons.Rounded.Home, "Home", Route.Home),
     Shortcut("store", Icons.Rounded.Storefront, "Store", Route.Store, "store"),
     Shortcut("menu", Icons.AutoMirrored.Rounded.List, "Menu", Route.Menu),
     Shortcut("start", Icons.Rounded.TravelExplore, "Start", Route.Start),
     Shortcut("search", Icons.Rounded.Search, "Search", Route.Search),
     Shortcut("favorites", Icons.Rounded.Star, "Favorites", Route.Favorites),
 ) + SHORTCUTS.filter { it.id in listOf("apps", "status", "containers", "storage", "inbox", "quick", "lighting", "terminal") }
-val DEFAULT_TABS = listOf("store", "home", "menu")
+val DEFAULT_TABS = listOf("inbox", "home", "menu")
 const val MAX_TABS = 12
 
 fun navTabs(app: AppState): List<Shortcut> =

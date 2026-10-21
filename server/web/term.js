@@ -128,6 +128,7 @@ export class Term {
   mode(a, on) {
     for (const m of a) {
       if (m === 1) this.appCursor = on;
+      else if (m === 2004) this.bracketed = on;                  // the shell takes pastes as text, not as commands
       else if (m === 25) this.cursor = on;
       else if (m === 1049 || m === 47 || m === 1047) {
         if (on && !this.useAlt) { this.main = { grid: this.grid, x: this.x, y: this.y }; this.grid = this.newGrid(); this.useAlt = true; this.x = this.y = 0; }
@@ -171,6 +172,33 @@ export class Term {
   // ── keyboard ──
   bindKeys() {
     const send = s => this.onInput?.(s);
+    // What you've typed on this line, roughly — enough to catch a power command before Enter sends it
+    this.line = "";
+    const typed = s => { for (const ch of s) { if (ch === "\r") this.line = ""; else if (ch === "\x7f") this.line = this.line.slice(0, -1); else if (ch === "\x15" || ch === "\x03") this.line = ""; else if (ch >= " ") this.line += ch; } };
+    const RISKY = /^\s*(sudo\s+(-\S+\s+)*)?(shutdown|reboot|poweroff|halt|init\s+[06]|systemctl\s+(poweroff|reboot|halt|kexec)|rm\s+-[a-z]*r[a-z]*f?\s+\/(\s|$))/;
+    const enter = async () => {
+      if (RISKY.test(this.line)) {
+        const ok = await (this.onConfirm?.(this.line.trim()) ?? Promise.resolve(window.confirm(`Run "${this.line.trim()}" on the server?`)));
+        if (!ok) return;                                       // not sent: the line stays as typed
+      }
+      this.line = ""; send("\r");
+    };
+    // A paste never runs by itself: with bracketed paste (bash, zsh, fish) the shell holds it as text until you press
+    // Enter; without it, a paste with line breaks asks first. Trailing line breaks are dropped either way.
+    const paste = async t => {
+      if (!t) return;
+      t = t.replace(/\r?\n$/g, "").replace(/\r?\n/g, "\r");
+      if (!this.bracketed && t.includes("\r")) {
+        const ok = await (this.onConfirm?.(t.split("\r")[0] + (t.split("\r").length > 1 ? ` (and ${t.split("\r").length - 1} more line${t.split("\r").length > 2 ? "s" : ""})` : ""), true)
+          ?? Promise.resolve(window.confirm("Paste and run these lines?")));
+        if (!ok) return;
+      }
+      this.userScrolled = false; typed(t.split("\r").pop());
+      send(this.bracketed ? `\x1b[200~${t}\x1b[201~` : t);
+    };
+    // Middle-click (and a three-finger tap on many trackpads) pastes the last selected text on Linux — never in here
+    this.el.addEventListener("auxclick", e => { if (e.button === 1) e.preventDefault(); });
+    this.el.addEventListener("mousedown", e => { if (e.button === 1) e.preventDefault(); });
     this.el.addEventListener("scroll", () => { this.userScrolled = this.el.scrollTop + this.el.clientHeight < this.el.scrollHeight - 4; });
     this.inp.addEventListener("keydown", e => {
       const k = e.key, ac = this.appCursor;
@@ -184,9 +212,16 @@ export class Term {
       if (map[k]) out = (e.altKey ? "\x1b" : "") + map[k];
       else if (e.ctrlKey && !e.altKey && k.length === 1) { const c = k.toUpperCase().charCodeAt(0); if (c >= 64 && c <= 95) out = String.fromCharCode(c - 64); else if (k === " ") out = "\x00"; }
       else if (e.altKey && k.length === 1) out = "\x1b" + k;
-      if (out !== null) { e.preventDefault(); this.userScrolled = false; send(out); }
+      if (out === "\r") { e.preventDefault(); this.userScrolled = false; enter(); return; }
+      if (out !== null) { e.preventDefault(); this.userScrolled = false; typed(out); send(out); }
     });
-    this.inp.addEventListener("input", () => { const v = this.inp.value; this.inp.value = ""; if (v) { this.userScrolled = false; send(v.replace(/\n/g, "\r")); } });
-    this.inp.addEventListener("paste", e => { e.preventDefault(); const t = e.clipboardData.getData("text"); if (t) send(t.replace(/\r?\n/g, "\r")); });
+    this.inp.addEventListener("input", e => {
+      const v = this.inp.value; this.inp.value = ""; if (!v) return;
+      if (/^insertFrom(Paste|Drop)|insertReplacementText/.test(e.inputType || "") || v.length > 1 && /\n/.test(v)) return paste(v);   // pasted, dropped or autocompleted
+      this.userScrolled = false;
+      const parts = v.split("\n");                             // a phone keyboard's Enter arrives as a line break
+      parts.forEach((p, i) => { if (p) { typed(p); send(p); } if (i < parts.length - 1) enter(); });
+    });
+    this.inp.addEventListener("paste", e => { e.preventDefault(); paste(e.clipboardData.getData("text")); });
   }
 }

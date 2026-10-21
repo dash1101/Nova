@@ -67,7 +67,10 @@ fun presetTokens(preset: String, dark: Boolean, seed: Color?): NovaColors? = whe
 }
 
 /** Corner roundness as a factor (25–400%); Glass stops at 200%, past that its cards turn into ovals. */
-fun roundK(): Float = AppPrefs.round.coerceIn(25, if (presetStyle() == "liquid") 200 else 400) / 100f
+/** Corner roundness: 25–200% on the slider, kept for each look. Up to 100% the plain scale; above, Glass reaches 1.8× at
+ *  200% (rounder turns its cards into ovals) and the other looks 4× (the old 400%). */
+fun roundK(): Float { val v = AppPrefs.roundFor(presetStyle()).coerceIn(25, 200)
+    return if (v <= 100) v / 100f else 1f + (v - 100) / 100f * (if (presetStyle() == "liquid") .8f else 3f) }
 
 /** Floating pills (the nav pill, the dock): Mica, Breeze and Aero use their own small corners, scaled by Corner roundness
  *  (never rounder than the usual capsule). */

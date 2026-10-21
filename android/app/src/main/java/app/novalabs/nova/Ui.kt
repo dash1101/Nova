@@ -277,7 +277,8 @@ fun levelColor(level: String, t: NovaColors) = when (level) {
 /** One UI switch row: text area clickable, a thin vertical divider, then the switch. */
 @Composable fun SwitchRow(title: String, subtitle: String? = null, checked: Boolean, enabled: Boolean = true,
                           subtitleBlue: Boolean = false, onClick: (() -> Unit)? = null, onChange: (Boolean) -> Unit) {
-    Row1(title, subtitle, subtitleBlue, enabled = enabled, onClick = onClick ?: { onChange(!checked) }) {
+    // the row flips the switch with the switch's own on/off sound (not a plain tap)
+    Row1(title, subtitle, subtitleBlue, enabled = enabled, onClick = onClick ?: { Sounds.feel(if (checked) "toggleOff" else "toggleOn"); onChange(!checked) }) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             if (onClick != null) Box(Modifier.width(1.dp).height(28.dp).background(N.divider))
             Spacer(Modifier.width(12.dp))
@@ -359,10 +360,10 @@ val LocalCompactHeight = staticCompositionLocalOf { false }
 data class PillItem(val icon: ImageVector, val label: String, val badge: Int = 0, val onLongClick: (() -> Unit)? = null, val onClick: () -> Unit)
 
 @Composable fun PillBar(items: List<PillItem>, modifier: Modifier = Modifier) {
-    Row(modifier.padding(horizontal = Space.gutter).fillMaxWidth().glassCard(RoundedCornerShape(30.dp))
+    Row(modifier.padding(horizontal = Space.gutter).fillMaxWidth().glassCard(RoundedCornerShape(if (N.material) 30.dp else cardRadius(30.dp)))   // the same corners as the cards around it
         .padding(vertical = 12.dp, horizontal = 6.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
         items.forEach { it ->
-            Column(Modifier.weight(1f).clip(RoundedCornerShape(18.dp)).bouncy(onLongClick = it.onLongClick, onClick = it.onClick).padding(vertical = 6.dp),
+            Column(Modifier.weight(1f).clip(RoundedCornerShape(if (N.material) 18.dp else cardRadius(18.dp))).bouncy(onLongClick = it.onLongClick, onClick = it.onClick).padding(vertical = 6.dp),
                 horizontalAlignment = Alignment.CenterHorizontally) {
                 Box {
                     Icon(it.icon, null, tint = N.text, modifier = Modifier.size(26.dp))
@@ -482,7 +483,8 @@ fun Modifier.fadeEdges(s: androidx.compose.foundation.ScrollState, horizontal: B
         drawContent()
         val len = if (horizontal) size.width else size.height; if (len <= 0f) return@drawWithContent
         val f = (edge.toPx() / len).coerceAtMost(0.45f)
-        val start = if (s.value > 0) Color.Transparent else Color.Black; val end = if (s.value < s.maxValue) Color.Transparent else Color.Black
+        val slack = 12.dp.toPx()
+        val start = if (s.value > slack) Color.Transparent else Color.Black; val end = if (s.value < s.maxValue - slack) Color.Transparent else Color.Black
         val stops = arrayOf(0f to start, f to Color.Black, 1f - f to Color.Black, 1f to end)
         drawRect(if (horizontal) Brush.horizontalGradient(*stops) else Brush.verticalGradient(*stops), blendMode = androidx.compose.ui.graphics.BlendMode.DstIn)
         // and a small arrow at an end with more beyond it, so a full dock or row says there's more
@@ -491,9 +493,9 @@ fun Modifier.fadeEdges(s: androidx.compose.foundation.ScrollState, horizontal: B
             val p = androidx.compose.ui.graphics.Path().apply { moveTo(cx - a * dy - a * dx, cy - a * dx - a * dy); lineTo(cx + a * dx * .2f, cy + a * dy * .2f); lineTo(cx + a * dy - a * dx, cy + a * dx - a * dy) }
             drawPath(p, c, style = androidx.compose.ui.graphics.drawscope.Stroke(w, cap = androidx.compose.ui.graphics.StrokeCap.Round, join = androidx.compose.ui.graphics.StrokeJoin.Round))
         }
-        if (s.maxValue > 0) {
-            if (horizontal) { if (s.value > 0) chevron(inset, size.height / 2, -1f, 0f); if (s.value < s.maxValue) chevron(size.width - inset, size.height / 2, 1f, 0f) }
-            else { if (s.value > 0) chevron(size.width / 2, inset, 0f, -1f); if (s.value < s.maxValue) chevron(size.width / 2, size.height - inset, 0f, 1f) }
+        if (s.maxValue > 12.dp.toPx()) {                         // only when there's really more to see
+            if (horizontal) { if (s.value > slack) chevron(inset, size.height / 2, -1f, 0f); if (s.value < s.maxValue - slack) chevron(size.width - inset, size.height / 2, 1f, 0f) }
+            else { if (s.value > slack) chevron(size.width / 2, inset, 0f, -1f); if (s.value < s.maxValue - slack) chevron(size.width / 2, size.height - inset, 0f, 1f) }
         }
     }
 

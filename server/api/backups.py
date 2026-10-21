@@ -287,7 +287,7 @@ def run_job(job, log=print, progress=lambda pct, note="": None, force=False):
     for s in job["sources"]:
         if not os.path.isdir(s):
             skipped.append(f"{s} is missing"); continue
-        log(f"Checking {s}…"); n = count_files(s)
+        log(f"Checking {s}…"); progress(0, f"Counting the files in {s}…"); n = count_files(s)      # big folders take a while: say so
         last = prev.get("counts", {}).get(s)
         if n == 0 and last and not force: skipped.append(f"{s} is empty now (had {last} files) — is its drive missing?"); continue
         if n is not None and last and job["guard_pct"] and not force and n < last * (1 - job["guard_pct"] / 100):
@@ -297,6 +297,7 @@ def run_job(job, log=print, progress=lambda pct, note="": None, force=False):
     result = {"t": t0, "stamp": stamp, "ok": False, "skipped": skipped}
     try:
         if not ok_sources: raise RuntimeError("nothing to back up: " + "; ".join(skipped))
+        progress(0, "Getting the destination ready…")
         with Dest(job, log) as folder:
             snaps = snapshots(folder); k = 0
             while os.path.exists(os.path.join(folder, stamp)):          # two runs within the same second

@@ -278,7 +278,9 @@ input[type=range]:disabled { opacity: .45; }
          font-size: 15px; opacity: 0; transition: opacity .25s, transform .35s var(--spring); pointer-events: none; z-index: 50; max-width: 86vw; text-align: center; }
 #toast.on { opacity: 1; transform: translate(-50%, 0); }
 body.side #toast { bottom: 24px; }
-#sheet { position: fixed; inset: 0; background: rgba(0,0,0,.45); display: grid; align-items: end; justify-items: center; z-index: 40; padding: 12px; animation: in-fade .2s; }
+#sheet { position: fixed; inset: 0; background: rgba(0,0,0,.45); display: grid; align-items: end; justify-items: center; z-index: 40; padding: 12px; animation: scrim-in .2s; }
+/* the backdrop's color fades in, not the layer's opacity: a fading layer switches off the frost of the pop-up inside it */
+@keyframes scrim-in { from { background-color: transparent; } }
 #sheet[hidden] { display: none; }
 #sheet .box { border-radius: 30px; width: min(560px, 100%); padding: 24px 0 6px; margin-bottom: 16px; max-height: 86vh; overflow: hidden auto; scrollbar-width: none; overscroll-behavior: contain; animation: sheet-up .35s var(--spring); }
 @keyframes sheet-up { from { transform: translateY(40px); opacity: 0; } to { transform: none; opacity: 1; } }
@@ -498,7 +500,8 @@ html.material .alertcard { border-radius: 16px; background: var(--card); backdro
 .vt-screen { font: 14px/1.25 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: pre; }
 .vt-screen > div { height: 1.25em; } .vt-probe { visibility: hidden; position: absolute; }
 .vt-cur { background: var(--vt-fg) !important; color: var(--vt-bg) !important; }
-.vt-input { position: absolute; left: 0; top: 0; width: 1px; height: 1px; opacity: 0; border: 0; padding: 0; resize: none; }
+/* pinned to the window, not the scrolling terminal: typing never scrolls the terminal to the box and back */
+.vt-input { position: fixed; left: 0; top: 40%; width: 1px; height: 1px; opacity: 0; border: 0; padding: 0; resize: none; }
 .vtkeys { display: flex; gap: 6px; flex-wrap: wrap; } .vtnote { margin: 0; font-size: 13px; }
 .taskbar { margin: 0 var(--gutter) 14px; padding: 14px 18px; border-radius: 22px; display: grid; gap: 8px; } .taskbar .tb-top { display: flex; justify-content: space-between; gap: 10px; }
 .taskbar .tb-top span { color: var(--sub); font-variant-numeric: tabular-nums; }
@@ -1088,8 +1091,8 @@ html.aero #sheet .box { --sr: calc(8px * var(--rk, 1)); --spx: 18px; --spb: 10px
 .wb.wtab svg { width: 16px; height: 16px; fill: currentColor; stroke: none; }
 .wb:hover { background: color-mix(in srgb, var(--text) 10%, transparent); }
 .wb.wclose:hover { background: #e81123; color: #fff; }
-.wbody { flex: 1; position: relative; background: #fff; min-height: 0; }
-.wbody iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: #fff; }
+.wbody { flex: 1; position: relative; background: var(--bg); min-height: 0; }
+.wbody iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: transparent; }   /* no white frame while the app loads */
 .wmsg { position: absolute; inset: 0; display: grid; place-items: center; background: linear-gradient(var(--card), var(--card)), var(--bg); color: var(--text); text-align: center; padding: 24px; }
 .wmsg[hidden] { display: none; }
 .wmsg > div { max-width: 380px; display: grid; justify-items: center; gap: 8px; }
@@ -1182,7 +1185,7 @@ html.embed .page .ph h1 { display: none; }
 .kgrid.big .kcell canvas { height: min(9vh, 84px); }
 @media (max-width: 600px) { .kgrid { --kc: 4 !important; } }
 /* living wallpaper (Beta): the animated scene replaces the glow; drawn small and scaled up soft */
-#live { position: fixed; inset: -24px; width: calc(100vw + 48px); height: calc(100vh + 48px); z-index: -2; pointer-events: none; }
+#livewall { position: fixed; inset: -24px; width: calc(100vw + 48px); height: calc(100vh + 48px); z-index: -2; pointer-events: none; }
 html.living body { background: transparent; } html.living body::before { display: none; }
 html.living { background: var(--bg); }
 /* a game controller's place on the page: a glowing ring in the accent (gamepad.js) */
@@ -1193,10 +1196,10 @@ html.pad, html.pad * { cursor: none; }
 html.reduce.pad .padfocus { animation: none; }
 /* the selection bar floats over the list it selects from: always properly frosted, so the rows behind don't show through */
 html:root .selbar.glass { background: color-mix(in srgb, var(--frost-solid, var(--card)) 94%, transparent); backdrop-filter: blur(26px) saturate(1.3); -webkit-backdrop-filter: blur(26px) saturate(1.3); }
-#live { overflow: hidden; } #live canvas, #live .lvmedia { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
-#live .lvmedia { filter: blur(var(--lvblur, 0px)); transform: scale(1.04); }
-#live canvas { image-rendering: auto; }
-#live i { position: absolute; inset: 0; background: var(--bg); opacity: var(--lvtint, 0); pointer-events: none; }
+#livewall { overflow: hidden; } #livewall canvas, #livewall .lvmedia { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+#livewall .lvmedia { filter: blur(var(--lvblur, 0px)); transform: scale(1.04); }
+#livewall canvas { image-rendering: auto; }
+#livewall i { position: absolute; inset: 0; background: var(--bg); opacity: var(--lvtint, 0); pointer-events: none; }
 #topbar .circle.off { opacity: .35; pointer-events: none; }
 #topbar .circle.fwd .i { transform: scaleX(-1); }
 html.embed #topbar .circle.fwd { margin-left: -4px; }
@@ -1214,7 +1217,7 @@ html.living .dash.bg-theme, .dash.bg-living { background: transparent; } html.li
 html.reduce .dash .dgrid.arrange .card { animation: none; }
 html.force-living #wall { display: none; }
 /* easter eggs */
-html.party #live, html.party body::before, html.party .nav { animation: partyhue 1.2s linear infinite; }
+html.party #livewall, html.party body::before, html.party .nav { animation: partyhue 1.2s linear infinite; }
 html.party .card, html.party .group { animation: partybob .6s ease-in-out infinite alternate; }
 @keyframes partyhue { to { filter: hue-rotate(360deg) saturate(1.6); } }
 @keyframes partybob { to { transform: translateY(-3px) rotate(.3deg); } }
@@ -1236,3 +1239,4 @@ html[data-icshape="circle"] :is(.appic, .wic) { border-radius: 50% !important; }
 html[data-icshape="square"] :is(.appic, .wic) { border-radius: 12% !important; }
 html[data-icshape="squircle"] :is(.appic, .wic) { border-radius: 38% !important; }   /* close to One UI's squircle at icon sizes */
 html[data-icshape="teardrop"] :is(.appic, .wic) { border-radius: 50% 50% 14% 50% !important; }
+#live { max-width: 680px; margin-inline: auto; }   /* the Inbox's in-progress card keeps a readable width on wide screens */

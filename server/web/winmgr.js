@@ -122,8 +122,13 @@ function wire(w) {
         Object.assign(el.style, { left: L + "px", top: T + "px", width: Wd + "px", height: Hd + "px" });
       }
     };
-    const up = () => { removeEventListener("pointermove", move); removeEventListener("pointerup", up); layer().classList.remove("dragging"); };
-    addEventListener("pointermove", move); addEventListener("pointerup", up);
+    // the grip or titlebar keeps the pointer for the whole drag: let go over the app inside and the drag still ends
+    // (it used to stay stuck to the cursor, and the app couldn't be clicked or scrolled until reload)
+    const tgt = e.currentTarget; try { tgt.setPointerCapture(e.pointerId); } catch {}
+    layer().classList.add("dragging");
+    const up = () => { removeEventListener("pointermove", move); removeEventListener("pointerup", up); removeEventListener("pointercancel", up); tgt.removeEventListener("lostpointercapture", up);
+      try { tgt.releasePointerCapture(e.pointerId); } catch {} layer().classList.remove("dragging"); };
+    addEventListener("pointermove", move); addEventListener("pointerup", up); addEventListener("pointercancel", up); tgt.addEventListener("lostpointercapture", up);
   };
   bar.onpointerdown = e => drag(e, "move");
   $$(".wgrip", el).forEach(g => g.onpointerdown = e => drag(e, g.dataset.g));

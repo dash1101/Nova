@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.8.8-alpha (server, Nova web, app and watch)
+- **The terminal never runs a command by itself** (web): a paste — including a middle-click or a trackpad's three-finger tap, which on Linux pastes your last selection — is held as text until you press Enter (or asks first, if the shell can't hold it); middle-click paste is off in the terminal; and Enter on `shutdown`, `reboot`, `poweroff`, `halt` or `systemctl poweroff/reboot` asks "Run this on the server?" first. Keystrokes now go in order, one request at a time (less lag when typing fast), and typing while scrolled up no longer makes the terminal jump.
+- **Living wallpaper stays on** (web): it was switching off on the Inbox, which used the same name for its in-progress card; Aero's is sharp again; and on Android it always moves again after a back gesture.
+- **Clicks land the first time** (web): a page refreshing its numbers while you pressed something swallowed the click — refreshes now wait until you let go. Holding something only counts if you don't move (dragging the fan slider in the Quick panel no longer opens the fan page).
+- **Inbox → the right page** (app and web): each notification has an arrow to what it's about — the drive, the container, Security & privacy, Updates, Backups, Status.
+- **Drive tests and backups show they're running:** a quick or full drive test now appears in progress (with its percent, from the drive itself) and lands in the Inbox as passed or failed; a backup says what it's doing from the first second.
+- **Apps in Nova windows:** resizing no longer sticks to the cursor, and windows scroll again after a drag; no white flash while an app loads.
+- **No white flashes on load** (web): the page starts in its own color, not white, before the styles arrive; the back arrow no longer flickers when a page refreshes.
+- **Pop-ups are frosted from the first frame** (all looks, web; Aero showed it only after the animation).
+- **The in-progress card** (Inbox) keeps a readable width and running tasks can be hidden.
+- **Offline?** Reloading warns that the page would be empty until the server's back — reload anyway if you like (web).
+- **Each CPU core's percent** shows on its graph (Status, split view, web).
+- **Corner roundness:** 25–200% in every look, kept separately for each look (200% is the old 400% where looks went that far; Glass stops a little short of where its cards turn into ovals).
+- **Smaller things:** the navigation pill now starts as Inbox · Home · Menu; Home has a house icon in the app's pill; the Home shortcut bar follows your corner roundness (app); a switch row makes the switch's own sound (app); the dock's arrows show only when there's really more; the tablet's list pane slides in smoothly; Glass says it's the most demanding look.
+
 ## 0.8.7-alpha (server, Nova web, app and watch)
 - **Glass splits the light like iOS:** at the rim, white separates ever so slightly into its colors — red bends a touch more, blue a touch less, more so toward the very edge (app and web; on the web it's off with Lighter effects).
 - **No more double sounds or buzzes** (app): a tap that comes with a switch or a page change is folded into it — one sound, one buzz.

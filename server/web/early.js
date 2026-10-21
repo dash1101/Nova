@@ -7,4 +7,7 @@
   const dark = t === "dark" || (t !== "light" && !matchMedia("(prefers-color-scheme: light)").matches);
   if (["liquid", "fluent", "breeze", "aero"].includes(style)) root.classList.add(style);
   if (!dark) root.classList.add("l-light");
+  // the page's own background color from last time, before the stylesheet arrives (a fresh load, a Files window)
+  root.style.colorScheme = dark ? "dark" : "light";
+  const bg = get("bgc", ""); if (/^(#|rgb|color|hsl)/.test(bg)) root.style.backgroundColor = bg;
 })();

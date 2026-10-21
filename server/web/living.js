@@ -42,7 +42,7 @@ export async function update() {
   const on = enabled();
   root().classList.toggle("living", on);
   if (!on) { cancelAnimationFrame(raf); raf = 0; box?.remove(); box = cv = g = media = null; return; }
-  if (!box) { box = document.createElement("div"); box.id = "live"; box.setAttribute("aria-hidden", "true"); box.innerHTML = "<i></i>"; document.body.prepend(box); addEventListener("resize", size); }
+  if (!box) { box = document.createElement("div"); box.id = "livewall"; box.setAttribute("aria-hidden", "true"); box.innerHTML = "<i></i>"; document.body.prepend(box); addEventListener("resize", size); }
   box.style.setProperty("--lvblur", (+(prefs.livingBlur ?? 0)) + "px");
   box.style.setProperty("--lvtint", String((+(prefs.livingTint ?? 0)) / 100));
   scene = sceneId(); pal = palette();
@@ -67,14 +67,14 @@ export async function update() {
   size();
   // the scenes are drawn small and come out soft when scaled up; a blur over the whole screen on every frame cost too much
   // on slower graphics, so only Mica and Glass keep a little (plus your Blur setting)
-  const base = scene === "fluent" ? 6 : scene === "liquid" ? 8 : 0;
+  const base = scene === "fluent" ? 6 : scene === "liquid" ? 8 : scene === "material" ? 0 : scene === "aero" ? 2 : 4;   // just enough to hide the drawing's pixels
   cv.style.filter = `blur(calc(${base}px + var(--lvblur, 0px)))`;
   if (!raf) raf = requestAnimationFrame(frame);
 }
 function size() {
   if (!cv) return;
   // Material's shapes have crisp edges: drawn at the screen's real size (soft scenes are drawn small and blurred up)
-  const k = scene === "material" ? Math.min(2, devicePixelRatio || 1) : SOFT;
+  const k = scene === "material" ? Math.min(2, devicePixelRatio || 1) : scene === "aero" ? .5 : SOFT;   // Aero's ribbons have crisp edges: drawn larger
   cv.width = Math.max(64, Math.round(innerWidth * k)); cv.height = Math.max(64, Math.round(innerHeight * k));
 }
 

@@ -41,7 +41,7 @@ try:                       # optional module: fan/case lighting (modules/fan-gig
 except ImportError:
     nova_rgb = None
 
-API_VERSION = "0.8.7-alpha"
+API_VERSION = "0.8.8-alpha"
 # The API contract (docs/API.md). API_LEVEL only ever goes up: each new level adds endpoints or fields, never removes or
 # changes one. MIN_LEVEL is the oldest level this server still answers in full (old apps keep working back to it).
 # MIN_CLIENT: the oldest app builds still served, per platform — 0 = all of them. Raising it is the last resort, after
@@ -2362,7 +2362,11 @@ class Handler(BaseHTTPRequestHandler):
             if method == "POST":
                 kind = str(data.get("type", "short"))
                 if kind not in ("short", "long", "abort"): raise ValueError("type must be short, long or abort")
-                rc, res = helper("smart-test", parts[1], kind, timeout=70); return (200 if rc == 0 else 400), res
+                rc, res = helper("smart-test", parts[1], kind, timeout=70)
+                if rc == 0 and kind != "abort":                 # follow it, so it shows as running (Inbox, the app's live notification) and says when it's done
+                    rc2, t = helper("task-start", "drive-test", json.dumps({"serial": parts[1], "type": kind, "minutes": res.get("minutes")}))
+                    if rc2 == 0: res["task"] = t.get("id")
+                return (200 if rc == 0 else 400), res
         if method == "POST" and len(parts) == 3 and parts[0] == "drives" and parts[2] in ("mount", "unmount"):
             extra = ["force"] if parts[2] == "unmount" and data.get("force") is True else []      # force: stops the containers using it, detaches the rest
             rc, res = helper(f"drive-{parts[2]}", parts[1], *extra, timeout=180); return (200 if rc == 0 else 409 if res.get("busy") else 400), res

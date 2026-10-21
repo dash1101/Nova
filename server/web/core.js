@@ -165,7 +165,7 @@ const PREF_DEFAULTS = {
   theme: "system", style: "auto", reduceMotion: true,       // browsers start calm; turn motion on in Appearance
   homeOrder: ["hero", "servers", "recs", "shortcuts", "stats"], homeRecs: true, animSpeed: 100, webIcon: "default", homeHero: true, homeShortcuts: true, homeStats: true, homeServers: true,
   homeChips: ["inbox", "quick", "containers", "storage"],
-  navTabs: ["store", "home", "menu"],
+  navTabs: ["inbox", "home", "menu"],
   quick: ["backup", "freeram", "fan", "dim", "status", "dashboard"],
   dashTiles: ["clock", "health", "cpu", "mem", "temp", "net", "storage", "containers", "backup", "alerts"],
   dashDim: true, dashFrom: 23, dashTo: 7, dashDimLevel: 40, dashFull: false,

@@ -66,7 +66,10 @@ function applyTheme() {
   if (preset === "liquid") { root.style.setProperty("--lg-blur", (1 + 13 * glassBody(clear)).toFixed(1) + "px"); root.dataset.clear = clear.toFixed(2); }
   else { root.style.removeProperty("--lg-blur"); delete root.dataset.clear; }
   // Glass stops at 200%: past that its cards turn into ovals
-  root.style.setProperty("--rk", String(Math.max(25, Math.min(preset === "liquid" ? 200 : 400, prefs.round ?? 100)) / 100));
+  // Corner roundness: 25–200% on the slider, kept for each look. Up to 100% it's the plain scale; above, Glass reaches
+  // 1.8× at 200% (rounder turns its cards into ovals) and the other looks 4× (the old 400%)
+  const rv = Math.max(25, Math.min(200, prefs["round_" + (preset || "default")] ?? prefs.round ?? 100));
+  root.style.setProperty("--rk", String(rv <= 100 ? rv / 100 : 1 + (rv - 100) / 100 * (preset === "liquid" ? .8 : 3)));
   liquid(preset === "liquid" && !solid && !root.classList.contains("lite") && !prefs.devNoLens);
   root.classList.toggle("dev-bounds", !!prefs.devBounds); fpsMeter(!!prefs.devFps);
   $('meta[name="theme-color"]')?.setAttribute("content", dark ? "#000000" : "#f4f3f8");
@@ -74,6 +77,7 @@ function applyTheme() {
   root.style.setProperty("--tintk", String(Math.max(0, Math.min(100, prefs.tint ?? 50)) / 50));
   if (/^#[0-9a-f]{6}$/i.test(prefs.accentLocal || "")) root.style.setProperty("--blue", prefs.accentLocal);
   wallpaper();
+  requestAnimationFrame(() => { try { prefs.bgc = getComputedStyle(root).getPropertyValue("--bg").trim(); } catch {} });   // for early.js next load
 }
 let wallUrl = null;
 async function wallpaper() {
@@ -113,13 +117,18 @@ function saveScroll() { scrolls[keyNow()] = scrollY; try { sessionStorage.setIte
 const newKey = () => Math.random().toString(36).slice(2, 10);
 if (!history.state) history.replaceState({ k: newKey(), d: 0 }, "");
 
+let pressing = false, heldShow = null;
+addEventListener("pointerdown", () => { pressing = true; }, true);
+for (const ev of ["pointerup", "pointercancel"]) addEventListener(ev, () => { pressing = false; if (heldShow) { const f = heldShow; heldShow = null; setTimeout(f, 0); } }, true);   // after the click
 let maxDepth = depth;                                 // how far forward you can go again (Files windows have a forward button)
 function go(path) { saveScroll(); history.pushState({ k: newKey(), d: depth + 1 }, "", "#/" + path); depth++; maxDepth = depth; render(1); }
 function tab(path) {
   // Only real tabs (in your navigation pill) reset the stack; anything else opens as a page with a back button
   if (path.split("/")[0] !== "home" && !V.navTabs().some(t => t.route === path.split("/")[0])) return go(path);
-  saveScroll(); const r = path.split("/")[0]; rootRoute = r;
-  const here = parse()[0];
+  const r = path.split("/")[0], here = parse()[0];
+  // already on this tab's own page: glide to the top instead of loading it again (like the app)
+  if (r === here && parse().length === 1 && (r !== "home" || depth === 0)) { scrollTo({ top: 0, behavior: document.documentElement.classList.contains("reduce") ? "auto" : "smooth" }); return; }
+  saveScroll(); rootRoute = r;
   if (r === "home") {                                  // Home is the bottom of the stack: unwind to it
     if (depth > 0) { pendingHome = true; history.go(-depth); return; }
     history.replaceState({ k: newKey(), d: 0 }, "", "#/home"); render(0); return;
@@ -260,6 +269,9 @@ function render(dir = 0) {
     },
     show(html, o = {}) {
       if (!ctx.alive()) return;
+      // a refresh that lands while you're pressing something waits until you let go — replacing the page mid-press
+      // swallowed the click (you had to press twice)
+      if (pressing && $("#main")?.dataset.seq === String(my)) { heldShow = () => ctx.show(html, o); return; }
       ensureShell();
       const main = $("#main"), first = !main.dataset.seq || main.dataset.seq !== String(my);
       // a page's "Loading…" placeholder: keep the last page up a moment instead, so a quick load doesn't flash an empty page
@@ -275,9 +287,11 @@ function render(dir = 0) {
       main.dataset.seq = my; ctx.root = main;
       syncSpinners(main);
       // in a Files/Terminal window: back is greyed out with nowhere to go, and forward sits beside it
-      $("#topbar").innerHTML = (WM.EMBED ? `<button class="circle press${depth > 0 ? "" : " off"}" data-act="back" aria-label="Back"${depth > 0 ? "" : " disabled"}><span class="bgc frost"></span>${I("back")}</button><button class="circle press fwd${depth < maxDepth ? "" : " off"}" data-act="fwd" aria-label="Forward"${depth < maxDepth ? "" : " disabled"}><span class="bgc frost"></span>${I("back")}</button>`
+      const tb = (WM.EMBED ? `<button class="circle press${depth > 0 ? "" : " off"}" data-act="back" aria-label="Back"${depth > 0 ? "" : " disabled"}><span class="bgc frost"></span>${I("back")}</button><button class="circle press fwd${depth < maxDepth ? "" : " off"}" data-act="fwd" aria-label="Forward"${depth < maxDepth ? "" : " disabled"}><span class="bgc frost"></span>${I("back")}</button>`
         : o.root || o.noHeader ? "" : `<button class="circle press" data-act="back" aria-label="Back"><span class="bgc frost"></span>${I("back")}</button>`)
         + `<span class="sp"></span>` + (o.actions || []).map(a => `<button class="circle press" data-act="${esc(a.act)}" aria-label="${esc(a.label)}"><span class="bgc frost"></span>${I(a.icon)}</button>`).join("");
+      // only when it changed: rebuilding it on every refresh made the back arrow and its frosted circle flash
+      if ($("#topbar").dataset.h !== tb) { $("#topbar").innerHTML = tb; $("#topbar").dataset.h = tb; fade(); }
       drawNav(r);
       if (first) {
         const y = dir === -1 ? (scrolls[keyNow()] || 0) : 0;
@@ -504,3 +518,11 @@ function fpsMeter(on) {
     requestAnimationFrame(tick); };
   requestAnimationFrame(tick);
 }
+// Offline: a reload would leave an empty page until the server is back, so it asks first (and you can still reload)
+addEventListener("keydown", async e => {
+  if (!S.error || !(e.key === "F5" || ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "r"))) return;
+  e.preventDefault();
+  const { confirm } = await import("./ui.js");
+  if (await confirm("The server isn't answering", "Reloading now would leave this page empty until it's back. Nova keeps trying by itself and fills in as soon as it answers.", "Reload anyway", "var(--blue)")) { S.error = null; location.reload(); }
+});
+addEventListener("beforeunload", e => { if (S.error && !document.hidden) { e.preventDefault(); e.returnValue = ""; } });   // the browser's reload button: its own "Leave?" question

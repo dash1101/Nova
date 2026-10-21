@@ -24,12 +24,13 @@ BACKUP_KINDS = {"backup-run", "restore", "tools"}
 UPDATE_KINDS = {"updates-check", "apt-upgrade", "containers-update"}
 LABS_KINDS = {"images-prune", "freeup"}
 INSTALL_KINDS = {"run-command", "store-install", "store-uninstall", "custom-install", "custom-uninstall", "program-install", "program-remove", "share-setup"}
-KINDS = STORAGE_KINDS | DIAG_KINDS | BACKUP_KINDS | UPDATE_KINDS | INSTALL_KINDS | LABS_KINDS
+WATCH_KINDS = {"drive-test"}                          # follows something the hardware does by itself (a SMART self-test)
+KINDS = STORAGE_KINDS | DIAG_KINDS | BACKUP_KINDS | UPDATE_KINDS | INSTALL_KINDS | LABS_KINDS | WATCH_KINDS
 TITLES = {"repair": "Repair a drive", "clone": "Clone a drive", "format": "Set up a drive", "combine": "Combine drives", "raid": "Create a RAID array", "pool-remove": "Remove a pool",
           "pool-add": "Add a drive", "fstab-nofail": "Boot without missing drives", "fstab-add": "Keep a drive mounted", "swap-setup": "Set up swap", "partition-apply": "Change partitions", "partition-restore": "Restore a partition table", "mount-set": "Change where a drive is mounted", "mount-clear": "Clear a leftover mount",
           "net-internet": "Internet speed test", "disk-speed": "Drive speed test", "cpu-stress": "CPU stress test", "mem-test": "Memory test",
           "backup-run": "Backup", "restore": "Restore from backup", "tools": "Install tools",
-          "updates-check": "Check for updates", "apt-upgrade": "Update packages", "containers-update": "Update containers", "images-prune": "Clean up old images", "freeup": "Free up space"}
+          "updates-check": "Check for updates", "apt-upgrade": "Update packages", "containers-update": "Update containers", "images-prune": "Clean up old images", "freeup": "Free up space", "drive-test": "Drive health test"}
 GROUP = {**{k: "storage" for k in STORAGE_KINDS}, **{k: "diag" for k in DIAG_KINDS}, "restore": "storage", "tools": "storage",
          **{k: "updates" for k in UPDATE_KINDS | LABS_KINDS}, "program-install": "updates", "program-remove": "updates"}     # one apt at a time
 
@@ -95,6 +96,9 @@ def check_spec(kind, spec):
         import freeup
         it = spec.get("items")
         if not (isinstance(it, list) and it and all(isinstance(x, str) and x in freeup.ITEMS for x in it)): raise ValueError("pick what to remove")
+    if kind == "drive-test":
+        if not re.fullmatch(r"[A-Za-z0-9_.:-]{1,64}", str(spec.get("serial", ""))) or spec.get("type") not in ("short", "long"): raise ValueError("bad drive test")
+        spec["minutes"] = max(1, min(2000, int(spec.get("minutes") or (2 if spec["type"] == "short" else 120))))
     if kind in ("backup-run", "restore"):
         if not re.fullmatch(r"[a-z0-9]{1,12}", str(spec.get("job", ""))): raise ValueError("bad backup id")
     return spec
@@ -118,6 +122,7 @@ def start(kind, spec):
             pc = plugins.command(spec.get("id"))
             what = (pc or {}).get("name") or next((c.get("name") for c in cfg.get("custom", []) if c.get("id") == spec.get("id")), None) or (_ for _ in ()).throw(ValueError("no such command app"))
         title = f"{installs.TITLES[kind]} {what}"
+    if kind == "drive-test": title = f"{'Full' if spec['type'] == 'long' else 'Quick'} drive test: {spec['serial']}"
     if kind == "backup-run":
         import backups
         j = next((x for x in backups.load_jobs() if x["id"] == spec["job"]), None)
@@ -156,6 +161,8 @@ def execute(tid):
         elif kind in DIAG_KINDS:
             import diag
             res = diag.TESTS[kind](spec, log, progress, sample) if kind in ("cpu-stress", "mem-test") else diag.TESTS[kind](spec, log, progress)
+        elif kind == "drive-test":
+            res = watch_drive_test(spec, log, progress)
         elif kind == "backup-run":
             import backups
             j = next(x for x in backups.load_jobs() if x["id"] == spec["job"])
@@ -201,6 +208,31 @@ def execute(tid):
         for ext in ("json", "spec"):
             try: os.remove(path(old["id"], ext))
             except OSError: pass
+
+def watch_drive_test(spec, log, progress):
+    """The drive runs its own self-test; this only asks it how far along it is, once a minute, until it's done
+    (or twice the time it said, plus half an hour). Read-only."""
+    helper = os.path.join(HERE, "helper")
+    what = "full" if spec["type"] == "long" else "quick"
+    log(f"The drive is testing itself ({what} test, about {spec['minutes']} minutes) — you can keep using it")
+    end = time.time() + spec["minutes"] * 120 + 1800
+    last = None
+    while time.time() < end:
+        time.sleep(20 if spec["type"] == "short" else 60)
+        try: r = json.loads(subprocess.run([helper, "smart-tests", spec["serial"]], capture_output=True, text=True, timeout=90).stdout or "{}")
+        except Exception: continue
+        if r.get("running"):
+            pct = r.get("progress_pct")
+            if pct is None and r.get("remaining_pct") is not None: pct = 100 - r["remaining_pct"]
+            if pct is not None: progress(min(99, pct), f"{pct}% done")
+            continue
+        last = (r.get("log") or [None])[0]
+        break
+    if not last: raise RuntimeError("the drive stopped reporting its test — look at its page for the result")
+    ok = last.get("passed") is not False and "completed without error" in (last.get("result") or "").lower() or last.get("passed") is True
+    if not ok: raise RuntimeError(f"the drive's test didn't pass: {last.get('result') or 'see its page'}")
+    progress(100, "Passed"); log(f"Passed — {last.get('result') or 'completed without error'}")
+    return {"summary": f"Passed — {last.get('result') or 'completed without error'}"}
 
 def stop(tid):
     t = load(tid)

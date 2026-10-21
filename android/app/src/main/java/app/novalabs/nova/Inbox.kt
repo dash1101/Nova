@@ -144,6 +144,7 @@ import java.util.*
                             e.optString("detail").takeIf { it.isNotEmpty() }?.let { ExpandableSub(it, N.sub, lines = 3, size = 13.sp) }     // the arrow opens the full text
                         }
                         Text(hm.format(Date((e.optDouble("t") * 1000).toLong())), color = N.sub, fontSize = 13.sp)
+                        evRoute(e)?.let { r -> Icon(Icons.Rounded.ChevronRight, "Open", tint = N.sub, modifier = Modifier.padding(start = 4.dp).size(22.dp).clip(CircleShape).clickable { app.go(r) }) }
                     }
                     } } } }
                 }
@@ -764,4 +765,22 @@ private fun hourLabel(h: Int) = java.text.DateFormat.getTimeInstance(java.text.D
     rm?.let { e -> OneDialog({ rm = null }, "Remove ${e.optString("name")}?", "It only leaves this list.",
         listOf(DialogButton("Cancel") { rm = null }, DialogButton("Remove", N.red) { rm = null
             app.act { list = app.api.post("/api/v1/labs/wol/${e.optString("id")}/remove").optJSONArray("devices").objs() } })) }
+}
+
+
+/** Where an Inbox event takes you: its category, or what its title is about (the same rules as Nova web's evRoute). */
+fun evRoute(e: JSONObject): Route? {
+    val c = e.optString("category").substringBefore(":"); val title = e.optString("title"); val t = title + " " + e.optString("detail")
+    Regex("^Container (?:crashed|unhealthy|ran out of memory|stopped|restarted)[^:]*: (\\S+)", RegexOption.IGNORE_CASE).find(title)?.let { return Route.Container(it.groupValues[1]) }
+    fun has(p: String) = Regex(p, RegexOption.IGNORE_CASE).containsMatchIn(t)
+    return when {
+        c == "container" || has("container") -> Route.Containers
+        c == "login" || c == "security" || has("\\b(login|ssh|sudo|fail2ban|passkey|authenticator)\\b") -> Route.Security
+        has("paired|new device|device removed") -> Route.Devices
+        c == "device" || has("drive|disk|smart|sector|raid|pool|mount|nvme|usb") -> Route.Hardware
+        has("backup|restore") -> Route.Backups
+        has("update|upgrade|new version") -> Route.Updates
+        c == "memory" || c == "service" || has("memory|cpu|temperature|swap|service") -> Route.Status
+        else -> null
+    }
 }

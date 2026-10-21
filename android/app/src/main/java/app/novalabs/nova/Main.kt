@@ -344,7 +344,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {   // FragmentAct
     androidx.activity.compose.PredictiveBackHandler(enabled = app.backTarget != null && !plainBack) { events ->
         try {
             Living.paused = true                                   // the scene holds still while you drag: two pages are on screen
-            events.collect { e -> backEdge = e.swipeEdge; backP.snapTo(e.progress) }
+            try { events.collect { e -> backEdge = e.swipeEdge; backP.snapTo(e.progress) } } finally { Living.paused = false }   // always moves again after
             val finish = androidx.compose.animation.core.tween<Float>(if (reduceMotion()) 0 else 200, easing = androidx.compose.animation.core.FastOutSlowInEasing)
             kotlinx.coroutines.coroutineScope {
                 launch { backP.animateTo(1f, finish) }
@@ -520,8 +520,9 @@ private fun Modifier.paneTouch(app: AppState, left: Boolean) = pointerInput(left
                 // The list on the left stays put; picking something in it replaces the detail on the right.
                 // It opens and closes smoothly when you go a level deeper or come back.
                 androidx.compose.animation.AnimatedVisibility(split,
-                    enter = if (reduceMotion()) fadeIn() else androidx.compose.animation.expandHorizontally(androidx.compose.animation.core.tween(320)) + fadeIn(),
-                    exit = if (reduceMotion()) fadeOut() else androidx.compose.animation.shrinkHorizontally(androidx.compose.animation.core.tween(280)) + fadeOut()) {
+                    // the list slides in and out over a fixed layout (squeezing both panes every frame made it choppy)
+                    enter = if (reduceMotion()) fadeIn() else androidx.compose.animation.slideInHorizontally(androidx.compose.animation.core.tween(300, easing = androidx.compose.animation.core.FastOutSlowInEasing)) { -it / 3 } + fadeIn(androidx.compose.animation.core.tween(220)),
+                    exit = if (reduceMotion()) fadeOut() else androidx.compose.animation.slideOutHorizontally(androidx.compose.animation.core.tween(260)) { -it / 3 } + fadeOut(androidx.compose.animation.core.tween(180))) {
                     Row {
                         Box(Modifier.width(400.dp).fillMaxHeight().paneTouch(app, true)) {
                             CompositionLocalProvider(LocalWide provides false, LocalListPane provides true) { lastParent?.let { Screen(app, it) } }   // the list pane is phone-width
