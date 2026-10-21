@@ -7,6 +7,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.CanvasDrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.drawscope.scale
@@ -68,6 +69,52 @@ private fun hueSat(c: Color): Pair<Float, Float> {
 private fun DrawScope.blob(x: Float, y: Float, r: Float, c: Color, blend: BlendMode = BlendMode.SrcOver) {
     if (r <= 0f) return
     drawCircle(Brush.radialGradient(listOf(c, c.copy(alpha = 0f)), center = Offset(x, y), radius = r), r, Offset(x, y), blendMode = blend)
+}
+
+/** What Glass cards bend: the scene, drawn once per tick (on a background thread, at half size) into one window-sized
+ *  picture that every card copies its part of. Each card used to draw the whole scene itself — during a back gesture
+ *  (two pages, every card re-recording its backdrop as the page moves) that was the scene a dozen times a frame, and
+ *  Glass dropped frames even on fast phones. The page behind still draws the scene itself, at full sharpness. */
+private object LivingFrame {
+    @Volatile var front: ImageBitmap? = null; @Volatile var frontKey: List<Any>? = null
+    var version by mutableIntStateOf(0)
+    @Volatile private var busy = false
+    private val spares = java.util.concurrent.CopyOnWriteArrayList<ImageBitmap>()
+    private val worker = java.util.concurrent.Executors.newSingleThreadExecutor { r -> Thread(r, "nova-living").apply { isDaemon = true; priority = Thread.NORM_PRIORITY - 1 } }
+    private val main = android.os.Handler(android.os.Looper.getMainLooper())
+    fun request(key: List<Any>, t: NovaColors, W: Float, H: Float, k: Float, density: androidx.compose.ui.unit.Density) {
+        if (busy || key == frontKey) return
+        busy = true
+        worker.execute {
+            val bw = (W * k).toInt().coerceAtLeast(1); val bh = (H * k).toInt().coerceAtLeast(1)
+            // two pictures, taking turns: draw into the one not on screen (no new 4 MB picture every tick)
+            val spare = spares.firstOrNull { it !== front && it.width == bw && it.height == bh }
+                ?: ImageBitmap(bw, bh).also { nb -> spares.removeAll { it.width != bw || it.height != bh }; if (spares.size < 2) spares.add(nb) }
+            val b = runCatching { spare.also { bmp ->
+                Canvas(bmp).nativeCanvas.drawColor(android.graphics.Color.TRANSPARENT, android.graphics.PorterDuff.Mode.CLEAR)
+                CanvasDrawScope().draw(density, androidx.compose.ui.unit.LayoutDirection.Ltr, Canvas(bmp), Size(bw.toFloat(), bh.toFloat())) {
+                    scale(k, k, Offset.Zero) { drawLiving(t, Offset.Zero, W, H, key[0] as Float) } } } }.getOrNull()
+            main.post { if (b != null) { front = b; frontKey = key; version++ }; busy = false
+                // the scene moved on while this one was drawn: the next draw asks again
+            }
+        }
+    }
+}
+
+/** The scene at this spot for a Glass card, from the shared picture ([origin]: where it sits on the screen, [W]×[H] the
+ *  window). Until the first picture is ready it draws the scene itself. */
+fun DrawScope.drawLivingShared(t: NovaColors, origin: Offset, W: Float, H: Float) {
+    if (W < 2f || H < 2f) return
+    LivingFrame.version                                  // (read: a new picture redraws this card)
+    val k = if (lite()) .35f else .5f
+    val key = listOf(Living.time, t.blue, t.dark, t.material, t.preset, Living.sceneFor(t), Living.accent, W.toInt(), H.toInt(), k)
+    LivingFrame.request(key, t, W, H, k, androidx.compose.ui.unit.Density(1f))   // (the scenes are drawn in pixels; reading this scope's density inside a card's recording loops in Compose)
+    val b = LivingFrame.front
+    val fk = LivingFrame.frontKey
+    // nothing yet, or a picture for another look or window size: draw the scene directly this once
+    if (b == null || fk == null || fk.subList(1, fk.size) != key.subList(1, key.size)) { drawLiving(t, origin, W, H); return }
+    drawImage(b, dstOffset = androidx.compose.ui.unit.IntOffset(-origin.x.roundToInt(), -origin.y.roundToInt()),
+        dstSize = androidx.compose.ui.unit.IntSize(W.roundToInt(), H.roundToInt()), filterQuality = FilterQuality.Low)
 }
 
 /** The scene at this spot: [origin] is where this layer sits on the screen, [W]×[H] the whole window. */

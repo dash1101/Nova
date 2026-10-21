@@ -1,7 +1,7 @@
 // Nova web — living wallpaper (Appearance → Wallpaper, Beta): an animated wallpaper for each look, in your accent color.
 // Aero: glowing ribbons of light and drifting bokeh. Mica: a slowly turning bloom. Breeze: flowing waves. Glass: liquid
 // color moving under the glass. Material: soft shapes floating by. Default: a drifting nebula with a few stars.
-// Drawn small (a quarter of the screen) at 30 frames a second and scaled up soft, paused when the page is hidden, still
+// Drawn at the screen's sharpness (the soft scenes small and scaled up), at 30 frames a second, paused when the page is hidden, still
 // with Reduce motion — so it stays light. A picture you set (Wallpaper) shows instead.
 import { prefs, kv } from "./core.js";
 
@@ -67,14 +67,17 @@ export async function update() {
   size();
   // the scenes are drawn small and come out soft when scaled up; a blur over the whole screen on every frame cost too much
   // on slower graphics, so only Mica and Glass keep a little (plus your Blur setting)
-  const base = scene === "fluent" ? 6 : scene === "liquid" ? 8 : scene === "material" ? 0 : scene === "aero" ? 2 : 4;   // just enough to hide the drawing's pixels
+  const base = scene === "fluent" ? 6 : scene === "liquid" ? 8 : 0;   // the soft ones: just enough to hide the drawing's pixels
   cv.style.filter = `blur(calc(${base}px + var(--lvblur, 0px)))`;
   if (!raf) raf = requestAnimationFrame(frame);
 }
 function size() {
   if (!cv) return;
-  // Material's shapes have crisp edges: drawn at the screen's real size (soft scenes are drawn small and blurred up)
-  const k = scene === "material" ? Math.min(2, devicePixelRatio || 1) : scene === "aero" ? .5 : SOFT;   // Aero's ribbons have crisp edges: drawn larger
+  // Scenes with edges (Aero's ribbons, Breeze's waves, Material's shapes, the nebula's stars) are drawn at the screen's real
+  // sharpness, as the app does; Mica's bloom and Glass's liquid color are soft anyway, so they're drawn small and blurred up.
+  // Lighter effects draws everything small.
+  const lite = root().classList.contains("lite");
+  const k = scene === "fluent" || scene === "liquid" ? SOFT : lite ? .5 : Math.min(1.5, devicePixelRatio || 1);
   cv.width = Math.max(64, Math.round(innerWidth * k)); cv.height = Math.max(64, Math.round(innerHeight * k));
 }
 
@@ -107,7 +110,7 @@ function draw(t) {
       cl.forEach(([hu, x0, y0, px, py], i) => blob(w * (x0 + .18 * Math.sin(t / px * 6.28 + i)), hh * (y0 + .16 * Math.cos(t / py * 6.28 + i * 2)), m * .55,
         d ? hsl(hu, s, 45, .55) : hsl(hu, s, 72, .42)));
       if (d) { g.globalCompositeOperation = "lighter"; for (let i = 0; i < 26; i++) { const x = (i * .6180339 % 1) * w, y = (i * .5377 % 1) * hh, a = .25 + .25 * Math.sin(t * (.6 + i % 5 * .2) + i);
-        g.fillStyle = `rgba(255,255,255,${a.toFixed(3)})`; g.fillRect(x, y, 1.2, 1.2); } }
+        const z = Math.max(1.2, m * .0011); g.fillStyle = `rgba(255,255,255,${a.toFixed(3)})`; g.fillRect(x, y, z, z); } }
     },
     // Windows 7 "Harmony": wide ribbons of light curving across, glowing where they cross, and bokeh drifting up
     aero() {
@@ -151,7 +154,7 @@ function draw(t) {
         const y0 = hh * (.45 + k * .1), amp = hh * (.08 - k * .008), sp = .12 + k * .05;
         g.fillStyle = d ? hsl(h - k * 6, s * (.6 + k * .08), 18 + k * 7, .55) : hsl(h - k * 6, s * (.5 + k * .1), 75 - k * 7, .55);
         g.beginPath(); g.moveTo(0, hh);
-        for (let x = 0; x <= w; x += 4) g.lineTo(x, y0 + Math.sin(x / w * (3 + k * .6) + t * sp + k) * amp + Math.sin(x / w * 7 - t * sp * .7) * amp * .3);
+        for (let x = 0, dx = Math.max(4, w / 320); x <= w + dx; x += dx) g.lineTo(x, y0 + Math.sin(x / w * (3 + k * .6) + t * sp + k) * amp + Math.sin(x / w * 7 - t * sp * .7) * amp * .3);
         g.lineTo(w, hh); g.closePath(); g.fill();
       }
     },

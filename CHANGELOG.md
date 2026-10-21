@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.11-alpha (server, Nova web, app and watch)
+- **Living wallpaper is sharp on the web:** Aero's ribbons, Breeze's waves, Material's shapes and the nebula's stars are drawn at your screen's real sharpness, like the app (Mica's bloom and Glass's liquid color stay soft; Lighter effects still draws small).
+- **Glass is much lighter with a living wallpaper** (app): the scene is drawn once per tick on a background thread and every Glass card copies its part, instead of each card drawing the whole scene again — that was the scene a dozen times a frame during a back gesture.
+- **Light splitting applies as you slide it** (app; it used to wait until Glass was picked again).
+- **Background** (Appearance → Wallpaper, app and web): each look's own, the Default look's glow on any look, or plain.
+- **The Home shortcut bar** has the same corners as the cards in every look (web).
+
 ## 0.8.10-alpha (server, Nova web, app and watch)
 - **Glass on the web shows the right colors again:** since 0.8.7 its light splitting dropped the red and blue of whatever was behind, so glass over a red wallpaper looked green. Fixed (web).
 - **The app's terminal asks first, like the web's:** shutdown, reboot, `rm -rf /` and the like, and pastes of several lines, wait for you to confirm.

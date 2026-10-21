@@ -172,18 +172,26 @@ fun levelColor(level: String, t: NovaColors) = when (level) {
         }
         return
     }
-    if (t.material || t.glow == Color.Transparent) { Box(Modifier.fillMaxSize().background(t.bg)); return }
+    val (g1, g2) = bgGlow(t) ?: run { Box(Modifier.fillMaxSize().background(t.bg)); return }
     // drawn in screen coordinates: every layer (a page, the pane beside it, the strip behind the side pill)
     // shows its own part of one glow, so there's never a seam between them
     var origin by remember { mutableStateOf(Offset.Zero) }
     val win = androidx.compose.ui.platform.LocalWindowInfo.current.containerSize
     Canvas(Modifier.fillMaxSize().background(t.bg).onGloballyPositioned { origin = it.positionInWindow() }) {
         val W = if (win.width > 0) win.width.toFloat() else size.width; val H = if (win.height > 0) win.height.toFloat() else size.height
-        drawRect(Brush.radialGradient(listOf(t.glow.copy(alpha = if (t.dark) 0.9f else 0.8f), Color.Transparent),
+        drawRect(Brush.radialGradient(listOf(g1.copy(alpha = if (t.dark) 0.9f else 0.8f), Color.Transparent),
             center = Offset(W * 0.85f, H * 0.18f) - origin, radius = if (W < H) W * 0.95f else H * 1.25f))
-        drawRect(Brush.radialGradient(listOf(t.glow2.copy(alpha = 0.6f), Color.Transparent),
+        drawRect(Brush.radialGradient(listOf(g2.copy(alpha = 0.6f), Color.Transparent),
             center = Offset(W * 0.1f, H * 0.35f) - origin, radius = if (W < H) W * 0.8f else H * 1.1f))
     }
+}
+
+/** The two glow colors behind the pages, or null for a plain background: the look's own, or (Appearance → Background)
+ *  the Default look's glow on any look, or none. */
+fun bgGlow(t: NovaColors): Pair<Color, Color>? = when (AppPrefs.lookBg) {
+    "plain" -> null
+    "glow" -> (if (t.dark) DarkTokens else LightTokens).let { it.glow to it.glow2 }
+    else -> if (t.material || t.glow == Color.Transparent) null else t.glow to t.glow2
 }
 
 // ── Headers ───────────────────────────────────────────────────────────────────────

@@ -1734,7 +1734,8 @@ export async function appearance(ctx) {
       ${wallHas ? group(`<div class="range-row"><div class="h"><span>Blur</span><span id="blurl">${prefs.wallBlur ?? 16}px</span></div><input type="range" min="0" max="40" value="${prefs.wallBlur ?? 16}" data-range="wallBlur" style="--p:${(prefs.wallBlur ?? 16) / 40 * 100}%"></div>
             <div class="range-row"><div class="h"><span>Dim</span><span id="diml">${prefs.wallDim ?? 35}%</span></div><input type="range" min="0" max="90" value="${prefs.wallDim ?? 35}" data-range="wallDim" style="--p:${(prefs.wallDim ?? 35) / 90 * 100}%"></div>`
             + row("Change the picture", { icon: "image", blue: true, click: "wall" }) + row("Remove the wallpaper", { icon: "del", tint: "var(--red)", click: "unwall" }))
-          : group(row("Choose a picture", { sub: "Behind every page, blurred and dimmed as you like. Kept in this browser only.", icon: "image", blue: true, click: "wall" }))}
+          : group(row("Choose a picture", { sub: "Behind every page, blurred and dimmed as you like. Kept in this browser only.", icon: "image", blue: true, click: "wall" })
+            + row("Background", { sub: { glow: "Default's glow", plain: "Plain" }[prefs.lookBg] || "This look's own", icon: "palette", click: "lookbg" }))}
       ${sec("Language")}${group(row("Language", { sub: prefs.lang && prefs.lang !== "auto" ? (LANGS.find(l => l[0] === prefs.lang)?.[1] || prefs.lang) : `Same as this browser (${LANGS.find(l => l[0] === pickLang("auto"))?.[1] || "English"})`, blue: true, icon: "article", click: "lang" }))}
       ${note("Nova's own words are translated (by machine, so some may read oddly — tell us on GitHub). Messages written by the server, like alert details, stay in English for now.")}
       ${(() => { const g = gpuInfo(); if (!g.software && g.blur) return "";
@@ -1799,6 +1800,8 @@ export async function appearance(ctx) {
       if (!v) return; if (v === "off") prefs.padHints = false; else { prefs.padHints = true; prefs.padGlyphs = v; } draw();
     },
     livewall: () => { prefs.livingWall = !prefs.livingWall; ctx.applyTheme(); draw(); },
+    lookbg: async () => { const v = await choose("Background", [["", "This look's own", "Each look's usual background"], ["glow", "Default's glow", "The Default look's soft glow, on any look"], ["plain", "Plain", "Just the look's background color"]], prefs.lookBg || "");
+      if (v == null) return; prefs.lookBg = v; ctx.applyTheme(); draw(); },
     amb: () => { prefs.ambience = !prefs.ambience; AMB.update(); draw(); },
     snd: () => { prefs.sounds = !SND.soundsOn(); draw(); if (prefs.sounds) SND.play("toggleOn", { force: true }); },
     skind: k => { const o = { ...(prefs.sndOff || {}) }; o[k] = !o[k]; prefs.sndOff = o;     // in place: the dropdown stays open

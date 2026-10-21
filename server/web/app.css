@@ -1275,3 +1275,16 @@ html.aero input[type=range]:hover::-webkit-slider-thumb { box-shadow: inset 0 0 
 .sbuild > label:not(.chk), .sbuild > div > label:not(.chk) { font-weight: 600; font-size: 14px; color: var(--text); margin-top: 6px; display: block; }
 .sbuild .field { width: 100%; box-sizing: border-box; } .sbuild #sb-keep { width: 90px; }
 .sbuild > .pillbtn { align-self: flex-start; } .sbuild .seg { margin: 0; }
+
+/* Background → Default's glow: the Default look's own wallpaper behind any look (a picture or living wallpaper still wins) */
+html.bg-glow:not(.has-wall):not(.living) body::before { display: block !important; opacity: 1 !important; filter: none !important;
+  background: radial-gradient(95vw 75vh at 85% 18%, color-mix(in srgb, #2e2560 90%, transparent), transparent 70%),
+              radial-gradient(80vw 60vh at 10% 35%, color-mix(in srgb, #1a2550 60%, transparent), transparent 70%) !important; }
+html.bg-glow.l-light:not(.has-wall):not(.living) body::before {
+  background: radial-gradient(95vw 75vh at 85% 18%, color-mix(in srgb, #e2dbf7 90%, transparent), transparent 70%),
+              radial-gradient(80vw 60vh at 10% 35%, color-mix(in srgb, #dce6fa 60%, transparent), transparent 70%) !important; }
+html.bg-plain:not(.has-wall):not(.living) body::before { display: none !important; }
+/* the Home shortcut bar (and a container's action bar) is a card: it takes the cards' corners in every look, not a control's */
+.pillbar.glass { border-radius: 26px; }
+html.material .pillbar.glass { border-radius: 24px; }
+:is(html.liquid, html.fluent, html.breeze, html.aero) .pillbar.glass { border-radius: var(--rL); }

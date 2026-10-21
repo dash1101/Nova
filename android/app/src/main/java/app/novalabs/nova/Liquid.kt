@@ -174,10 +174,10 @@ fun DrawScope.drawBackdrop(t: NovaColors, origin: Offset, win: IntSize, wall: Im
         drawImage(wall, dstOffset = IntOffset(((W - dw) / 2 - origin.x).toInt(), ((H - dh) / 2 - origin.y).toInt()),
             dstSize = IntSize(dw.toInt(), dh.toInt()), filterQuality = FilterQuality.Medium)
         drawRect(t.bg.copy(alpha = wallScrim(t)))
-    } else if (Living.showing) drawLiving(t, origin, W, H)                    // Glass bends the living scene too
-    else if (!t.material && t.glow != Color.Transparent) {
-        drawRect(Brush.radialGradient(listOf(t.glow.copy(alpha = if (t.dark) 0.9f else 0.8f), Color.Transparent), center = Offset(W * 0.85f, H * 0.18f) - origin, radius = if (W < H) W * 0.95f else H * 1.25f))
-        drawRect(Brush.radialGradient(listOf(t.glow2.copy(alpha = 0.6f), Color.Transparent), center = Offset(W * 0.1f, H * 0.35f) - origin, radius = if (W < H) W * 0.8f else H * 1.1f))
+    } else if (Living.showing) drawLivingShared(t, origin, W, H)                    // Glass bends the living scene too
+    else bgGlow(t)?.let { (g1, g2) ->                                       // the same glow the page shows (Appearance → Background)
+        drawRect(Brush.radialGradient(listOf(g1.copy(alpha = if (t.dark) 0.9f else 0.8f), Color.Transparent), center = Offset(W * 0.85f, H * 0.18f) - origin, radius = if (W < H) W * 0.95f else H * 1.25f))
+        drawRect(Brush.radialGradient(listOf(g2.copy(alpha = 0.6f), Color.Transparent), center = Offset(W * 0.1f, H * 0.35f) - origin, radius = if (W < H) W * 0.8f else H * 1.1f))
     }
 }
 
@@ -298,7 +298,7 @@ fun glassBody(clear: Float): Float { val x = (1f - clear) / .9f; return x * x }
             // The window moves in steps, so the lens is rebuilt only every few hundred pixels of scrolling.
             val winH = if (win.height > 0) win.height.toFloat() else size.height
             val lh = minOf(size.height, winH + 768f)
-            var lensOff = -1f; var lensQ = -1f
+            var lensOff = -1f; var lensQ = -1f; var lensP = -1
             val outline = shape.createOutline(size, layoutDirection, this)
             val sheen = Brush.linearGradient(listOf(hi.copy(alpha = (if (t.dark) .10f else .30f) * (1f - .6f * clear)), Color.Transparent), Offset.Zero, Offset(size.width * .35f, size.height * .38f))
             val rim = Brush.sweepGradient(0f to hi.copy(alpha = .06f), .12f to hi.copy(alpha = .03f), .35f to hi.copy(alpha = .30f), .5f to hi.copy(alpha = .06f),
@@ -310,9 +310,10 @@ fun glassBody(clear: Float): Float { val x = (1f - clear) / .9f; return x * x }
                 val wantOff = if (Dev.noLens) -2f else offY                 // Developer options → Glass without bending
                 // Glass quality (Developer options): lighter lens under 90%, no lens at all under 50% (just the tint and the rim light)
                 val q = Dev.glassQ / 100f
-                if (wantOff != lensOff || q != lensQ) {
+                val pr = AppPrefs.prism                       // (read here, so moving Light splitting redraws the card at once)
+                if (wantOff != lensOff || q != lensQ || pr != lensP) {
                     layer.renderEffect = if (Dev.noLens || q < 0.5f) null else lensEffect(size.width, size.height, r, blurPx, offY, .75f + .55f * clear, q)
-                    lensOff = wantOff; lensQ = q }
+                    lensOff = wantOff; lensQ = q; lensP = pr }
                 layer.record(size = IntSize(size.width.toInt(), lh.toInt())) {
                     translate(0f, -offY) {
                         if (shot != null) {                      // the page behind this popup, as the popup window dims it

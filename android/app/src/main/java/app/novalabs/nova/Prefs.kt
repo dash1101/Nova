@@ -74,6 +74,9 @@ object AppPrefs {
     /** Default look: how see-through cards are (0–85 %) and how frosted (blur, 0–40 dp), as on the web. */
     var dTrans by mutableIntStateOf(0); private set
     var dFrost by mutableIntStateOf(26); private set
+    /** Background behind the pages: "" each look's own, "glow" the Default look's glow on any look, "plain" just its color. */
+    var lookBg by mutableStateOf(""); private set
+    fun chooseLookBg(v: String) { lookBg = v; sp.edit().putString("lookBg", v).apply() }
     fun chooseDefaultGlass(trans: Int = dTrans, frost: Int = dFrost) { dTrans = trans; dFrost = frost; sp.edit().putInt("dTrans", trans).putInt("dFrost", frost).apply() }
     /** Corner roundness for one look (25–200 % on the slider; see roundK()). */
     fun roundFor(style: String): Int { roundV; return sp.getString("round_$style", null)?.toIntOrNull() ?: round.coerceAtMost(200) }
@@ -94,7 +97,7 @@ object AppPrefs {
         accent = sp.getString("accent", "")!!; tint = sp.getString("tint", "50")!!.toIntOrNull() ?: 50
         wallV = sp.getString("wall_v", "0")!!.toLongOrNull() ?: 0L; wallBlur = sp.getString("wall_blur", "16")!!.toIntOrNull() ?: 16; wallDim = sp.getString("wall_dim", "35")!!.toIntOrNull() ?: 35
         lang = sp.getString("lang", "auto")!!; I18n.load(ctx, lang)
-        prism = sp.getInt("prism", 50); dTrans = sp.getInt("dTrans", 0); dFrost = sp.getInt("dFrost", 26); solid = sp.getBoolean("solid", false); glass = sp.getString("glass", "60")!!.toIntOrNull() ?: 60; round = sp.getString("round", "100")!!.toIntOrNull() ?: 100
+        prism = sp.getInt("prism", 50); dTrans = sp.getInt("dTrans", 0); lookBg = sp.getString("lookBg", "")!!; dFrost = sp.getInt("dFrost", 26); solid = sp.getBoolean("solid", false); glass = sp.getString("glass", "60")!!.toIntOrNull() ?: 60; round = sp.getString("round", "100")!!.toIntOrNull() ?: 100
         theme = sp.getString("theme", "system")!!; style = sp.getString("style", "auto")!!; reduceMotion = sp.getBoolean("reduce_motion", false); animSpeed = (sp.getString("anim_speed", "100")!!.toIntOrNull() ?: 100).coerceIn(25, 300)
         appLock = sp.getBoolean("app_lock", false); hideInRecents = sp.getBoolean("hide_recents", false)
         homeHero = sp.getBoolean("home_hero", true); homeShortcuts = sp.getBoolean("home_shortcuts", true); homeStats = sp.getBoolean("home_stats", true); homeRecs = sp.getBoolean("home_recs", true)
@@ -359,7 +362,13 @@ private val MY_ACCENTS = listOf("#3e91ff", "#5e5ce6", "#bf5af2", "#ff2d55", "#ff
             RowDivider()
             Row1("Change the picture", null, true, Icons.Rounded.Image, onClick = { pick.launch("image/*") }); RowDivider()
             Row1("Remove the wallpaper", null, false, Icons.Rounded.Delete, N.red, onClick = { java.io.File(ctx.filesDir, "wallpaper.jpg").delete(); AppPrefs.set("wall_v", 0L) })
-        } else Row1("Choose a picture", "Behind every screen, blurred and dimmed as you like. Kept on this ${DeviceForm.noun} only.", true, Icons.Rounded.Image, onClick = { pick.launch("image/*") })
+        } else { Row1("Choose a picture", "Behind every screen, blurred and dimmed as you like. Kept on this ${DeviceForm.noun} only.", true, Icons.Rounded.Image, onClick = { pick.launch("image/*") })
+            RowDivider()
+            val bgs = listOf("" to "This look's own", "glow" to "Default's glow", "plain" to "Plain")
+            ExpandRow("Background", bgs.firstOrNull { it.first == AppPrefs.lookBg }?.second ?: "This look's own", icon = Icons.Rounded.Palette) {
+                bgs.forEach { (k, l) -> Row(Modifier.fillMaxWidth().clip(androidx.compose.foundation.shape.RoundedCornerShape(12.dp)).clickable { AppPrefs.chooseLookBg(k) }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(l, color = N.text, fontSize = 16.sp, modifier = Modifier.weight(1f)); OneRadio(AppPrefs.lookBg == k) } }
+            } }
     }
     if (picking) ColorPickerDialog(AppPrefs.accent.ifEmpty { "#3e91ff" }, { picking = false }) { AppPrefs.set("accent", it); picking = false }
 }

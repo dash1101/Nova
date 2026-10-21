@@ -53,6 +53,8 @@ function applyTheme() {
   root.classList.toggle("material", material); root.classList.toggle("m-dark", material && dark); root.classList.toggle("m-light", material && !dark);
   for (const p of ["liquid", "fluent", "breeze", "aero"]) root.classList.toggle(p, preset === p);
   root.classList.toggle("l-light", !dark);
+  // Background (Appearance → Wallpaper): the look's own, the Default look's glow on any look, or plain
+  root.classList.toggle("bg-glow", prefs.lookBg === "glow"); root.classList.toggle("bg-plain", prefs.lookBg === "plain");
   // the Default look's own Transparency and Frost (Appearance): see-through cards, and how blurred what's behind them is
   const dlook = !preset && !material, dtr = Math.max(0, Math.min(85, +(prefs.dTrans ?? 0))), dfr = Math.max(0, Math.min(40, +(prefs.dFrost ?? 26)));
   root.classList.toggle("dtune", dlook && (dtr > 0 || dfr !== 26));
