@@ -41,7 +41,7 @@ try:                       # optional module: fan/case lighting (modules/fan-gig
 except ImportError:
     nova_rgb = None
 
-API_VERSION = "0.8.8-alpha"
+API_VERSION = "0.8.9-alpha"
 # The API contract (docs/API.md). API_LEVEL only ever goes up: each new level adds endpoints or fields, never removes or
 # changes one. MIN_LEVEL is the oldest level this server still answers in full (old apps keep working back to it).
 # MIN_CLIENT: the oldest app builds still served, per platform — 0 = all of them. Raising it is the last resort, after
@@ -1200,10 +1200,16 @@ class Handler(BaseHTTPRequestHandler):
         where, ip = self.origin()
         if where is None: return self.send(403, {"error": "not from LAN or Cloudflare"})
         data = open(f, "rb").read()
+        if name == "index.html":
+            # the scripts load from a path that changes with every update (/web/v/<stamp>/app.js serves app.js), so a
+            # browser never keeps running an old module next to new ones after Nova updates
+            stamp = "%x" % int(max((e.stat().st_mtime for e in os.scandir(WEB_DIR) if e.name.endswith((".js", ".css"))), default=0))
+            data = re.sub(rb'"/web/([\w-]+\.(?:js|css))"', lambda m: b'"/web/v/' + stamp.encode() + b"/" + m.group(1) + b'"', data)
         self.send_response(200)
         self.send_header("Content-Type", MIME.get(os.path.splitext(f)[1], "application/octet-stream"))
         self.send_header("Content-Length", str(len(data)))
         self.send_header("Cache-Control", "no-cache")
+        if name == "sw.js": self.send_header("Service-Worker-Allowed", "/")   # the install helper covers the whole site (it caches nothing)
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Referrer-Policy", "no-referrer")
         self.send_header("X-Frame-Options", "SAMEORIGIN")         # only Nova itself frames Nova (Files and Terminal in their own windows)

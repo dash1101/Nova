@@ -1240,3 +1240,36 @@ html[data-icshape="square"] :is(.appic, .wic) { border-radius: 12% !important; }
 html[data-icshape="squircle"] :is(.appic, .wic) { border-radius: 38% !important; }   /* close to One UI's squircle at icon sizes */
 html[data-icshape="teardrop"] :is(.appic, .wic) { border-radius: 50% 50% 14% 50% !important; }
 #live { max-width: 680px; margin-inline: auto; }   /* the Inbox's in-progress card keeps a readable width on wide screens */
+/* a drive's activity light in the Storage list (like the server picture's) */
+.dled { flex: none; width: 8px; height: 8px; border-radius: 4px; background: color-mix(in srgb, var(--green) 35%, transparent); transition: background .08s, box-shadow .08s; margin-right: 4px; }
+.dled.on { background: var(--green); box-shadow: 0 0 6px var(--green); }
+/* Default look: Transparency and Frost (Appearance) */
+html.dtune .glass { background: linear-gradient(color-mix(in srgb, var(--card-top) calc(100% - var(--dtr) * 1%), transparent), color-mix(in srgb, var(--card) calc(100% - var(--dtr) * 1%), transparent));
+  backdrop-filter: blur(var(--dfr)) saturate(1.3); -webkit-backdrop-filter: blur(var(--dfr)) saturate(1.3); }
+html.dtune .frost { backdrop-filter: blur(var(--dfr)) saturate(1.5); -webkit-backdrop-filter: blur(var(--dfr)) saturate(1.5); }
+html.dtune.lite .glass, html.dtune.solid .glass { backdrop-filter: none; -webkit-backdrop-filter: none; }
+/* Install Nova (Menu): only when the browser offers installing, or on iPhone/iPad (Add to Home Screen) */
+.installrow { display: none; } html.can-install .installrow, html.ios-web .installrow { display: block; }
+@media (display-mode: standalone) { .installrow { display: none !important; } }
+/* controller button hints (gamepad.js) */
+#padhints { position: fixed; right: calc(16px + env(safe-area-inset-right)); bottom: calc(16px + env(safe-area-inset-bottom)); z-index: 70; display: flex; gap: 14px; padding: 8px 14px; border-radius: 20px; font-size: 13px; color: var(--text); pointer-events: none; }
+#padhints span { display: flex; align-items: center; gap: 6px; }
+#padhints .pb { font-style: normal; min-width: 22px; height: 22px; padding: 0 5px; border-radius: 11px; display: grid; place-items: center; font-weight: 700; font-size: 12px; color: #fff; background: #555; }
+#padhints[data-kind="xbox"] .pb-a { background: #3aa53a; } #padhints[data-kind="xbox"] .pb-b { background: #d8373a; } #padhints[data-kind="xbox"] .pb-x { background: #2f6fe0; } #padhints[data-kind="xbox"] .pb-y { background: #e0a91d; }
+#padhints[data-kind="ps"] .pb-a { color: #8fb6ff; background: #222; } #padhints[data-kind="ps"] .pb-b { color: #ff6b7a; background: #222; } #padhints[data-kind="ps"] .pb-x { color: #ff8fd8; background: #222; } #padhints[data-kind="ps"] .pb-y { color: #4fd6b4; background: #222; }
+#padhints .pb-lb { border-radius: 6px; }
+@media (max-width: 600px) { #padhints { left: 16px; right: 16px; justify-content: center; flex-wrap: wrap; } }
+/* Aero sliders: a thin sunken track filled in the accent, and a glossy pointed thumb (Windows 7's trackbar) */
+html.aero input[type=range] { height: 6px; border-radius: 3px; box-shadow: inset 0 1px 2px rgb(0 0 0 / .45), 0 1px 0 rgb(255 255 255 / .35);
+  background: linear-gradient(90deg, color-mix(in srgb, var(--blue) 80%, #fff) 0 var(--p, 0%), color-mix(in srgb, var(--text) 18%, transparent) var(--p, 0%)); }
+html.aero input[type=range]::-webkit-slider-thumb { width: 12px; height: 22px; border-radius: 3px 3px 6px 6px; border: 1px solid var(--ae-bedge);
+  background: linear-gradient(var(--ae-p1), var(--ae-p2) 50%, var(--ae-p3) 50%, var(--ae-p4)); box-shadow: inset 0 0 0 1px rgb(255 255 255 / .5), 0 1px 3px rgb(0 0 0 / .4); }
+html.aero input[type=range]::-moz-range-thumb { width: 12px; height: 22px; border-radius: 3px 3px 6px 6px; border: 1px solid var(--ae-bedge);
+  background: linear-gradient(var(--ae-p1), var(--ae-p2) 50%, var(--ae-p3) 50%, var(--ae-p4)); box-shadow: inset 0 0 0 1px rgb(255 255 255 / .5), 0 1px 3px rgb(0 0 0 / .4); }
+html.aero input[type=range]:hover::-webkit-slider-thumb { box-shadow: inset 0 0 0 1px rgb(255 255 255 / .6), 0 0 8px color-mix(in srgb, var(--blue) 70%, transparent); }
+.pairqr { display: grid; place-items: center; margin: 14px 0 6px; } .pairqr svg { width: 180px; height: 180px; border-radius: 12px; }
+/* backup script builder */
+.expand .xb .sbuild { display: flex; flex-direction: column; gap: 8px; padding: 4px 0 6px; }
+.sbuild > label:not(.chk), .sbuild > div > label:not(.chk) { font-weight: 600; font-size: 14px; color: var(--text); margin-top: 6px; display: block; }
+.sbuild .field { width: 100%; box-sizing: border-box; } .sbuild #sb-keep { width: 90px; }
+.sbuild > .pillbtn { align-self: flex-start; } .sbuild .seg { margin: 0; }

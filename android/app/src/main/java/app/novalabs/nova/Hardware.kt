@@ -62,8 +62,14 @@ private fun health(d: JSONObject): Pair<String, String> {
                         val (h, lvl) = health(d)
                         val u = d.optJSONArray("usage")?.optJSONObject(0)
                         Column(Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 16.dp)) {
-                            Row1Inline(driveName(d), "${bytesHuman(d.optLong("size"))} · ${if (d.optBoolean("ssd")) "SSD" else "HDD"} · ${d.optString("bus").uppercase()}${d.optInt("temp").takeIf { it > 0 }?.let { " · $it°C" } ?: ""}",
-                                h, levelColor(lvl, N)) { app.go(Route.Drive(d.optString("serial"))) }
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                DriveLed(app, d.optString("name"))           // its activity light, like the one on the server picture
+                                Spacer(Modifier.width(10.dp))
+                                Box(Modifier.weight(1f)) {
+                                    Row1Inline(driveName(d), listOf(d.optString("model"), "${bytesHuman(d.optLong("size"))} · ${if (d.optBoolean("ssd")) "SSD" else "HDD"} · ${d.optString("bus").uppercase()}${d.optInt("temp").takeIf { it > 0 }?.let { " · $it°C" } ?: ""}").filter { it.isNotBlank() }.joinToString(" · ") + "\nS/N ${d.optString("serial")}",
+                                        h, levelColor(lvl, N)) { app.go(Route.Drive(d.optString("serial"))) }
+                                }
+                            }
                             if (u != null) {
                                 Spacer(Modifier.height(8.dp))
                                 val frac = u.optLong("used").toFloat() / u.optLong("total").coerceAtLeast(1)
@@ -142,7 +148,12 @@ private fun health(d: JSONObject): Pair<String, String> {
         DriveTests(app, serial)
         SectionLabel("Details")
         Group {
+            Row1("Model", d.optString("model").ifEmpty { "—" }); RowDivider()
             Row1("Size", bytesHuman(d.optLong("size"))); RowDivider()
+            // bad sectors as space: remapped ones are capacity the drive retired (nothing lost); pending ones can't be read right now
+            val sec = d.optLong("sector", 512).coerceAtLeast(512); val re = d.optLong("realloc"); val pe = d.optLong("pending")
+            if (re + pe > 0) { Row1("Bad sectors", listOfNotNull(if (re > 0) "$re remapped ≈ ${bytesHuman(re * sec)} retired (nothing lost)" else null,
+                if (pe > 0) "$pe unreadable ≈ ${bytesHuman(pe * sec)} of data at risk until rewritten" else null).joinToString(" · ")); RowDivider() }
             Row1("Connection", d.optString("bus").uppercase()); RowDivider()
             Row1("Serial", d.optString("serial")); RowDivider()
             Row1("Mounted at", d.optJSONArray("mounts")?.let { a -> (0 until a.length()).joinToString { a.getString(it) } }?.ifEmpty { "Not mounted" } ?: "—")
@@ -259,4 +270,21 @@ private fun health(d: JSONObject): Pair<String, String> {
             }
         }
     }
+}
+
+
+/** A drive's activity light: blinks with its real activity (the server's share of time on I/O), like the server picture's. */
+@Composable fun DriveLed(app: AppState, dev: String) {
+    var on by remember { mutableStateOf(false) }
+    LaunchedEffect(dev) {
+        while (true) {
+            kotlinx.coroutines.delay(110)
+            val io = app.lastNow?.optJSONObject("disks")?.optJSONArray(dev)
+            val busy = io?.optDouble(0, 0.0) ?: 0.0; val bps = io?.optDouble(1, 0.0) ?: 0.0
+            val rate = if (io == null) .09 else if (busy > 0 || bps > 0) kotlin.math.min(.85, .06 + .8 * kotlin.math.sqrt(busy)) else 0.0
+            on = Math.random() < rate
+        }
+    }
+    val c = N.green
+    androidx.compose.foundation.Canvas(Modifier.size(9.dp)) { drawCircle(if (on) c else c.copy(alpha = .3f)) }
 }

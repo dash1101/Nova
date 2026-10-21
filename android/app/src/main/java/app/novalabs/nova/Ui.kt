@@ -298,11 +298,15 @@ fun levelColor(level: String, t: NovaColors) = when (level) {
         if (k != lastTick) { if (lastTick >= 0) Sounds.buzz("slide"); lastTick = k }; onChange(v) }
     Slider(value = value, onValueChange = onChange, modifier = modifier, enabled = enabled, valueRange = range,
         steps = steps, onValueChangeFinished = onDone,
-        thumb = { Box(Modifier.size(28.dp).clip(CircleShape).background(if (enabled) Color.White else t.sub)
-            .then(Modifier)) },
+        // Aero: Windows 7's trackbar — a glossy, slightly pointed thumb on a thin sunken track
+        thumb = { if (t.preset == "aero") Box(Modifier.size(14.dp, 26.dp).aeroButton(true, RoundedCornerShape(3.dp, 3.dp, 7.dp, 7.dp)))
+            else Box(Modifier.size(28.dp).clip(CircleShape).background(if (enabled) Color.White else t.sub)) },
         track = { st: SliderState ->
             val frac = ((st.value - range.start) / (range.endInclusive - range.start)).coerceIn(0f, 1f)
-            Box(Modifier.fillMaxWidth().height(10.dp).clip(RoundedCornerShape(5.dp)).background(t.divider)) {
+            val aero = t.preset == "aero"
+            Box(Modifier.fillMaxWidth().height(if (aero) 6.dp else 10.dp).clip(RoundedCornerShape(if (aero) 3.dp else 5.dp))
+                .background(if (aero) t.text.copy(alpha = .18f) else t.divider)
+                .then(if (aero) Modifier.border(1.dp, Color.Black.copy(alpha = .35f), RoundedCornerShape(3.dp)) else Modifier)) {
                 Box(Modifier.fillMaxWidth(frac).fillMaxHeight().clip(RoundedCornerShape(5.dp))
                     .background(if (enabled) t.blue else t.sub))
             }

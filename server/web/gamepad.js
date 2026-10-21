@@ -3,7 +3,7 @@
 //   X  the item's menu (what a right-click or a long press gives)            Y  search
 //   LB / RB  the previous / next tab in the navigation pill                  Start  Home     right stick  scroll
 // On a slider, left and right change its value. A glowing ring shows where you are; it goes as soon as you use the mouse.
-import { $, $$ } from "./core.js";
+import { $, $$, prefs } from "./core.js";
 import { toast } from "./ui.js";
 import { play } from "./sounds.js";
 
@@ -124,3 +124,22 @@ addEventListener("gamepadconnected", e => {
 addEventListener("gamepaddisconnected", () => { if (--pads <= 0) { pads = 0; cancelAnimationFrame(raf); raf = 0; root.classList.remove("pad"); cur?.classList.remove("padfocus"); cur = null; } });
 // the mouse or a touch takes over again: the ring goes
 addEventListener("pointermove", e => { if (root.classList.contains("pad") && (Math.abs(e.movementX) + Math.abs(e.movementY) > 3)) { root.classList.remove("pad"); cur?.classList.remove("padfocus"); } }, { passive: true });
+
+
+// ── button hints in the corner (Appearance → Controller buttons: Xbox, PlayStation or plain) ──────────────────────
+let padId = "";
+const kind = () => { const p = prefs.padGlyphs || "auto"; if (p !== "auto") return p;
+  return /xbox|045e|xinput/i.test(padId) ? "xbox" : /054c|playstation|dualsense|dualshock|wireless controller/i.test(padId) ? "ps" : "generic"; };   // Xbox first: its name also says "Wireless Controller"
+const GLYPHS = { xbox: { a: "A", b: "B", x: "X", y: "Y", lb: "LB", rb: "RB" }, ps: { a: "✕", b: "○", x: "□", y: "△", lb: "L1", rb: "R1" },
+  generic: { a: "1", b: "2", x: "3", y: "4", lb: "L", rb: "R" } };
+export function drawHints() {
+  let h = $("#padhints");
+  if (!root.classList.contains("pad") || prefs.padHints === false) { h?.remove(); return; }
+  if (!h) { h = document.createElement("div"); h.id = "padhints"; h.className = "frost"; document.body.append(h); }
+  const g = GLYPHS[kind()], k = kind();
+  h.dataset.kind = k;
+  h.innerHTML = [["a", "Select"], ["b", "Back"], ["x", "Menu"], ["y", "Search"], ["lb", "Tabs"]].map(([b, l]) =>
+    `<span><i class="pb pb-${b}">${b === "lb" ? g.lb + "/" + g.rb : g[b]}</i>${l}</span>`).join("");
+}
+addEventListener("gamepadconnected", e => { padId = e.gamepad.id || ""; setTimeout(drawHints, 50); });
+new MutationObserver(drawHints).observe(root, { attributes: true, attributeFilter: ["class"] });

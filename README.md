@@ -1,6 +1,6 @@
-# Nova  ·  0.7.0-alpha
+# Nova  ·  0.8.9-alpha
 
-**A secure remote control for your home server, from your Android phone.**
+**A secure remote control for your home server, from your Android phone or any browser.**
 Status and live graphs, containers (logs, shell, start/stop), a one-tap app store, drives,
 backups, alerts, an SSH terminal and more, in a clean, glassy app. It works on your home
 network, and optionally from anywhere through Cloudflare Access, without a VPN.
@@ -33,23 +33,23 @@ network, and optionally from anywhere through Cloudflare Access, without a VPN.
 | **Status** | CPU, memory, temperature and network graphs (last hour), storage, backups, services |
 | **Containers** | Every Docker Compose container: logs, a shell inside it, start/stop/restart, update, restart policy |
 | **App store** | One-tap installs of popular self-hosted apps (Jellyfin, Vaultwarden, Uptime Kuma, …) and apt programs |
-| **Storage** | A map of every drive and pool with suggestions; a step-by-step wizard to combine drives into one, build RAID 0/1/5/6/10, set up a backup drive, grow a pool or replace a failed drive (with "?" help everywhere); SMART health, temperatures and drive self-tests |
-| **Backups** | Scheduled, versioned snapshots of any folders to another drive or a NAS (SMB / NFS), missing-drive protection, history, browse & restore |
+| **Storage** | A map of every drive and pool with suggestions; a step-by-step wizard to combine drives into one, build RAID 0/1/5/6/10, set up a backup drive, grow a pool or replace a failed drive (with "?" help everywhere); SMART health, temperatures, model and serial, a bad-sector estimate, drive self-tests with live progress, and an activity light per drive |
+| **Backups** | Scheduled, versioned snapshots of any folders to another drive or a NAS (SMB / NFS), missing-drive protection, history, browse & restore, live progress; a form that writes a classic rsync backup script for you |
 | **Diagnostics** | Internet speed (down/up/ping/jitter/loss), phone ↔ server speed, drive speed (sequential + random), CPU stress with live temperature/clock/power, memory test, ping/traceroute/DNS/port tools, top processes |
 | **Terminal** | Real SSH to the server, with a key that lives in the phone's secure chip |
 | **Quick panel** | Your own tiles: back up, free RAM, lights, pause alerts, restart a container… |
-| **Alerts & Inbox** | Inbox grouped by day, with swipe to archive, select a whole day, Archive with *Back to Inbox*, and live progress for anything running; instant notifications (no Google push service, no third party) |
+| **Alerts & Inbox** | Inbox grouped by day, with swipe to archive, select a whole day, Archive with *Back to Inbox*, a jump to the page each notification is about, and live progress for anything running; instant notifications (no Google push service, no third party) |
 | **Files** | Browse, edit, upload and download files on the server as your normal account; deleting goes to the Trash |
-| **Server terminal** | A real terminal in the browser or app, as your normal account (approved on your phone) |
+| **Server terminal** | A real terminal in the browser or app, as your normal account (approved on your phone). It never runs a command by itself: pastes wait for Enter, and shutdown/reboot-style commands ask first |
 | **Troubleshoot** | For a container that won't stay up: the last error, stop it for good, go back to the previous version, update again, recreate |
 | **Labs** | Opt-in extras: Cloudflare auto-setup (only you · you + guests · anyone per app, Immich share links; never touches what isn't Nova's; `sudo nova cloudflare undo` takes it all back), OpenRGB, crash-loop guard, weekly container updates with automatic rollback, old-image cleanup, Wake-on-LAN |
-| **Your look** | Two styles, light/dark, and 13 app icons (Material You, outline, black and white, glass, colors…) |
+| **Your look** | Six looks — Default, Material You, Glass, Mica, Breeze and Aero — light/dark, corner roundness per look, icon shapes, and app icons (Material You, outline, black and white, glass, colors…) |
+| **Living wallpaper & sound** | An animated wallpaper per look (or your own GIF/video on the web), soft ambience, and a sound and haptic pack per look — each part can be turned off |
 | **Watch** | A Wear OS app, two tiles and a complication: health at a glance, recent events, approve or deny on your wrist, lights on/off ([docs/WEAR.md](docs/WEAR.md)) |
 | **Several servers** | Pair with as many machines as you like and switch between them, each with its own name and color |
 | **Users & roles** | Named users, each Admin or View only; invite phones by QR, approve browsers from your phone |
 | **Tablets & dashboard** | Tablet layout (rail + list/detail) and an always-on, customizable dashboard mode |
-| **Two looks** | Default (frosted glass and a soft glow) or Material You Expressive with wallpaper colors — picked automatically, switchable in Appearance |
-| **Nova web** | The same design in any browser, at `https://<server>:8495/`. Risky actions are approved on your phone |
+| **Nova web** | The same design in any browser, at `https://<server>:8495/`, installable as an app. Risky actions are approved on your phone; apps can open in windows inside Nova (Labs); game controllers work, with Xbox / PlayStation button hints |
 | **Lighting** | Fans and LED strips on a Gigabyte RGB Fusion 2 board — or any device OpenRGB supports (Labs → OpenRGB): several lights, each with its own effect (wave, comet, fire, gradients, palettes…), presets, schedules with sunrise/sunset and fades, and a status light |
 | **Plugins** | Add apps and one-tap tools from a small `plugin.json` ([docs/PLUGINS.md](docs/PLUGINS.md)) |
 | **Optional modules** | Lighting (above); plug in your own monitor for alerts |
@@ -88,12 +88,13 @@ Everything else: `sudo nova` lists all commands (`approve`, `devices`, `remove`,
 
 ## Install the app
 
-Android 9 or newer (phones, tablets and foldables; Wear OS 3+ for the watch app). On Android 9–11 a
+Android 7.0 or newer (phones, tablets and foldables; Wear OS 3+ for the watch app). On older versions a
 few extras step back: wallpaper colors need Android 12 (Material uses its own palette before that),
-and on Android 9 fingerprint confirmation can't fall back to your PIN.
+Glass's lens needs Android 13, and before Android 11 fingerprint confirmation can't fall back to your PIN.
+No iPhone app yet — on an iPhone, add Nova web to your home screen (steps on the [website](https://dash1101.github.io/Nova/)).
 
 Build it yourself (below), or install a release APK. Updates after that come from inside the app
-(Settings → Software update), served by your own server: `sudo nova-app-publish app.apk "notes"`.
+(Settings → Software update), served by your own server: `sudo nova publish app.apk "notes"`.
 
 ```bash
 cd android
@@ -124,7 +125,7 @@ server/store/            app store catalog: docker/*.json (compose-based apps) +
 server/modules/          optional: lighting (fan-gigabyte-fusion2)
 packaging/               .deb builder (build-deb.sh), nova-setup-lighting, logrotate
 server/install.sh        installer
-docs/                    security model, remote access, modules, adding store apps
+docs/                    security model, remote access, modules, adding store apps, design rules (DESIGN.md)
 ```
 
 ## Adding apps to the store
@@ -135,7 +136,8 @@ Drop a JSON file in `server/store/docker/`; see [docs/STORE.md](docs/STORE.md). 
 
 Open `https://<server>:8495/` on your home network. The certificate is Nova's own, so the browser
 warns once; that's expected. Choose "Get a code", then in the app go to Users & devices → Approve a
-browser. Over Tailscale, set `tailnet_subnet`/`tailnet_host` in the config. Remotely through
+browser and scan the code on screen (or type it, or run `sudo nova approve <code>` on the server; a
+browser can also use an authenticator code or a passkey). Over Tailscale, set `tailnet_subnet`/`tailnet_host` in the config. Remotely through
 Cloudflare, add an Access policy that allows your own email (alongside the service-token policy the
 app uses). See docs/REMOTE.md.
 

@@ -329,6 +329,7 @@ export async function menu(ctx) {
       ${sec("Apps")}<div class="mapps">${isAdmin() && has("files") ? cell("Files", glyph("folder", "#3e91ff"), "go:files") : ""}${isAdmin() && has("terminal") ? cell("Terminal", glyph("term", "#3ecf6e"), "go:term") : ""}
         ${apps.map(a => { const h = ST.appHref(a); return a.kind === "command" ? cell(a.name, glyph("term", "#8e8e93"), "go:apps") : cell(a.name, `<span class="appic" data-ic="${esc(a.id)}">${esc((a.name || "?")[0])}</span>`, "go:apps", h, a.id); }).join("")}
         ${cell("All apps", glyph("apps", "var(--sub)"), "go:apps")}</div>
+      <div class="installrow">${group(row("Install Nova", { sub: "Its own window and icon, like an app — no app store needed", blue: true, icon: "computer", click: "install" }))}</div>
       ${sec("Server")}${group(row("Status", { sub: "Live graphs, storage, backups", blue: true, icon: "status", tint: "#3ecf6e", click: "go:status" })
         + row("Storage & hardware", { sub: "Drives, pools, set up drives", blue: true, icon: "disk", tint: "#3ecf6e", click: "go:hardware" })
         + (isAdmin() ? row("Free up", { sub: "Old images, logs, caches, trash — and memory", blue: true, icon: "del", tint: "var(--amber)", click: "go:freeup" }) : "")
@@ -431,6 +432,7 @@ export async function status(ctx) {
     if (n.temp) set("c3v", Math.round(n.temp) + "°C"); set("c4v", "↓ " + rate(n.rx)); set("c4s", "↑ " + rate(n.tx)); if (n.gpu != null) set("c5v", Math.round(n.gpu) + "%"); set("c6v", Math.round(n.swap || 0) + "%"); if (n.swap_total_gb) set("c6s", `${n.swap_used_gb} of ${n.swap_total_gb} GB`); set("c7v", rate(n.io || 0));
   };
   const keyOf = a => { a.pop(); return a.join(":"); };          // keys contain ":" — rejoin the act arguments
+  ctx.handlers({ install: async () => (await import("./app.js")).installNova() });
   ctx.handlers({ alert: (...a) => alertMenu(keyOf(a), draw), ignore: (...a) => dismissAlert(keyOf(a), draw),
     // no swap at all: make a swap file on the system drive (it comes back after a restart; the graph returns with it)
     swapsetup: async () => {
@@ -1413,13 +1415,19 @@ const health = d => { const p = d.health != null ? ` · ${d.health}%` : "";
 export async function hardware(ctx) {
   const [serial] = ctx.args;
   if (serial) return drive(ctx, serial);
+  // each drive's light, beside it, blinking with its real activity like the one on the server picture
+  let raf = 0, slot = -1;
+  const blink = t => { raf = requestAnimationFrame(blink); const s = Math.floor(t / 110); if (s === slot) return; slot = s;
+    for (const el of $$(".dled", ctx.root)) { const io = S.lastNow?.disks?.[el.dataset.dev], busy = io ? io[0] : 0, rate = io ? (busy > 0 || io[1] > 0 ? Math.min(.85, .06 + .8 * Math.sqrt(busy)) : 0) : .09;
+      el.classList.toggle("on", Math.random() < rate); } };
+  raf = requestAnimationFrame(blink); ctx.onLeave(() => cancelAnimationFrame(raf));
   const draw = () => {
     const hw = S.cache["/api/v1/hardware"], t = hw?.temps, ds = hw?.drives || [];
     const roles = {}; ds.forEach(d => (roles[d.role || "Other"] ||= []).push(d));
     const ord = r => r === "Boot drive" ? 1 : 0;
     ctx.show(`${ST.overviewHtml()}${t ? sec("Temperatures") + group(row("CPU", { sub: t.cpu_temp || "—", icon: "cpu" }) + row("Boot NVMe", { sub: t.nvme_temp || "—", icon: "ssd" }) + row("Drives", { sub: t.drive_temps || "—", icon: "disk" })) : ""}
       ${Object.entries(roles).sort(([a], [b]) => ord(a) - ord(b)).map(([r, l]) => sec(r) + group(l.map(d => { const [h, lv] = health(d), u = d.usage?.find(x => x.mount === "/") || d.usage?.[0], f = u ? u.used / Math.max(1, u.total) : 0;
-          return `<div class="row click" data-act="open:${esc(d.serial)}" style="display:block"><div style="display:flex;align-items:center;gap:8px"><div class="t"><b>${esc(driveName(d))}</b><small>${bytes(d.size)} · ${d.ssd ? "SSD" : "HDD"} · ${esc((d.bus || "").toUpperCase())}${d.temp ? ` · ${d.temp}°C` : ""}</small></div><b style="color:${levelColor(lv)};font-size:14px">${h}</b></div>
+          return `<div class="row click" data-act="open:${esc(d.serial)}" style="display:block"><div style="display:flex;align-items:center;gap:8px"><span class="dled" data-dev="${esc(d.name)}" title="Activity"></span><div class="t"><b>${esc(driveName(d))}</b><small>${esc(d.model || "")}${d.model ? " · " : ""}${bytes(d.size)} · ${d.ssd ? "SSD" : "HDD"} · ${esc((d.bus || "").toUpperCase())}${d.temp ? ` · ${d.temp}°C` : ""}<br>S/N ${esc(d.serial)}</small></div><b style="color:${levelColor(lv)};font-size:14px">${h}</b></div>
             ${u ? `<div style="margin-top:8px">${bar(f, usageColor(f))}</div><small class="muted" style="font-size:13px">${bytes(u.free)} free of ${bytes(u.total)}</small>` : (d.mounts || []).length ? "" : `<small style="color:var(--amber);font-size:13px">Not mounted</small>`}</div>`; }).join(""))).join("")
         || note(hw ? "No drives reported." : "Loading…")}
       ${sec("Fans")}${group(expand("CPU & case fan speed", "Run by the motherboard", "speed", "The fans follow the motherboard's own curve — set it in the BIOS (often under Smart Fan or Q-Fan). Reading or setting speeds from Linux needs a driver for the board's fan chip.", { tint: "var(--sub)" })
@@ -1456,7 +1464,9 @@ async function drive(ctx, serial) {
       ${sec("Health (SMART)")}${smartHtml(d)}
       ${testsHtml()}
       ${isAdmin() ? group(row("Partitions", { sub: d.protected ? "See how it's laid out (it's in use, so it can't be changed)" : "See and change how it's laid out — create, delete, format, label, resize", blue: true, icon: "viewday", click: "go:partitions/" + encodeURIComponent(serial) })) : ""}
-      ${sec("Details")}${group(row("Size", { sub: bytes(d.size) }) + row("Connection", { sub: (d.bus || "").toUpperCase() }) + row("Serial", { sub: d.serial }) + row("Mounted at", { sub: (d.mounts || []).join(", ") || "Not mounted" }))}
+      ${sec("Details")}${group(row("Model", { sub: d.model || "—" }) + row("Size", { sub: bytes(d.size) }) + row("Connection", { sub: (d.bus || "").toUpperCase() }) + row("Serial", { sub: d.serial }) + row("Mounted at", { sub: (d.mounts || []).join(", ") || "Not mounted" })
+        // bad sectors, as space: remapped ones are capacity the drive retired (nothing lost); pending ones can't be read right now
+        + ((d.realloc || 0) + (d.pending || 0) > 0 ? row("Bad sectors", { sub: [(d.realloc || 0) ? `${d.realloc} remapped ≈ ${bytes(d.realloc * (d.sector || 512))} retired (nothing lost)` : "", (d.pending || 0) ? `${d.pending} unreadable ≈ ${bytes(d.pending * (d.sector || 512))} of data at risk until rewritten` : ""].filter(Boolean).join(" · ") }) : ""))}
       ${!isAdmin() ? note("View-only access: an admin can mount or unmount drives.") : d.protected ? note(`This drive is in use by the server (${d.role}) and can't be unmounted from the app.`)
         : `<button class="btn block" data-act="mount" ${busy ? "disabled" : ""}>${busy ? "Working…" : mounted ? "Safely unmount" : "Mount"}</button>`}
       ${isAdmin() && !d.protected ? sec("Fix and copy") + group(row("Repair", { sub: "Checks every filesystem on it and fixes what it can, then runs the drive's quick self-test. It's unmounted for a few minutes while that happens.", icon: "build", tint: "var(--amber)", click: "repair" })
@@ -1688,8 +1698,11 @@ export async function appearance(ctx) {
         ["fluent", "Mica", "A soft, tinted base with frosted menus and crisp, small corners"],
         ["breeze", "Breeze", "Flat and tidy: a thin frame, gentle corners, the accent as the focus color"],
         ["aero", "Aero", "Tinted frosted glass frames with a glossy shine and glowing buttons"]].map(([k, l, d]) => row(l, { sub: d, end: radio(st === k), click: "style:" + k })).join(""))}
-      ${["liquid", "fluent", "breeze", "aero"].includes(st) ? group((st !== "breeze" ? `<div class="range-row"><div class="h"><span>Glass clarity</span><span id="glassl">${prefs.glass ?? 60}%</span></div><input type="range" min="0" max="100" value="${prefs.glass ?? 60}" data-range="glass" style="--p:${prefs.glass ?? 60}%"></div>` : "")
+      ${["liquid", "fluent", "breeze", "aero"].includes(st) ? group((st === "liquid" ? `<div class="range-row"><div class="h"><span>Light splitting</span><span id="prisml">${prefs.prism ?? 50}%</span></div><input type="range" min="0" max="100" value="${prefs.prism ?? 50}" data-range="prism" style="--p:${prefs.prism ?? 50}%"></div>` : "")
+        + (st !== "breeze" ? `<div class="range-row"><div class="h"><span>Glass clarity</span><span id="glassl">${prefs.glass ?? 60}%</span></div><input type="range" min="0" max="100" value="${prefs.glass ?? 60}" data-range="glass" style="--p:${prefs.glass ?? 60}%"></div>` : "")
         + `<div class="range-row"><div class="h"><span>Corner roundness</span><span id="roundl">${rnow}%</span></div><input type="range" min="25" max="200" value="${rnow}" data-range="round_${st}" style="--p:${(rnow - 25) / 175 * 100}%"></div>`) : ""}
+      ${!mat && !["liquid", "fluent", "breeze", "aero"].includes(st) ? group([["dTrans", "Transparency", 0, 85, 0, "%"], ["dFrost", "Frost", 0, 40, 26, "px"]].map(([k, l, a, b, d, u]) =>
+          `<div class="range-row"><div class="h"><span>${l}</span><span id="${k}l">${prefs[k] ?? d}${u}</span></div><input type="range" min="${a}" max="${b}" value="${prefs[k] ?? d}" data-range="${k}" style="--p:${((prefs[k] ?? d) - a) / (b - a) * 100}%"></div>`).join("")) : ""}
       ${st === "liquid" && !canRefract() ? note("This browser shows Glass frosted, without the bending at the edges — that part needs a Chromium-based browser.") : ""}
       ${st === "liquid" ? note("Glass is the most demanding look: on some devices it can make things warm, use more battery or stutter. Lighter effects (below) keeps the look with less work.") : ""}
       ${sec("Theme")}${group([["system", "Same as this device"], ["light", `${look} light`], ["dark", `${look} dark`]].map(([k, l]) => row(l, { end: radio(t === k), click: "theme:" + k })).join(""))}
@@ -1700,10 +1713,13 @@ export async function appearance(ctx) {
         + (SND.soundsOn() ? row("Sound pack", { sub: (prefs.soundPack || "auto") === "auto" ? `Match the look (${PACKS[SND.packId()]})` : PACKS[prefs.soundPack] || "Match the look", blue: true, icon: "tune", click: "spack" })
           + `<div class="range-row"><div class="h"><span>Volume</span><span id="voll">${prefs.soundVol ?? 60}%</span></div><input type="range" min="0" max="100" step="5" value="${prefs.soundVol ?? 60}" data-range="soundVol" style="--p:${prefs.soundVol ?? 60}%"></div>`
           + switchRow("Alert sounds", "A chime when something needs you — a more urgent one when it's serious", prefs.alertSounds ?? true, "asnd")
-          + Object.entries(SND.KINDS).map(([k, [l, d]]) => switchRow(l, d, SND.kindOn(k), "skind:" + k, { blue: false })).join("") : "")
+          // which kinds play: folded away (most people never change them) — keep things simple until you want the detail
+          + expand("Which sounds", Object.entries(SND.KINDS).filter(([k]) => SND.kindOn(k)).map(([, [l]]) => l).join(", ") || "None", "tune",
+              Object.entries(SND.KINDS).map(([k, [l, d]]) => switchRow(l, d, SND.kindOn(k), "skind:" + k, { blue: false })).join("")) : "")
         + switchRow("Ambience · Beta", "Soft, slowly changing music under everything, in the mood of the look you picked", !!prefs.ambience, "amb")
         + (prefs.ambience ? row("Track", { sub: (prefs.ambTrack || "auto") === "auto" ? `Match the look (${AMB.TRACKS[AMB.trackId()]})` : AMB.TRACKS[prefs.ambTrack], blue: true, icon: "tune", click: "ambtrack" }) + `<div class="range-row"><div class="h"><span>Ambience volume</span><span id="ambl">${prefs.ambVol ?? 35}%</span></div><input type="range" min="0" max="100" step="5" value="${prefs.ambVol ?? 35}" data-range="ambVol" style="--p:${prefs.ambVol ?? 35}%"></div>` : "")
         + ("vibrate" in navigator ? switchRow("Vibration", "A light buzz with taps, switches and alerts (on phones)", prefs.haptics ?? true, "hap") : ""))}
+      ${sec("Controller")}${group(row("Button hints", { sub: `${({ auto: "Match the controller", xbox: "Xbox (A B X Y)", ps: "PlayStation (✕ ○ □ △)", generic: "Plain (1 2 3 4)" })[prefs.padGlyphs || "auto"]}${prefs.padHints === false ? " · hidden" : ""} — shown in the corner while you use a game controller`, blue: true, icon: "tune", click: "padg" }))}
       ${sec("Colors")}${group(row("Accent color", { sub: prefs.accentLocal ? "This browser's own color" : `The server's color${S.overview?.server?.accent ? "" : " (Nova blue)"} — tap to pick your own`, blue: !!prefs.accentLocal,
             end: `<span class="swatch" style="background:${esc(prefs.accentLocal || S.overview?.server?.accent || "#3e91ff")}"></span>`, click: "accent" })
           + `<div class="swatches pad">${ACCENTS.filter(Boolean).map(c => `<button class="swatch press${prefs.accentLocal === c ? " on" : ""}" style="background:${c}" data-act="acc:${c}" aria-label="${c}"></button>`).join("")}</div>`
@@ -1745,7 +1761,7 @@ export async function appearance(ctx) {
         if (/^living/.test(k)) { const u = { livingSpeed: "%", livingBlur: "px", livingTint: "%", livingFps: " fps" }[k]; if ($("#" + k + "l")) $("#" + k + "l").textContent = v + u; LV.update(); }
         if (k === "ambVol") { if ($("#ambl")) $("#ambl").textContent = v + "%"; AMB.update(); }
         if (k === "soundVol") { if ($("#voll")) $("#voll").textContent = v + "%"; clearTimeout(volT); volT = setTimeout(() => SND.play("tap"), 60); }
-        const l = { tint: ["tintl", "%"], wallBlur: ["blurl", "px"], wallDim: ["diml", "%"], glass: ["glassl", "%"], round: ["roundl", "%"] }[/^round_/.test(k) ? "round" : k]; if (l && $("#" + l[0])) $("#" + l[0]).textContent = v + l[1];
+        const l = { tint: ["tintl", "%"], wallBlur: ["blurl", "px"], wallDim: ["diml", "%"], glass: ["glassl", "%"], round: ["roundl", "%"], prism: ["prisml", "%"], dTrans: ["dTransl", "%"], dFrost: ["dFrostl", "px"] }[/^round_/.test(k) ? "round" : k]; if (l && $("#" + l[0])) $("#" + l[0]).textContent = v + l[1];
       } });
   };
   let wallHas = false, volT = 0;
@@ -1778,10 +1794,15 @@ export async function appearance(ctx) {
       const v = await choose("Ambience", [["auto", "Match the look", "Changes with the style you pick"], ...Object.entries(AMB.TRACKS)], prefs.ambTrack || "auto");
       if (!v) return; prefs.ambTrack = v; AMB.update(); draw();
     },
+    padg: async () => {
+      const v = await choose("Controller button hints", [["auto", "Match the controller"], ["xbox", "Xbox", "A B X Y"], ["ps", "PlayStation", "✕ ○ □ △"], ["generic", "Plain", "1 2 3 4"], ["off", "Don't show them"]], prefs.padHints === false ? "off" : prefs.padGlyphs || "auto");
+      if (!v) return; if (v === "off") prefs.padHints = false; else { prefs.padHints = true; prefs.padGlyphs = v; } draw();
+    },
     livewall: () => { prefs.livingWall = !prefs.livingWall; ctx.applyTheme(); draw(); },
     amb: () => { prefs.ambience = !prefs.ambience; AMB.update(); draw(); },
     snd: () => { prefs.sounds = !SND.soundsOn(); draw(); if (prefs.sounds) SND.play("toggleOn", { force: true }); },
-    skind: k => { const o = { ...(prefs.sndOff || {}) }; o[k] = !o[k]; prefs.sndOff = o; draw(); },
+    skind: k => { const o = { ...(prefs.sndOff || {}) }; o[k] = !o[k]; prefs.sndOff = o;     // in place: the dropdown stays open
+      $(`[data-act="skind:${k}"] .sw`, ctx.root)?.classList.toggle("on", !o[k]); },
     asnd: () => { prefs.alertSounds = !(prefs.alertSounds ?? true); draw(); if (prefs.alertSounds) SND.play("info"); },
     hap: () => { prefs.haptics = !(prefs.haptics ?? true); draw(); SND.buzz("success"); },
     spack: async () => {

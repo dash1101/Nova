@@ -2,7 +2,7 @@
 // Mirrors the app's Storage.kt / Backups.kt / Diagnostics.kt.
 import * as SND from "./sounds.js";
 import { S, $, $$, esc, get, post, del, bytes, isAdmin, signedFetch, serverHost, prefs } from "./core.js";
-import { I, row, group, sec, note, radio, switchRow, segmented, bar, usageColor, toast, dialog, confirm, ask, wireCommon, sheet, closeSheet, copyCmd } from "./ui.js";
+import { I, row, group, sec, note, expand, radio, switchRow, segmented, bar, usageColor, toast, dialog, confirm, ask, wireCommon, sheet, closeSheet, copyCmd } from "./ui.js";
 
 const enc = encodeURIComponent;
 const viewOnly = () => toast("This browser has view-only access");
@@ -301,15 +301,58 @@ export async function backups(ctx) {
 }
 export async function backupScript(ctx) {
   let d = null, err = null, dirty = false;
+  const sb = { src: "", dst: "", mode: "snap", keep: 14, del: false, ex: "", guard: true };     // the script builder's choices
   const draw = () => {
     ctx.show(err ? group(row("Couldn't open the script", { sub: err, icon: "err", tint: "var(--red)" })) : !d ? group(row("Opening…", { dis: true }))
       : note(`${d.path} · runs as root, so a mistake here can break your backups. Nova checks it with bash before saving and keeps the old version as nova-backup.nova-prev.`)
+        // no bash needed: fill in a form and Nova writes the script (you can still edit it after)
+        + group(expand("Build it for me", "Pick folders and a destination — Nova writes the script", "build", `<div class="pad sbuild">
+            <label>Folders to back up (one per line)</label><textarea class="field" id="sb-src" rows="3" placeholder="/home&#10;/srv/photos">${esc(sb.src)}</textarea>
+            <button class="pillbtn press" data-act="sbpick">Add a folder…</button>
+            <label>Copies go to</label><div style="display:flex;gap:8px"><input class="field" id="sb-dst" placeholder="/mnt/backup/nova" value="${esc(sb.dst)}" style="flex:1"><button class="pillbtn press" data-act="sbdst">Choose…</button></div>
+            <label>How</label>${segmented(["Dated snapshots", "One mirror copy"], sb.mode === "mirror" ? 1 : 0, "sbmode")}
+            <div id="sb-m1"${sb.mode === "mirror" ? "" : " hidden"}><label class="chk"><input type="checkbox" id="sb-del"${sb.del ? " checked" : ""}> Remove files from the copy when they're deleted here</label></div>
+            <div id="sb-m0"${sb.mode === "mirror" ? " hidden" : ""}><label>Keep the newest</label><input class="field" id="sb-keep" type="number" min="1" max="365" value="${sb.keep}" style="width:90px"> <small class="muted">snapshots (unchanged files are shared between them, so each costs little)</small></div>
+            <label>Skip (one pattern per line)</label><textarea class="field" id="sb-ex" rows="2" placeholder="*.tmp&#10;node_modules">${esc(sb.ex)}</textarea>
+            <label class="chk"><input type="checkbox" id="sb-guard"${sb.guard ? " checked" : ""}> Don't run if the destination isn't on its own drive (a missing drive would fill the system drive)</label>
+            <button class="btn" data-act="sbmake" style="margin-top:10px">Write the script</button></div>`))
         + `<div style="padding:0 var(--gutter)"><textarea class="editor field" id="scr" spellcheck="false" autocomplete="off" style="width:100%;min-height:60vh;font:13px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre;resize:vertical;padding:14px">${esc(d.text)}</textarea></div>`
         + `<div style="display:flex;gap:12px;padding:18px 22px"><button class="btn" style="flex:1;background:color-mix(in srgb,var(--text) 8%,transparent);color:var(--text)" data-act="back">Cancel</button><button class="btn" style="flex:1" data-act="save">Save</button></div>`,
       { title: "Backup script" });
+    wireCommon(ctx.root, { onSeg: (k, i) => { if (k === "sbmode") { sb.mode = i ? "mirror" : "snap"; $("#sb-m0").hidden = !!i; $("#sb-m1").hidden = !i; } } });
     const t = $("#scr"); if (t) { t.oninput = () => { dirty = true; }; t.onkeydown = e => { if (e.key === "Tab") { e.preventDefault(); t.setRangeText("    ", t.selectionStart, t.selectionEnd, "end"); dirty = true; } }; }
   };
+  const sbRead = () => { const v = id => $("#" + id); if (!v("sb-src")) return;
+    sb.src = v("sb-src").value; sb.dst = v("sb-dst").value; sb.ex = v("sb-ex").value; sb.guard = v("sb-guard").checked;
+    sb.keep = Math.max(1, Math.min(365, Math.round(+v("sb-keep").value) || 14)); sb.del = v("sb-del").checked; };
+  const q = t => "'" + String(t).replace(/'/g, "'\\''") + "'";            // safe in bash, whatever the path holds
+  const script = () => {
+    const src = sb.src.split("\n").map(x => x.trim()).filter(Boolean), ex = sb.ex.split("\n").map(x => x.trim()).filter(Boolean), dst = sb.dst.trim().replace(/\/+$/, "");
+    if (!src.length || !dst.startsWith("/")) throw new Error("Add at least one folder and a destination folder (starting with /)");
+    const L = ["#!/bin/bash", "# Made with Nova's script builder — edit freely.", "set -u", `DEST=${q(dst)}`, `SOURCES=(${src.map(q).join(" ")})`, `EXCLUDES=(${ex.map(e => q("--exclude=" + e)).join(" ")})`, ""];
+    if (sb.guard) L.push("# the destination must be on its own drive: if that drive is missing, copying would fill the system drive",
+      '[ -d "$DEST" ] && [ "$(df --output=target "$DEST" | tail -1)" != "/" ] || { echo "The backup drive isn\'t mounted (or $DEST is missing) — not backing up"; exit 1; }', "");
+    L.push('mkdir -p "$DEST"');
+    L.push("RC=0");
+    if (sb.mode === "mirror") L.push("# one copy, kept up to date", `for s in "\${SOURCES[@]}"; do rsync -aH --info=progress2${sb.del ? " --delete" : ""} "\${EXCLUDES[@]}" "$s" "$DEST/" || RC=$?; done`);
+    else L.push("# a dated snapshot; files that didn't change are shared with the last one (hard links), so each costs little",
+      'STAMP=$(date +%Y-%m-%d_%H%M%S)', 'LINK=(); [ -d "$DEST/latest" ] && LINK=(--link-dest="$DEST/latest")', 'mkdir -p "$DEST/$STAMP"',
+      'for s in "${SOURCES[@]}"; do rsync -aH --info=progress2 "${EXCLUDES[@]}" "${LINK[@]}" "$s" "$DEST/$STAMP/" || RC=$?; done',
+      "# only a complete snapshot becomes the latest, and old ones are only cleared after a good run",
+      '[ "$RC" = 0 ] || { echo "Backup had errors (rsync $RC) — keeping the old snapshots"; exit "$RC"; }',
+      'ln -sfn "$DEST/$STAMP" "$DEST/latest"', `# keep the newest ${sb.keep}`,
+      `mapfile -t OLD < <(ls -1d "$DEST"/20*/ 2>/dev/null | head -n -${sb.keep})`, 'for o in "${OLD[@]}"; do rm -rf -- "$o"; done');
+    L.push('[ "$RC" = 0 ] && echo "Backup finished"', 'exit "$RC"');
+    return L.join("\n") + "\n";
+  };
   ctx.handlers({
+    sbpick: async () => { const f = await pickFolder("/"), t = $("#sb-src"); if (f && t) t.value = (t.value.trim() ? t.value.trim() + "\n" : "") + f; },
+    sbdst: async () => { const f = await pickFolder("/mnt"); if (f && $("#sb-dst")) $("#sb-dst").value = f; },
+    sbmake: async () => {
+      sbRead(); let text; try { text = script(); } catch (e) { return toast(e.message); }
+      if ($("#scr").value.trim() && !(await confirm("Replace the script?", "The editor gets the new script. Nothing is saved until you press Save.", "Replace", "var(--blue)"))) return;
+      $("#scr").value = text; dirty = true; $("#scr").scrollIntoView({ behavior: "smooth", block: "start" }); toast("Written — look it over, then Save");
+    },
     save: async () => { const text = $("#scr").value;
       if (!dirty) return toast("No changes");
       try { const r = await post("/api/v1/backups/legacy/script", { text, mtime: d.mtime }); d = { ...d, text, mtime: r.mtime }; dirty = false; toast("Saved — the old version is kept as nova-backup.nova-prev"); ctx.back(); }

@@ -161,7 +161,7 @@ def disks():
                     "protected": protected, "temp": sm.get("temp"), "smart_passed": sm.get("passed"),
                     "realloc": sm.get("realloc"), "pending": sm.get("pending"), "uncorrect": sm.get("uncorrect"),
                     "life": sm.get("life"), "hours": sm.get("hours"), "health": _health(sm, not d.get("rota")), "worn": _health(sm, False, True),
-                    "crc": sm.get("crc")})
+                    "crc": sm.get("crc"), "sector": _sector_size(d["name"])})
     return res
 
 def disk_by_serial(serial):
@@ -619,6 +619,11 @@ if verb == "programs" and not args:
     import pkg                                            # apt, dnf, pacman or zypper
     ps = programs(); inst = pkg.installed([p["pkg"] for p in ps.values()])
     out({"items": [p | {"installed": inst.get(p["pkg"], False)} for p in ps.values() if pkg.name(p["pkg"])]})
+
+def _sector_size(name):
+    """The drive's physical sector size in bytes (bad-sector counts × this = the space they cover)."""
+    try: return int(open(f"/sys/block/{name}/queue/physical_block_size").read().strip()) or 512
+    except Exception: return 512
 
 def _health(sm, ssd, worn=False):
     sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))

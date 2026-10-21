@@ -1,4 +1,5 @@
 // Glass (Appearance → Style): glass that bends what's behind it.
+const prismPref = () => { try { const v = JSON.parse(localStorage.getItem("nova.prism")); return v == null ? 50 : +v; } catch { return 50; } };   // Light splitting
 //
 // Each glass element gets a displacement map made for its exact size and corner radius: flat in the middle,
 // bending more and more toward the rim, the way light does through the curved edge of a thick pane. The map
@@ -93,21 +94,22 @@ function maps(w, h, r, bevel, thick) {
 
 function filterFor(w, h, r, soft) {
   w = Math.round(w / 4) * 4; h = Math.round(h / 4) * 4; r = Math.round(Math.min(r, w / 2, h / 2));
-  const key = `${w}x${h}x${r}x${soft}x${document.documentElement.classList.contains("lite") ? 0 : 1}`;
+  const key = `${w}x${h}x${r}x${soft}x${document.documentElement.classList.contains("lite") ? 0 : 1}x${prismPref()}`;
   if (cache.has(key)) return cache.get(key);
   const small = Math.min(w, h);
   const bevel = Math.min(Math.max(small * .3, 10), 34, r * 1.6 || 34), thick = bevel * 1.4;
   const m = maps(w, h, r, bevel, thick);
   const scale = Math.min(80, m.max * 2);                                     // the map spans −½…+½ of scale, so ×2 = the strongest bend in pixels
   // the prism (white splitting into its colors at the rim, like iOS): three bends instead of one, so not with Lighter effects
-  const prism = !document.documentElement.classList.contains("lite");
+  const pk = Math.max(0, Math.min(100, +(prismPref()))) / 50;                   // Light splitting (Appearance): 0–2× the default
+  const prism = !document.documentElement.classList.contains("lite") && pk > 0;
   const id = "lg" + (++seq).toString(36);
   const f = document.createElementNS(NS, "filter");
   for (const [a, v] of Object.entries({ id, x: 0, y: 0, width: w, height: h, filterUnits: "userSpaceOnUse", "color-interpolation-filters": "sRGB" })) f.setAttribute(a, v);
   f.innerHTML = `<feImage x="0" y="0" width="${w}" height="${h}" preserveAspectRatio="none" result="map" href="${m.disp}"/>
     <feDisplacementMap in="SourceGraphic" in2="map" scale="${scale.toFixed(1)}" xChannelSelector="R" yChannelSelector="G" result="${prism ? "bentG" : "bent0"}"/>${prism ? `
-    <feDisplacementMap in="SourceGraphic" in2="map" scale="${(scale * 1.14).toFixed(1)}" xChannelSelector="R" yChannelSelector="G" result="dR"/>
-    <feDisplacementMap in="SourceGraphic" in2="map" scale="${(scale * .86).toFixed(1)}" xChannelSelector="R" yChannelSelector="G" result="dB"/>
+    <feDisplacementMap in="SourceGraphic" in2="map" scale="${(scale * (1 + .14 * pk)).toFixed(1)}" xChannelSelector="R" yChannelSelector="G" result="dR"/>
+    <feDisplacementMap in="SourceGraphic" in2="map" scale="${(scale * (1 - .14 * pk)).toFixed(1)}" xChannelSelector="R" yChannelSelector="G" result="dB"/>
     <feColorMatrix in="dR" values="1 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0 0" result="cR"/>
     <feColorMatrix in="bentG" values="0 0 0 0 0  0 1 0 0 0  0 0 0 0 0  0 0 0 1 0" result="cG"/>
     <feColorMatrix in="dB" values="0 0 0 0 0  0 0 0 0 0  0 0 1 0 0  0 0 0 0 0" result="cB"/>

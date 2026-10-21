@@ -218,6 +218,7 @@ uniform float bevel;
 uniform float strength;
 uniform float2 off;                                              // where this layer starts inside the card (tall cards draw only what's on screen)
 uniform float fringe;                                            // 1: the prism fringe (two more samples at the rim); 0: off (Glass quality)
+uniform float prism;                                             // how far white splits into its colors at the rim (Light splitting, 0–2)
 half4 main(float2 p0) {
     float2 p = p0 + off;
     float2 h = size * 0.5;
@@ -237,8 +238,8 @@ half4 main(float2 p0) {
     if (fringe < 0.5) return half4(min(c.rgb + glint0, 1.0), c.a);
     // the prism: white splits into its colors at the rim, like iOS — red bends a little more, blue a little less,
     // and the split grows toward the very edge
-    half r = content.eval(p0 + d * (1.0 + 0.16 * e)).r;
-    half b = content.eval(p0 + d * (1.0 - 0.16 * e)).b;
+    half r = content.eval(p0 + d * (1.0 + 0.16 * prism * e)).r;
+    half b = content.eval(p0 + d * (1.0 - 0.16 * prism * e)).b;
     half glint = half(e * e * 0.10);                             // the curved edge catches a little light, on all four sides
     return half4(min(r + glint, 1.0), min(c.g + glint, 1.0), min(b + glint, 1.0), c.a);
 }
@@ -254,7 +255,7 @@ private fun lensEffect(w: Float, h: Float, radius: Float, blurPx: Float, offY: F
         setFloatUniform("size", w, h); setFloatUniform("radius", radius.coerceAtMost(minOf(w, h) / 2))
         val rim = (0.4f + 0.6f * q).coerceIn(0.4f, 1f)
         setFloatUniform("bevel", minOf(maxOf(radius * 1.1f, 40f), 100f, w / 3, h / 3) * rim); setFloatUniform("strength", minOf(140f, maxOf(50f, minOf(w, h) * .3f)) * bend)
-        setFloatUniform("off", 0f, offY); setFloatUniform("fringe", if (q >= 0.9f) 1f else 0f)
+        setFloatUniform("off", 0f, offY); setFloatUniform("fringe", if (q >= 0.9f && AppPrefs.prism > 0) 1f else 0f); setFloatUniform("prism", AppPrefs.prism / 50f)
     } ?: return blur?.asComposeRenderEffect()
     val lens = android.graphics.RenderEffect.createRuntimeShaderEffect(sh, "content")
     return (if (blur != null) android.graphics.RenderEffect.createChainEffect(blur, lens) else lens).asComposeRenderEffect()   // bend first, then blur

@@ -60,6 +60,10 @@ def load_json(p, d):
     try: return json.load(open(p))
     except Exception: return d
 
+def _sector(name):
+    try: return int(open(f"/sys/block/{name}/queue/physical_block_size").read().strip()) or 512
+    except Exception: return 512
+
 def human(n):
     for u in ("B", "KB", "MB", "GB", "TB", "PB"):
         if n < 1000 or u == "PB": return f"{n:.0f} {u}" if u in ("B", "KB") or n >= 100 else f"{n:.1f} {u}"
@@ -294,6 +298,7 @@ def storage_map():
         erasable = not system and not member_of and not mps
         drives.append({"name": d["name"], "path": d["path"], "serial": d.get("serial") or d["name"], "model": (d.get("model") or "").strip(),
                        "size": d["size"], "size_text": human(d["size"]), "bus": bus, "ssd": not d.get("rota"), "removable": bool(d.get("hotplug")),
+                       "sector": _sector(d["name"]),       # physical sector size in bytes: bad-sector counts × this = the space they cover
                        "partitions": [{"name": p["name"], "path": p["path"], "size": p["size"], "fstype": p.get("fstype") or "", "label": p.get("label") or "",
                                        "uuid": p.get("uuid") or "", "mounts": [m for m in (p.get("mountpoints") or []) if m and m != "[SWAP]"],
                                        "swap": "[SWAP]" in (p.get("mountpoints") or []), "usage": next((usage(m) for m in (p.get("mountpoints") or []) if m and m != "[SWAP]"), None)}

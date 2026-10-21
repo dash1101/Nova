@@ -68,6 +68,9 @@ object AppPrefs {
     var glass by mutableStateOf(60); private set                           // Liquid Glass / Fluent: how clear the glass is (0–100)
     var round by mutableStateOf(100); private set                          // the old single roundness (before each look kept its own)
     private var roundV by mutableIntStateOf(0)
+    /** Glass: Light splitting, 0–100 % (50 = the default split; 0 = none) */
+    var prism by mutableIntStateOf(50); private set
+    fun choosePrism(v: Int) { prism = v; sp.edit().putInt("prism", v).apply() }
     /** Corner roundness for one look (25–200 % on the slider; see roundK()). */
     fun roundFor(style: String): Int { roundV; return sp.getString("round_$style", null)?.toIntOrNull() ?: round.coerceAtMost(200) }
     fun setRound(style: String, v: Int) { sp.edit().putString("round_$style", v.toString()).apply(); roundV++ }
@@ -87,7 +90,7 @@ object AppPrefs {
         accent = sp.getString("accent", "")!!; tint = sp.getString("tint", "50")!!.toIntOrNull() ?: 50
         wallV = sp.getString("wall_v", "0")!!.toLongOrNull() ?: 0L; wallBlur = sp.getString("wall_blur", "16")!!.toIntOrNull() ?: 16; wallDim = sp.getString("wall_dim", "35")!!.toIntOrNull() ?: 35
         lang = sp.getString("lang", "auto")!!; I18n.load(ctx, lang)
-        solid = sp.getBoolean("solid", false); glass = sp.getString("glass", "60")!!.toIntOrNull() ?: 60; round = sp.getString("round", "100")!!.toIntOrNull() ?: 100
+        prism = sp.getInt("prism", 50); solid = sp.getBoolean("solid", false); glass = sp.getString("glass", "60")!!.toIntOrNull() ?: 60; round = sp.getString("round", "100")!!.toIntOrNull() ?: 100
         theme = sp.getString("theme", "system")!!; style = sp.getString("style", "auto")!!; reduceMotion = sp.getBoolean("reduce_motion", false); animSpeed = (sp.getString("anim_speed", "100")!!.toIntOrNull() ?: 100).coerceIn(25, 300)
         appLock = sp.getBoolean("app_lock", false); hideInRecents = sp.getBoolean("hide_recents", false)
         homeHero = sp.getBoolean("home_hero", true); homeShortcuts = sp.getBoolean("home_shortcuts", true); homeStats = sp.getBoolean("home_stats", true); homeRecs = sp.getBoolean("home_recs", true)
@@ -199,6 +202,10 @@ object AppLock {
                 if (presetStyle() != "breeze") {
                     Row { Text("Glass clarity", color = N.sub, fontSize = 14.sp, modifier = Modifier.weight(1f)); Text("${AppPrefs.glass}%", color = N.sub, fontSize = 14.sp) }
                     OneSlider(AppPrefs.glass.toFloat(), { AppPrefs.set("glass", it.toInt()) }, 0f..100f)
+                }
+                if (presetStyle() == "liquid") {       // white splitting into its colors at the rim, like iOS
+                    Row { Text("Light splitting", color = N.sub, fontSize = 14.sp, modifier = Modifier.weight(1f)); Text("${AppPrefs.prism}%", color = N.sub, fontSize = 14.sp) }
+                    OneSlider(AppPrefs.prism.toFloat(), { AppPrefs.choosePrism(it.toInt()) }, 0f..100f)
                 }
                 val rs = presetStyle()                 // each look keeps its own roundness
                 Row { Text("Corner roundness", color = N.sub, fontSize = 14.sp, modifier = Modifier.weight(1f)); Text("${AppPrefs.roundFor(rs)}%", color = N.sub, fontSize = 14.sp) }
@@ -422,7 +429,14 @@ val ICON_THEMES = listOf("style" to "Matches the style", "tonal" to "Tonal", "ti
             SliderRow("Volume", v, 0f..100f, "${v.toInt()}%", steps = 19, onChange = { v = it; Sounds.set("vol", it.toInt()) }, onDone = { Sounds.play("tap") })
             RowDivider()
             SwitchRow("Alert sounds", "A chime when something needs you — a more urgent one when it's serious", Sounds.alerts) { Sounds.set("alerts", it); if (it) Sounds.play("info") }
-            Sounds.KINDS.forEach { (k, ld) -> RowDivider(); SwitchRow(ld.first, ld.second, k !in Sounds.off) { Sounds.setKind(k, it) } }
+            // which kinds play: folded away (most people never change them) — simple until you want the detail
+            var kindsOpen by remember { mutableStateOf(false) }
+            RowDivider()
+            Row1("Which sounds", Sounds.KINDS.filter { it.key !in Sounds.off }.values.joinToString(", ") { it.first }.ifEmpty { "None" }, onClick = { kindsOpen = !kindsOpen }) {
+                Icon(if (kindsOpen) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore, null, tint = N.sub) }
+            androidx.compose.animation.AnimatedVisibility(kindsOpen) {
+                Column { Sounds.KINDS.forEach { (k, ld) -> RowDivider(); SwitchRow(ld.first, ld.second, k !in Sounds.off) { Sounds.setKind(k, it) } } }
+            }
         }
         RowDivider()
         SwitchRow("Ambience · Beta", "Soft, slowly changing music while Nova is open, in the mood of the look you picked", Ambience.on) { Ambience.set("on", it) }

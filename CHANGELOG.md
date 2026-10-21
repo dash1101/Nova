@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.8.9-alpha (server, Nova web, app and watch)
+- **Drives, in more detail** (Storage & hardware, app and web): each drive shows its model and serial number, a small activity light that blinks as it reads and writes, and — when it has any — how much space its bad or pending sectors cover.
+- **Approve a browser by scanning it** (app and web): the web's pairing screen shows a QR code; in the app, Users & devices → Approve a browser → Scan the browser's code.
+- **Install Nova web as an app** (Menu → Install Nova, in browsers that offer it).
+- **Backup script, without writing bash** (web, Backups → Edit the script → Build it for me): pick folders and a destination, dated snapshots (keep the newest N; unchanged files are shared) or one mirror copy, skip patterns, and a guard that won't back up onto the system drive when the backup drive is missing. Look it over, then Save.
+- **Light splitting** (Appearance, Glass, app and web): how strongly Glass's rim splits light into its colors — off to strong. Glass also notes that it's the heaviest look on older devices.
+- **Default look: Transparency and Frost** (Appearance, web): how see-through and how frosted cards are.
+- **Aero sliders** have Windows 7's glossy track and thumb (app and web).
+- **Controller button hints** (Nova web): the on-screen hints show Xbox, PlayStation or generic buttons, matched to your controller automatically or chosen in Appearance → Controller.
+- **Fewer settings at once:** the list of which sounds play is folded into a "Which sounds" dropdown, and docs/DESIGN.md writes down "don't overwhelm" and the other rules every screen follows.
+- **Nova web always loads its newest version after an update** (no mix of old and new pieces).
+- **Docs:** the README covers 0.8's features; the website's iPhone steps and minimum Android version (7.0) are up to date.
+
 ## 0.8.8-alpha (server, Nova web, app and watch)
 - **The terminal never runs a command by itself** (web): a paste — including a middle-click or a trackpad's three-finger tap, which on Linux pastes your last selection — is held as text until you press Enter (or asks first, if the shell can't hold it); middle-click paste is off in the terminal; and Enter on `shutdown`, `reboot`, `poweroff`, `halt` or `systemctl poweroff/reboot` asks "Run this on the server?" first. Keystrokes now go in order, one request at a time (less lag when typing fast), and typing while scrolled up no longer makes the terminal jump.
 - **Living wallpaper stays on** (web): it was switching off on the Inbox, which used the same name for its in-progress card; Aero's is sharp again; and on Android it always moves again after a back gesture.

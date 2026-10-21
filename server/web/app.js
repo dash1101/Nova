@@ -53,6 +53,10 @@ function applyTheme() {
   root.classList.toggle("material", material); root.classList.toggle("m-dark", material && dark); root.classList.toggle("m-light", material && !dark);
   for (const p of ["liquid", "fluent", "breeze", "aero"]) root.classList.toggle(p, preset === p);
   root.classList.toggle("l-light", !dark);
+  // the Default look's own Transparency and Frost (Appearance): see-through cards, and how blurred what's behind them is
+  const dlook = !preset && !material, dtr = Math.max(0, Math.min(85, +(prefs.dTrans ?? 0))), dfr = Math.max(0, Math.min(40, +(prefs.dFrost ?? 26)));
+  root.classList.toggle("dtune", dlook && (dtr > 0 || dfr !== 26));
+  if (dlook) { root.style.setProperty("--dtr", String(dtr)); root.style.setProperty("--dfr", dfr + "px"); } else { root.style.removeProperty("--dtr"); root.style.removeProperty("--dfr"); }
   root.dataset.icshape = prefs.iconShape || "rounded";             // Appearance → Icon shape
   // Reduce transparency: every glass surface solid (also when the system asks for it)
   const solid = !!prefs.reduceTransparency || matchMedia("(prefers-reduced-transparency: reduce)").matches;
@@ -366,11 +370,13 @@ async function pairScreen() {
       if (!r.ok) { $("#go").disabled = false; return toast(j.error || (r.status === 403 ? "Cloudflare or the server turned this browser away" : `Couldn't start pairing (${r.status})`)); }
       const until = Date.now() + (j.expires_in || 600) * 1000;
       $("#app").innerHTML = `<div class="pair"><h1 style="font-size:34px">Approve this browser</h1>
-        <p class="lead">On an admin phone open <b>Nova → Menu → Users &amp; devices → Approve a browser</b> and enter:</p>
+        <p class="lead">On an admin phone open <b>Nova → Menu → Users &amp; devices → Approve a browser</b> and scan this, or enter the code:</p>
+        <div class="pairqr" id="pairqr"></div>
         <div class="code">${esc(j.code)}</div>
         <p class="note" style="text-align:center">…or on the server:</p>${copyCmd("sudo nova approve " + j.code)}
         <div id="totpbox"></div>
         <div class="center"><div class="spinner" style="margin:auto"></div><p class="note" id="left" style="font-size:16px"></p></div></div>`;
+      import("./qr.js").then(q => { const el = $("#pairqr"); if (el) el.innerHTML = q.qrSvg("nova-approve:" + j.code, 6); }).catch(() => {});   // the phone scans it
       // no phone and no SSH at hand: the server may take a code from an admin's authenticator app instead
       let paired = null;
       const showTotp = () => {
@@ -526,3 +532,16 @@ addEventListener("keydown", async e => {
   if (await confirm("The server isn't answering", "Reloading now would leave this page empty until it's back. Nova keeps trying by itself and fills in as soon as it answers.", "Reload anyway", "var(--blue)")) { S.error = null; location.reload(); }
 });
 addEventListener("beforeunload", e => { if (S.error && !document.hidden) { e.preventDefault(); e.returnValue = ""; } });   // the browser's reload button: its own "Leave?" question
+
+// Install Nova as an app (Menu → Install Nova): the browser's own install, when it offers one; iPhone and iPad get the
+// Share → Add to Home Screen steps instead
+let installEvt = null;
+try { navigator.serviceWorker?.register("/web/sw.js", { scope: "/" }).catch(() => {}); } catch {}
+addEventListener("beforeinstallprompt", e => { e.preventDefault(); installEvt = e; document.documentElement.classList.add("can-install"); });
+addEventListener("appinstalled", () => { installEvt = null; document.documentElement.classList.remove("can-install"); toast("Nova is installed — open it like any app"); });
+export const installable = () => !!installEvt || (/iPhone|iPad|iPod/.test(navigator.userAgent) && !navigator.standalone);
+export async function installNova() {
+  if (installEvt) { installEvt.prompt(); try { await installEvt.userChoice; } catch {} installEvt = null; document.documentElement.classList.remove("can-install"); return; }
+  const { dialog } = await import("./ui.js");
+  dialog("Add Nova to your home screen", "In Safari, tap the Share button (the square with an arrow), then “Add to Home Screen”. Nova then opens full screen, like an app. To approve things without an Android phone, set up a passkey or authenticator codes in Security & privacy.", [{ label: "OK", value: true }]);
+}

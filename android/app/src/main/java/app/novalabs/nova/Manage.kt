@@ -312,6 +312,16 @@ fun roleLabel(r: String) = if (r == "viewer") "View only" else "Admin"
         if (app.pairing.lanPin.isNotEmpty()) Text("A watch also shows the server's certificate: it should be ${app.pairing.lanPin.take(12).uppercase().chunked(4).joinToString(" ")}.",
             color = N.sub, fontSize = 13.sp, modifier = Modifier.padding(start = 26.dp, end = 26.dp, top = 6.dp))
         Spacer(Modifier.height(10.dp))
+        // or scan the QR code the browser shows (nova-approve:CODE)
+        val ctx = androidx.compose.ui.platform.LocalContext.current
+        var scanning by remember { mutableStateOf(false) }
+        val camPerm = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestPermission()) { if (it) scanning = true }
+        if (scanning) Box(Modifier.fillMaxWidth().padding(horizontal = 22.dp).height(220.dp).clip(androidx.compose.foundation.shape.RoundedCornerShape(18.dp))) {
+            QrScanner(Modifier.fillMaxSize()) { txt -> Regex("^nova-approve:([A-Za-z0-9]{6})$").find(txt.trim())?.let { code = it.groupValues[1].uppercase(); scanning = false; Sounds.feel("success") } }
+        } else Box(Modifier.padding(horizontal = 22.dp)) { PillButton("Scan the browser's code", color = N.blue) {
+            if (ctx.checkSelfPermission(android.Manifest.permission.CAMERA) == android.content.pm.PackageManager.PERMISSION_GRANTED) scanning = true
+            else camPerm.launch(android.Manifest.permission.CAMERA) } }
+        Spacer(Modifier.height(8.dp))
         OneTextField(code, { code = it.filter { c -> c.isLetterOrDigit() }.take(6) }, "Code", Modifier.fillMaxWidth().padding(horizontal = 22.dp), mono = true)
         Spacer(Modifier.height(8.dp))
         OneTextField(user, { user = it.take(40) }, "Whose browser? (e.g. Dash)", Modifier.fillMaxWidth().padding(horizontal = 22.dp))

@@ -42,7 +42,10 @@ last time, is skipped and you get an alert; "Back up anyway" overrides it once.
 
 Restore puts a file or folder back where it was (existing files are kept, nothing is deleted) or
 next to it in `restored-<date>/`. A hand-written `/usr/local/bin/nova-backup` script, if present,
-is shown alongside and keeps working.
+is shown alongside and keeps working. You can edit it from Backups → Edit the script (web), or let **Build it for me** write one: pick the
+folders and a destination, dated snapshots (hard-linked, keep the newest N) or one mirror copy, skip patterns, and
+a guard that refuses to run when the destination isn't on its own drive. Nothing is saved until you press Save,
+and Nova checks the script with bash first.
 
 From a shell: `sudo python3 /usr/lib/nova-api/backups.py list | run <id>`.
 
