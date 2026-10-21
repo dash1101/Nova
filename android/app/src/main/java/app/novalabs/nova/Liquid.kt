@@ -175,10 +175,7 @@ fun DrawScope.drawBackdrop(t: NovaColors, origin: Offset, win: IntSize, wall: Im
             dstSize = IntSize(dw.toInt(), dh.toInt()), filterQuality = FilterQuality.Medium)
         drawRect(t.bg.copy(alpha = wallScrim(t)))
     } else if (Living.showing) drawLivingShared(t, origin, W, H)                    // Glass bends the living scene too
-    else bgGlow(t)?.let { (g1, g2) ->                                       // the same glow the page shows (Appearance → Background)
-        drawRect(Brush.radialGradient(listOf(g1.copy(alpha = if (t.dark) 0.9f else 0.8f), Color.Transparent), center = Offset(W * 0.85f, H * 0.18f) - origin, radius = if (W < H) W * 0.95f else H * 1.25f))
-        drawRect(Brush.radialGradient(listOf(g2.copy(alpha = 0.6f), Color.Transparent), center = Offset(W * 0.1f, H * 0.35f) - origin, radius = if (W < H) W * 0.8f else H * 1.1f))
-    }
+    else if (wallKind(t) != "plain") drawWall(t, wallKind(t), origin, W, H)    // the same background the page shows (Appearance → Background)
 }
 
 // ── what's behind a dialog ──────────────────────────────────────────────────────────────

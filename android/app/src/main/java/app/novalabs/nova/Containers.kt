@@ -80,7 +80,7 @@ fun localTime(utc: String): String = runCatching {
                 cs.forEachIndexed { i, c ->
                     if (i > 0) RowDivider()
                     val st = c.optString("state"); val h = c.optString("health")
-                    Row1(c.optString("name"), "${c.optString("image").substringAfterLast('/')} · ${if (h.isNotEmpty()) "$st, $h" else st}${use(c)}",
+                    Row1(c.optString("name"), "${c.optString("image").substringAfterLast('/')} · ${upText(c)}${if (h.isNotEmpty()) " ($h)" else ""}${portsText(c).let { if (it.isNotEmpty()) " · $it" else "" }}${use(c)}",
                         onClick = { app.go(Route.Container(c.optString("name"))) }) {
                         Box(Modifier.size(10.dp).clip(CircleShape).background(stateColor(st, h)))
                     }
@@ -202,9 +202,36 @@ fun localTime(utc: String): String = runCatching {
             if (app.isAdmin && c.optBoolean("custom")) Group {
                 Row1("Remove this container", "Stops it and keeps its folder in /opt/.nova-uninstalled", false, Icons.Rounded.Delete, N.red, onClick = { removeAsk = true })
             }
+            // where to open it: its published ports, or (on the server's own network) the port it listens on
+            val ctx = androidx.compose.ui.platform.LocalContext.current
+            val host = runCatching { android.net.Uri.parse(app.pairing.lanUrl).host }.getOrNull() ?: ""
+            val hostNet = c.optString("network") == "host"
+            val urls = buildList {
+                if (hostNet) c.optJSONArray("listening")?.let { if (it.length() > 0) add(it.getInt(0)) }
+                else c.optJSONArray("published")?.let { a -> for (i in 0 until a.length()) { val o = a.getJSONObject(i)
+                    if (o.optString("host").isNotEmpty() && o.optString("host_ip") != "127.0.0.1" && o.optString("proto") != "udp") o.optString("host").toIntOrNull()?.let { add(it) } } }
+            }.distinct().take(6).map { p -> "${if (p == 443 || p == 8443) "https" else "http"}://$host${if (p == 80 || p == 443) "" else ":$p"}" }
+            if (host.isNotEmpty() && (urls.isNotEmpty() || hostNet)) { SectionLabel("Open it"); Group {
+                urls.forEachIndexed { i, u -> if (i > 0) RowDivider()
+                    Row1(u, "Opens in your browser", true, Icons.Rounded.OpenInNew, onClick = { runCatching { ctx.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(u))) } }) }
+                if (hostNet) { if (urls.isNotEmpty()) RowDivider()
+                    val l = c.optJSONArray("listening"); val ls = (0 until (l?.length() ?: 0)).joinToString(", ") { l!!.getInt(it).toString() }
+                    Row1("On the server's own network", "It doesn't get ports of its own — it listens on the server directly${if (ls.isNotEmpty()) " ($ls)" else ""}, which is why docker ps shows none. Your firewall decides who can reach it.", false, Icons.Rounded.Info) }
+            } }
             val ports = c.optJSONArray("ports")
             if (ports != null && ports.length() > 0) { SectionLabel("Ports"); Group {
                 for (i in 0 until ports.length()) { if (i > 0) RowDivider(); Row1(ports.getString(i)) } } }
+            SectionLabel("Details")
+            Group {
+                Row1("Container ID", c.optString("id").ifEmpty { "—" }); RowDivider()
+                Row1("Command", c.optString("command").ifEmpty { "—" }); RowDivider()
+                Row1("Created", localTime(c.optString("created"))); RowDivider()
+                val nets = c.optJSONObject("networks"); Row1("Networks", nets?.keys()?.asSequence()?.joinToString(", ") { k -> nets.optString(k).let { ip -> if (ip.isNotEmpty()) "$k ($ip)" else k } }?.ifEmpty { null } ?: "—")
+            }
+            if (app.isAdmin && c.optString("compose_file").isNotEmpty() && c.optInt("compose_files") == 1) Group {
+                Row1("Edit its Compose file", "Ports, folders, environment, anything — checked before it's saved, and you can undo it · ${c.optString("compose_file")}",
+                    true, Icons.Rounded.Edit, onClick = { app.go(Route.Compose(name)) })
+            }
             val mounts = c.optJSONArray("mounts")
             if (mounts != null && mounts.length() > 0) { SectionLabel("Folders"); Group {
                 for (i in 0 until mounts.length()) { val m = mounts.getJSONObject(i); if (i > 0) RowDivider()
@@ -299,3 +326,58 @@ fun localTime(utc: String): String = runCatching {
 
 fun kotlinx.coroutines.CoroutineScope.launchSafe(block: suspend () -> Unit) =
     launch { runCatching { block() } }
+
+
+/** Like docker ps: "Up 3 hours", "Exited (1) 2 days ago". */
+private fun dur(sec: Long): String = when {
+    sec < 60 -> "less than a minute"; sec < 3600 -> "${sec / 60} minute${if (sec / 60 == 1L) "" else "s"}"
+    sec < 172800 -> "${sec / 3600} hour${if (sec / 3600 == 1L) "" else "s"}"; else -> "${sec / 86400} days" }
+fun upText(c: JSONObject): String = when {
+    !c.isNull("up_s") && c.has("up_s") -> "Up ${dur(c.optLong("up_s"))}"
+    !c.isNull("exited_s") && c.has("exited_s") -> "Exited (${c.opt("exit_code") ?: "?"}) ${dur(c.optLong("exited_s"))} ago"
+    else -> c.optString("state").replaceFirstChar { it.uppercase() } }
+fun portsText(c: JSONObject): String {
+    if (c.optString("network") == "host") return "server's network"
+    val a = c.optJSONArray("ports") ?: return ""
+    return (0 until a.length()).mapNotNull { i -> a.optJSONObject(i)?.takeIf { it.optString("host").isNotEmpty() }?.let { o ->
+        "${if (o.optString("host_ip") == "127.0.0.1") "local " else ""}${o.optString("host")}→${o.optString("container")}${if (o.optString("proto") == "udp") "/udp" else ""}" } }.joinToString(", ")
+}
+
+/** A container's Compose file: edit it as text; Docker Compose checks it before it's saved, the old one is kept, the
+ *  containers are updated to match (fingerprint), and Undo puts the previous version back. Same as Nova web. */
+@Composable fun ComposeScreen(app: AppState, name: String) {
+    var d by remember { mutableStateOf<JSONObject?>(null) }; var err by remember { mutableStateOf<String?>(null) }
+    var text by remember { mutableStateOf("") }; var busy by remember { mutableStateOf<String?>(null) }
+    var askSave by remember { mutableStateOf(false) }; var askUndo by remember { mutableStateOf(false) }
+    val path = "/api/v1/containers/$name/compose"
+    suspend fun load() { runCatching { app.api.get(path) }.onSuccess { d = it; text = it.optString("text"); err = null }.onFailure { err = it.message } }
+    LaunchedEffect(Unit) { load() }
+    Page("Compose · $name", app::back) {
+        val dd = d
+        if (err != null) Group { Row1("Couldn't open it", err, false, Icons.Rounded.Error, N.red) }
+        else if (dd == null) Group { Row1("Opening…", enabled = false) }
+        else {
+            Note("${dd.optString("file")} · how ${dd.optString("project")} runs: its image, ports (\"8080:80\" = the server's 8080 to the app's 80), folders, environment and restart policy. Docker Compose checks your change before it's saved; the old file is kept, and Undo puts it back.", 13.sp, 4.dp)
+            androidx.compose.foundation.text.BasicTextField(text, { text = it },
+                textStyle = androidx.compose.ui.text.TextStyle(color = N.text, fontSize = 12.sp, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace, lineHeight = 17.sp),
+                cursorBrush = androidx.compose.ui.graphics.SolidColor(N.blue),
+                modifier = Modifier.padding(horizontal = Space.gutter).fillMaxWidth().heightIn(min = 360.dp)
+                    .background(N.card, androidx.compose.foundation.shape.RoundedCornerShape(cardRadius(20.dp))).padding(14.dp)
+                    .then(Modifier.horizontalScroll(androidx.compose.foundation.rememberScrollState())))
+            busy?.let { Note(it, 13.sp, 4.dp) }
+            Row(Modifier.padding(horizontal = Space.gutter, vertical = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                if (dd.optString("backup").isNotEmpty()) PillButton("Undo the last change", color = N.sub, enabled = busy == null) { askUndo = true }
+                Spacer(Modifier.weight(1f))
+                PillButton(if (busy != null) "Working…" else "Save and apply", enabled = busy == null) {
+                    if (text == dd.optString("text")) app.toast("No changes") else askSave = true }
+            }
+        }
+    }
+    if (askSave) OneDialog({ askSave = false }, "Save and apply?", "$name and the rest of ${d?.optString("project")} are updated to match — containers whose settings changed restart.",
+        listOf(DialogButton("Cancel") { askSave = false }, DialogButton("Save") { askSave = false; busy = "Checking and applying…"
+            app.act { try { val r = app.stepUp("Change the Compose file of $name", "POST", path, JSONObject().put("text", text).put("mtime", d?.optLong("mtime")))
+                app.toast(if (r.optBoolean("ok", true)) "Saved — it's running with the new settings" else r.optString("error")); load() } finally { busy = null } } }))
+    if (askUndo) OneDialog({ askUndo = false }, "Undo the last change?", "The Compose file goes back to how it was before (${d?.optString("backup")}), and ${d?.optString("project")} is updated to match.",
+        listOf(DialogButton("Cancel") { askUndo = false }, DialogButton("Undo") { askUndo = false; busy = "Putting the previous version back…"
+            app.act { try { app.stepUp("Put back the previous Compose file of $name", "POST", "$path/undo", JSONObject()); app.toast("Put back"); load() } finally { busy = null } } }))
+}

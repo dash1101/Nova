@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.8.13-alpha (server, Nova web, app and watch)
+- **Alerts arrive in a second or two, not a minute:** a new message goes out the moment it's queued, the server checks for new events every 15 seconds instead of every minute, and Nova web now waits on the server like the app does instead of checking every 20 seconds.
+- **Home Assistant behind Cloudflare, fixed for new versions:** Home Assistant 2026 keeps its proxy settings in its own store and ignores configuration.yaml, so the old fix no longer worked (that's the "400: Bad Request"). Recommended → **Fix it** now changes the right setting, with a backup.
+- **Containers, like docker ps and more:** each row shows how long it's been up (or when it exited), its ports, and when it's on the server's own network. A container shows where to open it (for host-network apps like Home Assistant, the port it really listens on, and why docker ps shows none), its ID, command and networks — and **Edit its Compose file**: Docker Compose checks your change before it's saved, the old file is kept, it's applied with your fingerprint, and **Undo** puts it back (app and web).
+- **Background gallery** (Appearance → Wallpaper, app and web): every look's built-in background — Default's glow, Glass's vivid glow, Mica's soft wash, Aero's sky, plain — on any look, shown as previews.
+- **Top and bottom fades:** turn the tint at the top and bottom of the screen off, or give it your own color (app and web).
+- **Bars in each look's style** (CPU, memory, disk, progress): Aero's glossy Windows 7 progress bar, Mica's thin line, Glass's capsule, Material's tonal track (app and web).
+- **Search bars and text fields in each look's style** — Aero's is Windows 7's search box (app and web).
+- **Dialogs have the same corners as windows** in every look (web).
+- **The Inbox wears Aero's glass** (and every look's) instead of plain white rows (web).
+- **Matching corners:** the Home shortcut bar and its buttons have the same corners as the cards around them in every look (app).
+- **Sliders and dragging, without pixel-perfect aim** (web): press anywhere on a slider's row and drag; drag to reorder starts as soon as you move the mouse.
+- **The server illustration** has no more hard line down its middle, and it can't vanish for a few seconds any more.
+
 ## 0.8.12-alpha (server, Nova web, app and watch)
 - **Install from a desktop, no terminal:** open `nova-server.deb` with your software app, then **Set up Nova** in your apps menu — it asks for your password and opens the setup in your browser. A notification says so when it's installed that way.
 - **One package for every machine:** `nova-server.deb` (a stable download link: releases/latest/download/nova-server.deb) installs on x86-64 and ARM alike, and now on **Ubuntu 22.04** too (Python 3.10 is enough).

@@ -172,26 +172,44 @@ fun levelColor(level: String, t: NovaColors) = when (level) {
         }
         return
     }
-    val (g1, g2) = bgGlow(t) ?: run { Box(Modifier.fillMaxSize().background(t.bg)); return }
+    if (wallKind(t) == "plain") { Box(Modifier.fillMaxSize().background(t.bg)); return }
     // drawn in screen coordinates: every layer (a page, the pane beside it, the strip behind the side pill)
-    // shows its own part of one glow, so there's never a seam between them
+    // shows its own part of one background, so there's never a seam between them
     var origin by remember { mutableStateOf(Offset.Zero) }
     val win = androidx.compose.ui.platform.LocalWindowInfo.current.containerSize
     Canvas(Modifier.fillMaxSize().background(t.bg).onGloballyPositioned { origin = it.positionInWindow() }) {
         val W = if (win.width > 0) win.width.toFloat() else size.width; val H = if (win.height > 0) win.height.toFloat() else size.height
-        drawRect(Brush.radialGradient(listOf(g1.copy(alpha = if (t.dark) 0.9f else 0.8f), Color.Transparent),
-            center = Offset(W * 0.85f, H * 0.18f) - origin, radius = if (W < H) W * 0.95f else H * 1.25f))
-        drawRect(Brush.radialGradient(listOf(g2.copy(alpha = 0.6f), Color.Transparent),
-            center = Offset(W * 0.1f, H * 0.35f) - origin, radius = if (W < H) W * 0.8f else H * 1.1f))
+        drawWall(t, wallKind(t), origin, W, H)
     }
 }
 
-/** The two glow colors behind the pages, or null for a plain background: the look's own, or (Appearance → Background)
- *  the Default look's glow on any look, or none. */
-fun bgGlow(t: NovaColors): Pair<Color, Color>? = when (AppPrefs.lookBg) {
-    "plain" -> null
-    "glow" -> (if (t.dark) DarkTokens else LightTokens).let { it.glow to it.glow2 }
-    else -> if (t.material || t.glow == Color.Transparent) null else t.glow to t.glow2
+/** Which background is behind the pages: Appearance → Background (any look's), or this look's own ("own"). */
+fun wallKind(t: NovaColors): String = AppPrefs.lookBg.ifEmpty { if (t.material || t.glow == Color.Transparent) "plain" else "own" }
+
+/** One of the looks' built-in backgrounds (the same five as Nova web's gallery), in screen coordinates. */
+fun androidx.compose.ui.graphics.drawscope.DrawScope.drawWall(t: NovaColors, kind: String, origin: Offset, W: Float, H: Float) {
+    val r1 = if (W < H) W * 0.95f else H * 1.25f; val r2 = if (W < H) W * 0.8f else H * 1.1f
+    fun glow(a: Color, b: Color) {
+        drawRect(Brush.radialGradient(listOf(a.copy(alpha = if (t.dark) 0.9f else 0.8f), Color.Transparent), center = Offset(W * 0.85f, H * 0.18f) - origin, radius = r1))
+        drawRect(Brush.radialGradient(listOf(b.copy(alpha = 0.6f), Color.Transparent), center = Offset(W * 0.1f, H * 0.35f) - origin, radius = r2))
+    }
+    when (kind) {
+        "own" -> glow(t.glow, t.glow2)
+        "glow" -> (if (t.dark) DarkTokens else LightTokens).let { glow(it.glow, it.glow2) }
+        "vivid" -> {
+            glow(if (t.dark) Color(0xFF4A2FB0) else Color(0xFFCBB8FF), if (t.dark) Color(0xFF1F4FC0) else Color(0xFFB5D2FF))
+            drawRect(Brush.radialGradient(listOf((if (t.dark) Color(0xFFB02F8A) else Color(0xFFFFC2E8)).copy(alpha = 0.5f), Color.Transparent), center = Offset(W * 0.6f, H * 0.95f) - origin, radius = r2))
+        }
+        "soft" -> {
+            drawRect(Brush.radialGradient(listOf(t.blue.copy(alpha = 0.22f), Color.Transparent), center = Offset(W * 0.7f, H * 0.1f) - origin, radius = maxOf(W, H) * 1.1f))
+            drawRect(Brush.radialGradient(listOf(t.blue.copy(alpha = 0.12f), Color.Transparent), center = Offset(0f, H * 0.8f) - origin, radius = maxOf(W, H) * 0.9f))
+        }
+        "aero" -> {
+            drawRect(Brush.verticalGradient(if (t.dark) listOf(Color(0xFF0A1B2E), Color(0xFF07131F)) else listOf(Color(0xFFD3E5F5), Color(0xFFAAC3D9)), startY = -origin.y, endY = H - origin.y))
+            drawRect(Brush.radialGradient(listOf(androidx.compose.ui.graphics.lerp(t.blue, Color.White, if (t.dark) 0.1f else 0.35f).copy(alpha = 0.55f), Color.Transparent), center = Offset(W * 0.3f, 0f) - origin, radius = maxOf(W, H) * 0.6f))
+            drawRect(Brush.radialGradient(listOf((if (t.dark) Color(0xFF1A7F8E) else Color(0xFFB9E3D3)).copy(alpha = 0.45f), Color.Transparent), center = Offset(W * 0.9f, H * 0.85f) - origin, radius = maxOf(W, H) * 0.6f))
+        }
+    }
 }
 
 // ── Headers ───────────────────────────────────────────────────────────────────────
@@ -326,17 +344,22 @@ fun bgGlow(t: NovaColors): Pair<Color, Color>? = when (AppPrefs.lookBg) {
 /** A phone on its side: little height, so titles, padding and fades shrink and the status bar hides. */
 val LocalCompactHeight = staticCompositionLocalOf { false }
 
+/** The fades' color: the page's, or your own (Appearance → Top and bottom fades). */
+@Composable private fun scrimColor(): Color = AppPrefs.scrimColor.takeIf { it.length == 7 }?.let { runCatching { Color(android.graphics.Color.parseColor(it)) }.getOrNull() } ?: N.bg
+
 @Composable fun BottomScrim(modifier: Modifier = Modifier) {
-    if (LocalCompactHeight.current) return                 // a phone on its side: no room for fades
+    if (LocalCompactHeight.current || !AppPrefs.scrims) return       // a phone on its side: no room for fades (or you turned them off)
+    val c = scrimColor()
     // lighter than it was: shorter, and never fully opaque, so the page (and a wallpaper) still shows through at the very bottom
     Box(modifier.fillMaxWidth().windowInsetsBottomHeight(WindowInsets.navigationBars.add(WindowInsets(bottom = 40.dp)))
-        .background(Brush.verticalGradient(listOf(Color.Transparent, N.bg.copy(alpha = 0.45f), N.bg.copy(alpha = 0.72f)))))
+        .background(Brush.verticalGradient(listOf(Color.Transparent, c.copy(alpha = 0.45f), c.copy(alpha = 0.72f)))))
 }
 
 @Composable fun StatusBarScrim(modifier: Modifier = Modifier) {
-    if (LocalCompactHeight.current) return
+    if (LocalCompactHeight.current || !AppPrefs.scrims) return
+    val c = scrimColor()
     Box(modifier.fillMaxWidth().windowInsetsTopHeight(WindowInsets.statusBars.add(WindowInsets(top = 14.dp)))
-        .background(Brush.verticalGradient(listOf(N.bg, N.bg.copy(alpha = 0.85f), Color.Transparent))))
+        .background(Brush.verticalGradient(listOf(c, c.copy(alpha = 0.85f), Color.Transparent))))
 }
 
 @Composable fun SliderRow(title: String, value: Float, range: ClosedFloatingPointRange<Float>, label: String,
@@ -372,10 +395,12 @@ val LocalCompactHeight = staticCompositionLocalOf { false }
 data class PillItem(val icon: ImageVector, val label: String, val badge: Int = 0, val onLongClick: (() -> Unit)? = null, val onClick: () -> Unit)
 
 @Composable fun PillBar(items: List<PillItem>, modifier: Modifier = Modifier) {
-    Row(modifier.padding(horizontal = Space.gutter).fillMaxWidth().glassCard(RoundedCornerShape(if (N.material) 30.dp else cardRadius(30.dp)))   // the same corners as the cards around it
+    // the same corners as the cards around it (a card's own radius in each look), and its buttons concentric inside
+    val outer = when { N.material -> 24.dp; N.preset == "aero" -> cardRadius(6.dp); N.preset == "fluent" || N.preset == "breeze" -> cardRadius(8.dp); else -> cardRadius(26.dp) }
+    Row(modifier.padding(horizontal = Space.gutter).fillMaxWidth().glassCard(RoundedCornerShape(outer))
         .padding(vertical = 12.dp, horizontal = 6.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
         items.forEach { it ->
-            Column(Modifier.weight(1f).clip(RoundedCornerShape(if (N.material) 18.dp else cardRadius(18.dp))).bouncy(onLongClick = it.onLongClick, onClick = it.onClick).padding(vertical = 6.dp),
+            Column(Modifier.weight(1f).clip(RoundedCornerShape((outer - 6.dp).coerceAtLeast(2.dp))).bouncy(onLongClick = it.onLongClick, onClick = it.onClick).padding(vertical = 6.dp),
                 horizontalAlignment = Alignment.CenterHorizontally) {
                 Box {
                     Icon(it.icon, null, tint = N.text, modifier = Modifier.size(26.dp))
@@ -770,9 +795,33 @@ class PillBead(val x: androidx.compose.animation.core.Animatable<Float, androidx
     }
 }
 
-@Composable fun UsageBar(fraction: Float, color: Color) {
-    Box(Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(4.dp)).background(N.divider)) {
-        Box(Modifier.fillMaxWidth(if (fraction.isNaN()) 0f else fraction.coerceIn(0f, 1f)).fillMaxHeight().clip(RoundedCornerShape(4.dp)).background(color))
+@Composable fun UsageBar(fraction: Float, color: Color) = LookBar(if (fraction.isNaN()) 0f else fraction.coerceIn(0f, 1f), color)
+
+/** A bar (CPU, memory, disk, progress) in each look's own style; the fill keeps its color. Aero: Windows 7's glossy
+ *  progress bar in a sunken frame. Mica: a thin line. Breeze: flat. Glass: a capsule with a highlight. Material: a thick
+ *  tonal track. Same as Nova web. */
+@Composable fun LookBar(f: Float, color: Color) {
+    val t = N
+    val h = when { t.material -> 10.dp; t.preset == "aero" -> 12.dp; t.preset == "fluent" -> 4.dp; t.preset == "breeze" -> 6.dp; else -> 8.dp }
+    androidx.compose.foundation.Canvas(Modifier.fillMaxWidth().height(h)) {
+        val w = size.width; val hh = size.height
+        val r = when { t.preset == "aero" -> 3.dp.toPx(); else -> hh / 2 }
+        val track = when { t.material -> t.blue.copy(alpha = 0.18f); t.preset == "fluent" -> t.text.copy(alpha = 0.14f); t.preset == "breeze" -> t.text.copy(alpha = 0.12f)
+            t.preset == "liquid" -> t.text.copy(alpha = 0.10f); else -> t.divider }
+        if (t.preset == "aero") {
+            drawRoundRect(Brush.verticalGradient(if (t.dark) listOf(Color.Black.copy(alpha = 0.45f), Color.White.copy(alpha = 0.06f)) else listOf(Color(0xFFD9DEE5), Color(0xFFF6F8FA), Color.White)),
+                cornerRadius = androidx.compose.ui.geometry.CornerRadius(r))
+            drawRoundRect(if (t.dark) Color.Black.copy(alpha = 0.6f) else Color(0xFF8F9FB3), cornerRadius = androidx.compose.ui.geometry.CornerRadius(r), style = androidx.compose.ui.graphics.drawscope.Stroke(1.dp.toPx()))
+        } else drawRoundRect(track, cornerRadius = androidx.compose.ui.geometry.CornerRadius(r))
+        val fw = w * f.coerceIn(0f, 1f); if (fw <= 0.5f) return@Canvas
+        val inset = if (t.preset == "aero") 1.dp.toPx() else 0f
+        val fs = androidx.compose.ui.geometry.Size((fw - 2 * inset).coerceAtLeast(0f), hh - 2 * inset); val fo = Offset(inset, inset)
+        val fr = androidx.compose.ui.geometry.CornerRadius(if (t.preset == "aero") 2.dp.toPx() else fs.height / 2)
+        drawRoundRect(color, fo, fs, fr)
+        when (t.preset) {
+            "aero" -> drawRoundRect(Brush.verticalGradient(0f to Color.White.copy(alpha = 0.75f), 0.45f to Color.White.copy(alpha = 0.25f), 0.5f to Color.Transparent, 1f to Color.White.copy(alpha = 0.18f), startY = fo.y, endY = fo.y + fs.height), fo, fs, fr)
+            "liquid" -> drawRoundRect(Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.45f), Color.Transparent), startY = 0f, endY = hh * 0.5f), fo, fs, fr)
+        }
     }
 }
 

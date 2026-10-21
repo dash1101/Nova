@@ -27,7 +27,7 @@ install -m 644 "$ROOT/packaging/release-key.pub" "$P$L/release-key.pub"
 install -m 644 "$ROOT/packaging/nova-update-check.service" "$ROOT/packaging/nova-update-check.timer" "$P/lib/systemd/system/"
 M="$S/modules/fan-gigabyte-fusion2"
 install -m 644 "$M/fusion2.py" "$M/nova_rgb.py" "$M/openrgb.py" "$M/ha_light.py" "$M/60-nova-rgb.rules" "$M/nova-api-rgb.conf" "$P/usr/lib/nova-rgb/"
-for u in "$S"/systemd/*.service "$S"/systemd/*.socket "$S"/systemd/*.timer "$M"/nova-rgb-*.service "$M"/nova-rgb-tick.timer; do
+for u in "$S"/systemd/*.service "$S"/systemd/*.socket "$S"/systemd/*.timer "$S"/systemd/*.path "$M"/nova-rgb-*.service "$M"/nova-rgb-tick.timer; do
     sed -e "s#/usr/local/lib/nova-api#$L#g" -e "s#/usr/local/lib/nova-rgb#/usr/lib/nova-rgb#g" "$u" > "$P/lib/systemd/system/$(basename "$u")"
 done
 install -m 644 "$ROOT/packaging/logrotate" "$P/etc/logrotate.d/nova-api"

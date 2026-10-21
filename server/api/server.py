@@ -41,7 +41,7 @@ try:                       # optional module: fan/case lighting (modules/fan-gig
 except ImportError:
     nova_rgb = None
 
-API_VERSION = "0.8.12-alpha"
+API_VERSION = "0.8.13-alpha"
 # The API contract (docs/API.md). API_LEVEL only ever goes up: each new level adds endpoints or fields, never removes or
 # changes one. MIN_LEVEL is the oldest level this server still answers in full (old apps keep working back to it).
 # MIN_CLIENT: the oldest app builds still served, per platform — 0 = all of them. Raising it is the last resort, after
@@ -689,6 +689,7 @@ def describe_action(a):
         return f"Remove “{d.get('name', 'a device')}” from this server" if d else "Remove a device"
     if p[:1] == ["devices"]: return "Change paired devices"
     if p == ["nodes"]: return f"Show the server at {a.get('data', {}).get('host', '?')} in this Nova web"
+    if len(p) >= 3 and p[0] == "containers" and p[2] == "compose": return f"{'Put back the previous' if p[3:] == ['undo'] else 'Change the'} Compose file of {p[1]} (and restart it)"
     if p == ["nodes", "link"]: return f"Ask the server at {a.get('data', {}).get('host', '?')} to be shown in this Nova web"
     if p[:1] == ["nodes"]: return "Remove a server from this Nova web"
     if p[:1] == ["ssh"]: return "Let this phone log in over SSH"
@@ -776,6 +777,7 @@ def needs_stepup(method, parts):
     if method == "POST" and parts == ["devices", "watch"]: return True
     if method == "POST" and parts == ["nodes"]: return True                        # add a server here
     if method == "POST" and parts == ["nodes", "link"]: return True                # ask a server to be shown here
+    if method == "POST" and len(parts) >= 3 and parts[0] == "containers" and parts[2] == "compose": return True   # edit / undo a Compose file
     if method == "DELETE" and parts[:1] == ["nodes"]: return True
     if method == "POST" and parts == ["browser", "approve"]: return True
     if method == "POST" and parts == ["server", "update"]: return True
@@ -1719,12 +1721,15 @@ class Handler(BaseHTTPRequestHandler):
                                       "ssh": bool(SSH_HOSTS), "lan_tls": True}}
         if method == "GET" and parts == ["events", "wait"]:
             # Long poll for the phone's instant alerts: return as soon as something newer than
-            # `since` is written (nova-alerts runs every minute), or empty after `timeout` s.
+            # `since` is written (nova-alerts runs every 15 s, and at once for queued messages), or empty after `timeout` s.
             since = float(q.get("since", "0") or 0); end = time.time() + min(55, max(5, int(q.get("timeout", "50") or 50)))
             seen = set(str(q.get("seen", "")).split(",")); wait_started = time.time()
             first = None                                       # which tasks were running / how, when this wait began
+            mt, ev = None, []
             while True:
-                ev = [e for e in load_json(EVENTS, {}).get("events", []) if e.get("t", 0) > since]
+                try: m = os.stat(EVENTS).st_mtime_ns
+                except OSError: m = 0
+                if m != mt: mt = m; ev = [e for e in load_json(EVENTS, {}).get("events", []) if e.get("t", 0) > since]   # (read again only when it changed)
                 ap = [{"id": a["id"], "what": describe_action(a), "device_name": a["device_name"], "user": a.get("user", "")}
                       for a in approvals.values() if a["state"] == "pending" and role_of(dev) == "admin"
                       and dev.get("type") != "browser" and time.time() - a["created"] < 600]
@@ -1735,7 +1740,7 @@ class Handler(BaseHTTPRequestHandler):
                 if any(t["state"] == "running" for t in tk): end = min(end, wait_started + 10)  # progress for the notification, without waking the phone too often
                 if ev or changed or ("seen" in q and [a for a in ap if a["id"] not in seen]) or time.time() >= end:
                     return 200, {"events": ev[:50], "approvals": ap, "tasks": tk}
-                time.sleep(2)
+                time.sleep(1)
         if method == "GET" and parts == ["archive"]:
             # Permanent history (archived from the Inbox, or aged out of it). Readable by every device.
             try: before = float(q.get("before", "") or "inf")
@@ -2256,6 +2261,19 @@ class Handler(BaseHTTPRequestHandler):
                 rc, res = helper("task-start", "custom-uninstall", json.dumps({"name": name})); return (202 if rc == 0 else 400), ({"task": res.get("id"), **res} if rc == 0 else res)
             if method == "POST" and parts[2:] == ["update"]:
                 rc, res = helper("task-start", "containers-update", json.dumps({"containers": [name]})); return (202 if rc == 0 else 400), ({"task": res.get("id"), **res} if rc == 0 else res)
+            if parts[2:3] == ["compose"]:
+                # the Compose file behind it: read (it can hold passwords: admins only), save (checked by Docker Compose
+                # first, backed up, applied), or put the previous version back. Saving is root-level power: fingerprint.
+                if role_of(dev) != "admin": return 403, {"error": "admins only"}
+                if method == "GET" and len(parts) == 3:
+                    rc, res = helper("compose-get", name, timeout=30); return (200 if rc == 0 else 400), res
+                if method == "POST" and len(parts) == 3:
+                    body_ = json.dumps({"text": str(data.get("text", "")), "mtime": data.get("mtime")}).encode()
+                    if len(body_) > 300 * 1024: return 413, {"error": "that's too big for a Compose file"}
+                    rc, res = helper("compose-set", name, timeout=660, data=body_); return (200 if rc == 0 else 400), res
+                if method == "POST" and parts[3:] == ["undo"]:
+                    rc, res = helper("compose-undo", name, timeout=660); return (200 if rc == 0 else 400), res
+                return 404, {"error": "not found"}
             if method == "POST" and parts[2:] == ["policy"]:
                 rc, res = helper("container-policy", name, str(data.get("policy", ""))); return (200 if rc == 0 else 400), res
             if method == "POST" and parts[2:] == ["shell"]:

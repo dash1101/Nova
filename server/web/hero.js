@@ -140,7 +140,8 @@ function drawServer(c, w, h, look, t, spin, status, drives, reverse) {
     c.fillStyle = rgbA(col, a); c.beginPath(); c.arc(x0 + i * step, ly, lr, 0, 7); c.fill();
   }
   g = c.createLinearGradient(left, top, left + cw * .5, top + ch * .5); g.addColorStop(0, "rgba(255,255,255,.07)"); g.addColorStop(1, "rgba(255,255,255,0)");
-  c.fillStyle = g; c.fillRect(left + gp, top + gp, cw * .42, ch * .55);
+  // (the whole screen, fading out by itself — a rectangle cut short of the fade left a hard line down the middle)
+  c.fillStyle = g; rr(c, left + gp, top + gp, cw - 2 * gp, ch - 2 * gp * 1.6, cw * .04); c.fill();
   c.fillStyle = status; c.globalAlpha = .35; c.beginPath(); c.arc(left + cw * .5, top + ch * .935, cw * .03, 0, 7); c.fill();
   c.globalAlpha = 1; c.beginPath(); c.arc(left + cw * .5, top + ch * .935, cw * .016, 0, 7); c.fill();
 }
@@ -171,13 +172,17 @@ export function animate(canvas, kind, statusColor = () => "#3ecf6e") {
   const frame = now => {
     if (!canvas.isConnected) return;
     const dpr = devicePixelRatio || 1, w = canvas.clientWidth, h = canvas.clientHeight;
-    if (canvas.width !== Math.round(w * dpr)) { canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr); }
-    const c = canvas.getContext("2d"); c.setTransform(dpr, 0, 0, dpr, 0, 0); c.clearRect(0, 0, w, h);
+    requestAnimationFrame(frame);           // first: one bad frame (lights half-loaded, say) must never stop the picture for good
+    if (!w || !h) return;
+    if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(h * dpr)) { canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr); }
+    const c = canvas.getContext("2d"); c.setTransform(dpr, 0, 0, dpr, 0, 0);
     const look = fanLook(S.fan), t = Date.now() + (S.skew || 0);     // server time: the wave lines up with the real fan
     const spin = reduce() ? 0 : (t % 2200) / 2200 * 360, reverse = localStorage.getItem("nova.fanReverse") === "true";
-    if (kind === "server") drawServer(c, w, h, look, t, spin, statusColor(), S.overview?.status?.metrics?.drive_states, reverse);
-    else drawFan(c, w, h, look, t, spin, reverse);
-    requestAnimationFrame(frame);
+    c.clearRect(0, 0, w, h);
+    try {
+      if (kind === "server") drawServer(c, w, h, look, t, spin, statusColor(), S.overview?.status?.metrics?.drive_states, reverse);
+      else drawFan(c, w, h, look, t, spin, reverse);
+    } catch (e) { if (!canvas._warned) { canvas._warned = true; console.warn("illustration:", e); } }
   };
   requestAnimationFrame(frame);
 }

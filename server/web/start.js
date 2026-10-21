@@ -117,7 +117,7 @@ export async function start(ctx) {
     go(eng[2] + enc(t));
   };
   const stats = () => { const o = S.overview, m = o?.status?.metrics || {}, n = S.lastNow, list = (m.storage || []).slice(0, 3);
-    const tile = (label, v, sub, f, c) => `<div class="stile glass"><small>${label}</small><b>${v}</b><span>${sub || ""}</span>${f != null ? `<div class="bar"><i style="width:${Math.round(Math.max(0, Math.min(1, f)) * 100)}%;background:${c}"></i></div>` : ""}</div>`;
+    const tile = (label, v, sub, f, c) => `<div class="stile glass"><small>${label}</small><b>${v}</b><span>${sub || ""}</span>${f != null ? `<div class="bar"><i style="width:${Math.round(Math.max(0, Math.min(1, f)) * 100)}%;--c:${c}"></i></div>` : ""}</div>`;
     return `<div class="stiles">${tile("CPU", n?.cpu != null ? Math.round(n.cpu) + "%" : (m.cpu || "—"), m.cpu_temp || "", n?.cpu != null ? n.cpu / 100 : null, "var(--blue)")}
       ${tile("Memory", n?.mem != null ? Math.round(n.mem) + "%" : (m.memory || "—"), m.memory_detail || "", n?.mem != null ? n.mem / 100 : null, "#bf5af2")}
       ${list.map(s => tile(s.name, Math.round(s.pct) + "%", bytes(s.free) + " free", s.pct / 100, s.pct > 90 ? "var(--red)" : "var(--green)")).join("")}

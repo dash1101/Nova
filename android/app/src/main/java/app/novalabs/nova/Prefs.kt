@@ -77,6 +77,10 @@ object AppPrefs {
     /** Background behind the pages: "" each look's own, "glow" the Default look's glow on any look, "plain" just its color. */
     var lookBg by mutableStateOf(""); private set
     fun chooseLookBg(v: String) { lookBg = v; sp.edit().putString("lookBg", v).apply() }
+    /** The soft tint at the top and bottom of the screen: on/off, and its color ("" = the page's). */
+    var scrims by mutableStateOf(true); private set
+    var scrimColor by mutableStateOf(""); private set
+    fun chooseScrims(on: Boolean, color: String = scrimColor) { scrims = on; scrimColor = color; sp.edit().putBoolean("scrims", on).putString("scrimColor", color).apply() }
     fun chooseDefaultGlass(trans: Int = dTrans, frost: Int = dFrost) { dTrans = trans; dFrost = frost; sp.edit().putInt("dTrans", trans).putInt("dFrost", frost).apply() }
     /** Corner roundness for one look (25–200 % on the slider; see roundK()). */
     fun roundFor(style: String): Int { roundV; return sp.getString("round_$style", null)?.toIntOrNull() ?: round.coerceAtMost(200) }
@@ -97,7 +101,7 @@ object AppPrefs {
         accent = sp.getString("accent", "")!!; tint = sp.getString("tint", "50")!!.toIntOrNull() ?: 50
         wallV = sp.getString("wall_v", "0")!!.toLongOrNull() ?: 0L; wallBlur = sp.getString("wall_blur", "16")!!.toIntOrNull() ?: 16; wallDim = sp.getString("wall_dim", "35")!!.toIntOrNull() ?: 35
         lang = sp.getString("lang", "auto")!!; I18n.load(ctx, lang)
-        prism = sp.getInt("prism", 50); dTrans = sp.getInt("dTrans", 0); lookBg = sp.getString("lookBg", "")!!; dFrost = sp.getInt("dFrost", 26); solid = sp.getBoolean("solid", false); glass = sp.getString("glass", "60")!!.toIntOrNull() ?: 60; round = sp.getString("round", "100")!!.toIntOrNull() ?: 100
+        prism = sp.getInt("prism", 50); dTrans = sp.getInt("dTrans", 0); lookBg = sp.getString("lookBg", "")!!; scrims = sp.getBoolean("scrims", true); scrimColor = sp.getString("scrimColor", "")!!; dFrost = sp.getInt("dFrost", 26); solid = sp.getBoolean("solid", false); glass = sp.getString("glass", "60")!!.toIntOrNull() ?: 60; round = sp.getString("round", "100")!!.toIntOrNull() ?: 100
         theme = sp.getString("theme", "system")!!; style = sp.getString("style", "auto")!!; reduceMotion = sp.getBoolean("reduce_motion", false); animSpeed = (sp.getString("anim_speed", "100")!!.toIntOrNull() ?: 100).coerceIn(25, 300)
         appLock = sp.getBoolean("app_lock", false); hideInRecents = sp.getBoolean("hide_recents", false)
         homeHero = sp.getBoolean("home_hero", true); homeShortcuts = sp.getBoolean("home_shortcuts", true); homeStats = sp.getBoolean("home_stats", true); homeRecs = sp.getBoolean("home_recs", true)
@@ -296,6 +300,7 @@ private val MY_ACCENTS = listOf("#3e91ff", "#5e5ce6", "#bf5af2", "#ff2d55", "#ff
     val ctx = androidx.compose.ui.platform.LocalContext.current
     var pickingLive by remember { mutableStateOf(false) }
     var picking by remember { mutableStateOf(false) }
+    var scrimPick by remember { mutableStateOf(false) }; var scrimCustom by remember { mutableStateOf(false) }
     val pick = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.GetContent()) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
         runCatching {             // shrink it (longest side 2048 px) and keep a private copy in the app
@@ -364,13 +369,34 @@ private val MY_ACCENTS = listOf("#3e91ff", "#5e5ce6", "#bf5af2", "#ff2d55", "#ff
             Row1("Remove the wallpaper", null, false, Icons.Rounded.Delete, N.red, onClick = { java.io.File(ctx.filesDir, "wallpaper.jpg").delete(); AppPrefs.set("wall_v", 0L) })
         } else { Row1("Choose a picture", "Behind every screen, blurred and dimmed as you like. Kept on this ${DeviceForm.noun} only.", true, Icons.Rounded.Image, onClick = { pick.launch("image/*") })
             RowDivider()
-            val bgs = listOf("" to "This look's own", "glow" to "Default's glow", "plain" to "Plain")
+            // a small gallery: every look's built-in background, drawn as it would look here
+            val bgs = listOf("" to "This look's own", "glow" to "Default's glow", "vivid" to "Glass's vivid glow", "soft" to "Mica's soft wash", "aero" to "Aero's sky", "plain" to "Plain")
             ExpandRow("Background", bgs.firstOrNull { it.first == AppPrefs.lookBg }?.second ?: "This look's own", icon = Icons.Rounded.Palette) {
-                bgs.forEach { (k, l) -> Row(Modifier.fillMaxWidth().clip(androidx.compose.foundation.shape.RoundedCornerShape(12.dp)).clickable { AppPrefs.chooseLookBg(k) }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text(l, color = N.text, fontSize = 16.sp, modifier = Modifier.weight(1f)); OneRadio(AppPrefs.lookBg == k) } }
-            } }
+                bgs.chunked(3).forEach { row -> Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) { row.forEach { (k, l) ->
+                    val on = AppPrefs.lookBg == k; val t = N
+                    Column(Modifier.weight(1f).clip(androidx.compose.foundation.shape.RoundedCornerShape(12.dp)).clickable { AppPrefs.chooseLookBg(k) }, horizontalAlignment = Alignment.CenterHorizontally) {
+                        androidx.compose.foundation.Canvas(Modifier.fillMaxWidth().aspectRatio(9f / 16f).clip(androidx.compose.foundation.shape.RoundedCornerShape(10.dp)).background(t.bg)
+                            .border(if (on) 3.dp else 1.dp, if (on) t.blue else t.divider, androidx.compose.foundation.shape.RoundedCornerShape(10.dp))) {
+                            val kind = if (k.isEmpty()) (if (t.material || t.glow == Color.Transparent) "plain" else "own") else k
+                            if (kind != "plain") drawWall(t, kind, androidx.compose.ui.geometry.Offset.Zero, size.width, size.height)
+                        }
+                        Text(l, color = N.text, fontSize = 12.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center, modifier = Modifier.padding(top = 4.dp, bottom = 6.dp), maxLines = 2)
+                    } } } }
+            }
+            RowDivider()
+            SwitchRow("Top and bottom fades", "The soft tint at the top and bottom of the screen, so the page fades out under the bars", AppPrefs.scrims) { AppPrefs.chooseScrims(it) }
+            if (AppPrefs.scrims) { RowDivider()
+                Row1("Fade color", if (AppPrefs.scrimColor.isEmpty()) "The page's color" else "Your own color", AppPrefs.scrimColor.isNotEmpty(), onClick = { scrimPick = true }) {
+                    Box(Modifier.size(24.dp).clip(androidx.compose.foundation.shape.CircleShape).background(AppPrefs.scrimColor.takeIf { it.length == 7 }?.let { Color(android.graphics.Color.parseColor(it)) } ?: N.bg)
+                        .border(1.dp, N.divider, androidx.compose.foundation.shape.CircleShape)) } }
+        }
     }
     if (picking) ColorPickerDialog(AppPrefs.accent.ifEmpty { "#3e91ff" }, { picking = false }) { AppPrefs.set("accent", it); picking = false }
+    if (scrimPick) OneDialog({ scrimPick = false }, "Fade color", buttons = listOf(DialogButton("Cancel") { scrimPick = false })) {
+        DialogChoice("The page's color", "Follows your look and light or dark", AppPrefs.scrimColor.isEmpty()) { AppPrefs.chooseScrims(true, ""); scrimPick = false }
+        DialogChoice("Pick a color…", null, AppPrefs.scrimColor.isNotEmpty()) { scrimPick = false; scrimCustom = true }
+    }
+    if (scrimCustom) ColorPickerDialog(AppPrefs.scrimColor.ifEmpty { "#000000" }, { scrimCustom = false }) { AppPrefs.chooseScrims(true, it); scrimCustom = false }
 }
 
 

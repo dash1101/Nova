@@ -190,8 +190,9 @@ private fun activity(i: Int, tMs: Double, pct: Int = 9): Float {
             if (a > 0.5f) drawCircle(col.copy(alpha = (a - 0.5f) * 0.6f), rr * 2.6f, p)
             drawCircle(col.copy(alpha = a), rr, p)
         }
-        drawRect(Brush.linearGradient(listOf(Color.White.copy(alpha = 0.07f), Color.Transparent), Offset(left, top), Offset(left + cw * 0.5f, top + ch * 0.5f)),
-            Offset(left + gp, top + gp), Size(cw * 0.42f, ch * 0.55f))
+        // over the whole screen, fading out by itself (a rectangle cut short of the fade left a hard line down the middle)
+        drawRoundRect(Brush.linearGradient(listOf(Color.White.copy(alpha = 0.07f), Color.Transparent), Offset(left, top), Offset(left + cw * 0.5f, top + ch * 0.5f)),
+            Offset(left + gp, top + gp), Size(cw - 2 * gp, ch - 2 * gp * 1.6f), androidx.compose.ui.geometry.CornerRadius(cw * 0.04f))
         drawCircle(statusColor.copy(alpha = 0.35f), cw * 0.03f, Offset(left + cw * 0.5f, top + ch * 0.935f))
         drawCircle(statusColor, cw * 0.016f, Offset(left + cw * 0.5f, top + ch * 0.935f))
     }

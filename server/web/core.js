@@ -132,7 +132,7 @@ export async function api(method, path, body, here = false) {
   if (r.status === 401) throw new ApiError(401, "This browser isn't authorized anymore");
   if (!r.ok) throw new ApiError(r.status, j.message || j.error || `HTTP ${r.status}`, false, j.error || "");
   S.lastContact = Date.now();
-  if (method === "GET" && !here && !path.startsWith("/api/v1/stats?")) S.cache[path] = j;      // not the per-second deltas
+  if (method === "GET" && !here && !path.startsWith("/api/v1/stats?") && !path.startsWith("/api/v1/events/wait")) S.cache[path] = j;      // not the per-second deltas or the alert long poll
   return j;
 }
 export const get = p => api("GET", p);

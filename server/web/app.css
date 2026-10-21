@@ -106,7 +106,7 @@ html.vt-back::view-transition-old(root) { animation-name: vt-out-back; } html.vt
 .circle svg { position: relative; }
 .circle:hover .bgc { opacity: max(var(--fade, 0), .6); }
 .scrim { position: fixed; top: 0; left: 0; right: 0; height: calc(28px + env(safe-area-inset-top)); z-index: 7; pointer-events: none;
-  background: linear-gradient(var(--bg), transparent); }
+  background: linear-gradient(var(--scrim, var(--bg)), transparent); }
 
 /* ── sections, groups, rows ─────────────────────────────────────────────────────── */
 .sec { color: var(--sub); font-size: 14px; font-weight: 500; margin: 18px 30px 8px; }
@@ -193,7 +193,7 @@ input[type=range]:disabled { opacity: .45; }
 .stat .val { font-size: 24px; font-weight: 700; margin-top: 6px; }
 .stat .sub { color: var(--sub); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .bar { height: 8px; border-radius: 4px; background: var(--divider); overflow: hidden; margin-top: auto; }
-.bar > i { display: block; height: 100%; border-radius: 4px; background: var(--blue); transition: width .6s var(--ease); }
+.bar > i { display: block; height: 100%; border-radius: 4px; background: var(--c, var(--blue)); transition: width .6s var(--ease); }
 .hint { text-align: center; color: var(--sub); font-size: 14px; padding: 14px; margin: 0 var(--gutter); border-radius: 20px; cursor: pointer; }
 
 /* metric cards with graphs */
@@ -317,7 +317,10 @@ body.side #toast { bottom: 24px; }
 .swipe .swbg { position: absolute; inset: 0; display: flex; align-items: center; padding: 0 26px; color: #fff; font-weight: 700; font-size: 15px; opacity: 0; }
 .swipe .swbg.right { background: var(--amber); justify-content: flex-start; } .swipe .swbg.left { background: var(--red); justify-content: flex-end; }
 .swipe .swfg { position: relative; background: inherit; transition: transform .3s var(--spring); }
-.swipe .swfg > .row { background: var(--card); }
+/* a row is see-through at rest (so its card's look shows: Aero's glass, Mica, Glass…), and solid only while it's swiped,
+   to cover the colored archive/delete strip behind it */
+.swipe .swfg > .row { background: transparent; transition: background .2s; }
+.swipe.moving .swfg > .row, .swipe.gone .swfg > .row { background: var(--card); }
 .swipe.gone { transition: height .3s ease .05s, opacity .2s ease; height: 0 !important; opacity: 0; }
 .swipe + .swipe::before { content: ""; position: absolute; left: 22px; right: 22px; top: 0; border-top: .8px solid var(--divider); z-index: 1; }
 .swipe .row + .row::before { display: none; }
@@ -526,7 +529,7 @@ html.material .alertcard { border-radius: 16px; background: var(--card); backdro
 @media (hover: none) { .dayhead .dayall { opacity: 1; } }
 /* the same soft fade at the bottom, so lists slide out of sight under the dock */
 .scrim-bottom { position: fixed; bottom: 0; left: 0; right: 0; height: calc(64px + env(safe-area-inset-bottom)); z-index: 7; pointer-events: none;
-  background: linear-gradient(to top, var(--bg), color-mix(in srgb, var(--bg) 85%, transparent) 40%, transparent); }
+  background: linear-gradient(to top, var(--scrim, var(--bg)), color-mix(in srgb, var(--scrim, var(--bg)) 85%, transparent) 40%, transparent); }
 .trouble .lasterr { display: block; margin-top: 6px; font: 12.5px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--text); white-space: pre-wrap; overflow-wrap: anywhere;
   background: color-mix(in srgb, var(--amber) 10%, transparent); padding: 8px 10px; border-radius: 10px; }
 @keyframes list-in { from { transform: translateX(48px); opacity: 0; } to { transform: none; opacity: 1; } }
@@ -1276,15 +1279,60 @@ html.aero input[type=range]:hover::-webkit-slider-thumb { box-shadow: inset 0 0 
 .sbuild .field { width: 100%; box-sizing: border-box; } .sbuild #sb-keep { width: 90px; }
 .sbuild > .pillbtn { align-self: flex-start; } .sbuild .seg { margin: 0; }
 
-/* Background → Default's glow: the Default look's own wallpaper behind any look (a picture or living wallpaper still wins) */
-html.bg-glow:not(.has-wall):not(.living) body::before { display: block !important; opacity: 1 !important; filter: none !important;
-  background: radial-gradient(95vw 75vh at 85% 18%, color-mix(in srgb, #2e2560 90%, transparent), transparent 70%),
-              radial-gradient(80vw 60vh at 10% 35%, color-mix(in srgb, #1a2550 60%, transparent), transparent 70%) !important; }
-html.bg-glow.l-light:not(.has-wall):not(.living) body::before {
-  background: radial-gradient(95vw 75vh at 85% 18%, color-mix(in srgb, #e2dbf7 90%, transparent), transparent 70%),
-              radial-gradient(80vw 60vh at 10% 35%, color-mix(in srgb, #dce6fa 60%, transparent), transparent 70%) !important; }
+/* Background (Appearance → Wallpaper): each look's built-in background, usable on any look — the same definitions draw
+   the gallery's previews. Dark first, then light (a picture or living wallpaper still wins). */
+:root { --wp-glow: radial-gradient(95vw 75vh at 85% 18%, color-mix(in srgb, #2e2560 90%, transparent), transparent 70%), radial-gradient(80vw 60vh at 10% 35%, color-mix(in srgb, #1a2550 60%, transparent), transparent 70%);
+  --wp-vivid: radial-gradient(95vw 75vh at 85% 18%, #4a2fb0, transparent 70%), radial-gradient(80vw 60vh at 10% 35%, #1f4fc0cc, transparent 70%), radial-gradient(60vw 50vh at 60% 95%, #b02f8a88, transparent 70%);
+  --wp-soft: radial-gradient(120vw 90vh at 70% 10%, color-mix(in srgb, var(--blue) 22%, transparent), transparent 75%), radial-gradient(100vw 80vh at 0% 80%, color-mix(in srgb, var(--blue) 12%, transparent), transparent 75%);
+  --wp-aero: radial-gradient(70vw 50vh at 30% 0%, color-mix(in srgb, color-mix(in srgb, var(--blue) 90%, #fff) 55%, transparent), transparent 70%), radial-gradient(60vw 60vh at 90% 85%, color-mix(in srgb, #1a7f8e 45%, transparent), transparent 70%), linear-gradient(160deg, transparent 40%, rgba(255,255,255,.06) 48%, transparent 56%), linear-gradient(#0a1b2e, #07131f); }
+html.l-light { --wp-glow: radial-gradient(95vw 75vh at 85% 18%, color-mix(in srgb, #e2dbf7 90%, transparent), transparent 70%), radial-gradient(80vw 60vh at 10% 35%, color-mix(in srgb, #dce6fa 60%, transparent), transparent 70%);
+  --wp-vivid: radial-gradient(95vw 75vh at 85% 18%, #cbb8ff, transparent 70%), radial-gradient(80vw 60vh at 10% 35%, #b5d2ffcc, transparent 70%), radial-gradient(60vw 50vh at 60% 95%, #ffc2e888, transparent 70%);
+  --wp-aero: radial-gradient(70vw 50vh at 30% 0%, color-mix(in srgb, color-mix(in srgb, var(--blue) 65%, #fff) 55%, transparent), transparent 70%), radial-gradient(60vw 60vh at 90% 85%, color-mix(in srgb, #b9e3d3 45%, transparent), transparent 70%), linear-gradient(160deg, transparent 40%, rgba(255,255,255,.06) 48%, transparent 56%), linear-gradient(#d3e5f5, #aac3d9); }
+html:is(.bg-glow, .bg-vivid, .bg-soft, .bg-aero):not(.has-wall):not(.living) body::before { display: block !important; opacity: 1 !important; filter: none !important; }
+html.bg-glow:not(.has-wall):not(.living) body::before { background: var(--wp-glow) !important; }
+html.bg-vivid:not(.has-wall):not(.living) body::before { background: var(--wp-vivid) !important; }
+html.bg-soft:not(.has-wall):not(.living) body::before { background: var(--wp-soft) !important; }
+html.bg-aero:not(.has-wall):not(.living) body::before { background: var(--wp-aero) !important; }
+.wpgal { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; padding: 4px 0 8px; }
+.wpgal button { display: flex; flex-direction: column; gap: 6px; align-items: stretch; font-size: 13px; color: var(--text); text-align: center; }
+.wpgal .wpv { position: relative; overflow: hidden; aspect-ratio: 3 / 4; border-radius: calc(var(--wrb, 14px) * .7); background-color: var(--bg); box-shadow: inset 0 0 0 1px var(--divider); }
+.wpgal button.on .wpv { box-shadow: inset 0 0 0 1px var(--divider), 0 0 0 3px var(--blue); }
 html.bg-plain:not(.has-wall):not(.living) body::before { display: none !important; }
 /* the Home shortcut bar (and a container's action bar) is a card: it takes the cards' corners in every look, not a control's */
 .pillbar.glass { border-radius: 26px; }
 html.material .pillbar.glass { border-radius: 24px; }
 :is(html.liquid, html.fluent, html.breeze, html.aero) .pillbar.glass { border-radius: var(--rL); }
+/* Aero's search box: Windows 7's — a light field with a beveled frame and a soft inner shadow, a glow in the accent when you type */
+html.aero .searchbox { background: linear-gradient(color-mix(in srgb, #fff 92%, var(--blue)), #fff 40%) !important;
+  border: 1px solid; border-color: #7f8fa6 #b5c3d6 #d6dfeb #b5c3d6; color: #5b6b80;
+  box-shadow: inset 0 1px 2px rgba(0,0,0,.14), 0 1px 0 rgba(255,255,255,.55) !important; backdrop-filter: none; }
+html.aero .searchbox .sq { color: #1e2a3a; } html.aero .searchbox .sq::placeholder, html.aero .searchbox .muted { color: #6b7a8f; font-style: italic; }
+html.aero .searchbox:focus-within { border-color: color-mix(in srgb, var(--blue) 80%, #000); box-shadow: inset 0 1px 2px rgba(0,0,0,.14), 0 0 0 1px color-mix(in srgb, var(--blue) 35%, transparent), 0 0 8px color-mix(in srgb, var(--blue) 55%, transparent) !important; }
+html.aero:not(.l-light) .searchbox { background: linear-gradient(rgba(255,255,255,.14), rgba(255,255,255,.06)) !important; border-color: rgba(0,0,0,.55) rgba(255,255,255,.18) rgba(255,255,255,.28) rgba(255,255,255,.18); color: #b9c6d8; }
+html.aero:not(.l-light) .searchbox .sq { color: #eef3fa; } html.aero:not(.l-light) .searchbox .sq::placeholder, html.aero:not(.l-light) .searchbox .muted { color: #a9b7ca; }
+/* bars (CPU, memory, disk, progress) in each look's own style; the fill keeps its color (blue, amber, red…) */
+html.aero .bar { height: 12px; border-radius: 3px; border: 1px solid #8f9fb3; background: linear-gradient(#d9dee5, #f6f8fa 45%, #fff); box-shadow: inset 0 1px 1px rgba(0,0,0,.15); }
+html.aero .bar > i { border-radius: 2px 0 0 2px;
+  background: linear-gradient(rgba(255,255,255,.75), rgba(255,255,255,.25) 45%, rgba(255,255,255,0) 50%, rgba(255,255,255,.18)), linear-gradient(var(--c, var(--blue)), var(--c, var(--blue)));
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.25); position: relative; overflow: hidden; }
+html.aero .bar > i::after { content: ""; position: absolute; inset: 0; width: 40%; background: linear-gradient(90deg, transparent, rgba(255,255,255,.55), transparent);
+  animation: aeroBarShine 2.6s linear infinite; }
+@keyframes aeroBarShine { from { transform: translateX(-120%); } to { transform: translateX(300%); } }
+html.reduce.aero .bar > i::after { animation: none; display: none; }
+html.aero:not(.l-light) .bar { border-color: rgba(0,0,0,.6); background: linear-gradient(rgba(0,0,0,.45), rgba(255,255,255,.06)); }
+html.fluent .bar { height: 4px; border-radius: 2px; background: color-mix(in srgb, var(--text) 14%, transparent); margin-top: auto; }
+html.fluent .bar > i { border-radius: 2px; }
+html.breeze .bar { height: 6px; border-radius: 3px; background: color-mix(in srgb, var(--text) 12%, transparent); box-shadow: inset 0 0 0 1px var(--bz-frame, transparent); }
+html.breeze .bar > i { border-radius: 3px; }
+html.liquid .bar { height: 8px; border-radius: 99px; background: color-mix(in srgb, var(--text) 10%, transparent); box-shadow: inset 0 1px 2px rgba(0,0,0,.12); }
+html.liquid .bar > i { border-radius: 99px; box-shadow: inset 0 1px 0 rgba(255,255,255,.45); }
+html.material .bar { height: 10px; border-radius: 5px; background: color-mix(in srgb, var(--blue) 18%, transparent); }
+html.material .bar > i { border-radius: 5px; }
+/* dialogs have the same corners as windows in every look (Labs → Window corners and Corner roundness apply to both) */
+html { --wrb: 26px; } html.material { --wrb: 28px; } html.liquid { --wrb: 16px; } html.fluent { --wrb: 8px; } html.breeze { --wrb: 6px; } html.aero { --wrb: 7px; }
+#sheet .box, html :is(.material, .liquid, .fluent, .breeze, .aero) #sheet .box { border-radius: calc(var(--wrb) * var(--rk, 1) * var(--wrk, 1)) !important; }
+
+/* Appearance → Top and bottom fades: off, or in a color of your own */
+html.no-scrims .scrim, html.no-scrims .scrim-bottom { display: none !important; }
+html:not(.material, .liquid, .fluent, .breeze, .aero) { --wp-own: var(--wp-glow); } html.liquid { --wp-own: var(--wp-vivid); } html.fluent { --wp-own: var(--wp-soft); } html.aero { --wp-own: var(--wp-aero); }
+.wpgal .wpv > i { position: absolute; left: 0; top: 0; width: 100vw; height: 100vh; transform-origin: 0 0; transform: scale(var(--s, .1)); background-color: var(--bg); }

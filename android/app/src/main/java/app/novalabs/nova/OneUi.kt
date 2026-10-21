@@ -44,6 +44,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.Offset
@@ -524,11 +525,9 @@ private fun DialogButton.role(t: NovaColors) = when { color == null -> "cancel";
 /** Determinate bar, or (fraction == null) a sliding segment for "working, no number yet". */
 @Composable fun ProgressBar(fraction0: Float?, color: Color = N.blue) {
     val fraction = fraction0?.takeIf { !it.isNaN() && !it.isInfinite() }      // NaN would crash the animation
+    if (fraction != null) { val f by animateFloatAsState(fraction.coerceIn(0f, 1f), tween(600), label = "pb"); LookBar(f, color); return }
     Box(Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(4.dp)).background(N.divider)) {
-        if (fraction != null) {
-            val f by animateFloatAsState(fraction.coerceIn(0f, 1f), tween(600), label = "pb")
-            Box(Modifier.fillMaxWidth(f).fillMaxHeight().clip(RoundedCornerShape(4.dp)).background(color))
-        } else {
+        run {
             val t = rememberInfiniteTransition(label = "ind")
             val x by t.animateFloat(-0.35f, 1f, infiniteRepeatable(tween(1400, easing = FastOutSlowInEasing)), label = "x")
             Canvas(Modifier.fillMaxSize()) {
@@ -566,7 +565,7 @@ private fun DialogButton.role(t: NovaColors) = when { color == null -> "cancel";
         textStyle = TextStyle(color = N.text, fontSize = 17.sp, fontFamily = if (mono) FontFamily.Monospace else null),
         cursorBrush = SolidColor(N.blue),
         decorationBox = { inner ->
-            Box(Modifier.clip(RoundedCornerShape(22.dp)).background(N.pill).padding(horizontal = 18.dp, vertical = 14.dp)) {
+            Box(Modifier.fieldSurface(22.dp).padding(horizontal = 18.dp, vertical = 14.dp)) {
                 if (value.isEmpty()) Text(placeholder, color = N.sub, fontSize = 17.sp, fontFamily = if (mono) FontFamily.Monospace else null)
                 inner()
             }
@@ -638,5 +637,25 @@ val LocalNavPad = staticCompositionLocalOf { 0.dp }
     OneDialog(onDismiss, title, null, listOf(DialogButton("Cancel") { onDismiss() },
         DialogButton("Save", N.blue, enabled = v.isNotBlank() && v.trim() != initial) { onSave(v.trim()) })) {
         OneTextField(v, { v = it.take(40) }, hint, Modifier.fillMaxWidth().padding(horizontal = 22.dp))
+    }
+}
+
+
+/** A text field's (and the search bar's) surface in each look: Aero — Windows 7's light field in a beveled frame;
+ *  Mica — a small-cornered field with a line along the bottom; Breeze — a thin frame; Glass — a capsule; otherwise the
+ *  rounded fill. [round]: the corner in the default look. Same as Nova web. */
+@Composable fun Modifier.fieldSurface(round: androidx.compose.ui.unit.Dp): Modifier {
+    val t = N
+    return when (t.preset) {
+        "aero" -> { val sh = RoundedCornerShape(3.dp * roundK())
+            this.clip(sh).background(Brush.verticalGradient(if (t.dark) listOf(Color.White.copy(alpha = 0.14f), Color.White.copy(alpha = 0.06f))
+                    else listOf(androidx.compose.ui.graphics.lerp(Color.White, t.blue, 0.08f), Color.White)))
+                .border(1.dp, Brush.verticalGradient(if (t.dark) listOf(Color.Black.copy(alpha = 0.55f), Color.White.copy(alpha = 0.25f)) else listOf(Color(0xFF7F8FA6), Color(0xFFD6DFEB))), sh) }
+        "fluent" -> { val sh = RoundedCornerShape(4.dp * roundK())
+            this.clip(sh).background(t.text.copy(alpha = 0.06f)).border(1.dp, t.text.copy(alpha = 0.08f), sh)
+                .then(androidx.compose.ui.Modifier.drawWithContent { drawContent(); drawLine(t.sub, Offset(0f, size.height - 0.5f), Offset(size.width, size.height - 0.5f), 1.dp.toPx()) }) }
+        "breeze" -> { val sh = RoundedCornerShape(3.dp * roundK()); this.clip(sh).background(t.card).border(1.dp, t.divider, sh) }
+        "liquid" -> this.clip(RoundedCornerShape(50)).background(N.pill)
+        else -> this.clip(RoundedCornerShape(round)).background(N.pill)
     }
 }

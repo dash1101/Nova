@@ -116,7 +116,7 @@ export function segmented(options, selected, key) {
   return `<div class="seg glass" data-seg="${key}" style="--n:${options.length}"><span class="bead" style="width:calc((100% - 8px) / ${options.length});transform:translateX(${selected * 100}%)"></span>
     ${options.map((o, i) => `<button class="${i === selected ? "on" : ""}" data-segi="${i}">${esc(o)}</button>`).join("")}</div>`;
 }
-export const bar = (frac, color = "var(--blue)") => `<div class="bar"><i style="width:${Math.round(Math.max(0, Math.min(1, frac || 0)) * 100)}%;background:${color}"></i></div>`;
+export const bar = (frac, color = "var(--blue)") => `<div class="bar"><i style="width:${Math.round(Math.max(0, Math.min(1, frac || 0)) * 100)}%;--c:${color}"></i></div>`;
 export const usageColor = f => f > .95 ? "var(--red)" : f > .85 ? "var(--amber)" : "var(--blue)";
 
 // ── toast & sheets ──────────────────────────────────────────────────────────────
@@ -246,18 +246,21 @@ export function wireCommon(root, { onSeg, onRange, onRangeInput } = {}) {
 export function reorderable(list, onMove) {
   const rows = () => $$(".row[data-key]", list);
   rows().forEach(row => {
-    let timer, startY, lifted = false, h, from, to;
-    const cancel = () => { clearTimeout(timer); };
+    let timer, startY, lifted = false, h, from, to, pid = null, mouse = false;
+    const cancel = () => { clearTimeout(timer); pid = null; };
+    const lift = () => {
+      clearTimeout(timer); if (pid == null) return;
+      lifted = true; try { row.setPointerCapture(pid); } catch {} row.classList.add("lift");
+      h = row.getBoundingClientRect().height; from = rows().indexOf(row); to = from; navigator.vibrate?.(10);
+    };
     row.addEventListener("pointerdown", e => {
-      if (e.target.closest("[data-noreorder]")) return;
-      startY = e.clientY;
-      timer = setTimeout(() => {
-        lifted = true; row.setPointerCapture(e.pointerId); row.classList.add("lift");
-        h = row.getBoundingClientRect().height; from = rows().indexOf(row); to = from; navigator.vibrate?.(10);
-      }, e.pointerType === "mouse" ? 180 : 350);
+      if (e.target.closest("[data-noreorder], input, textarea, select") || e.button > 0) return;
+      startY = e.clientY; pid = e.pointerId; mouse = e.pointerType === "mouse";
+      timer = setTimeout(lift, mouse ? 180 : 350);
     });
     row.addEventListener("pointermove", e => {
-      if (!lifted) { if (Math.abs(e.clientY - startY) > 8) cancel(); return; }
+      // with a mouse, moving is the drag (no need to hold still first); on touch, moving early means scrolling
+      if (!lifted) { const dy = Math.abs(e.clientY - startY); if (mouse && pid != null && dy > 4) { e.preventDefault(); lift(); } else if (dy > 8) cancel(); if (!lifted) return; }
       e.preventDefault();
       const dy = e.clientY - startY; row.style.transform = `translateY(${dy}px) scale(1.03)`;
       const all = rows(); to = Math.max(0, Math.min(all.length - 1, from + Math.round(dy / h)));
@@ -265,6 +268,7 @@ export function reorderable(list, onMove) {
     });
     const end = () => {
       cancel(); if (!lifted) return; lifted = false;
+      row.addEventListener("click", ev => { ev.stopPropagation(); ev.preventDefault(); }, { capture: true, once: true });   // a drag isn't a tap
       rows().forEach(r => { r.style.transform = ""; }); row.classList.remove("lift");
       if (to !== from) { const keys = rows().map(r => r.dataset.key); keys.splice(to, 0, keys.splice(from, 1)[0]); onMove(keys); navigator.vibrate?.(6); }
     };
@@ -399,7 +403,7 @@ export function swipeable(root, { onRight, onLeft } = {}) {
       if (horiz == null) { if (Math.abs(mx) < 8 && Math.abs(my) < 8) return; horiz = Math.abs(mx) > Math.abs(my); if (horiz) el.setPointerCapture(e.pointerId); }
       if (!horiz) return;
       dx = mx; if (dx > 0 && !el.dataset.right) dx = 0; if (dx < 0 && !el.dataset.left) dx = 0;
-      fg.style.transition = "none"; fg.style.transform = `translateX(${dx}px)`;
+      fg.style.transition = "none"; fg.style.transform = `translateX(${dx}px)`; el.classList.add("moving");
       const w = el.clientWidth, past = Math.abs(dx) > w * .35, side = dx > 0 ? "right" : "left";
       bg.className = "swbg " + side; bg.textContent = dx ? el.dataset[side] : ""; bg.style.opacity = Math.min(1, .3 + Math.abs(dx) / (w * .35) * .7);
       if (past !== armed) { armed = past; navigator.vibrate?.(past ? 12 : 4); }
@@ -411,7 +415,7 @@ export function swipeable(root, { onRight, onLeft } = {}) {
         const w = el.clientWidth, right = dx > 0; fg.style.transform = `translateX(${right ? w : -w}px)`;
         el.style.height = el.offsetHeight + "px"; void el.offsetHeight; el.classList.add("gone"); el.addEventListener("click", ev => ev.stopPropagation(), { capture: true, once: true });
         setTimeout(() => (right ? onRight : onLeft)?.(el.dataset.key, el), 180);
-      } else { fg.style.transform = ""; bg.textContent = ""; }
+      } else { fg.style.transform = ""; bg.textContent = ""; bg.style.opacity = 0; setTimeout(() => el.classList.remove("moving"), 320); }
     };
     el.addEventListener("pointerup", end); el.addEventListener("pointercancel", end);
   });

@@ -72,9 +72,33 @@ def stopped_on_purpose(c):
     if pol in ("always", "unless-stopped"): return True
     return c["Name"].lstrip("/") in load_json("/var/lib/nova-api/force-stopped.json", {})
 
+def _since(ts):
+    """Seconds since a Docker timestamp (2026-10-21T04:51:08.52Z), or None."""
+    try:
+        import datetime
+        t = datetime.datetime.fromisoformat(ts[:19]).replace(tzinfo=datetime.timezone.utc)
+        return max(0, int(time.time() - t.timestamp())) if t.year > 1 else None
+    except (ValueError, TypeError): return None
+
+def _published(c):
+    """Published ports, like docker ps: [{"host_ip", "host", "container", "proto"}]."""
+    out, seen = [], set()
+    for k, v in ((c.get("NetworkSettings") or {}).get("Ports") or {}).items():
+        cport, _, proto = k.partition("/")
+        for b in v or []:
+            key = (b.get("HostPort"), cport, proto)
+            if key in seen: continue                      # (IPv4 and IPv6 bindings of the same port)
+            seen.add(key); out.append({"host_ip": b.get("HostIp") or "0.0.0.0", "host": b.get("HostPort", ""), "container": cport, "proto": proto or "tcp"})
+    return sorted(out, key=lambda p: (int(p["host"]) if str(p["host"]).isdigit() else 0))
+
 def summary(c):
     lab = c["Config"].get("Labels") or {}
+    st = c["State"]
     return {"name": c["Name"].lstrip("/"), "stack": lab["com.docker.compose.project"],
+            "id": c["Id"][:12], "ports": _published(c), "network": (c.get("HostConfig") or {}).get("NetworkMode", ""),
+            "up_s": _since(st.get("StartedAt", "")) if st.get("Status") == "running" else None,
+            "exited_s": _since(st.get("FinishedAt", "")) if st.get("Status") in ("exited", "dead") else None,
+            "exit_code": st.get("ExitCode") if st.get("Status") in ("exited", "dead") else None,
             "service": lab.get("com.docker.compose.service", ""),
             "image": c["Config"]["Image"].split("@")[0], "state": c["State"]["Status"],
             "health": (c["State"].get("Health") or {}).get("Status", ""), "stopped": stopped_on_purpose(c),
@@ -107,6 +131,25 @@ def info(c):
     try: stats = json.loads(st.strip() or "{}")
     except Exception: stats = {}
     lab = c["Config"].get("Labels") or {}
+    # where it listens: with its own network, the published ports; on the server's own network (host mode) nothing is
+    # published, so look at what its processes listen on — that's how you reach it (e.g. Home Assistant on 8123)
+    listening = []
+    if hc.get("NetworkMode") == "host" and c["State"].get("Status") == "running":
+        rc, top, _ = run(["docker", "top", s["name"], "-eo", "pid"], timeout=15)
+        pids = {l.strip() for l in top.splitlines()[1:] if l.strip().isdigit()}
+        rc, ss, _ = run(["ss", "-H", "-ltnp"], timeout=15)
+        for line in ss.splitlines():
+            m = re.search(r"\s(\S+):(\d+)\s+\S+\s+users:\((.*)\)$", line.rstrip())
+            if m and set(re.findall(r"pid=(\d+)", m.group(3))) & pids and not m.group(1).startswith(("127.", "[::1]")):
+                listening.append(int(m.group(2)))
+    nets = {n: (v or {}).get("IPAddress", "") for n, v in ((c.get("NetworkSettings") or {}).get("Networks") or {}).items()}
+    cfg = c.get("Config") or {}
+    s.update({"published": s["ports"], "listening": sorted(set(listening))[:20], "networks": nets,
+              "command": " ".join([c.get("Path", "")] + list(c.get("Args") or []))[:300],
+              "compose_file": (lab.get("com.docker.compose.project.config_files") or "").split(",")[0],
+              "compose_files": len([f for f in (lab.get("com.docker.compose.project.config_files") or "").split(",") if f]),
+              "image_id": (c.get("Image") or "")[7:19], "user": cfg.get("User", ""), "workdir": cfg.get("WorkingDir", ""),
+              "exposed": sorted((cfg.get("ExposedPorts") or {}).keys())[:20]})
     s.update({"created": c["Created"][:19], "restart_policy": hc["RestartPolicy"]["Name"] or "no",
               "privileged": hc.get("Privileged", False), "network": hc.get("NetworkMode", ""),
               "ports": ports, "env": env[:60], "mounts": mounts[:30],
@@ -284,6 +327,58 @@ if verb == "container-update" and len(args) == 1:
         changelog(f"Updated container {args[0]} to the newest image (from the Nova app)")
         notify("info", f"App: updated {args[0]}", "Pulled the newest image and recreated it.")
     out({"ok": rc == 0, "error": se.strip()[-300:] if rc else ""}, 0 if rc == 0 else 1)
+
+def _compose_of(name):
+    c = find(name); lab = c["Config"].get("Labels") or {}
+    files = [f for f in (lab.get("com.docker.compose.project.config_files") or "").split(",") if f]
+    wd = lab.get("com.docker.compose.project.working_dir", "")
+    if len(files) != 1 or not os.path.isfile(files[0]) or not wd.startswith("/"):
+        fail("this container isn't from a single Compose file Nova can find, so it can't be edited here")
+    f = os.path.realpath(files[0])
+    if not f.startswith(("/opt/", "/srv/", "/home/", "/root/", "/var/lib/", "/etc/")) or not f.endswith((".yml", ".yaml")):
+        fail("Nova only edits Compose files in the usual places")
+    return c, f, wd, lab.get("com.docker.compose.project", "")
+
+if verb == "compose-get" and len(args) == 1:
+    c, f, wd, proj = _compose_of(args[0])
+    st_ = os.stat(f)
+    backups = sorted(glob.glob(f + ".nova-backup-*"))
+    out({"file": f, "text": open(f, encoding="utf-8", errors="replace").read()[:256 * 1024], "mtime": int(st_.st_mtime),
+         "backup": os.path.basename(backups[-1]) if backups else "", "project": proj})
+
+if verb == "compose-set" and len(args) == 1:
+    c, f, wd, proj = _compose_of(args[0])
+    try: d = json.loads(sys.stdin.buffer.read(300 * 1024) or b"{}")
+    except ValueError: fail("bad request", 2)
+    text, mt = str(d.get("text", "")), d.get("mtime")
+    if not text.strip() or len(text) > 256 * 1024 or "\x00" in text: fail("that isn't a Compose file", 2)
+    if mt is not None and int(os.stat(f).st_mtime) != int(mt): fail("the file changed since you opened it — open it again")
+    # docker compose checks the new file first (with the project's own folder, so its .env and relative paths count)
+    chk = os.path.join(os.path.dirname(f), f".nova-check-{os.getpid()}.yml")
+    with open(chk, "w", encoding="utf-8") as fh: fh.write(text)
+    try:
+        rc, so, se = run(["docker", "compose", "-p", proj, "--project-directory", wd, "-f", chk, "config", "-q"], timeout=60, cwd=wd)
+    finally: os.remove(chk)
+    if rc != 0: fail("Docker Compose says: " + (se or so).strip()[-500:])
+    bak = f"{f}.nova-backup-{time.strftime('%Y%m%d-%H%M%S')}"
+    shutil.copy2(f, bak)
+    with open(f + ".nova-tmp", "w", encoding="utf-8") as fh: fh.write(text)
+    st_ = os.stat(f); os.chown(f + ".nova-tmp", st_.st_uid, st_.st_gid); os.chmod(f + ".nova-tmp", st_.st_mode & 0o777)
+    os.replace(f + ".nova-tmp", f)
+    rc, so, se = run(["docker", "compose", "-p", proj, "-f", f, "up", "-d", "--remove-orphans"], timeout=600, cwd=wd)
+    changelog(f"Edited the Compose file of {proj} ({f}) from the Nova app; backup {os.path.basename(bak)}")
+    if rc != 0: out({"ok": False, "applied": False, "backup": os.path.basename(bak), "error": "saved, but starting it failed: " + (se or so).strip()[-400:]}, 1)
+    out({"ok": True, "backup": os.path.basename(bak), "output": (se or so).strip()[-600:]})
+
+if verb == "compose-undo" and len(args) == 1:
+    c, f, wd, proj = _compose_of(args[0])
+    backups = sorted(glob.glob(f + ".nova-backup-*"))
+    if not backups: fail("there's no earlier version to go back to")
+    shutil.copy2(f, f"{f}.nova-undone-{time.strftime('%Y%m%d-%H%M%S')}")
+    shutil.copy2(backups[-1], f); os.remove(backups[-1])
+    rc, so, se = run(["docker", "compose", "-p", proj, "-f", f, "up", "-d", "--remove-orphans"], timeout=600, cwd=wd)
+    changelog(f"Put back the previous Compose file of {proj} ({os.path.basename(backups[-1])}) from the Nova app")
+    out({"ok": rc == 0, "restored": os.path.basename(backups[-1]), "error": "" if rc == 0 else (se or so).strip()[-400:]}, 0 if rc == 0 else 1)
 
 if verb == "container-policy" and len(args) == 2:
     c = find(args[0]); pol = args[1]

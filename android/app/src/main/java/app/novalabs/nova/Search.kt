@@ -157,7 +157,7 @@ fun searchNova(app: AppState, q0: String, data: Map<String, org.json.JSONObject?
         AppPrefs.set("search_recent", (listOf(t) + AppPrefs.searchRecent.filter { !it.equals(t, true) }).take(12).joinToString("\n")) }
     fun pin(t: String) { AppPrefs.set("search_pinned", (if (t in AppPrefs.searchPinned) AppPrefs.searchPinned - t else (AppPrefs.searchPinned + t).takeLast(8)).joinToString("\n")) }
     Page("Search", app::back) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = Space.gutter, vertical = 6.dp).clip(RoundedCornerShape(28.dp)).background(N.pill)
+        Row(Modifier.fillMaxWidth().padding(horizontal = Space.gutter, vertical = 6.dp).fieldSurface(28.dp)
             .padding(horizontal = 18.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Rounded.Search, null, tint = N.sub); Spacer(Modifier.width(12.dp))
             Box(Modifier.weight(1f)) {

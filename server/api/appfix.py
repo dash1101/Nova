@@ -3,7 +3,8 @@ Apps that need one setting changed before they work at a public address (run by 
 
 Some apps refuse requests that come through a proxy until you tell them to expect it:
   * Home Assistant answers "400: Bad Request" unless its `http:` settings trust the proxy
-    (use_x_forwarded_for + trusted_proxies).
+    (use_x_forwarded_for + trusted_proxies) — in configuration.yaml, or (Home Assistant 2026 and newer, which
+    moved them) in its own settings store, /config/.storage/http.
   * Homepage answers "Host validation failed" unless the address is in HOMEPAGE_ALLOWED_HOSTS.
 
 check(app_id, host) says whether the app needs a change and exactly what Nova would do. apply(app_id, host)
@@ -47,7 +48,30 @@ def _ha_proxies(info):
         subnets += [x for x in r.stdout.split() if x]
     return ["127.0.0.1", "::1"] + subnets
 
+def _ha_store(info):
+    """Home Assistant 2026.x keeps its web server settings in /config/.storage/http (set in its own UI, with a
+    try-then-confirm step), and ignores the http: section of configuration.yaml once that's migrated."""
+    m = next((x for x in info.get("Mounts") or [] if x.get("Destination") == "/config"), None)
+    f = os.path.join(m["Source"], ".storage", "http") if m else ""
+    if not f or not os.path.isfile(f): return None, None
+    try: d = json.load(open(f))
+    except (OSError, ValueError): return f, None
+    return f, d if (d.get("data") or {}).get("yaml_migration_done") else None
+
 def _ha_check(info):
+    sf, sd = _ha_store(info)
+    if sd is not None:                                  # the newer Home Assistant: settings in its own store
+        st = sd["data"].get("stable") or {}
+        proxies = _ha_proxies(info)
+        have = set(st.get("trusted_proxies") or [])
+        if st.get("use_x_forwarded_for") and all(p in have for p in proxies): return {"needed": False}
+        return {"needed": True, "app": "Home Assistant", "file": sf, "auto": isinstance(sd["data"].get("stable"), dict), "store": True,
+                "what": "Home Assistant turns away requests that come through a proxy (that's the “400: Bad Request”) until it's told to trust it. "
+                        "Newer Home Assistant keeps this setting in its own settings, not configuration.yaml.",
+                "will": ["Stop Home Assistant and back up its web server settings (.storage/http)",
+                         "Turn on “Use X-Forwarded-For” and trust " + ", ".join(proxies) + " (this machine's proxy)",
+                         "Start Home Assistant again (about a minute)"],
+                "_proxies": proxies}
     f = _ha_config(info)
     if not f: return {"needed": False, "why": "couldn't find Home Assistant's configuration.yaml"}
     txt = open(f).read()
@@ -63,7 +87,24 @@ def _ha_check(info):
                      + "".join(f"    - {p}\n" for p in proxies).rstrip(), "Then restart Home Assistant"],
             "_block": block}
 
+def _ha_apply_store(info, chk):
+    f, name = chk["file"], info["Name"].lstrip("/")
+    subprocess.run(["docker", "stop", name], capture_output=True, timeout=180)      # (it rewrites this file while running)
+    try:
+        d = json.load(open(f))
+        shutil.copy2(f, f"{f}.nova-backup-{time.strftime('%Y%m%d-%H%M%S')}")
+        st = d["data"]["stable"]
+        st["use_x_forwarded_for"] = True
+        st["trusted_proxies"] = list(dict.fromkeys(list(st.get("trusted_proxies") or []) + chk["_proxies"]))
+        tmp = f + ".nova-tmp"
+        with open(tmp, "w") as fh: json.dump(d, fh, indent=2)
+        st_ = os.stat(f); os.chown(tmp, st_.st_uid, st_.st_gid); os.chmod(tmp, st_.st_mode & 0o777)
+        os.replace(tmp, f)
+    finally:
+        subprocess.run(["docker", "start", name], capture_output=True, timeout=180)
+
 def _ha_apply(info, chk):
+    if chk.get("store"): return _ha_apply_store(info, chk)
     f = chk["file"]
     shutil.copy2(f, f"{f}.nova-backup-{time.strftime('%Y%m%d-%H%M%S')}")
     with open(f, "a") as fh: fh.write(("" if open(f).read().endswith("\n") else "\n") + "\n# added by Nova so Home Assistant works behind your Cloudflare address\n" + chk["_block"])

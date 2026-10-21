@@ -6,6 +6,6 @@ if [ "$1" = remove ]; then
         echo "Note: Nova put apps on your Cloudflare tunnel. They stay there after Nova is removed."
         echo "      To take them off first:  sudo nova cloudflare undo   (it lists them and asks)"
     fi
-    systemctl disable --now nova-api.service nova-helper.socket nova-rgb-anim.service nova-rgb-tick.timer nova-alerts.timer nova-backups.timer nova-labs.timer >/dev/null 2>&1 || true
+    systemctl disable --now nova-api.service nova-helper.socket nova-rgb-anim.service nova-rgb-tick.timer nova-alerts.timer nova-alerts.path nova-backups.timer nova-labs.timer >/dev/null 2>&1 || true
 fi
 exit 0

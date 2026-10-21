@@ -491,9 +491,26 @@ export async function status(ctx) {
 // ══════════════════════════════════ CONTAINERS ══════════════════════════════════
 const POLICIES = [["unless-stopped", "Always, unless you stop it"], ["always", "Always"], ["on-failure", "Only if it crashes"], ["no", "Never"]];
 const stateColor = (s, h) => h === "unhealthy" ? "var(--amber)" : s === "running" ? "var(--green)" : s === "restarting" ? "var(--amber)" : "var(--sub)";
+// like docker ps: "Up 3 hours", "Exited (1) 2 days ago"
+const dur = sec => sec == null ? "" : sec < 60 ? "less than a minute" : sec < 3600 ? `${Math.round(sec / 60)} minute${Math.round(sec / 60) === 1 ? "" : "s"}`
+  : sec < 172800 ? `${Math.round(sec / 3600)} hour${Math.round(sec / 3600) === 1 ? "" : "s"}` : `${Math.round(sec / 86400)} days`;
+const upText = x => x.up_s != null ? `Up ${dur(x.up_s)}` : x.exited_s != null ? `Exited (${x.exit_code ?? "?"}) ${dur(x.exited_s)} ago` : cap(x.state || "");
+const portsText = x => x.network === "host" ? "server's network" : (x.ports || []).filter(p => p.host).map(p => `${p.host_ip === "127.0.0.1" ? "local " : ""}${p.host}→${p.container}${p.proto === "udp" ? "/udp" : ""}`).join(", ");
+const openUrls = c => {                 // where to open it from here
+  const h = serverHost(), web = p => [80, 443, 8443].includes(+p) ? (+p === 443 || +p === 8443 ? "https" : "http") : "http";
+  const pub = (c.published || []).filter(p => p.host && p.host_ip !== "127.0.0.1" && p.proto !== "udp").map(p => +p.host);
+  const ports = c.network === "host" ? (c.listening || []).slice(0, 1) : pub;          // (host network: its main port; the rest are listed below)
+  return [...new Set(ports)].slice(0, 6).map(p => `${web(p)}://${h}${[80, 443].includes(p) ? "" : ":" + p}/`);
+};
+
+// the backgrounds of every look, for Appearance → Background (the CSS draws them: html.bg-*, --wp-*)
+const WALLS = [["", "This look's own", "var(--wp-own, none)"], ["glow", "Default's glow", "var(--wp-glow)"], ["vivid", "Glass's vivid glow", "var(--wp-vivid)"],
+  ["soft", "Mica's soft wash", "var(--wp-soft)"], ["aero", "Aero's sky", "var(--wp-aero)"], ["plain", "Plain", "none"]];
+
 export async function containers(ctx) {
   const [name, sub] = ctx.args;
   if (name && sub === "logs") return logs(ctx, name);
+  if (name && sub === "compose") return composeEditor(ctx, name);
   if (name && sub === "shell") return shell(ctx, name);
   if (name) return container(ctx, name);
   let heavy = false;
@@ -512,7 +529,7 @@ export async function containers(ctx) {
     const off = items.filter(x => x.stopped).length;          // stopped on purpose: not a problem, just not running
     ctx.show(`<div class="statusline" style="cursor:default"><span class="dot" style="background:${up + off === items.length ? "var(--green)" : "var(--amber)"}"></span>${S.cache["/api/v1/containers"] ? `${up} of ${items.length - off} running${off ? ` · ${off} stopped` : ""}` : "Loading…"}</div>
       ${items.length > 1 ? segmented(["By app", "Heaviest first"], heavy ? 1 : 0, "csort") : ""}
-      ${nod}${shown.map(([g, cs]) => sec(cap(g)) + group(cs.map(x => row(x.name, { sub: `${x.image.split("/").pop()} · ${x.health ? x.state + ", " + x.health : x.state}${use(x)}`, click: "open:" + x.name, end: `<span class="dot" style="background:${stateColor(x.state, x.health)}"></span>` })).join(""))).join("")}`,
+      ${nod}${shown.map(([g, cs]) => sec(cap(g)) + group(cs.map(x => row(x.name, { sub: `${x.image.split("/").pop()} · ${upText(x)}${x.health ? ` (${x.health})` : ""}${portsText(x) ? " · " + portsText(x) : ""}${use(x)}`, click: "open:" + x.name, end: `<span class="dot" style="background:${stateColor(x.state, x.health)}"></span>` })).join(""))).join("")}`,
       { title: "Containers", actions: isAdmin() ? [{ icon: "add", label: "Add a container", act: "addc" }] : [] });
     wireCommon(ctx.root, { onSeg: (k, i) => { if (k === "csort") { heavy = i === 1; draw(); } } });
   };
@@ -548,7 +565,12 @@ async function container(ctx, name) {
         ${group(row("Logs", { sub: "See what it's been saying", blue: true, icon: "article", click: "logs" }) + (isAdmin() ? row("Terminal", { sub: "Run commands inside it (approved on your phone)", blue: true, icon: "term", click: "shell" }) : ""))}
         ${sec("Configuration")}${group(row("Restart policy", { sub: (POLICIES.find(p => p[0] === c.restart_policy) || [0, c.restart_policy])[1], blue: true, click: "policy" })
           + row("Stack", { sub: `${c.stack || "—"} · ${c.compose_dir || ""}` }) + (c.privileged ? row("Privileged", { sub: "Has full access to the host", end: `<span style="color:var(--amber)">${I("warn")}</span>` }) : ""))}
+        ${(() => { const urls = openUrls(c); return urls.length || c.network === "host" ? sec("Open it") + group(urls.map(u => row(u.replace(/\/$/, ""), { sub: "Opens in a new tab", icon: "open", blue: true, click: "url:" + u })).join("")
+            + (c.network === "host" ? row("On the server's own network", { sub: `It doesn't get ports of its own — it listens on the server directly${(c.listening || []).length ? ` (${c.listening.join(", ")})` : ""}, which is why docker ps shows none. Your firewall decides who can reach it.`, icon: "info" }) : "")) : ""; })()}
         ${(c.ports || []).length ? sec("Ports") + group(c.ports.map(p => row(p)).join("")) : ""}
+        ${sec("Details")}${group(row("Container ID", { sub: c.id || "—" }) + row("Command", { sub: c.command || "—" }) + row("Created", { sub: c.created ? new Date(c.created + "Z").toLocaleString() : "—" })
+          + row("Networks", { sub: Object.entries(c.networks || {}).map(([n, ip]) => ip ? `${n} (${ip})` : n).join(", ") || "—" }) + (c.exposed?.length ? row("Ports it offers", { sub: c.exposed.join(", ") }) : ""))}
+        ${isAdmin() && c.compose_file && c.compose_files === 1 ? group(row("Edit its Compose file", { sub: `Ports, folders, environment, anything — checked before it's saved, and you can undo it · ${c.compose_file}`, icon: "edit", blue: true, click: "compose" })) : ""}
         ${(c.mounts || []).length ? sec("Folders") + group(c.mounts.map(m => row(m.target, { sub: m.source + (m.rw === false ? " · read-only" : "") })).join("")) : ""}
         ${(c.env || []).length ? sec("Environment") + group(c.env.map(e => row(e.key, { sub: e.value })).join("")) : ""}
         ${isAdmin() && c.custom ? group(row("Remove this container", { sub: "Stops it and moves its folder to /opt/.nova-uninstalled (nothing is deleted)", icon: "del", tint: "var(--red)", click: "rmcustom" })) : ""}` : ""}`,
@@ -572,6 +594,8 @@ async function container(ctx, name) {
     },
     shell: () => S.cache[path]?.state === "running" ? ctx.go(`containers/${encodeURIComponent(name)}/shell`) : toast("Start it first"),
     logs: () => ctx.go(`containers/${encodeURIComponent(name)}/logs`),
+    compose: () => ctx.go(`containers/${encodeURIComponent(name)}/compose`),
+    url: u => window.open(u, "_blank", "noopener"),
     fix: async k => {
       const what = { kill: ["Stop it?", `${name} stops, and its automatic restarts are turned off until you start it again.`, "Stop"], rollback: ["Go back to the previous version?", `${name} restarts on the image it had before its last update. Its data stays.`, "Go back"],
         recreate: ["Recreate it?", `${name} is rebuilt from its compose file. Its data stays.`, "Recreate"] }[k];
@@ -592,6 +616,40 @@ async function container(ctx, name) {
     },
   });
   draw(); await load(); ctx.every(8000, load);
+}
+// A container's Compose file: edit it as text; Docker Compose checks it before anything is saved, the old one is kept,
+// and the containers are updated to match (your phone confirms). Undo puts the previous version back.
+async function composeEditor(ctx, name) {
+  const path = `/api/v1/containers/${encodeURIComponent(name)}/compose`;
+  let d = null, err = null, dirty = false, busy = "";
+  const draw = () => {
+    ctx.show(err ? group(row("Couldn't open it", { sub: err, icon: "err", tint: "var(--red)" })) : !d ? group(row("Opening…", { dis: true }))
+      : note(`${d.file} · how ${esc(d.project)} runs: its image, ports ("8080:80" = the server's 8080 to the app's 80), folders, environment and restart policy. Docker Compose checks your change before it's saved; the old file is kept, and Undo puts it back.`)
+        + `<div style="padding:0 var(--gutter)"><textarea class="editor field" id="cmp" spellcheck="false" autocomplete="off" style="width:100%;min-height:55vh;font:13px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre;resize:vertical;padding:14px">${esc(d.text)}</textarea></div>`
+        + (busy ? note(busy) : "")
+        + `<div style="display:flex;gap:12px;padding:18px 22px;flex-wrap:wrap">${d.backup ? `<button class="btn" style="flex:1;background:color-mix(in srgb,var(--text) 8%,transparent);color:var(--text)" data-act="undo">Undo the last change</button>` : ""}
+           <button class="btn" style="flex:1;background:color-mix(in srgb,var(--text) 8%,transparent);color:var(--text)" data-act="back">Cancel</button><button class="btn" style="flex:1" data-act="save">Save and apply</button></div>`,
+      { title: "Compose · " + name });
+    const t = $("#cmp"); if (t) { t.oninput = () => { dirty = true; }; t.onkeydown = e => { if (e.key === "Tab") { e.preventDefault(); t.setRangeText("  ", t.selectionStart, t.selectionEnd, "end"); dirty = true; } }; }
+  };
+  const load = async () => { try { d = await get(path); err = null; } catch (e) { err = e.message; } if (ctx.alive()) draw(); };
+  ctx.handlers({
+    save: async () => {
+      const text = $("#cmp").value; if (!dirty) return toast("No changes");
+      if (!(await confirm("Save and apply?", `${name} and the rest of ${d.project} are updated to match — containers whose settings changed restart. Your phone confirms it.`, "Save", "var(--blue)"))) return;
+      busy = "Checking and applying…"; const keep = text; draw(); $("#cmp").value = keep;
+      try { const r = await post(path, { text, mtime: d.mtime }); toast(r?.ok === false ? r.error : "Saved — it's running with the new settings"); dirty = false; await load(); }
+      catch (e) { busy = ""; draw(); $("#cmp").value = keep; return toast(e.message); }
+      busy = ""; draw();
+    },
+    undo: async () => {
+      if (!(await confirm("Undo the last change?", `The Compose file goes back to how it was before (${d.backup}), and ${d.project} is updated to match.`, "Undo", "var(--blue)"))) return;
+      busy = "Putting the previous version back…"; draw();
+      try { await post(path + "/undo", {}); toast("Put back"); dirty = false; } catch (e) { toast(e.message); }
+      busy = ""; await load();
+    },
+  });
+  draw(); await load();
 }
 async function logs(ctx, name) {
   ctx.show(`<div class="term" id="logs">Loading…</div>`, { title: "Logs · " + name, narrow: false });
@@ -923,6 +981,8 @@ export async function inbox(ctx) {
   ctx.onLeave?.(() => { removeEventListener("keydown", onKey); removeEventListener("mousedown", onDown, true); });
   draw();
   ctx.every(15000, async () => { const r = await get("/api/v1/events?since=0"); if (r.events?.[0]) { prefs.lastEventSeen = r.events[0].t; S.unread = 0; } await refresh(); draw(); }, true);
+  { const now = () => { if (!ctx.alive()) return removeEventListener("nova:events", now); const r = S.cache["/api/v1/events?since=0"]; if (r?.events?.[0]) { prefs.lastEventSeen = r.events[0].t; S.unread = 0; } draw(); };
+    addEventListener("nova:events", now); }
 }
 export async function archive(ctx) {
   // The archive lives on the server (any device can read it). This browser's own copy fills gaps
@@ -1735,7 +1795,9 @@ export async function appearance(ctx) {
             <div class="range-row"><div class="h"><span>Dim</span><span id="diml">${prefs.wallDim ?? 35}%</span></div><input type="range" min="0" max="90" value="${prefs.wallDim ?? 35}" data-range="wallDim" style="--p:${(prefs.wallDim ?? 35) / 90 * 100}%"></div>`
             + row("Change the picture", { icon: "image", blue: true, click: "wall" }) + row("Remove the wallpaper", { icon: "del", tint: "var(--red)", click: "unwall" }))
           : group(row("Choose a picture", { sub: "Behind every page, blurred and dimmed as you like. Kept in this browser only.", icon: "image", blue: true, click: "wall" })
-            + row("Background", { sub: { glow: "Default's glow", plain: "Plain" }[prefs.lookBg] || "This look's own", icon: "palette", click: "lookbg" }))}
+            + row("Background", { sub: WALLS.find(w => w[0] === (prefs.lookBg || ""))?.[1] || "This look's own", icon: "palette", click: "lookbg" }))}
+      ${group(switchRow("Top and bottom fades", "The soft tint at the top and bottom of the screen, so the page fades out under the bars", prefs.scrims !== false, "scrims", { blue: false })
+        + (prefs.scrims !== false ? row("Fade color", { sub: prefs.scrimColor ? "Your own color" : "The page's color", blue: !!prefs.scrimColor, end: `<span class="swatch" style="background:${esc(prefs.scrimColor || "var(--bg)")}"></span>`, click: "scrimcolor" }) : ""))}
       ${sec("Language")}${group(row("Language", { sub: prefs.lang && prefs.lang !== "auto" ? (LANGS.find(l => l[0] === prefs.lang)?.[1] || prefs.lang) : `Same as this browser (${LANGS.find(l => l[0] === pickLang("auto"))?.[1] || "English"})`, blue: true, icon: "article", click: "lang" }))}
       ${note("Nova's own words are translated (by machine, so some may read oddly — tell us on GitHub). Messages written by the server, like alert details, stay in English for now.")}
       ${(() => { const g = gpuInfo(); if (!g.software && g.blur) return "";
@@ -1800,8 +1862,21 @@ export async function appearance(ctx) {
       if (!v) return; if (v === "off") prefs.padHints = false; else { prefs.padHints = true; prefs.padGlyphs = v; } draw();
     },
     livewall: () => { prefs.livingWall = !prefs.livingWall; ctx.applyTheme(); draw(); },
-    lookbg: async () => { const v = await choose("Background", [["", "This look's own", "Each look's usual background"], ["glow", "Default's glow", "The Default look's soft glow, on any look"], ["plain", "Plain", "Just the look's background color"]], prefs.lookBg || "");
-      if (v == null) return; prefs.lookBg = v; ctx.applyTheme(); draw(); },
+    scrims: () => { prefs.scrims = prefs.scrims === false; ctx.applyTheme(); draw(); },
+    scrimcolor: async () => {
+      const v = await choose("Fade color", [["", "The page's color", "Follows your look and light or dark"], ["pick", "Pick a color…"]], prefs.scrimColor ? "pick" : ""); if (v == null) return;
+      if (v === "pick") { const c = await colorPicker(prefs.scrimColor || "#000000"); if (!c) return; prefs.scrimColor = c; } else prefs.scrimColor = "";
+      ctx.applyTheme(); draw();
+    },
+    lookbg: async () => {
+      // a small gallery: each look's own background, shown as it would look here
+      const cur = prefs.lookBg || "";
+      const p = dialog("Background", "Every look's built-in background — pick one for any look.", [{ label: "Close", value: null }],
+        `<div class="pad"><div class="wpgal">${WALLS.map(([k, l, wp]) => `<button class="press${k === cur ? " on" : ""}" data-wp="${k}"><span class="wpv"><i style="background-image:${wp}"></i></span>${esc(l)}</button>`).join("")}</div></div>`);
+      document.querySelectorAll("#sheet .wpv").forEach(v => { v.style.aspectRatio = `${innerWidth} / ${innerHeight}`; v.style.setProperty("--s", v.clientWidth / innerWidth); });      // a whole screen, shrunk
+      document.querySelectorAll("#sheet [data-wp]").forEach(b => b.onclick = () => { prefs.lookBg = b.dataset.wp; ctx.applyTheme(); document.querySelectorAll("#sheet [data-wp]").forEach(x => x.classList.toggle("on", x === b)); });
+      await p; draw();
+    },
     amb: () => { prefs.ambience = !prefs.ambience; AMB.update(); draw(); },
     snd: () => { prefs.sounds = !SND.soundsOn(); draw(); if (prefs.sounds) SND.play("toggleOn", { force: true }); },
     skind: k => { const o = { ...(prefs.sndOff || {}) }; o[k] = !o[k]; prefs.sndOff = o;     // in place: the dropdown stays open

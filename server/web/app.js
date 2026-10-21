@@ -54,7 +54,9 @@ function applyTheme() {
   for (const p of ["liquid", "fluent", "breeze", "aero"]) root.classList.toggle(p, preset === p);
   root.classList.toggle("l-light", !dark);
   // Background (Appearance → Wallpaper): the look's own, the Default look's glow on any look, or plain
-  root.classList.toggle("bg-glow", prefs.lookBg === "glow"); root.classList.toggle("bg-plain", prefs.lookBg === "plain");
+  for (const k of ["glow", "vivid", "soft", "aero", "plain"]) root.classList.toggle("bg-" + k, prefs.lookBg === k);
+  root.classList.toggle("no-scrims", prefs.scrims === false);
+  if (prefs.scrimColor && /^#[0-9a-f]{6}$/i.test(prefs.scrimColor)) root.style.setProperty("--scrim", prefs.scrimColor); else root.style.removeProperty("--scrim");
   // the Default look's own Transparency and Frost (Appearance): see-through cards, and how blurred what's behind them is
   const dlook = !preset && !material, dtr = Math.max(0, Math.min(85, +(prefs.dTrans ?? 0))), dfr = Math.max(0, Math.min(40, +(prefs.dFrost ?? 26)));
   root.classList.toggle("dtune", dlook && (dtr > 0 || dfr !== 26));
@@ -452,22 +454,34 @@ async function start() {
   // keep the overview fresh in the background (screens refresh what they show themselves)
   setInterval(() => { if (!document.hidden) refresh().catch(e => { if (e.code === 401) unauthorized(); }); }, 30000);
   if (WM.EMBED) { document.documentElement.classList.add("embed"); return; }   // the window's Nova page already watches alerts
-  watchEvents(); setInterval(watchEvents, 20000);
+  watchEvents();
   addEventListener("resize", () => { const [r] = parse(); drawNav(r); });
 }
 start();
 
 // ── New alerts while Nova is open: a banner on the page, and a browser notification when the tab is in the background ──
 let alertSince = null, alertQueue = [], alertTimer;
+// A long poll, like the app's instant alerts: the server answers the moment a newer event is written (or after 25 s with
+// nothing), and we ask again straight away — so a new alert shows within a second or two, not on the next 20-second check.
 async function watchEvents() {
-  try {
-    const ev = ((await get(`/api/v1/events?since=${alertSince ?? 0}`)).events || []);
-    const newest = Math.max(0, ...ev.map(e => e.t));
-    if (alertSince === null) { alertSince = newest || Date.now() / 1000; return; }      // what's already there isn't news
-    const fresh = ev.filter(e => e.t > alertSince).sort((a, b) => a.t - b.t);
-    if (!fresh.length) return;
-    alertSince = newest; announce(fresh);
-  } catch {}
+  for (let fails = 0; ;) {
+    try {
+      if (alertSince === null) {
+        const ev = (await get("/api/v1/events?since=0")).events || [];
+        alertSince = Math.max(0, ...ev.map(e => e.t)) || Date.now() / 1000;            // what's already there isn't news
+      }
+      const r = await get(`/api/v1/events/wait?since=${alertSince}&timeout=25`);
+      const fresh = (r.events || []).filter(e => e.t > alertSince).sort((a, b) => a.t - b.t);
+      if (fresh.length) {
+        alertSince = Math.max(alertSince, ...fresh.map(e => e.t)); announce(fresh);
+        get("/api/v1/events?since=0").then(() => dispatchEvent(new Event("nova:events"))).catch(() => {});   // the Inbox shows it at once
+      }
+      fails = 0;
+    } catch (e) {
+      if (e?.code === 401) return;
+      await new Promise(res => setTimeout(res, Math.min(60000, 3000 * 2 ** fails++)));    // offline: back off
+    }
+  }
 }
 const important = e => ["warning", "critical"].includes(e.level);
 function announce(list) {
@@ -547,3 +561,22 @@ export async function installNova() {
   const { dialog } = await import("./ui.js");
   dialog("Add Nova to your home screen", "In Safari, tap the Share button (the square with an arrow), then “Add to Home Screen”. Nova then opens full screen, like an app. To approve things without an Android phone, set up a passkey or authenticator codes in Security & privacy.", [{ label: "OK", value: true }]);
 }
+
+// Sliders: the bar itself is thin, so you'd have to land right on it. Pressing anywhere on a slider's row (or within
+// about a finger's width of the bar) grabs it there and follows the pointer, like pressing the bar.
+addEventListener("pointerdown", e => {
+  if (e.button > 0 || e.pointerType === "touch" || e.target.matches?.('input[type="range"]')) return;     // (touch: the row is for scrolling)
+  const box = e.target.closest?.(".range-row, .sliderow"); if (!box) return;
+  const r = box.querySelector('input[type="range"]'); if (!r || r.disabled) return;
+  if (e.target.closest("button, a, input, select, textarea, [data-act]")) return;
+  const rect = r.getBoundingClientRect();
+  if (e.clientX < rect.left - 12 || e.clientX > rect.right + 12 || Math.abs(e.clientY - (rect.top + rect.height / 2)) > 26) return;
+  const set = x => {
+    const min = +r.min || 0, max = +(r.max || 100), step = +r.step || 1, f = Math.max(0, Math.min(1, (x - rect.left) / rect.width));
+    const v = Math.round((min + f * (max - min)) / step) * step;
+    if (+r.value !== v) { r.value = v; r.dispatchEvent(new Event("input", { bubbles: true })); }
+  };
+  e.preventDefault(); set(e.clientX);
+  const move = ev => set(ev.clientX), up = () => { removeEventListener("pointermove", move); removeEventListener("pointerup", up); removeEventListener("pointercancel", up); r.dispatchEvent(new Event("change", { bubbles: true })); };
+  addEventListener("pointermove", move); addEventListener("pointerup", up); addEventListener("pointercancel", up);
+}, true);

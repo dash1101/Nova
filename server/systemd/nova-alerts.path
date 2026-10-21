@@ -1,0 +1,9 @@
+[Unit]
+Description=Nova alerts: send a new message the moment it's queued
+
+[Path]
+DirectoryNotEmpty=/var/lib/nova-alerts/spool
+Unit=nova-alerts.service
+
+[Install]
+WantedBy=paths.target

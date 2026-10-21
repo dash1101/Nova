@@ -15,6 +15,7 @@ if [ "$1" = configure ]; then
     install -d -m 700 /var/lib/nova-alerts/spool /etc/nova-alerts
     [ -f /etc/nova-alerts/config.json ] || { echo '{}' > /etc/nova-alerts/config.json; chmod 600 /etc/nova-alerts/config.json; }
     systemctl enable --now nova-alerts.timer >/dev/null 2>&1 || true
+    systemctl enable --now nova-alerts.path >/dev/null 2>&1 || true    # a new message goes out the moment it's queued
     # Backups (Storage → Backups): jobs in /etc/nova-backup (root only: may hold NAS passwords)
     install -d -m 700 /etc/nova-backup /etc/nova-backup/secrets
     install -d -m 755 /var/lib/nova-backups
