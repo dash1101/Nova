@@ -11,6 +11,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -445,6 +446,7 @@ fun kotlinx.coroutines.CoroutineScope.launchCatching(onError: (String) -> Unit, 
 @Composable fun BackupScriptScreen(app: AppState) {
     var d by remember { mutableStateOf<JSONObject?>(null) }; var err by remember { mutableStateOf<String?>(null) }
     var text by remember { mutableStateOf("") }; var saving by remember { mutableStateOf(false) }
+    var replaceWith by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(Unit) { runCatching { app.api.get("/api/v1/backups/legacy/script") }.onSuccess { d = it; text = it.optString("text") }.onFailure { err = it.message } }
     Page("Backup script", app::back) {
         val dd = d
@@ -452,6 +454,10 @@ fun kotlinx.coroutines.CoroutineScope.launchCatching(onError: (String) -> Unit, 
         else if (dd == null) Group { Row1("Opening…", enabled = false) }
         else {
             Note("${dd.optString("path")} · runs as root, so a mistake here can break your backups. Nova checks it with bash before saving and keeps the old version as nova-backup.nova-prev.", 13.sp, 4.dp)
+            Group { ExpandRow("Build it for me", "Pick folders and a destination — Nova writes the script", icon = Icons.Rounded.Build) {
+                ScriptBuilder(app) { made -> if (text.isBlank()) text = made else replaceWith = made } } }
+            replaceWith?.let { made -> OneDialog({ replaceWith = null }, "Replace the script?", "The editor gets the new script. Nothing is saved until you press Save.",
+                listOf(DialogButton("Cancel") { replaceWith = null }, DialogButton("Replace") { text = made; replaceWith = null; app.toast("Written — look it over, then Save") })) }
             androidx.compose.foundation.text.BasicTextField(text, { text = it },
                 textStyle = androidx.compose.ui.text.TextStyle(color = N.text, fontSize = 12.sp, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace, lineHeight = 17.sp),
                 cursorBrush = androidx.compose.ui.graphics.SolidColor(N.blue),
@@ -470,4 +476,57 @@ fun kotlinx.coroutines.CoroutineScope.launchCatching(onError: (String) -> Unit, 
             }
         }
     }
+}
+
+
+/** The script builder's form (the same choices and the same script as Nova web's). */
+@Composable private fun ScriptBuilder(app: AppState, onMade: (String) -> Unit) {
+    var src by rememberSaveable { mutableStateOf("") }; var dst by rememberSaveable { mutableStateOf("") }
+    var mirror by rememberSaveable { mutableStateOf(false) }; var del by rememberSaveable { mutableStateOf(false) }
+    var keep by rememberSaveable { mutableStateOf("14") }; var ex by rememberSaveable { mutableStateOf("") }
+    var guard by rememberSaveable { mutableStateOf(true) }; var pick by remember { mutableStateOf<String?>(null) }
+    Detail("Folders to back up (one per line)", N.text)
+    OneTextField(src, { src = it }, "/home", Modifier.fillMaxWidth(), mono = true, singleLine = false)
+    PillButton("Add a folder…") { pick = "src" }
+    Detail("Copies go to", N.text)
+    OneTextField(dst, { dst = it }, "/mnt/backup/nova", Modifier.fillMaxWidth(), mono = true)
+    PillButton("Choose…") { pick = "dst" }
+    Detail("How", N.text)
+    Segmented(listOf("Dated snapshots", "One mirror copy"), if (mirror) 1 else 0) { mirror = it == 1 }
+    if (mirror) SwitchRow("Remove deleted files from the copy", "When they're deleted here", del) { del = it }
+    else { Detail("Keep the newest … snapshots (unchanged files are shared, so each costs little)")
+        OneTextField(keep, { keep = it.filter(Char::isDigit).take(3) }, "14", Modifier.width(120.dp), keyboardOptions = KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number)) }
+    Detail("Skip (one pattern per line)", N.text)
+    OneTextField(ex, { ex = it }, "*.tmp", Modifier.fillMaxWidth(), mono = true, singleLine = false)
+    SwitchRow("Only onto its own drive", "Don't run if the destination isn't on its own drive (a missing drive would fill the system drive)", guard) { guard = it }
+    PillButton("Write the script") {
+        val made = backupScript(src, dst, mirror, del, (keep.toIntOrNull() ?: 14).coerceIn(1, 365), ex, guard)
+        if (made == null) app.toast("Add at least one folder and a destination folder (starting with /)") else onMade(made)
+    }
+    pick?.let { which -> FolderPicker(app, { pick = null }) { f -> if (which == "src") src = (if (src.isBlank()) "" else src.trimEnd() + "\n") + f else dst = f; pick = null } }
+}
+
+private fun bq(t: String) = "'" + t.replace("'", "'\\''") + "'"           // safe in bash, whatever the path holds
+
+/** The same script Nova web's builder writes, or null when there's nothing to back up or nowhere to put it. */
+fun backupScript(src: String, dst0: String, mirror: Boolean, del: Boolean, keep: Int, ex: String, guard: Boolean): String? {
+    val s = src.lines().map { it.trim() }.filter { it.isNotEmpty() }; val e = ex.lines().map { it.trim() }.filter { it.isNotEmpty() }
+    val dst = dst0.trim().trimEnd('/')
+    if (s.isEmpty() || !dst.startsWith("/")) return null
+    val L = mutableListOf("#!/bin/bash", "# Made with Nova's script builder — edit freely.", "set -u", "DEST=${bq(dst)}",
+        "SOURCES=(${s.joinToString(" ") { bq(it) }})", "EXCLUDES=(${e.joinToString(" ") { bq("--exclude=$it") }})", "")
+    if (guard) L += listOf("# the destination must be on its own drive: if that drive is missing, copying would fill the system drive",
+        "[ -d \"\$DEST\" ] && [ \"\$(df --output=target \"\$DEST\" | tail -1)\" != \"/\" ] || { echo \"The backup drive isn't mounted (or \$DEST is missing) — not backing up\"; exit 1; }", "")
+    L += "mkdir -p \"\$DEST\""; L += "RC=0"
+    if (mirror) L += listOf("# one copy, kept up to date",
+        "for s in \"\${SOURCES[@]}\"; do rsync -aH --info=progress2${if (del) " --delete" else ""} \"\${EXCLUDES[@]}\" \"\$s\" \"\$DEST/\" || RC=\$?; done")
+    else L += listOf("# a dated snapshot; files that didn't change are shared with the last one (hard links), so each costs little",
+        "STAMP=\$(date +%Y-%m-%d_%H%M%S)", "LINK=(); [ -d \"\$DEST/latest\" ] && LINK=(--link-dest=\"\$DEST/latest\")", "mkdir -p \"\$DEST/\$STAMP\"",
+        "for s in \"\${SOURCES[@]}\"; do rsync -aH --info=progress2 \"\${EXCLUDES[@]}\" \"\${LINK[@]}\" \"\$s\" \"\$DEST/\$STAMP/\" || RC=\$?; done",
+        "# only a complete snapshot becomes the latest, and old ones are only cleared after a good run",
+        "[ \"\$RC\" = 0 ] || { echo \"Backup had errors (rsync \$RC) — keeping the old snapshots\"; exit \"\$RC\"; }",
+        "ln -sfn \"\$DEST/\$STAMP\" \"\$DEST/latest\"", "# keep the newest $keep",
+        "mapfile -t OLD < <(ls -1d \"\$DEST\"/20*/ 2>/dev/null | head -n -$keep)", "for o in \"\${OLD[@]}\"; do rm -rf -- \"\$o\"; done")
+    L += listOf("[ \"\$RC\" = 0 ] && echo \"Backup finished\"", "exit \"\$RC\"")
+    return L.joinToString("\n") + "\n"
 }

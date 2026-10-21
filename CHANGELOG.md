@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.8.10-alpha (server, Nova web, app and watch)
+- **Glass on the web shows the right colors again:** since 0.8.7 its light splitting dropped the red and blue of whatever was behind, so glass over a red wallpaper looked green. Fixed (web).
+- **The app's terminal asks first, like the web's:** shutdown, reboot, `rm -rf /` and the like, and pastes of several lines, wait for you to confirm.
+- **Backup script builder in the app** (Backups → Edit the script → Build it for me): the same form and the same script as Nova web.
+- **Default look: Transparency and Frost in the app**, as on the web — see-through cards, frosted as much as you like.
+- **Each core's percent** shows on its graph in the app, too.
+- **Tablets:** the side pill's selection glides again instead of jumping (it now moves without redrawing the whole pill, like the phone's).
+- **The navigation pill no longer shrinks when you add a page** to it; it keeps its width and shows there's more with its fade and arrow.
+- **Mica, Breeze and Aero selectors** keep their corners lined up at high corner roundness (app and web).
+
 ## 0.8.9-alpha (server, Nova web, app and watch)
 - **Drives, in more detail** (Storage & hardware, app and web): each drive shows its model and serial number, a small activity light that blinks as it reads and writes, and — when it has any — how much space its bad or pending sectors cover.
 - **Approve a browser by scanning it** (app and web): the web's pairing screen shows a QR code; in the app, Users & devices → Approve a browser → Scan the browser's code.

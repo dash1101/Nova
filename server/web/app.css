@@ -903,7 +903,9 @@ html.aero { --rL: calc(6px * var(--rk, 1)); --rM: calc(3px * var(--rk, 1)); }
 :is(html.liquid, html.fluent, html.breeze, html.aero) :is(.appicon, .appcell, .appic, .eng, .pinbox, .cmdcopy, .sugg button, .ctlbar button, .help, .cftok) { border-radius: var(--rM); }
 :is(html.fluent, html.breeze, html.aero) :is(.field, .searchbox, .chip, .crumb, .pillbar, .pillbar button, .seg, .seg .bead, .seg button, .badge:not(:empty), .rcheck, .linkbtn, #toast) { border-radius: var(--rM); }
 /* the bead sits 4px inside the track: concentric corners */
-:is(html.fluent, html.breeze, html.aero) .seg .bead { border-radius: clamp(2px, calc(var(--rM) - 4px), 20px); }
+/* the selector's track is never rounder than half its height, so its corners keep meeting the thumb's */
+:is(html.fluent, html.breeze, html.aero) .seg { border-radius: min(var(--rM), 24px); }
+:is(html.fluent, html.breeze, html.aero) .seg .bead { border-radius: clamp(2px, calc(min(var(--rM), 24px) - 4px), 20px); }
 :is(html.fluent, html.breeze, html.aero) .rl .row.lift { border-radius: var(--rL); }
 :is(.mapps, .srvstrip, .fdrives, .hfade).fs { -webkit-mask-image: linear-gradient(90deg, transparent, #000 40px); mask-image: linear-gradient(90deg, transparent, #000 40px); }
 :is(.mapps, .srvstrip, .fdrives, .hfade).fe { -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 40px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 40px), transparent); }

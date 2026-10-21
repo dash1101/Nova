@@ -44,8 +44,8 @@ object Space {
     "fluent" -> HazeStyle(backgroundColor = N.bg, tints = listOf(HazeTint(N.nav.copy(alpha = .78f))), blurRadius = 30.dp, noiseFactor = 0.08f)
     "aero" -> HazeStyle(backgroundColor = N.bg, tints = listOf(HazeTint(aeroFrame(N))), blurRadius = 22.dp, noiseFactor = 0f)
     else -> HazeStyle(backgroundColor = N.bg,
-        tints = listOf(HazeTint((if (N.dark) Color(0xFF26262B) else Color.White).copy(alpha = if (N.dark) 0.45f else 0.55f))),
-        blurRadius = 26.dp, noiseFactor = 0.05f)
+        tints = listOf(HazeTint((if (N.dark) Color(0xFF26262B) else Color.White).copy(alpha = (if (N.dark) 0.45f else 0.55f) * if (N.material) 1f else 1f - AppPrefs.dTrans / 100f))),
+        blurRadius = if (N.material) 26.dp else AppPrefs.dFrost.dp, noiseFactor = 0.05f)
 }
 
 /** Soft top-edge highlight — the "light catching the glass" line. */
@@ -77,15 +77,20 @@ object Space {
 }
 
 /** Glass card for content inside a page: translucent, highlighted edge, soft shadow. */
-@Composable fun Modifier.glassCard(shape: Shape, elevation: Dp = 6.dp): Modifier =
+/** [exact]: keep [shape] in every look (a control's own track); otherwise the looks with their own card corners use those. */
+@Composable fun Modifier.glassCard(shape: Shape, elevation: Dp = 6.dp, exact: Boolean = false): Modifier =
     if (N.material) this.clip(shape).background(N.card)
     else if (N.preset == "liquid") { val r = cardRadius(26.dp); this.liquidCard(androidx.compose.foundation.shape.RoundedCornerShape(r), r, elevation) }
-    else if (N.preset == "aero") this.aeroCard(androidx.compose.foundation.shape.RoundedCornerShape(cardRadius(6.dp)), elevation)
-    else if (N.preset.isNotEmpty()) this.presetCard(androidx.compose.foundation.shape.RoundedCornerShape(cardRadius(8.dp)))
+    else if (N.preset == "aero") this.aeroCard(if (exact) shape else androidx.compose.foundation.shape.RoundedCornerShape(cardRadius(6.dp)), elevation)
+    else if (N.preset.isNotEmpty()) this.presetCard(if (exact) shape else androidx.compose.foundation.shape.RoundedCornerShape(cardRadius(8.dp)))
+    else if (AppPrefs.dTrans > 0 && !solidGlass() && !lite()) this.defaultGlassCard(shape, elevation, defaultFill()).border(0.8.dp, edge(), shape)
     else this.shadow(if (lite()) 0.dp else elevation, shape, ambientColor = Color.Black.copy(alpha = 0.25f), spotColor = Color.Black.copy(alpha = 0.3f))
         .clip(shape)
         // Solid fill (a see-through one lets the shadow show as a gray box inside the card), lit
         // slightly from the top so it reads as a raised pane of glass.
-        .background(Brush.verticalGradient(if (N.dark) listOf(lerp(N.card, Color.White, 0.045f), N.card)
-                                           else listOf(Color.White, lerp(Color.White, N.bg, 0.35f))))
+        .background(defaultFill())
         .border(0.8.dp, edge(), shape)
+
+/** The Default card's fill: lit slightly from the top so it reads as a raised pane of glass. */
+@Composable fun defaultFill(): Brush = Brush.verticalGradient(if (N.dark) listOf(lerp(N.card, Color.White, 0.045f), N.card)
+                                                             else listOf(Color.White, lerp(Color.White, N.bg, 0.35f)))

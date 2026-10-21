@@ -110,9 +110,10 @@ function filterFor(w, h, r, soft) {
     <feDisplacementMap in="SourceGraphic" in2="map" scale="${scale.toFixed(1)}" xChannelSelector="R" yChannelSelector="G" result="${prism ? "bentG" : "bent0"}"/>${prism ? `
     <feDisplacementMap in="SourceGraphic" in2="map" scale="${(scale * (1 + .14 * pk)).toFixed(1)}" xChannelSelector="R" yChannelSelector="G" result="dR"/>
     <feDisplacementMap in="SourceGraphic" in2="map" scale="${(scale * (1 - .14 * pk)).toFixed(1)}" xChannelSelector="R" yChannelSelector="G" result="dB"/>
-    <feColorMatrix in="dR" values="1 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0 0" result="cR"/>
+    <feColorMatrix in="dR" values="1 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0" result="cR"/>
     <feColorMatrix in="bentG" values="0 0 0 0 0  0 1 0 0 0  0 0 0 0 0  0 0 0 1 0" result="cG"/>
-    <feColorMatrix in="dB" values="0 0 0 0 0  0 0 0 0 0  0 0 1 0 0  0 0 0 0 0" result="cB"/>
+    <feColorMatrix in="dB" values="0 0 0 0 0  0 0 0 0 0  0 0 1 0 0  0 0 0 1 0" result="cB"/>
+    <!-- each part keeps its alpha: filters add colors premultiplied, so a part with alpha 0 lost its color (only green was left) -->
     <feComposite in="cR" in2="cG" operator="arithmetic" k2="1" k3="1" result="cRG"/>
     <feComposite in="cRG" in2="cB" operator="arithmetic" k2="1" k3="1" result="bent0"/>` : ""}
     <feGaussianBlur in="bent0" stdDeviation="${soft}" edgeMode="duplicate" result="bent"/>

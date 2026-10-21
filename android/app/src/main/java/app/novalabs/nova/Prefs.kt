@@ -71,6 +71,10 @@ object AppPrefs {
     /** Glass: Light splitting, 0–100 % (50 = the default split; 0 = none) */
     var prism by mutableIntStateOf(50); private set
     fun choosePrism(v: Int) { prism = v; sp.edit().putInt("prism", v).apply() }
+    /** Default look: how see-through cards are (0–85 %) and how frosted (blur, 0–40 dp), as on the web. */
+    var dTrans by mutableIntStateOf(0); private set
+    var dFrost by mutableIntStateOf(26); private set
+    fun chooseDefaultGlass(trans: Int = dTrans, frost: Int = dFrost) { dTrans = trans; dFrost = frost; sp.edit().putInt("dTrans", trans).putInt("dFrost", frost).apply() }
     /** Corner roundness for one look (25–200 % on the slider; see roundK()). */
     fun roundFor(style: String): Int { roundV; return sp.getString("round_$style", null)?.toIntOrNull() ?: round.coerceAtMost(200) }
     fun setRound(style: String, v: Int) { sp.edit().putString("round_$style", v.toString()).apply(); roundV++ }
@@ -90,7 +94,7 @@ object AppPrefs {
         accent = sp.getString("accent", "")!!; tint = sp.getString("tint", "50")!!.toIntOrNull() ?: 50
         wallV = sp.getString("wall_v", "0")!!.toLongOrNull() ?: 0L; wallBlur = sp.getString("wall_blur", "16")!!.toIntOrNull() ?: 16; wallDim = sp.getString("wall_dim", "35")!!.toIntOrNull() ?: 35
         lang = sp.getString("lang", "auto")!!; I18n.load(ctx, lang)
-        prism = sp.getInt("prism", 50); solid = sp.getBoolean("solid", false); glass = sp.getString("glass", "60")!!.toIntOrNull() ?: 60; round = sp.getString("round", "100")!!.toIntOrNull() ?: 100
+        prism = sp.getInt("prism", 50); dTrans = sp.getInt("dTrans", 0); dFrost = sp.getInt("dFrost", 26); solid = sp.getBoolean("solid", false); glass = sp.getString("glass", "60")!!.toIntOrNull() ?: 60; round = sp.getString("round", "100")!!.toIntOrNull() ?: 100
         theme = sp.getString("theme", "system")!!; style = sp.getString("style", "auto")!!; reduceMotion = sp.getBoolean("reduce_motion", false); animSpeed = (sp.getString("anim_speed", "100")!!.toIntOrNull() ?: 100).coerceIn(25, 300)
         appLock = sp.getBoolean("app_lock", false); hideInRecents = sp.getBoolean("hide_recents", false)
         homeHero = sp.getBoolean("home_hero", true); homeShortcuts = sp.getBoolean("home_shortcuts", true); homeStats = sp.getBoolean("home_stats", true); homeRecs = sp.getBoolean("home_recs", true)
@@ -210,6 +214,14 @@ object AppLock {
                 val rs = presetStyle()                 // each look keeps its own roundness
                 Row { Text("Corner roundness", color = N.sub, fontSize = 14.sp, modifier = Modifier.weight(1f)); Text("${AppPrefs.roundFor(rs)}%", color = N.sub, fontSize = 14.sp) }
                 OneSlider(AppPrefs.roundFor(rs).toFloat(), { AppPrefs.setRound(rs, it.toInt()) }, 25f..200f)
+            }
+        }
+        if (presetStyle().isEmpty() && !materialStyle()) Group {        // the Default look: see-through and frost
+            Column(Modifier.padding(horizontal = 22.dp, vertical = 12.dp)) {
+                Row { Text("Transparency", color = N.sub, fontSize = 14.sp, modifier = Modifier.weight(1f)); Text("${AppPrefs.dTrans}%", color = N.sub, fontSize = 14.sp) }
+                OneSlider(AppPrefs.dTrans.toFloat(), { AppPrefs.chooseDefaultGlass(trans = it.toInt()) }, 0f..85f)
+                Row { Text("Frost", color = N.sub, fontSize = 14.sp, modifier = Modifier.weight(1f)); Text("${AppPrefs.dFrost} dp", color = N.sub, fontSize = 14.sp) }
+                OneSlider(AppPrefs.dFrost.toFloat(), { AppPrefs.chooseDefaultGlass(frost = it.toInt()) }, 0f..40f)
             }
         }
         if (presetStyle() == "liquid") Note("Glass is the most demanding look: on some phones it can make things warm, use more battery or stutter. Lighter effects (below) keeps the look with less work.", 13.sp, 4.dp)

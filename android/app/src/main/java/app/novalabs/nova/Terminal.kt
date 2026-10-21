@@ -143,6 +143,8 @@ private fun copy(ctx: Context, label: String, text: String) =
 }
 
 /** The terminal itself. */
+private val RISKY = Regex("""^\s*(sudo\s+(-\S+\s+)*)?(shutdown|reboot|poweroff|halt|init\s+[06]|systemctl\s+(poweroff|reboot|halt|kexec)|rm\s+-[a-z]*r[a-z]*f?\s+/(\s|$))""", RegexOption.MULTILINE)
+
 @Composable fun SshTermScreen(app: AppState) {
     val term = SshSession.term
     val v = term.version
@@ -152,7 +154,13 @@ private fun copy(ctx: Context, label: String, text: String) =
     var hIndex by remember { mutableIntStateOf(-1) }
     val scroll = rememberScrollState()
     LaunchedEffect(v) { scroll.scrollTo(scroll.maxValue) }
-    fun submit() { if (input.isNotEmpty()) history.add(input); hIndex = -1; SshSession.send(input + "\n"); input = "" }
+    var ask by remember { mutableStateOf<String?>(null) }
+    fun send(cmd: String) { if (cmd.isNotEmpty()) history.add(cmd); hIndex = -1; SshSession.send(cmd + "\n"); input = "" }
+    // never runs something drastic by itself: power commands and multi-line pastes ask first (as on the web)
+    fun submit() { val cmd = input.trimEnd('\n', '\r'); if (cmd.lines().any { RISKY.containsMatchIn(it) } || cmd.contains('\n')) ask = cmd else send(cmd) }
+    ask?.let { cmd -> OneDialog({ ask = null }, if (cmd.contains('\n')) "Run ${cmd.lines().size} lines?" else "Run this on the server?",
+        cmd.take(400) + if (RISKY.containsMatchIn(cmd)) "\n\nThis can shut down, restart or wipe the server." else "",
+        listOf(DialogButton("Cancel") { ask = null }, DialogButton("Run", N.red) { ask = null; send(cmd) })) }
 
     Column(Modifier.fillMaxSize().imePadding()) {
         FixedTopBar(when (SshSession.state) { "open" -> "Terminal · ${SshSession.hostName}"; "connecting" -> "Connecting…"; else -> "Terminal · disconnected" },

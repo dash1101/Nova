@@ -203,7 +203,7 @@ private fun smoothPath(xs: List<Float>, ys: List<Float>): Path {
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     r.forEach { i -> Box(Modifier.weight(1f).clip(RoundedCornerShape(8.dp)).background(N.text.copy(alpha = .05f))) {
                         Sparkline(cores[i], N.blue, Modifier.fillMaxWidth().height(h), 100f, tick, window, added)
-                        Text("$i", color = N.sub, fontSize = 10.sp, modifier = Modifier.padding(start = 5.dp, top = 2.dp)) } }
+                        Text("$i · ${cores[i].lastOrNull()?.let { "%.0f%%".format(it) } ?: "–"}", color = N.sub, fontSize = 10.sp, modifier = Modifier.padding(start = 5.dp, top = 2.dp)) } }
                     repeat(cols - r.size) { Spacer(Modifier.weight(1f)) }
                 }
             }

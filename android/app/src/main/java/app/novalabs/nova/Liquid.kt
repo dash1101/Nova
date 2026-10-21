@@ -420,3 +420,32 @@ fun Modifier.aeroGloss(shape: Shape, dark: Boolean): Modifier = this.drawWithCac
 
 /** Text on Aero glass carries a soft glow behind it, like a glass title bar (light mode only — dark text needs it). */
 fun aeroGlow(dark: Boolean): androidx.compose.ui.graphics.Shadow? = if (dark) null else androidx.compose.ui.graphics.Shadow(Color.White.copy(alpha = .9f), Offset.Zero, 10f)
+
+
+// ── the Default look, see-through ───────────────────────────────────────────────────────
+/** Default cards with Transparency above 0 (Appearance): the page's own backdrop drawn behind the card (as Aero does),
+ *  frosted as much as Frost says — a sharp copy faded into the pre-blurred one — then the usual lit fill, thinner. */
+@Composable fun Modifier.defaultGlassCard(shape: Shape, elevation: Dp, fill: Brush): Modifier {
+    val t = N
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val win = androidx.compose.ui.platform.LocalWindowInfo.current.containerSize
+    var origin by remember { mutableStateOf(Offset.Zero) }
+    val inDialog = LocalInDialog.current
+    val sharp = Backdrop.wallpaper(ctx); val soft = Backdrop.frosted(ctx)
+    val frost = (AppPrefs.dFrost / 40f).coerceIn(0f, 1f); val alpha = 1f - AppPrefs.dTrans / 100f
+    return this.onGloballyPositioned { origin = it.positionOnScreen() }
+        .shadow(elevation, shape, ambientColor = Color.Black.copy(alpha = 0.25f), spotColor = Color.Black.copy(alpha = 0.3f))
+        .clip(shape)
+        .drawBehind {
+            val shot = if (inDialog) Behind.shot else null
+            if (shot != null) drawImage(shot, dstOffset = IntOffset(-origin.x.toInt(), -origin.y.toInt()), dstSize = Behind.shotSize, filterQuality = FilterQuality.Medium)
+            else {
+                drawBackdrop(t, origin, win, sharp)
+                if (soft != null && frost > 0f) { val W = if (win.width > 0) win.width.toFloat() else size.width; val H = if (win.height > 0) win.height.toFloat() else size.height
+                    val k = maxOf(W / soft.width, H / soft.height); val dw = soft.width * k; val dh = soft.height * k
+                    drawImage(soft, dstOffset = IntOffset(((W - dw) / 2 - origin.x).toInt(), ((H - dh) / 2 - origin.y).toInt()),
+                        dstSize = IntSize(dw.toInt(), dh.toInt()), alpha = frost, filterQuality = FilterQuality.Medium) }
+            }
+            drawRect(fill, alpha = alpha)
+        }
+}

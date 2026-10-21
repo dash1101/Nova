@@ -474,7 +474,9 @@ val LocalWide = staticCompositionLocalOf { false }
 }
 
 /** A strip width that ends halfway through an item (whole items, then half of the next). */
-private fun peek(room: Dp, per: Dp): Dp { val k = (room / per).toInt(); return (per * k - per / 2).coerceAtLeast(per) }
+// more than fit: use all the room (never narrower than before the extra tab was added — it used to drop to half an
+// item, so adding a tab shrank the bar); the edge fade and its arrow show there's more
+private fun peek(room: Dp, per: Dp): Dp = room.coerceAtLeast(per)
 
 /** How much of the screen's width is left for open apps after the tabs (the pill never grows past the screen). */
 @Composable private fun appRoom(tabs: Int, perTab: Dp): Dp =
@@ -525,29 +527,6 @@ fun Modifier.fadeEdges(s: androidx.compose.foundation.ScrollState, horizontal: B
     }
 }
 
-/** The pill's sliding bead: on a tab, or on an open app past the divider. It remembers where it
- *  last was, so it glides from there (fading out on pages that aren't in the pill) instead of
- *  jumping in from the first tab. [item]/[appItem]: a tab's and an app's size along the pill. */
-class Bead(val pos: Dp, val size: Dp, val alpha: Float)
-@Composable fun rememberBead(selected: Int, tabs: Int, apps: List<AppSessions.Session>, selectedApp: String?, item: Dp, appItem: Dp, gap: Dp,
-                             appShift: ((Int) -> Dp)? = null): Bead {
-    val j = apps.indexOfFirst { it.id == selectedApp }
-    val target = when {
-        selected >= 0 -> (item + gap) * selected to item
-        // a scrolling strip: its items sit side by side (no gap); appShift says how far it's scrolled
-        j >= 0 && appShift != null -> (item + gap) * tabs + 9.dp + gap + appItem * j + appShift(j) to appItem
-        j >= 0 -> (item + gap) * tabs + 9.dp + gap + (appItem + gap) * j to appItem     // 9dp: the hairline and its padding
-        else -> null
-    }
-    var last by remember { mutableStateOf(target ?: (0.dp to item)) }
-    if (target != null) last = target
-    val spec = if (reduceMotion()) androidx.compose.animation.core.snap<Dp>() else androidx.compose.animation.core.spring(dampingRatio = 0.72f, stiffness = 420f)
-    val pos by androidx.compose.animation.core.animateDpAsState(last.first, spec, label = "bead")
-    val size by androidx.compose.animation.core.animateDpAsState(last.second, spec, label = "beadSize")
-    val alpha by androidx.compose.animation.core.animateFloatAsState(if (target != null) 1f else 0f, label = "beadAlpha")
-    return Bead(pos, size, alpha)
-}
-
 /** The floating bar's bead, in the bar's own coordinates (dp): where it is, how wide, how much it's
  *  "on an app" (0 on a tab, 1 on an app — the strip's scroll is subtracted by that much, so moving
  *  between a tab and an app blends smoothly), and how visible. */
@@ -555,11 +534,11 @@ class PillBead(val x: androidx.compose.animation.core.Animatable<Float, androidx
                val w: androidx.compose.animation.core.Animatable<Float, androidx.compose.animation.core.AnimationVector1D>,
                val onApp: androidx.compose.animation.core.Animatable<Float, androidx.compose.animation.core.AnimationVector1D>,
                val shown: androidx.compose.animation.core.Animatable<Float, androidx.compose.animation.core.AnimationVector1D>)
-@Composable fun rememberPillBead(selected: Int, appIndex: Int, item: Dp, gap: Dp, stripStart: Dp): PillBead {
+@Composable fun rememberPillBead(selected: Int, appIndex: Int, item: Dp, gap: Dp, stripStart: Dp, appStep: Dp = 52.dp, appSize: Dp = 52.dp): PillBead {
     // (x, width, onApp) for where it should be; null on pages that aren't in the bar (it fades where it was)
     val target = when {
         selected >= 0 -> Triple(((item + gap) * selected).value, item.value, 0f)
-        appIndex >= 0 -> Triple((stripStart + 52.dp * appIndex).value, 52f, 1f)
+        appIndex >= 0 -> Triple((stripStart + appStep * appIndex).value, appSize.value, 1f)
         else -> null
     }
     val A = { v: Float -> androidx.compose.animation.core.Animatable(v) }
@@ -662,7 +641,8 @@ class PillBead(val x: androidx.compose.animation.core.Animatable<Float, androidx
                             apps: List<AppSessions.Session> = emptyList(), selectedApp: String? = null, onApp: (String) -> Unit = {},
                             onAppHold: ((String) -> Unit)? = null) {
     val itemH = 64.dp; val gap = 4.dp
-    val bead = rememberBead(selected, icons.size, apps, selectedApp, itemH, 56.dp, gap)
+    val bead = rememberPillBead(selected, apps.indexOfFirst { it.id == selectedApp }, itemH, gap, (itemH + gap) * icons.size + 9.dp + gap, 56.dp + gap, 56.dp)
+    val beadShape = if (N.preset in setOf("fluent", "breeze", "aero")) RoundedCornerShape((pillCorner(40.dp) - 6.dp).coerceIn(2.dp, 28.dp)) else RoundedCornerShape(smallCorner(28.dp) + 1.dp)
     val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
     val hold = Modifier.pointerInput(onLongClick) { detectTapGestures(onLongPress = { onLongClick?.let { l -> haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress); l() } }) }
     // more tabs and apps than fit the height: the whole pill scrolls, with its ends fading (the bead scrolls along)
@@ -688,12 +668,16 @@ class PillBead(val x: androidx.compose.animation.core.Animatable<Float, androidx
     }
     Box(modifier.frosted(LocalRootHaze.current, RoundedCornerShape(pillCorner(40.dp)), 18.dp).then(hold)) {
       Box(Modifier.heightIn(max = maxH).fadeEdges(vs, false, 40.dp).verticalScroll(vs).padding(6.dp)) {
-        Box(Modifier.offset(y = bead.pos).size(width = 64.dp, height = bead.size).graphicsLayer { alpha = bead.alpha }
-            .frosted(LocalRootHaze.current, RoundedCornerShape(smallCorner(28.dp) + 1.dp), 4.dp)
+        // read while laying out and drawing only, so a moving bead never recomposes the rail (that made it stutter)
+        Box(Modifier
+            .layout { m, _ -> val h = bead.w.value.dp.roundToPx(); val pl = m.measure(androidx.compose.ui.unit.Constraints.fixed(64.dp.roundToPx(), h))
+                layout(pl.width, h) { pl.place(0, bead.x.value.dp.roundToPx()) } }
+            .graphicsLayer { alpha = bead.shown.value }
+            .frosted(LocalRootHaze.current, beadShape, 4.dp)
             .background(if (N.dark) Color.White.copy(alpha = 0.10f) else Color.Black.copy(alpha = 0.05f)))
         Column(verticalArrangement = Arrangement.spacedBy(gap), horizontalAlignment = Alignment.CenterHorizontally) {
             icons.forEachIndexed { i, ic ->
-                Box(Modifier.size(width = 64.dp, height = itemH).clip(RoundedCornerShape(smallCorner(28.dp) + 1.dp))
+                Box(Modifier.size(width = 64.dp, height = itemH).clip(beadShape)
                     .bouncy(onLongClick = onLongClick) { onSelect(i) }, contentAlignment = Alignment.Center) {
                     Icon(ic, labels[i], tint = N.text, modifier = Modifier.size(26.dp))
                 }
@@ -726,12 +710,13 @@ class PillBead(val x: androidx.compose.animation.core.Animatable<Float, androidx
         if (reduceMotion()) androidx.compose.animation.core.tween(180) else androidx.compose.animation.core.spring(0.72f, 420f), label = "segthumb")
     val preset = N.preset
     val rk = roundK()
-    val track = when (preset) { "liquid" -> RoundedCornerShape(50); "fluent" -> RoundedCornerShape(6.dp * rk); "breeze", "aero" -> RoundedCornerShape(5.dp * rk); else -> RoundedCornerShape(24.dp) }
+    // (never rounder than half its 50dp height, or the corners stop meeting the thumb's)
+    val track = when (preset) { "liquid" -> RoundedCornerShape(50); "fluent" -> RoundedCornerShape((6.dp * rk).coerceAtMost(25.dp)); "breeze", "aero" -> RoundedCornerShape((5.dp * rk).coerceAtMost(25.dp)); else -> RoundedCornerShape(24.dp) }
     // the thumb sits 4dp inside the track: its corners are the track's minus 4dp, so the two stay concentric at any roundness
     val thumb = when (preset) { "liquid" -> RoundedCornerShape(50); "fluent" -> RoundedCornerShape((6.dp * rk - 4.dp).coerceIn(2.dp, 21.dp))
         "breeze", "aero" -> RoundedCornerShape((5.dp * rk - 4.dp).coerceIn(2.dp, 21.dp)); else -> RoundedCornerShape(20.dp) }
     val outer = Modifier.padding(horizontal = Space.gutter, vertical = 6.dp).fillMaxWidth()
-    BoxWithConstraints((if (preset == "liquid") outer.clip(track).background(Color(0x3D787880)) else outer.glassCard(track, 3.dp)).padding(if (preset == "liquid") 3.dp else 4.dp)) {
+    BoxWithConstraints((if (preset == "liquid") outer.clip(track).background(Color(0x3D787880)) else outer.glassCard(track, 3.dp, exact = true)).padding(if (preset == "liquid") 3.dp else 4.dp)) {
         val w = maxWidth / options.size.coerceAtLeast(1)
         Box(Modifier.offset(x = w * pos).width(w).height(if (preset == "liquid") 34.dp else 42.dp)
             .then(if (preset == "liquid") Modifier.shadow(3.dp, thumb) else Modifier)
