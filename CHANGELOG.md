@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.9.1-alpha (server, Nova web, app and watch)
+- **Talk to Nova** (assistant, app and web): tap the mic and say it. With **Voice** downloaded on the assistant page (0.2 GB, Whisper), your server turns speech into text itself — nothing goes to an outside service. Without it, the app uses the phone's own speech recognizer (offline when it can). It stops listening when you pause.
+- **Read replies aloud** (optional): Nova says what it's about to do, and what it did, in your device's own voice.
+- **A real conversation:** the assistant remembers what you asked, what it said and what its steps actually did, so follow-ups work — “free up some RAM”, then “how much did we free?” gets the real number (the app didn't send this before). **New conversation** starts over.
+- **Assistant button:** the assistant's orb in the corner of every page, to ask from anywhere. Turn it off in Appearance → Icons and text, or on the assistant page.
+- **Longer searches:** Search takes up to 500 characters (it was 80), so longer requests to the assistant fit.
+- **Small things:** “All done! I freed 4.9 GB of RAM.” reads right; Enter sends on a hardware keyboard; removing Nova also removes the voice service.
+
 ## 0.9.0-alpha (server, Nova web, app and watch)
 - **Nova assistant · Labs** (app and web): ask in plain words — “apply the fire light theme, free up some storage and RAM, turn off the status light, dim the fan a bit, install Brave and restart the server at 5pm a week from now” — and Nova shows its plan, then does it one step at a time with a hint of the next, and a Stop button.
   - **Safe by design:** the server only plans; every step is one of Nova's ordinary actions that your phone or browser signs itself, so risky steps still need your fingerprint (or a phone's approval) and everything is in the action log. A drive is never erased from here: the plan waits in the Partition manager for the serial and your fingerprint.

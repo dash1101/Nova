@@ -816,6 +816,11 @@ if verb == "brain-remove" and not args:
     import brain
     brain.remove(); changelog("Assistant's brain removed from the Nova app"); out({"ok": True})
 
+if verb == "voice-remove" and not args:
+    sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+    import brain
+    brain.remove_voice(); changelog("Assistant voice removed from the Nova app"); out({"ok": True})
+
 if verb == "power-schedule-list" and not args:
     out({"schedules": [s for s in _scheds() if s["at"] > time.time() - 120]})
 if verb == "power-schedule" and len(args) == 2 and args[0] in ("reboot", "poweroff") and args[1].isdigit():

@@ -32,6 +32,18 @@ MODELS = {
               "sha256": "6a1a2eb6d15622bf3c96857206351ba97e1af16c30d7a74ee38970e434e9407e"},
 }
 
+# Voice: whisper.cpp's server (MIT) and OpenAI's Whisper "small" model (MIT), turning what you say into text — on the server
+EAR_RUNTIME = {      # whisper.cpp b5454 (2026-10-06)
+    "x86_64": ("https://github.com/ggml-org/whisper.cpp/releases/download/b5454/whisper-bin-ubuntu-x64.tar.gz",
+               "a72becf15d7917f990f6313867a52638b82b7f9ef237fb0c980dac56a135781c", 10364195),
+    "aarch64": ("https://github.com/ggml-org/whisper.cpp/releases/download/b5454/whisper-bin-ubuntu-arm64.tar.gz",
+                "6b95ebfc60447df48e70ef00a73bdc3f41679ed2d01ef465827206a2ff325149", 4608377),
+}
+EAR_MODEL = {"file": "ggml-small-q5_1.bin", "size": 190085487, "sha256": "ae85e4a935d7a567bd102fe55afc16bb595bdb618e11b2fc7591bc08120411bb",
+             "url": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small-q5_1.bin"}
+EAR_UNIT = "/etc/systemd/system/nova-ear.service"
+EAR_PORT = 8498
+
 def _mem_gb():
     try: return int(re.search(r"MemTotal:\s+(\d+)", open("/proc/meminfo").read()).group(1)) / 1048576
     except Exception: return 0
@@ -42,7 +54,10 @@ def status():
     except (OSError, ValueError): pass
     m = cfg.get("model")
     active = subprocess.run(["systemctl", "is-active", "nova-brain.service"], capture_output=True, text=True).stdout.strip() == "active"
+    ear = os.path.exists(f"{ROOT}/voice/{EAR_MODEL['file']}") and os.path.exists(f"{ROOT}/voice-runtime/whisper-server")
+    ear_on = ear and subprocess.run(["systemctl", "is-active", "nova-ear.service"], capture_output=True, text=True).stdout.strip() == "active"
     return {"model": m if m in MODELS and os.path.exists(f"{ROOT}/models/{MODELS[m]['file']}") else None, "running": active,
+            "voice": {"installed": ear, "running": ear_on, "size": EAR_MODEL["size"] + EAR_RUNTIME.get(platform.machine(), ("", "", 0))[2]},
             "arch_ok": platform.machine() in RUNTIME, "memory_gb": round(_mem_gb(), 1),
             "choices": {k: {kk: v[kk] for kk in ("name", "about", "size", "ram_gb")} for k, v in MODELS.items()},
             "recommended": "smart" if _mem_gb() >= 7 else "light"}
@@ -82,15 +97,7 @@ def install(spec, log=print, progress=lambda p, n="": None):
     tgz = f"{ROOT}/runtime.tar.gz"
     if not (os.path.exists(f"{ROOT}/runtime/llama-server") and open(f"{ROOT}/runtime.sha").read().strip() == sha if os.path.exists(f"{ROOT}/runtime.sha") else False):
         log("Downloading the model runner (llama.cpp)…"); _download(url, tgz, sha, size, log, progress, 2, 8)
-        tmp = f"{ROOT}/runtime.new"; shutil.rmtree(tmp, ignore_errors=True); os.makedirs(tmp)
-        with tarfile.open(tgz) as t:
-            for mem in t.getmembers():                      # only plain files and links inside the archive's own folder
-                if mem.name.startswith("/") or ".." in mem.name.split("/") or not (mem.isfile() or mem.issym() or mem.isdir()): continue
-                if mem.issym() and (mem.linkname.startswith("/") or ".." in mem.linkname.split("/")): continue
-                t.extract(mem, tmp, filter="data") if hasattr(tarfile, "data_filter") else t.extract(mem, tmp)
-        inner = next((os.path.join(tmp, d) for d in os.listdir(tmp) if os.path.isfile(os.path.join(tmp, d, "llama-server"))), None)
-        if not inner: raise RuntimeError("the model runner wasn't in the download")
-        shutil.rmtree(f"{ROOT}/runtime", ignore_errors=True); os.replace(inner, f"{ROOT}/runtime"); shutil.rmtree(tmp, ignore_errors=True); os.remove(tgz)
+        _unpack(tgz, f"{ROOT}/runtime", "llama-server")
         open(f"{ROOT}/runtime.sha", "w").write(sha)
     dest = f"{ROOT}/models/{m['file']}"
     if not os.path.exists(dest):
@@ -107,16 +114,66 @@ def install(spec, log=print, progress=lambda p, n="": None):
     log(f"The {m['name']} brain is ready"); progress(100, "Ready")
     return {"model": key}
 
-def write_unit(model_file):
-    threads = max(2, min(8, (os.cpu_count() or 4) // 2))
-    open(UNIT, "w").write(f"""[Unit]
-Description=Nova assistant's brain (a local language model, on 127.0.0.1 only)
+def _unpack(tgz, dest, binary):
+    tmp = dest + ".new"; shutil.rmtree(tmp, ignore_errors=True); os.makedirs(tmp)
+    with tarfile.open(tgz) as t:
+        for mem in t.getmembers():                      # only plain files and links inside the archive's own folder
+            if mem.name.startswith("/") or ".." in mem.name.split("/") or not (mem.isfile() or mem.issym() or mem.isdir()): continue
+            if mem.issym() and (mem.linkname.startswith("/") or ".." in mem.linkname.split("/")): continue
+            t.extract(mem, tmp, filter="data") if hasattr(tarfile, "data_filter") else t.extract(mem, tmp)
+    inner = next((os.path.join(tmp, d) for d in os.listdir(tmp) if os.path.isfile(os.path.join(tmp, d, binary))), None)
+    if not inner: raise RuntimeError(f"{binary} wasn't in the download")
+    shutil.rmtree(dest, ignore_errors=True); os.replace(inner, dest); shutil.rmtree(tmp, ignore_errors=True); os.remove(tgz)
+
+def install_voice(spec, log=print, progress=lambda p, n="": None):
+    arch = platform.machine()
+    if arch not in EAR_RUNTIME: raise ValueError(f"voice isn't available for {arch} servers yet")
+    if shutil.disk_usage("/var/lib").free < EAR_MODEL["size"] + 200e6: raise ValueError("needs about 0.4 GB free on the system drive")
+    os.makedirs(f"{ROOT}/voice", exist_ok=True); os.chmod(ROOT, 0o755)
+    url, sha, size = EAR_RUNTIME[arch]
+    if not os.path.exists(f"{ROOT}/voice-runtime/whisper-server"):
+        log("Downloading the speech runner (whisper.cpp)…"); _download(url, f"{ROOT}/voice-runtime.tar.gz", sha, size, log, progress, 2, 10)
+        _unpack(f"{ROOT}/voice-runtime.tar.gz", f"{ROOT}/voice-runtime", "whisper-server")
+    dest = f"{ROOT}/voice/{EAR_MODEL['file']}"
+    if not os.path.exists(dest):
+        log("Downloading the speech model (0.2 GB)…"); _download(EAR_MODEL["url"], dest, EAR_MODEL["sha256"], EAR_MODEL["size"], log, progress, 10, 95)
+    threads = max(2, min(6, (os.cpu_count() or 4) // 2))
+    open(EAR_UNIT, "w").write(UNIT_TEXT.format(desc="Nova assistant's ears (speech to text, on 127.0.0.1 only)", lib=f"{ROOT}/voice-runtime",
+        cmd=f"{ROOT}/voice-runtime/whisper-server -m {dest} --host 127.0.0.1 --port {EAR_PORT} -t {threads} -l auto"))
+    subprocess.run(["systemctl", "daemon-reload"], check=True); subprocess.run(["systemctl", "enable", "--now", "nova-ear.service"], check=True)
+    progress(100, "Ready"); log("Voice is ready")
+    return {"voice": True}
+
+def remove_voice():
+    subprocess.run(["systemctl", "disable", "--now", "nova-ear.service"], capture_output=True)
+    try: os.remove(EAR_UNIT)
+    except OSError: pass
+    subprocess.run(["systemctl", "daemon-reload"], capture_output=True)
+    shutil.rmtree(f"{ROOT}/voice", ignore_errors=True); shutil.rmtree(f"{ROOT}/voice-runtime", ignore_errors=True)
+    return {"ok": True}
+
+def hear(wav, lang="auto", timeout=60):
+    """Speech (a 16 kHz mono WAV) → text, through the local whisper server. None if voice isn't running."""
+    b = "----nova" + os.urandom(8).hex()
+    lang = lang if re.fullmatch(r"[a-z]{2}|auto", str(lang)) else "auto"
+    def field(k, v): return f"--{b}\r\nContent-Disposition: form-data; name=\"{k}\"\r\n\r\n{v}\r\n".encode()
+    body = (field("response_format", "json") + field("temperature", "0") + field("language", lang)
+            + f"--{b}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"a.wav\"\r\nContent-Type: audio/wav\r\n\r\n".encode() + wav + f"\r\n--{b}--\r\n".encode())
+    try:
+        req = urllib.request.Request(f"http://127.0.0.1:{EAR_PORT}/inference", body, {"Content-Type": f"multipart/form-data; boundary={b}"})
+        with urllib.request.urlopen(req, timeout=timeout) as r: j = json.loads(r.read(100_000))
+        return " ".join(str(j.get("text", "")).split())[:500]
+    except Exception:
+        return None
+
+UNIT_TEXT = """[Unit]
+Description={desc}
 After=network.target
 
 [Service]
 DynamicUser=yes
-Environment=LD_LIBRARY_PATH={ROOT}/runtime
-ExecStart={ROOT}/runtime/llama-server -m {ROOT}/models/{model_file} --host 127.0.0.1 --port {PORT} -c 4096 -t {threads} -np 1 --no-webui
+Environment=LD_LIBRARY_PATH={lib}
+ExecStart={cmd}
 Restart=on-failure
 RestartSec=5
 # its own: no access to your files or the network, a low share of the CPU so your apps come first
@@ -137,14 +194,20 @@ MemoryMax=6G
 
 [Install]
 WantedBy=multi-user.target
-""")
+"""
+
+def write_unit(model_file):
+    threads = max(2, min(8, (os.cpu_count() or 4) // 2))
+    open(UNIT, "w").write(UNIT_TEXT.format(desc="Nova assistant's brain (a local language model, on 127.0.0.1 only)", lib=f"{ROOT}/runtime",
+        cmd=f"{ROOT}/runtime/llama-server -m {ROOT}/models/{model_file} --host 127.0.0.1 --port {PORT} -c 4096 -t {threads} -np 1 --no-webui"))
 
 def remove():
     subprocess.run(["systemctl", "disable", "--now", "nova-brain.service"], capture_output=True)
     try: os.remove(UNIT)
     except OSError: pass
     subprocess.run(["systemctl", "daemon-reload"], capture_output=True)
-    shutil.rmtree(ROOT, ignore_errors=True)
+    for p in ("models", "runtime", "brain.json", "runtime.sha"):
+        q = f"{ROOT}/{p}"; shutil.rmtree(q, ignore_errors=True) if os.path.isdir(q) else (os.path.exists(q) and os.remove(q))
     return {"ok": True}
 
 def ready():
@@ -170,7 +233,8 @@ Commands (use these shapes exactly; fill in the CAPS parts with real values, nev
 - reboot the server
 - switch to dark mode | switch to light mode | apply the STYLE theme   (STYLE: default material glass mica breeze aero)
 - open SCREEN   (SCREEN: home status containers store inbox lighting storage backups updates settings appearance security devices files terminal)
-If the user only asks a question, give no commands and answer it in "reply" from the server facts (numbers included), in one or two sentences.
+If the user only asks a question, give no commands and answer it in "reply" from the server facts and the conversation (numbers included), in one or two sentences.
+When there are commands, "reply" says what you're about to do ("Freeing up memory now.") — never claim something is done or give results you don't have yet. Numbers under "What happened" in the conversation are real; use them when asked.
 Never invent containers or apps. If nothing fits, give no commands and say what you can do."""
 SCHEMA = {"type": "object", "properties": {"commands": {"type": "array", "items": {"type": "string", "maxLength": 120}, "maxItems": 8},
                                            "reply": {"type": "string", "maxLength": 400}}, "required": ["commands", "reply"]}
@@ -192,13 +256,23 @@ def pick(text, k=8):
     if q: out.append(q)
     return list(reversed(out))
 
-def ask(text, facts, timeout=30):
+def convo(history):
+    """The conversation so far, as the model reads it: what you asked, what Nova said, and what its steps did."""
+    out = []
+    for h in (history or [])[-6:]:
+        if not isinstance(h, dict): continue
+        q = str(h.get("q", ""))[:200]; r = str(h.get("reply", ""))[:240]; d = [str(x)[:140] for x in (h.get("done") or [])][:8]
+        out.append(f"- You asked: {q}" + (f"\n  Nova said: {r}" if r else "") + (f"\n  What happened: {'; '.join(d)}" if d else ""))
+    return ("Earlier in this conversation (use it for follow-ups like “how much did that free?” or “actually make it 6pm”):\n" + "\n".join(out)) if out else ""
+
+def ask(text, facts, history=None, timeout=30):
     """{"commands": [...], "reply": "..."} from the model, or None if it isn't installed or running."""
     # the fixed instructions first (the model keeps them processed between requests), then the closest examples, and the
     # server's facts last with the request — they change every time
     msgs = [{"role": "system", "content": SYS}]
     for u, c, r in pick(text): msgs += [{"role": "user", "content": u}, {"role": "assistant", "content": json.dumps({"commands": c, "reply": r})}]
-    msgs.append({"role": "user", "content": facts + "\n\nRequest: " + text[:500]})
+    c = convo(history)
+    msgs.append({"role": "user", "content": facts + ("\n\n" + c if c else "") + "\n\nRequest: " + text[:500]})
     body = {"messages": msgs, "temperature": 0.1, "max_tokens": 260, "cache_prompt": True, "response_format": {"type": "json_schema", "json_schema": {"schema": SCHEMA}}}
     try:
         req = urllib.request.Request(f"http://127.0.0.1:{PORT}/v1/chat/completions", json.dumps(body).encode(), {"Content-Type": "application/json"})

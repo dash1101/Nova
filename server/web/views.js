@@ -1837,6 +1837,7 @@ export async function appearance(ctx) {
         + switchRow("Top and bottom fades", "The soft tint at the top and bottom of the screen, so the page fades out under the bars", prefs.scrims !== false, "scrims", { blue: false })
         + (prefs.scrims !== false ? row("Fade color", { sub: prefs.scrimColor ? "Your own color" : "The page's color", blue: !!prefs.scrimColor, icon: "dim", end: `<span class="swatch" style="background:${esc(prefs.scrimColor || "var(--bg)")}"></span>`, click: "scrimcolor" }) : ""))}
       ${sec("Icons and text")}${group(row("Icons", { sub: iconSub, blue: true, icon: "apps", click: "go:appearance-icons" })
+        + (S.cache["/api/v1/labs"]?.labs?.assistant ? switchRow("Assistant button", "The orb in the corner of every page, to ask Nova from anywhere", prefs.asstButton !== false, "asstbtn", { blue: false }) : "")
         + row("Readability", { sub: READ.find(r => r[0] === (prefs.readability || "auto"))[1] + " — " + READ.find(r => r[0] === (prefs.readability || "auto"))[2], blue: true, icon: "article", click: "readpick" })
         + row("Language", { sub: prefs.lang && prefs.lang !== "auto" ? (LANGS.find(l => l[0] === prefs.lang)?.[1] || prefs.lang) : `Same as this browser (${LANGS.find(l => l[0] === pickLang("auto"))?.[1] || "English"})`, blue: true, icon: "translate", click: "lang" }))}
       ${sec("Motion and effects")}${group(switchRow("Reduce motion", "Simple fades instead of slides and bounces", prefs.reduceMotion, "motion", { blue: false })
@@ -1889,6 +1890,7 @@ export async function appearance(ctx) {
       const v = await choose("Style", STYLES.map(([k, l, d]) => [k, l, k === "auto" ? `${autoMaterialUA() ? "Material You" : "Default"} — picked to suit this device` : d]), prefs.style || "auto");
       if (v) { prefs.style = v; ctx.applyTheme(); ctx.refreshNav(); draw(); }
     },
+    asstbtn: () => { prefs.asstButton = prefs.asstButton === false; ctx.applyTheme(); draw(); },
     readpick: async () => { const v = await choose("Readability", READ, prefs.readability || "auto"); if (v) { prefs.readability = v; ctx.applyTheme(); draw(); } },
     lvscene: async () => {
       // a gallery: a still frame of every scene, in your colors

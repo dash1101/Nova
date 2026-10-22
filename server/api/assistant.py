@@ -121,6 +121,7 @@ LIGHT_WORDS = r"\b(?:lights?|lighting|leds?|rgb|fans?|strips?|glow)\b"
 FS = {"ntfs": "ntfs", "ext4": "ext4", "exfat": "exfat", "xfs": "xfs", "btrfs": "btrfs", "fat32": "vfat", "fat": "vfat", "vfat": "vfat"}
 
 def norm(s): return re.sub(r"[^a-z0-9]+", "", s.lower())
+FOLLOW = re.compile(r"^\s*(?:actually|instead|no\b|nope|also|and|then|change|make it|do (?:that|it)|undo|again|same|what about|how (?:much|many|long)|did (?:it|that|you)|that|it|those|them)\b", re.I)
 QUESTION = re.compile(r"\?\s*$|^\s*(?:what|why|how|is|are|does|do|when|where|which|who|should|any)\b", re.I)
 
 
@@ -147,11 +148,13 @@ class Planner:
         p = self.read(clauses(text))
         # the brain (brain.py), when it's installed: for anything the rules didn't get, and for questions. It answers in
         # Nova's own commands, which the rules read again — so it can't add an action they don't know.
-        if self.env.get("brain") and (p["unknown"] or QUESTION.search(text)):
+        asked = bool(QUESTION.search(text)); follow = bool(self.env.get("history") and FOLLOW.search(text))
+        if self.env.get("brain") and (p["unknown"] or asked or follow):
             b = self.env["brain"](text)
             if b is not None:
                 q = self.read(b["commands"], from_brain=True)
-                if len(q["steps"]) >= len(p["steps"]) or not p["steps"]:
+                # a question or a follow-up: the brain's reading wins (the rules would act on "how much RAM did we free?")
+                if asked or follow or len(q["steps"]) >= len(p["steps"]) or not p["steps"]:
                     q["unknown"] = [] if not b["commands"] or q["steps"] else p["unknown"]
                     p = q
                 p["reply"] = b["reply"]; p["brain"] = True

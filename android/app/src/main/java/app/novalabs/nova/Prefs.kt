@@ -91,6 +91,11 @@ object AppPrefs {
     /** Icons in your accent color: every in-app icon takes the accent (warnings stay red). */
     var iconAccent by mutableStateOf(false); private set
     fun chooseIconAccent(v: Boolean) { iconAccent = v; sp.edit().putBoolean("iconAccent", v).apply() }
+    /** The assistant: its orb button on every page, and whether replies are read aloud. */
+    var asstButton by mutableStateOf(true); private set
+    fun chooseAsstButton(v: Boolean) { asstButton = v; sp.edit().putBoolean("asstButton", v).apply() }
+    var asstSpeak by mutableStateOf(false); private set
+    fun chooseAsstSpeak(v: Boolean) { asstSpeak = v; sp.edit().putBoolean("asstSpeak", v).apply() }
     /** The colors picked last (newest first), shown on top of every color picker. */
     var recentColors by mutableStateOf(listOf<String>()); private set
     fun rememberColor(c: String) { recentColors = (listOf(c) + recentColors.filter { !it.equals(c, true) }).take(8); sp.edit().putString("recentColors", recentColors.joinToString(",")).apply() }
@@ -115,6 +120,7 @@ object AppPrefs {
         wallV = sp.getString("wall_v", "0")!!.toLongOrNull() ?: 0L; wallBlur = sp.getString("wall_blur", "16")!!.toIntOrNull() ?: 16; wallDim = sp.getString("wall_dim", "35")!!.toIntOrNull() ?: 35
         lang = sp.getString("lang", "auto")!!; I18n.load(ctx, lang)
         winRound = sp.getInt("winRound", 100); readability = sp.getString("readability", "auto")!!; iconAccent = sp.getBoolean("iconAccent", false)
+        asstButton = sp.getBoolean("asstButton", true); asstSpeak = sp.getBoolean("asstSpeak", false)
         recentColors = sp.getString("recentColors", "")!!.split(",").filter { Regex("#[0-9a-fA-F]{6}").matches(it) }
         prism = sp.getInt("prism", 50); dTrans = sp.getInt("dTrans", 0); lookBg = sp.getString("lookBg", "")!!; scrims = sp.getBoolean("scrims", true); scrimColor = sp.getString("scrimColor", "")!!; dFrost = sp.getInt("dFrost", 26); solid = sp.getBoolean("solid", false); glass = sp.getString("glass", "60")!!.toIntOrNull() ?: 60; round = sp.getString("round", "100")!!.toIntOrNull() ?: 100
         theme = sp.getString("theme", "system")!!; style = sp.getString("style", "auto")!!; reduceMotion = sp.getBoolean("reduce_motion", false); animSpeed = (sp.getString("anim_speed", "100")!!.toIntOrNull() ?: 100).coerceIn(25, 300)
@@ -269,6 +275,7 @@ private fun hasVibrator(ctx: Context): Boolean = runCatching {
             Row1("Icons", listOfNotNull(AppIcon.base.firstOrNull { it.id == AppIcon.current(androidx.compose.ui.platform.LocalContext.current) }?.label ?: "Your color", IconShape.NAMES[IconShape.id],
                 ICON_THEMES.firstOrNull { it.first == AppPrefs.iconTheme }?.second, if (AppPrefs.iconAccent) "in your accent color" else null).joinToString(" · "), true, Icons.Rounded.Apps, onClick = { app.go(Route.Icons) })
             RowDivider()
+            if (Assistant.on == true) { SwitchRow("Assistant button", "The orb in the corner of every page, to ask Nova from anywhere", AppPrefs.asstButton) { AppPrefs.chooseAsstButton(it) }; RowDivider() }
             val r = READ_CHOICES.first { it.first == AppPrefs.readability }.second
             Row1("Readability", "${r.first} — ${r.second}", true, Icons.Rounded.TextFields, onClick = { pickRead = true })
             RowDivider()

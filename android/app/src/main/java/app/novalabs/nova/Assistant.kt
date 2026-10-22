@@ -40,7 +40,13 @@ import org.json.JSONObject
 object Assistant {
     var on by mutableStateOf<Boolean?>(null)                // Labs → Nova assistant (null: not known yet)
     var pending by mutableStateOf("")                        // a request handed over by Search
-    suspend fun refresh(app: AppState) { on = runCatching { app.api.get("/api/v1/labs").optJSONObject("labs")?.optBoolean("assistant") == true }.getOrNull() ?: on }
+    var voice by mutableStateOf(false)                       // the server has its own speech model
+    suspend fun refresh(app: AppState) { on = runCatching { app.api.get("/api/v1/labs").optJSONObject("labs")?.optBoolean("assistant") == true }.getOrNull() ?: on
+        if (on == true) runCatching { voice = app.api.get("/api/v1/assistant/brain").optJSONObject("voice")?.optBoolean("installed") == true } }
+    /** One exchange: what you asked, what Nova said, and what its steps did — sent along so follow-ups make sense. */
+    data class Turn(val q: String, val reply: String, val done: List<String> = emptyList())
+    val turns = mutableStateListOf<Turn>()
+    fun history() = JSONArray(turns.takeLast(6).map { JSONObject().put("q", it.q).put("reply", it.reply).put("done", JSONArray(it.done)) })
     private val STARTS = Regex("^(?:hey|please|can you|could you|turn|set|apply|make|free|clean|disable|enable|lower|raise|dim|install|schedule|restart|reboot|stop|start|run|back ?up|open|show|switch|erase|format|wipe|change)\\b", RegexOption.IGNORE_CASE)
     fun looksLikeRequest(q: String) = q.trim().split(Regex("\\s+")).size >= 3 && STARTS.containsMatchIn(q.trim())
     /** The only calls a plan may make (checked here before anything is signed). */
@@ -92,7 +98,30 @@ object Assistant {
             .put("id", s.optString("id")).put("asked", true) else s }
     fun planIt(t: String) { val q = t.trim(); if (q.isEmpty() || busy) return
         text = q; busy = true; plan = null; results.clear(); choice.clear(); summary = ""; err = ""; cur = -1
-        scope.launch { try { plan = app.api.post("/api/v1/assistant/plan", JSONObject().put("text", q)) } catch (e: Exception) { err = e.message ?: "That didn't work" }; busy = false } }
+        scope.launch { try { val r = app.api.post("/api/v1/assistant/plan", JSONObject().put("text", q).put("history", Assistant.history()))
+                plan = r; Assistant.turns.add(Assistant.Turn(q, r.optString("reply"))); text = ""
+                if (AppPrefs.asstSpeak) Voice.speak(app.activity, r.optString("reply"))
+            } catch (e: Exception) { err = e.message ?: "That didn't work" }; busy = false } }
+    fun noteDone(done: List<String>) { val i = Assistant.turns.lastIndex; if (i >= 0) Assistant.turns[i] = Assistant.turns[i].copy(done = done.take(8)) }
+    // the mic: the server's speech model when it has one, the phone's recognizer when it doesn't
+    var listening by remember { mutableStateOf(false) }; var hearing by remember { mutableStateOf(false) }; var level by remember { mutableFloatStateOf(0f) }
+    val lang = (if (AppPrefs.lang != "auto") AppPrefs.lang else java.util.Locale.getDefault().language).take(2)
+    fun listen() = scope.launch {
+        Voice.hush(); listening = true; err = ""
+        try {
+            val said = if (Assistant.voice) {
+                val w = Voice.record { level = it }; listening = false
+                if (w == null) null else { hearing = true; app.api.postRaw("/api/v1/assistant/hear?lang=$lang", w).optString("text").also { hearing = false } }
+            } else Voice.recognize(app.activity, lang).also { listening = false }
+            if (said.isNullOrBlank()) app.toast("I didn't hear anything") else planIt(said)
+        } catch (e: Exception) { app.toast(e.message ?: "The microphone didn't work") }
+        listening = false; hearing = false; level = 0f
+    }
+    val micPerm = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestPermission()) { ok ->
+        if (ok) listen() else app.toast("Allow the microphone for Nova to talk to it") }
+    fun mic() { if (listening) { Voice.stopNow = true; return }
+        if (app.activity.checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) == android.content.pm.PackageManager.PERMISSION_GRANTED) listen()
+        else micPerm.launch(android.Manifest.permission.RECORD_AUDIO) }
     LaunchedEffect(Unit) { if (text.isNotBlank()) planIt(text) }
 
     data class Done(val ok: Boolean, val msg: String, val freed: Long = 0, val ramMb: Long = 0, val later: Boolean = false)
@@ -135,8 +164,10 @@ object Assistant {
         }
         cur = -1; busy = false
         val left = list.size - results.size
-        val extra = listOfNotNull(if (freed > 0) "freed ${fmtBytes(freed)} of storage" else null, if (ram > 0) "$ram MB of RAM" else null).joinToString(" and ")
-        summary = if (stop && left > 0) "Stopped — $ok done, $left not started." else if (bad > 0) "$ok done, $bad didn't work — see below." else "All done!" + if (extra.isNotEmpty()) " I $extra while I was at it." else ""
+        val extra = listOfNotNull(if (freed > 0) "${fmtBytes(freed)} of storage" else null, if (ram > 0) "$ram MB of RAM" else null).joinToString(" and ").let { if (it.isEmpty()) it else "freed $it" }
+        val sum = if (stop && left > 0) "Stopped — $ok done, $left not started." else if (bad > 0) "$ok done, $bad didn't work — see below." else "All done!" + if (extra.isNotEmpty()) " I $extra." else ""
+        summary = sum; noteDone(list.mapNotNull { results[it.optString("id")]?.let { (ok, m) -> (if (ok) "" else "Failed: ") + "${it.optString("say")} — $m" } } + sum)
+        if (AppPrefs.asstSpeak) Voice.speak(app.activity, sum)
         val go = last
         if (go != null && !stop) when (go.optString("kind")) {
             "partition" -> { PartitionStage.set(go); app.go(Route.Partitions(go.optString("serial"))) }
@@ -161,9 +192,19 @@ object Assistant {
             return@Page
         }
         val list = steps(); val waiting = list.any { it.optString("kind") == "ask" }
+        val earlier = Assistant.turns.let { if (plan != null) it.dropLast(1) else it }.takeLast(5)
+        @Composable fun Mine(q: String) = Box(Modifier.fillMaxWidth().padding(horizontal = Space.gutter, vertical = 4.dp)) {
+            Text(q, color = N.onBlue, fontSize = 15.sp, modifier = Modifier.align(Alignment.CenterEnd).widthIn(max = 300.dp).clip(RoundedCornerShape(18.dp, 6.dp, 18.dp, 18.dp)).background(N.blue).padding(horizontal = 14.dp, vertical = 9.dp)) }
+        earlier.forEach { t -> Column(Modifier.fillMaxWidth().padding(horizontal = Space.gutter, vertical = 4.dp)) {
+            Text(t.q, color = N.onBlue, fontSize = 15.sp, modifier = Modifier.align(Alignment.End).widthIn(max = 300.dp).clip(RoundedCornerShape(18.dp, 6.dp, 18.dp, 18.dp)).background(N.blue).padding(horizontal = 14.dp, vertical = 9.dp))
+            val said = listOfNotNull(t.reply.ifEmpty { null }, t.done.lastOrNull()).distinct().joinToString("\n")
+            if (said.isNotEmpty()) Text(said, color = N.text, fontSize = 15.sp, lineHeight = 21.sp, modifier = Modifier.padding(top = 6.dp).widthIn(max = 320.dp).clip(RoundedCornerShape(6.dp, 18.dp, 18.dp, 18.dp)).background(lerp(N.card, N.blue, .08f)).padding(horizontal = 14.dp, vertical = 9.dp))
+        } }
+        if (plan != null || busy) Assistant.turns.lastOrNull()?.takeIf { plan != null }?.let { Mine(it.q) } ?: run { if (busy && text.isNotBlank()) Mine(text) }
+        val answerOnly = plan != null && (plan?.optJSONArray("steps")?.length() ?: 0) == 0
         Column(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            AssistantOrb(busy)
-            Text(if (busy) (if (cur >= 0) "On it…" else "Thinking…") else if (plan != null) (if (summary.isNotEmpty()) "Done" else "Here's my plan") else "What can I do?",
+            AssistantOrb(busy || hearing || listening, if (earlier.isEmpty()) 96.dp else 64.dp)
+            if (!answerOnly || busy) Text(if (listening) "Listening…" else if (hearing) "Hearing you…" else if (busy) (if (cur >= 0) "On it…" else "Thinking…") else if (plan != null) (if (summary.isNotEmpty()) "Done" else "Here's my plan") else if (earlier.isEmpty()) "What can I do?" else "Anything else?",
                 color = N.text, fontSize = 22.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 10.dp))
             val reply = plan?.optString("reply").orEmpty()
             if (reply.isNotEmpty() && summary.isEmpty()) Text(reply, color = N.text, fontSize = 16.sp, lineHeight = 22.sp,
@@ -176,15 +217,24 @@ object Assistant {
             Row(Modifier.padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.weight(1f)) {
                     if (text.isEmpty()) Text("e.g. Set the lights to fire, free up some space and restart Jellyfin", color = N.sub, fontSize = 16.sp)
-                    BasicTextField(text, { text = it.take(500) }, Modifier.fillMaxWidth(), textStyle = TextStyle(color = N.text, fontSize = 16.sp), cursorBrush = SolidColor(N.blue),
+                    BasicTextField(text, { v -> if (v.endsWith("\n") && v.length > text.length) planIt(v.trim()) else text = v.take(500) }, Modifier.fillMaxWidth(), textStyle = TextStyle(color = N.text, fontSize = 16.sp), cursorBrush = SolidColor(N.blue),
                         maxLines = 5, keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send), keyboardActions = KeyboardActions(onSend = { planIt(text) }))
                 }
+                Box(Modifier.size(44.dp).clip(CircleShape).background(if (listening) N.red.copy(alpha = .2f + .5f * level) else N.pill)
+                    .clickable(enabled = !busy && !hearing, onClickLabel = if (listening) "Stop listening" else "Speak") { mic() }, contentAlignment = Alignment.Center) {
+                    Icon(if (listening) Icons.Rounded.Stop else Icons.Rounded.Mic, if (listening) "Stop listening" else "Speak", tint = if (listening) N.red else N.text) }
+                Spacer(Modifier.width(6.dp))
                 Box(Modifier.size(44.dp).clip(CircleShape).background(if (busy) N.sub else N.blue).clickable(enabled = !busy, onClickLabel = "Plan it") { planIt(text) }, contentAlignment = Alignment.Center) {
                     Icon(Icons.Rounded.ArrowUpward, "Plan it", tint = N.onBlue) }
             }
         }
         if (err.isNotEmpty()) Note(err, 14.sp, 4.dp, N.red)
+        if (Assistant.turns.isNotEmpty() && !busy) Row(Modifier.fillMaxWidth().padding(horizontal = Space.gutter), horizontalArrangement = Arrangement.spacedBy(18.dp, Alignment.CenterHorizontally)) {
+            Text("New conversation", color = N.link, fontSize = 14.sp, modifier = Modifier.clickable { Assistant.turns.clear(); plan = null; summary = ""; results.clear(); Voice.hush() }.padding(vertical = 8.dp))
+            Text(if (AppPrefs.asstSpeak) "Don't read replies aloud" else "Read replies aloud", color = N.link, fontSize = 14.sp, modifier = Modifier.clickable { AppPrefs.chooseAsstSpeak(!AppPrefs.asstSpeak); if (!AppPrefs.asstSpeak) Voice.hush() }.padding(vertical = 8.dp))
+        }
         val p = plan
+        if (p == null && Assistant.turns.isNotEmpty()) return@Page
         if (p == null) { Note("Runs on your server — nothing is sent anywhere. Risky steps still need your fingerprint, and everything goes in the action log.", 13.sp, 6.dp); BrainSettings(app); return@Page }
         if (list.isEmpty() && p.optString("reply").isNotEmpty()) return@Page
         SectionLabel("Plan · ${list.size} step${if (list.size == 1) "" else "s"}")
@@ -232,7 +282,7 @@ object Assistant {
             when {
                 busy -> PrimaryButton(if (stop) "Stopping after this step…" else "Stop", Modifier.weight(1f), enabled = !stop, color = N.pill) { stop = true }
                 summary.isNotEmpty() -> PrimaryButton("Ask something else", Modifier.weight(1f)) { plan = null; summary = ""; text = ""; results.clear() }
-                else -> { PrimaryButton("Cancel", Modifier.weight(1f), color = N.pill) { plan = null }
+                else -> { PrimaryButton("Cancel", Modifier.weight(1f), color = N.pill) { noteDone(listOf("You canceled it — nothing was changed")); plan = null }
                     PrimaryButton(if (waiting) "Answer the question first" else "Do it", Modifier.weight(2f), enabled = list.isNotEmpty() && !waiting) { run() } }
             }
         }
@@ -255,19 +305,22 @@ private fun fmtBytes(b: Long): String { if (b <= 0) return "0 B"; val u = listOf
     var br by remember { mutableStateOf<JSONObject?>(null) }; var task by remember { mutableStateOf<JSONObject?>(null) }
     var pick by remember { mutableStateOf(false) }; var rm by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
-    LaunchedEffect(Unit) { br = runCatching { app.api.get("/api/v1/assistant/brain") }.getOrNull() }
+    suspend fun load() { br = runCatching { app.api.get("/api/v1/assistant/brain") }.getOrNull()?.also { Assistant.voice = it.optJSONObject("voice")?.optBoolean("installed") == true } }
+    LaunchedEffect(Unit) { load() }
     val b = br ?: return
     val choices = b.optJSONObject("choices") ?: JSONObject(); val cur = b.optString("model").takeIf { it.isNotEmpty() && it != "null" }
-    fun get(k: String) = scope.launch {
-        try { val r = app.stepUp("Download the assistant's brain", "POST", "/api/v1/assistant/brain", JSONObject().put("model", k))
-            task = JSONObject().put("pct", 0).put("step", "Starting the download…")
+    var what by remember { mutableStateOf("Nova's brain") }; var rmVoice by remember { mutableStateOf(false) }
+    fun fetch(path: String, body: JSONObject, name: String, ready: String) = scope.launch {
+        try { val r = app.stepUp("Download $name", "POST", path, body)
+            what = name; task = JSONObject().put("pct", 0).put("step", "Starting the download…")
             val t = app.waitTask(r.optString("task")) { task = it }
-            task = null; app.toast(if (t.optString("state") == "done") "The brain is ready" else t.optString("error", "That didn't work"))
-            br = runCatching { app.api.get("/api/v1/assistant/brain") }.getOrNull()
+            task = null; app.toast(if (t.optString("state") == "done") ready else t.optString("error", "That didn't work"))
+            load()
         } catch (e: Exception) { task = null; app.toast(e.message ?: "That didn't work") }
     }
+    fun get(k: String) = fetch("/api/v1/assistant/brain", JSONObject().put("model", k), "the assistant's brain", "The brain is ready")
     val t = task
-    if (t != null) { SectionLabel("Nova's brain"); Group { Column(Modifier.padding(18.dp)) { Text(t.optString("step", "Downloading…"), color = N.sub, fontSize = 14.sp); Spacer(Modifier.height(8.dp)); LookBar(t.optInt("pct") / 100f, N.blue) } }; return }
+    if (t != null) { SectionLabel(what.replaceFirstChar { it.uppercase() }); Group { Column(Modifier.padding(18.dp)) { Text(t.optString("step", "Downloading…"), color = N.sub, fontSize = 14.sp); Spacer(Modifier.height(8.dp)); LookBar(t.optInt("pct") / 100f, N.blue) } }; return }
     if (cur != null) {
         val c = choices.optJSONObject(cur)
         SectionLabel("Nova's brain")
@@ -287,7 +340,20 @@ private fun fmtBytes(b: Long): String { if (b <= 0) return "0 B"; val u = listOf
         }
         Note("A small language model that runs on your server, so the assistant understands what its rules don't and answers questions about your server. It's downloaded once from its makers (checked against a fingerprint of the file), runs on its own without access to your files or the internet, and never sends anything anywhere.", 13.sp, 4.dp)
     }
+    val v = b.optJSONObject("voice") ?: JSONObject()
+    SectionLabel("Voice")
+    Group {
+        if (v.optBoolean("installed")) {
+            Row1("Voice · ${if (v.optBoolean("running")) "ready" else "stopped"}", "Speech to text on your server (Whisper). Tap the mic to talk.", false, Icons.Rounded.Mic)
+            RowDivider(); Row1("Remove voice", "Frees %.1f GB — the mic then uses this phone's speech recognizer".format(v.optLong("size") / 1e9), false, Icons.Rounded.Delete, N.red, onClick = { rmVoice = true })
+        } else Row1("Talk to Nova on your server", "Download voice (%.1f GB): what you say is turned into text on your server, never by an outside service. Until then the mic uses this phone's own recognizer.".format(v.optLong("size", 200_000_000) / 1e9), true, Icons.Rounded.Mic,
+            onClick = { fetch("/api/v1/assistant/voice", JSONObject(), "voice", "Voice is ready") })
+        RowDivider()
+        SwitchRow("Assistant button", "The orb in the corner of every page, to ask from anywhere", AppPrefs.asstButton) { AppPrefs.chooseAsstButton(it) }
+    }
+    if (rmVoice) OneDialog({ rmVoice = false }, "Remove voice?", "The speech model is deleted from the server. You can download it again any time.",
+        listOf(DialogButton("Cancel") { rmVoice = false }, DialogButton("Remove", N.red) { rmVoice = false; scope.launch { runCatching { app.api.delete("/api/v1/assistant/voice") }; load() } }))
     if (pick) OneDialog({ pick = false }, "Brain") { choices.keys().forEach { k -> val v = choices.getJSONObject(k); DialogChoice(v.optString("name"), v.optString("about"), cur == k) { pick = false; if (k != cur) get(k) } } }
     if (rm) OneDialog({ rm = false }, "Remove the brain?", "Its model is deleted from the server. The assistant keeps working with its rules, and you can download it again any time.",
-        listOf(DialogButton("Cancel") { rm = false }, DialogButton("Remove", N.red) { rm = false; scope.launch { runCatching { app.api.delete("/api/v1/assistant/brain") }; br = runCatching { app.api.get("/api/v1/assistant/brain") }.getOrNull() } }))
+        listOf(DialogButton("Cancel") { rm = false }, DialogButton("Remove", N.red) { rm = false; scope.launch { runCatching { app.api.delete("/api/v1/assistant/brain") }; load() } }))
 }

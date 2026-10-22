@@ -1,12 +1,15 @@
-// Nova web — the assistant (Labs): ask in plain words, see the plan, then Nova does it one step at a time.
+// Nova web — the assistant (Labs): talk or type in plain words, see the plan, then Nova does it one step at a time.
 // The server only plans (POST /api/v1/assistant/plan); every step is an ordinary call this browser signs itself, so the
 // usual rules hold: risky steps wait for an admin phone's approval, everything is in the action log. Stop halts before the
 // next step (a task the server already started — an install, freeing space — finishes on its own).
-import { S, $, $$, esc, get, post, del, prefs, waitTask, bytes } from "./core.js";
-import { I, group, sec, note, toast, choose, bar } from "./ui.js";
+// It's a conversation: earlier turns (what you asked, what Nova said, what its steps did) go with each request, so
+// follow-ups work ("how much did that free?", "actually make it 6pm"). Voice: the mic records here and the server's own
+// speech model turns it into text (nothing goes to an outside service); replies can be read out by this browser.
+import { S, $, $$, esc, get, post, del, prefs, waitTask, bytes, signedRaw } from "./core.js";
+import { I, group, sec, note, toast, choose, bar, confirm } from "./ui.js";
 import { stage as stagePartitions } from "./parts.js";
 
-let pending = "";                                       // text handed over by Search ("Ask Nova: …")
+let pending = "";                                       // text handed over by Search ("Ask Nova: …") or the assistant button
 export const ask = text => { pending = text || ""; location.hash = "#/assistant"; };
 
 // The only calls a plan may make (the server makes plans, but this browser checks before signing anything)
@@ -19,7 +22,54 @@ const ROUTES = { home: "home", status: "status", containers: "containers", store
 const UI = { theme: v => { prefs.theme = v; }, style: v => { prefs.style = v; }, reduce_motion: v => { prefs.reduceMotion = !!v; } };
 
 /** The orb: soft light in the accent, turning while Nova thinks (still with Reduce motion). */
-const orb = (state = "") => `<div class="aorb ${state}" aria-hidden="true"><i></i><i></i><i></i><b></b></div>`;
+export const orb = (state = "") => `<div class="aorb ${state}" aria-hidden="true"><i></i><i></i><i></i><b></b></div>`;
+
+// the conversation (kept while this tab is open): [{q, plan, results, choice, summary, done: [what happened]}]
+let turns = (() => { try { return JSON.parse(sessionStorage.getItem("nova.asst") || "[]"); } catch { return []; } })();
+const save = () => { try { sessionStorage.setItem("nova.asst", JSON.stringify(turns.slice(-12))); } catch {} };
+const history = () => turns.filter(t => t.plan).slice(-6).map(t => ({ q: t.q, reply: t.plan.reply || "", done: t.done || [] }));
+
+// ── speaking: this browser's own voices ──
+const speak = t => { try { if (prefs.asstSpeak && t && "speechSynthesis" in window) { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(t); u.rate = 1.05; speechSynthesis.speak(u); } } catch {} };
+
+// ── listening: record 16 kHz mono WAV here, the server's speech model reads it ──
+let rec = null;
+async function listen(onLevel) {
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+  const ac = new (window.AudioContext || window.webkitAudioContext)();        // the device's own rate (many browsers can't record at 16 kHz); downsampled after
+  const src = ac.createMediaStreamSource(stream), proc = ac.createScriptProcessor(4096, 1, 1), chunks = [];
+  let quiet = 0, heard = false, t0 = performance.now(), done;
+  const finished = new Promise(r => done = r);
+  proc.onaudioprocess = e => {
+    const d = e.inputBuffer.getChannelData(0); chunks.push(new Float32Array(d));
+    let s = 0; for (let i = 0; i < d.length; i++) s += d[i] * d[i]; const rms = Math.sqrt(s / d.length); onLevel?.(Math.min(1, rms * 8));
+    if (rms > .02) { heard = true; quiet = 0; } else quiet += d.length / ac.sampleRate;
+    const long = (performance.now() - t0) / 1000;
+    if ((heard && quiet > 1.4) || long > 30 || (!heard && long > 8)) stop();      // stops by itself after a pause
+  };
+  src.connect(proc); proc.connect(ac.destination);
+  const stop = () => { if (!rec) return; rec = null; proc.disconnect(); src.disconnect(); stream.getTracks().forEach(t => t.stop()); const r = ac.sampleRate; ac.close(); done(heard ? wav(down(chunks, r), 16000) : null); };
+  rec = { stop };
+  return finished;
+}
+/** To 16 kHz (what the speech model reads): each output sample is the average of the input samples it covers. */
+function down(chunks, rate) {
+  const n = chunks.reduce((a, c) => a + c.length, 0), all = new Float32Array(n); let o = 0; for (const c of chunks) { all.set(c, o); o += c.length; }
+  if (rate === 16000) return [all];
+  const k = rate / 16000, out = new Float32Array(Math.floor(n / k));
+  for (let i = 0; i < out.length; i++) { const a = Math.floor(i * k), b = Math.min(n, Math.floor((i + 1) * k)); let s = 0; for (let j = a; j < b; j++) s += all[j]; out[i] = s / Math.max(1, b - a); }
+  return [out];
+}
+/** (for testing the whole path without a microphone) */
+export const encodeWav16 = (samples, rate) => wav(down([samples], rate), 16000);
+function wav(chunks, rate) {
+  const n = chunks.reduce((a, c) => a + c.length, 0), buf = new ArrayBuffer(44 + n * 2), v = new DataView(buf);
+  const w = (o, s) => [...s].forEach((c, i) => v.setUint8(o + i, c.charCodeAt(0)));
+  w(0, "RIFF"); v.setUint32(4, 36 + n * 2, true); w(8, "WAVE"); w(12, "fmt "); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+  v.setUint32(24, rate, true); v.setUint32(28, rate * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true); w(36, "data"); v.setUint32(40, n * 2, true);
+  let o = 44; for (const c of chunks) for (let i = 0; i < c.length; i++, o += 2) v.setInt16(o, Math.max(-1, Math.min(1, c[i])) * 0x7fff, true);
+  return new Uint8Array(buf);
+}
 
 export async function assistant(ctx) {
   let text = pending; pending = "";
@@ -29,56 +79,74 @@ export async function assistant(ctx) {
       ${group(`<div class="row click" data-act="go:labs" role="button" tabindex="0"><span class="ri">${I("science")}</span><div class="t"><b>Open Labs</b></div></div>`)}`, { title: "Assistant" });
     return;
   }
-  let plan = null, busy = false, stop = false, cur = -1, results = {}, choice = {}, summary = "", err = "";
+  let busy = false, stop = false, cur = -1, err = "", listening = false, hearing = false, level = 0;
+  const now = () => turns[turns.length - 1];
   const risky = s => s.danger ? "danger" : /\/(power|store|freeup)\b|\/(stop|restart)$/.test(s.call?.path || "") ? "stepup" : "";
-  const stepsNow = () => (plan?.steps || []).map(s => s.kind === "ask" ? (choice[s.id] != null ? { ...s.options[choice[s.id]].step, id: s.id, asked: s } : s) : s);
+  const stepsOf = t => (t?.plan?.steps || []).map(s => s.kind === "ask" ? (t.choice?.[s.id] != null ? { ...s.options[t.choice[s.id]].step, id: s.id, asked: s } : s) : s);
   const badge = s => ({ danger: `<span class="abadge red">${I("warn")}Erases data — you'll confirm it</span>`, stepup: `<span class="abadge">${I("key")}Needs approval</span>` })[risky(s)] || "";
-  const stIcon = (s, i) => { const r = results[s.id];
+  const stIcon = (t, s, i, live) => { const r = t.results?.[s.id];
     if (r?.ok) return `<span class="astate ok">${I("check")}</span>`; if (r && !r.ok) return `<span class="astate bad">${I("err")}</span>`;
-    if (i === cur) return `<span class="astate run"><span class="spinner"></span></span>`; return `<span class="astate">${i + 1}</span>`; };
+    if (live && i === cur) return `<span class="astate run"><span class="spinner"></span></span>`; return `<span class="astate">${i + 1}</span>`; };
+  // an earlier turn, folded: what you said, what Nova said, what happened
+  const pastHtml = t => `<div class="aturn"><div class="aq">${esc(t.q)}</div>${t.plan?.reply ? `<div class="areply">${esc(t.plan.reply)}</div>` : ""}
+    ${(t.done || []).length ? `<div class="adone">${t.done.map(d => `<span>${I("check")}${esc(d)}</span>`).join("")}</div>` : ""}${t.summary ? `<div class="muted asum">${esc(t.summary)}</div>` : ""}</div>`;
+  const currentHtml = t => {
+    const steps = stepsOf(t), next = steps.find((s, i) => i > cur && !t.results?.[s.id]), waiting = steps.find(s => s.kind === "ask");
+    return `<div class="aturn now"><div class="aq">${esc(t.q)}</div>${t.plan?.reply ? `<div class="areply">${esc(t.plan.reply)}</div>` : ""}</div>`
+      + (steps.length || (t.plan && !t.plan.reply) ? sec(`Plan · ${steps.length} step${steps.length === 1 ? "" : "s"}`) + group(steps.map((s, i) => `<div class="row astep${busy && i === cur ? " now" : ""}${t.results?.[s.id] ? " did" : ""}">${stIcon(t, s, i, busy)}
+          <div class="t"><b>${esc(s.say)}</b>${s.kind === "ask" ? `<small>${esc(s.ask)}</small><div class="achips">${s.options.map((o, k) => `<button class="achip press" data-act="pick:${s.id}:${k}" title="${esc(o.sub || "")}">${esc(o.label)}${o.sub ? `<small>${esc(o.sub)}</small>` : ""}</button>`).join("")}</div>`
+            : t.results?.[s.id] ? `<small class="${t.results[s.id].ok ? "" : "bad"}">${esc(t.results[s.id].msg)}</small>` : badge(s)}
+            ${s.asked && !busy && !t.results?.[s.id] ? `<button class="alink" data-act="unpick:${s.id}">Change</button>` : ""}</div></div>`).join("") || `<div class="row"><div class="t muted">Nothing I can do from that.</div></div>`) : "")
+      + (t.plan?.unknown?.length ? note(`I didn't understand: ${t.plan.unknown.map(u => `“${u}”`).join(", ")}. Try saying it another way.`) : "")
+      + (t.plan?.notes || []).map(n => note(n)).join("")
+      + (busy && next ? `<div class="anext">${I("history")}<span>Next: ${esc(next.say)}</span></div>` : "")
+      + (steps.length ? `<div class="aacts">${busy && t.plan ? `<button class="btn ghost" data-act="stop" ${stop ? "disabled" : ""}>${stop ? "Stopping after this step…" : "Stop"}</button>`
+          : t.summary ? "" : `<button class="btn ghost" data-act="skip">Not now</button><button class="btn" data-act="run" ${waiting ? "disabled" : ""}>${waiting ? "Answer the question first" : "Do it"}</button>`}</div>` : "")
+      + (busy && t.plan ? note("Stop halts before the next step. Something the server has already started (an install, freeing space) finishes on its own.") : "")
+      + (t.summary ? `<p class="muted asum" style="text-align:center">${esc(t.summary)}</p>` : "");
+  };
   const draw = () => {
-    const steps = stepsNow(), next = steps.find((s, i) => i > cur && !results[s.id]);
-    const waiting = steps.find(s => s.kind === "ask");
-    ctx.show(`<div class="ahead">${orb(busy ? "think" : plan ? "" : "idle")}<h2>${busy ? (cur >= 0 ? "On it…" : "Thinking…") : plan ? (summary ? "Done" : plan.steps?.length ? "Here's my plan" : plan.reply ? "" : "Hmm") : "What can I do?"}</h2>
-        ${plan?.reply && !summary ? `<p class="areply">${esc(plan.reply)}</p>` : ""}
-        <p class="muted">${summary ? esc(summary) : plan ? (plan.steps?.length ? "Check it, answer anything I asked, then tap Do it. Nothing has changed yet." : "") : "Say it in plain words — several things at once is fine, or ask about your server."}</p></div>
-      <form class="abox" id="aform" autocomplete="off"><textarea id="aq" rows="2" maxlength="500" placeholder="e.g. Set the lights to fire, free up some space and restart Jellyfin" aria-label="Ask Nova">${esc(text)}</textarea>
-        <button class="abtn press" id="ago" type="submit" aria-label="Plan it" ${busy ? "disabled" : ""}>${I("back")}</button></form>
+    const t = now(), earlier = turns.slice(0, -1).slice(-5);
+    ctx.show(`<div class="ahead">${orb(busy || hearing ? "think" : listening ? "listen" : t ? "" : "idle")}<h2>${listening ? "Listening…" : hearing ? "Hearing you…" : busy ? (cur >= 0 ? "On it…" : "Thinking…") : t ? "" : "What can I do?"}</h2>
+        ${t ? "" : `<p class="muted">Say it or type it — several things at once is fine, or ask about your server. Follow-ups work too.</p>`}</div>
+      ${earlier.map(pastHtml).join("")}${t ? currentHtml(t) : ""}
+      <form class="abox" id="aform" autocomplete="off"><textarea id="aq" rows="2" maxlength="500" placeholder="${t ? "Reply, or ask something else…" : "e.g. Set the lights to fire, free up some space and restart Jellyfin"}" aria-label="Ask Nova">${esc(text)}</textarea>
+        <button class="abtn mic press${listening ? " on" : ""}" type="button" data-act="mic" aria-label="${listening ? "Stop listening" : "Speak"}" style="--lv:${level.toFixed(2)}" ${busy || hearing ? "disabled" : ""}>${I(listening ? "stop" : "mic")}</button>
+        <button class="abtn press" id="ago" type="submit" aria-label="Send" ${busy ? "disabled" : ""}>${I("back")}</button></form>
       ${err ? `<p class="note" style="color:var(--red)">${esc(err)}</p>` : ""}
-      ${plan && (steps.length || !plan.reply) ? sec(`Plan · ${steps.length} step${steps.length === 1 ? "" : "s"}`) + group(steps.map((s, i) => `<div class="row astep${i === cur ? " now" : ""}${results[s.id] ? " did" : ""}">${stIcon(s, i)}
-          <div class="t"><b>${esc(s.kind === "ask" ? s.say : s.say)}</b>${s.kind === "ask" ? `<small>${esc(s.ask)}</small><div class="achips">${s.options.map((o, k) => `<button class="achip press" data-act="pick:${s.id}:${k}" title="${esc(o.sub || "")}">${esc(o.label)}${o.sub ? `<small>${esc(o.sub)}</small>` : ""}</button>`).join("")}</div>`
-            : results[s.id] ? `<small class="${results[s.id].ok ? "" : "bad"}">${esc(results[s.id].msg)}</small>` : badge(s)}
-            ${s.asked && !busy && !results[s.id] ? `<button class="alink" data-act="unpick:${s.id}">Change</button>` : ""}</div></div>`).join("") || `<div class="row"><div class="t muted">Nothing I can do from that.</div></div>`)
-        + (plan.unknown?.length ? note(`I didn't understand: ${plan.unknown.map(u => `“${u}”`).join(", ")}. Try saying it another way, or search for it.`) : "")
-        + (plan.notes || []).map(n => note(n)).join("")
-        + (busy && next ? `<div class="anext">${I("history")}<span>Next: ${esc(next.say)}</span></div>` : "")
-        + `<div class="aacts">${busy ? `<button class="btn ghost" data-act="stop" ${stop ? "disabled" : ""}>${stop ? "Stopping after this step…" : "Stop"}</button>`
-            : summary ? `<button class="btn" data-act="again">Ask something else</button>` : `<button class="btn ghost" data-act="clear">Cancel</button><button class="btn" data-act="run" ${!steps.length || waiting ? "disabled" : ""}>${waiting ? "Answer the question first" : "Do it"}</button>`}</div>`
-        + (busy ? note("Stop halts before the next step. Something the server has already started (an install, freeing space) finishes on its own.") : "")
-      : note("Runs on your server — nothing is sent anywhere. Risky steps still need approval on your phone, and everything goes in the action log.") + brainHtml()}`, { title: "Assistant" });
-    const q = $("#aq"); q?.focus({ preventScroll: true });
+      ${turns.length ? `<div class="links glass" style="margin-top:6px"><button data-act="newchat">New conversation</button><button data-act="speak">${prefs.asstSpeak ? "Don't read replies aloud" : "Read replies aloud"}</button></div>` : ""}
+      ${!turns.length ? note("Runs on your server — nothing is sent anywhere. Risky steps still need approval on your phone, and everything goes in the action log.") + brainHtml() : ""}`, { title: "Assistant" });
+    const q = $("#aq"); if (!listening) q?.focus({ preventScroll: true });
     q && (q.onkeydown = e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); $("#aform").requestSubmit(); } });
     $("#aform").onsubmit = e => { e.preventDefault(); if (!busy) planIt($("#aq").value); };
+    if (turns.length > 1) document.querySelector(".aturn.now")?.scrollIntoView({ block: "start", behavior: "smooth" });
   };
-  // its brain: a small language model on the server (Smart or Light), so it understands more and answers questions
+  // its brain and its voice: models on the server, downloaded once
   let br = S.cache["/api/v1/assistant/brain"] || null, brTask = null;
   const brainHtml = () => {
     if (!br) return "";
-    const c = br.choices || {}, cur = br.model;
-    if (brTask) return sec("Nova's brain") + group(`<div class="pad"><div class="muted" style="font-size:14px;margin-bottom:8px">${esc(brTask.step || "Downloading…")}</div>${bar((brTask.pct || 0) / 100)}</div>`);
-    if (cur) return sec("Nova's brain") + group(`<div class="row"><span class="ri">${I("star")}</span><div class="t"><b>${esc(c[cur]?.name || cur)} · ${br.ready ? "ready" : br.running ? "starting…" : "stopped"}</b><small>${esc(c[cur]?.about || "")} On this server only.</small></div></div>`
-        + `<div class="row click" data-act="brainpick" role="button" tabindex="0"><div class="t"><b>Switch brain</b></div></div><div class="row click" data-act="brainrm" role="button" tabindex="0"><div class="t"><b style="color:var(--red)">Remove it</b><small>Frees ${(((c[cur]?.size) || 0) / 1e9).toFixed(1)} GB — the assistant keeps working with its rules</small></div></div>`);
-    return sec("Make it smarter") + group(Object.entries(c).map(([k, v]) => `<div class="row click" data-act="brain:${k}" role="button" tabindex="0"><span class="ri">${I(k === "smart" ? "star" : "speed")}</span>
-        <div class="t"><b>${esc(v.name)} brain${br.recommended === k ? " · recommended" : ""}</b><small>${esc(v.about)} ${(v.size / 1e9).toFixed(1)} GB download, needs about ${v.ram_gb} GB of memory.</small></div></div>`).join(""))
-      + note("A small language model that runs on your server, so the assistant understands what its rules don't and answers questions about your server. It's downloaded once from its makers (checked against a fingerprint of the file), runs on its own without access to your files or the internet, and never sends anything anywhere.");
+    const c = br.choices || {}, cur = br.model, v = br.voice || {};
+    if (brTask) return sec(brTask.what) + group(`<div class="pad"><div class="muted" style="font-size:14px;margin-bottom:8px">${esc(brTask.step || "Downloading…")}</div>${bar((brTask.pct || 0) / 100)}</div>`);
+    const brain = cur ? sec("Nova's brain") + group(`<div class="row"><span class="ri">${I("star")}</span><div class="t"><b>${esc(c[cur]?.name || cur)} · ${br.ready ? "ready" : br.running ? "starting…" : "stopped"}</b><small>${esc(c[cur]?.about || "")} On this server only.</small></div></div>`
+        + `<div class="row click" data-act="brainpick" role="button" tabindex="0"><div class="t"><b>Switch brain</b></div></div><div class="row click" data-act="brainrm" role="button" tabindex="0"><div class="t"><b style="color:var(--red)">Remove it</b><small>Frees ${(((c[cur]?.size) || 0) / 1e9).toFixed(1)} GB — the assistant keeps working with its rules</small></div></div>`)
+      : sec("Make it smarter") + group(Object.entries(c).map(([k, x]) => `<div class="row click" data-act="brain:${k}" role="button" tabindex="0"><span class="ri">${I(k === "smart" ? "star" : "speed")}</span>
+          <div class="t"><b>${esc(x.name)} brain${br.recommended === k ? " · recommended" : ""}</b><small>${esc(x.about)} ${(x.size / 1e9).toFixed(1)} GB download, needs about ${x.ram_gb} GB of memory.</small></div></div>`).join(""))
+        + note("A small language model that runs on your server, so the assistant understands what its rules don't, answers questions and follows a conversation. It's downloaded once from its makers (checked against a fingerprint of the file), runs on its own without access to your files or the internet, and never sends anything anywhere.");
+    const voice = sec("Voice") + group(v.installed
+        ? `<div class="row"><span class="ri">${I("mic")}</span><div class="t"><b>Voice · ${v.running ? "ready" : "stopped"}</b><small>Speech to text on this server (Whisper). Tap the mic to talk.</small></div></div><div class="row click" data-act="voicerm" role="button" tabindex="0"><div class="t"><b style="color:var(--red)">Remove voice</b><small>Frees 0.2 GB</small></div></div>`
+        : `<div class="row click" data-act="voice" role="button" tabindex="0"><span class="ri">${I("mic")}</span><div class="t"><b>Talk to Nova</b><small>Download voice (0.2 GB): what you say is turned into text on your server, never by an outside service.</small></div></div>`);
+    return brain + voice + group(`<div class="row click" data-act="fab" role="switch" tabindex="0" aria-checked="${prefs.asstButton !== false}"><span class="ri">${I("star")}</span><div class="t"><b>Assistant button</b><small>The orb in the corner of every page, to ask from anywhere</small></div><span class="sw${prefs.asstButton !== false ? " on" : ""}"></span></div>`);
   };
-  const loadBrain = async () => { try { br = await get("/api/v1/assistant/brain"); } catch { br = null; } if (ctx.alive() && !busy) draw(); };
+  const loadBrain = async () => { try { br = await get("/api/v1/assistant/brain"); } catch { br = null; } if (ctx.alive() && !busy && !listening) draw(); };
   const planIt = async t => {
-    text = t.trim(); if (!text) return;
-    busy = true; plan = null; results = {}; choice = {}; summary = ""; err = ""; cur = -1; draw();
-    try { plan = await post("/api/v1/assistant/plan", { text }); }
-    catch (e) { err = e.message; }
-    busy = false; if (ctx.alive()) draw();
+    t = t.trim(); if (!t) return;
+    text = ""; err = ""; cur = -1; busy = true;
+    const hist = history();
+    turns.push({ q: t, plan: null, results: {}, choice: {}, summary: "", done: [] }); save(); draw();
+    try { now().plan = await post("/api/v1/assistant/plan", { text: t, history: hist }); }
+    catch (e) { err = e.message; turns.pop(); }
+    busy = false; save(); if (ctx.alive()) draw();
+    const p = now()?.plan; if (p?.reply) speak(p.reply);
   };
   // one step, as this browser would do it by hand
   const runStep = async s => {
@@ -95,28 +163,48 @@ export async function assistant(ctx) {
     }
     const r = await post(s.call.path, s.call.body ?? undefined);
     if (r?.task) { const t = await waitTask(r.task); if (t.state === "failed") return { ok: false, msg: t.error || "It didn't work" }; }
-    if (r?.approval && !r.ok && r.state === "denied") return { ok: false, msg: "Not approved" };
     return { ok: true, msg: s.done.replace("{freed_mb}", r?.freed_mb ?? "some"), freed_mb: r?.freed_mb };
   };
-  const getBrain = async k => {
-    try { const r = await post("/api/v1/assistant/brain", { model: k }); if (!r?.task) return;
-      brTask = { pct: 0, step: "Starting the download…" }; draw();
-      const t = await waitTask(r.task, x => { brTask = x; if (ctx.alive()) draw(); });
-      brTask = null; toast(t.state === "done" ? "The brain is ready" : t.error || "That didn't work"); await loadBrain();
+  const getModel = async (path, body, what) => {
+    try { const r = await post(path, body); if (!r?.task) return;
+      brTask = { pct: 0, step: "Starting the download…", what }; draw();
+      const t = await waitTask(r.task, x => { brTask = { ...x, what }; if (ctx.alive()) draw(); });
+      brTask = null; toast(t.state === "done" ? `${what} is ready` : t.error || "That didn't work"); await loadBrain();
     } catch (e) { brTask = null; toast(e.message); draw(); }
   };
   ctx.handlers({
-    brain: k => getBrain(k),
-    brainpick: async () => { const k = await choose("Brain", Object.entries(br?.choices || {}).map(([k, v]) => [k, v.name, v.about]), br?.model); if (k && k !== br?.model) getBrain(k); },
-    brainrm: async () => { if (!(await (await import("./ui.js")).confirm("Remove the brain?", "Its model is deleted from the server. The assistant keeps working with its rules, and you can download it again any time.", "Remove"))) return;
+    brain: k => getModel("/api/v1/assistant/brain", { model: k }, "The brain"),
+    voice: () => getModel("/api/v1/assistant/voice", {}, "Voice"),
+    brainpick: async () => { const k = await choose("Brain", Object.entries(br?.choices || {}).map(([k, v]) => [k, v.name, v.about]), br?.model); if (k && k !== br?.model) getModel("/api/v1/assistant/brain", { model: k }, "The brain"); },
+    brainrm: async () => { if (!(await confirm("Remove the brain?", "Its model is deleted from the server. The assistant keeps working with its rules, and you can download it again any time.", "Remove"))) return;
       try { await del("/api/v1/assistant/brain"); toast("Removed"); } catch (e) { toast(e.message); } loadBrain(); },
-    pick: v => { const [id, k] = v.split(":"); choice[id] = +k; draw(); },
-    unpick: id => { delete choice[id]; draw(); },
-    clear: () => { plan = null; text = ""; draw(); },
-    again: () => { plan = null; summary = ""; text = ""; results = {}; draw(); },
+    voicerm: async () => { if (!(await confirm("Remove voice?", "The speech model is deleted from the server. You can download it again any time.", "Remove"))) return;
+      try { await del("/api/v1/assistant/voice"); toast("Removed"); } catch (e) { toast(e.message); } loadBrain(); },
+    fab: () => { prefs.asstButton = prefs.asstButton === false; ctx.applyTheme(); draw(); },
+    speak: () => { prefs.asstSpeak = !prefs.asstSpeak; if (!prefs.asstSpeak) try { speechSynthesis.cancel(); } catch {} draw(); },
+    newchat: () => { turns = []; save(); text = ""; draw(); },
+    pick: v => { const [id, k] = v.split(":"); now().choice[id] = +k; save(); draw(); },
+    unpick: id => { delete now().choice[id]; save(); draw(); },
+    skip: () => { now().summary = "Not done."; save(); draw(); },
     stop: () => { stop = true; draw(); },
+    mic: async () => {
+      if (listening) { rec?.stop(); return; }
+      if (!br?.voice?.installed) { toast("Download voice first (on this page, below), then tap the mic"); return; }
+      if (!navigator.mediaDevices?.getUserMedia) { toast("This browser can't use the microphone here"); return; }
+      try {
+        listening = true; draw();
+        let last = 0;
+        const w = await listen(l => { level = l; const b = $(".abtn.mic"); if (b && performance.now() - last > 60) { last = performance.now(); b.style.setProperty("--lv", l.toFixed(2)); } });
+        listening = false; level = 0;
+        if (!w) { draw(); toast("I didn't hear anything"); return; }
+        hearing = true; draw();
+        const r = await signedRaw("POST", `/api/v1/assistant/hear?lang=${encodeURIComponent((prefs.lang && prefs.lang !== "auto" ? prefs.lang : navigator.language || "en").slice(0, 2))}`, w);
+        hearing = false;
+        if (r?.text) planIt(r.text); else { draw(); toast("I couldn't make that out — try again"); }
+      } catch (e) { listening = hearing = false; draw(); toast(e.name === "NotAllowedError" ? "Allow the microphone for this page to talk to Nova" : e.message); }
+    },
     run: async () => {
-      const steps = stepsNow(); if (steps.some(s => s.kind === "ask")) return;
+      const t = now(), steps = stepsOf(t); if (steps.some(s => s.kind === "ask")) return;
       busy = true; stop = false; draw();
       let freed = 0, ram = 0, okN = 0, bad = 0, later = [];
       for (let i = 0; i < steps.length; i++) {
@@ -124,15 +212,16 @@ export async function assistant(ctx) {
         cur = i; if (ctx.alive()) draw();
         const s = steps[i];
         let r; try { r = await runStep(s); } catch (e) { r = { ok: false, msg: e.message || "It didn't work" }; }
-        results[s.id] = r; if (r.later) later.push(s);
-        r.ok ? okN++ : bad++; freed += r.freed || 0; ram += +r.freed_mb || 0;
+        t.results[s.id] = r; if (r.later) later.push(s);
+        t.done.push(`${s.say}: ${r.ok ? r.msg : "didn't work — " + r.msg}`);
+        r.ok ? okN++ : bad++; freed += r.freed || 0; ram += +r.freed_mb || 0; save();
       }
       cur = -1; busy = false;
-      const extra = [freed ? `freed ${bytes(freed)} of storage` : "", ram ? `${ram} MB of RAM` : ""].filter(Boolean).join(" and ");
-      const left = steps.length - Object.keys(results).length;
-      summary = stop && left ? `Stopped — ${okN} done, ${left} not started.` : bad ? `${okN} done, ${bad} didn't work — see below.` : `All done!${extra ? ` I ${extra.replace(/^freed/, "freed")} while I was at it.` : ""}`;
-      if (ctx.alive()) draw(); else toast(summary);
-      // pages to open last (so they don't cut the plan short): the Partition manager with the plan waiting, Your own container…
+      const got = [freed ? `${bytes(freed)} of storage` : "", ram ? `${ram} MB of RAM` : ""].filter(Boolean).join(" and "), extra = got ? "freed " + got : "";
+      const left = steps.length - Object.keys(t.results).length;
+      t.summary = stop && left ? `Stopped — ${okN} done, ${left} not started.` : bad ? `${okN} done, ${bad} didn't work — see above.` : `All done!${extra ? ` I ${extra}.` : ""}`;
+      save(); if (ctx.alive()) draw(); else toast(t.summary);
+      speak(t.summary);
       const go = later[later.length - 1];
       if (go && !stop) {
         if (go.kind === "partition") { stagePartitions(go.serial, go.fs, go.parts, go.after); location.hash = "#/partitions/" + encodeURIComponent(go.serial); }
@@ -141,8 +230,8 @@ export async function assistant(ctx) {
     },
   });
   draw(); loadBrain();
-  if (text) planIt(text);
+  if (text) { const t = text; text = ""; planIt(t); }
 }
 
 /** Does this look like a request rather than a search? (Search offers "Ask Nova" for these.) */
-export const looksLikeRequest = q => q.trim().split(/\s+/).length >= 3 && /^(?:hey|please|can you|could you|turn|set|apply|make|free|clean|disable|enable|lower|raise|dim|install|schedule|restart|reboot|stop|start|run|back ?up|open|show|switch|erase|format|wipe|change)\b/i.test(q.trim());
+export const looksLikeRequest = q => q.trim().split(/\s+/).length >= 3 && /^(?:hey|please|can you|could you|turn|set|apply|make|free|clean|disable|enable|lower|raise|dim|install|schedule|restart|reboot|stop|start|run|back ?up|open|show|switch|erase|format|wipe|change|what|why|how|is|are|did)\b/i.test(q.trim());

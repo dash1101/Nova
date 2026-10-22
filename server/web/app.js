@@ -88,6 +88,7 @@ function applyTheme() {
   root.style.setProperty("--tintk", String(Math.max(0, Math.min(100, prefs.tint ?? 50)) / 50));
   if (/^#[0-9a-f]{6}$/i.test(prefs.accentLocal || "")) root.style.setProperty("--blue", prefs.accentLocal);
   wallpaper().then(readability);
+  try { drawFab(parse()[0]); } catch {}
   readability();
   requestAnimationFrame(() => { try { prefs.bgc = getComputedStyle(root).getPropertyValue("--bg").trim(); } catch {} });   // for early.js next load
 }
@@ -287,9 +288,21 @@ const rateViewTransition = t => t.ready?.then(() => { const k = animRate(); if (
 
 // ── render a route ───────────────────────────────────────────────────────────────
 let lastRendered = null;
+// the assistant button (Labs → Nova assistant; Assistant → Assistant button): an orb in the corner, on every page but its own
+function drawFab(r) {
+  let b = document.getElementById("asstfab");
+  const on = S.cache["/api/v1/labs"]?.labs?.assistant && prefs.asstButton !== false && S.overview && r !== "assistant" && !WM.EMBED && !S.target;
+  if (!on) { if (b) b.hidden = true; return; }
+  if (!b) { b = document.createElement("button"); b.id = "asstfab"; b.className = "press"; b.setAttribute("aria-label", "Ask Nova");
+    b.innerHTML = `<div class="aorb" aria-hidden="true"><i></i><i></i><i></i><b></b></div>`; b.onclick = () => AS.ask(""); document.body.append(b); }
+  b.hidden = false;
+}
+let labsAsked = false;
 function render(dir = 0) {
+  if (!labsAsked && S.overview) { labsAsked = true; get("/api/v1/labs").then(() => drawFab(parse()[0])).catch(() => {}); }
   if (dir === 1) SND.feel("nav"); else if (dir === -1) SND.feel("back");     // going in or coming back has its own sound
   const my = ++seq, [r, ...args] = parse(), view = S.target && NOT_RELAYED.includes(r) ? notRelayed : ROUTES[r] || V.home;
+  drawFab(r);
   current?.leave(); closeSheet();
   if (V.navTabs().some(t => t.route === r) && depth === 0) rootRoute = r;
   let shown, firstShow = new Promise(res => shown = res), t0 = performance.now(), held = 0;

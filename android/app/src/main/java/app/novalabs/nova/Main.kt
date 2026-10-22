@@ -18,6 +18,9 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.draw.clip
 import androidx.compose.animation.core.spring
 import androidx.compose.ui.graphics.Color
 import dev.chrisbanes.haze.hazeSource
@@ -363,6 +366,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {   // FragmentAct
     app.dockMenu?.let { id -> DockAppMenu(app, id) { app.dockMenu = null } }
     LaunchedEffect(openApprovals) { if (openApprovals) { openApprovals = false; app.go(Route.Approvals) } }
     LaunchedEffect(openUpdate) { if (openUpdate) { openUpdate = false; app.go(Route.Settings) } }
+    LaunchedEffect(app.top == Route.Labs, app.notAuthorized) { Assistant.refresh(app) }          // on start, and after Labs (the assistant may have been switched)
 
     val rootHaze = remember { dev.chrisbanes.haze.HazeState() }
     GlowBackground {
@@ -427,6 +431,13 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {   // FragmentAct
             }
             CompositionLocalProvider(LocalRootHaze provides rootHaze) {        // so the toast is real frosted glass
                 AlertBanner(app, Modifier.align(Alignment.TopCenter))
+                // the assistant's orb, on every page but its own (Appearance → Assistant button)
+                androidx.compose.animation.AnimatedVisibility(Assistant.on == true && AppPrefs.asstButton && app.top != Route.Assistant && app.top !is Route.AppFrame && DialogStack.depth == 0,
+                    Modifier.align(Alignment.BottomEnd).navigationBarsPadding().padding(end = 14.dp, bottom = if (wide) 20.dp else 92.dp), enter = fadeIn() + androidx.compose.animation.scaleIn(initialScale = .6f), exit = fadeOut() + androidx.compose.animation.scaleOut(targetScale = .6f)) {
+                    Box(Modifier.size(56.dp).clip(androidx.compose.foundation.shape.CircleShape).background(N.card.copy(alpha = .85f))
+                        .border(1.dp, N.divider, androidx.compose.foundation.shape.CircleShape).clickable(onClickLabel = "Ask Nova") { Sounds.feel("tap"); app.go(Route.Assistant) }, contentAlignment = Alignment.Center) {
+                        AssistantOrb(false, 46.dp) }
+                }
                 LivingTicker(); AmbienceTicker()
                 if (DialogStack.depth == 0) OneToastHost(app.snack, Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = if (wide) 24.dp else 96.dp))
             }

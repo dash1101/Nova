@@ -1537,3 +1537,22 @@ html.lumen .win { --wr: 18px; border: 1px solid var(--lm-edge); box-shadow: 0 30
 html.lumen .ph h1 { font-weight: 700; letter-spacing: -.02em; }
 html.lumen .aorb { filter: saturate(1.4) drop-shadow(0 0 30px var(--lm-glow)); }
 html.reduce.lumen body::before, html.reduce.lumen .glass::after, html.reduce.lumen .nav::after, html.reduce.lumen .btn::after, html.reduce.lumen #sheet .box::after { animation: none; }
+/* the conversation */
+.aturn { display: flex; flex-direction: column; gap: 6px; margin: 10px var(--gutter); }
+.aturn .aq { align-self: flex-end; max-width: 82%; padding: 10px 14px; border-radius: 18px 18px 6px 18px; background: var(--blue); color: var(--onBlue, #fff); font-size: 15px; line-height: 1.4; overflow-wrap: anywhere; }
+.aturn .areply { align-self: flex-start; margin: 0; max-width: 88%; }
+.aturn .adone { display: flex; flex-direction: column; gap: 3px; font-size: 13px; color: var(--sub); padding-left: 6px; }
+.aturn .adone span { display: flex; gap: 6px; align-items: flex-start; } .aturn .adone svg { width: 14px; height: 14px; fill: var(--green); flex: none; margin-top: 2px; }
+.asum { font-size: 13px; padding-left: 6px; margin: 0; }
+.aturn:not(.now) { opacity: .85; }
+.abtn.mic { background: var(--pill); color: var(--text); box-shadow: inset 0 0 0 1px var(--divider); }
+.abtn.mic svg { transform: none; }
+.abtn.mic.on { background: var(--red); color: #fff; box-shadow: 0 0 0 calc(4px + var(--lv, 0) * 14px) color-mix(in srgb, var(--red) 28%, transparent); transition: box-shadow .08s; }
+.aorb.listen b { animation-duration: .8s; } .aorb.listen i { animation-duration: 4s; }
+/* the assistant button: an orb in the corner of every page */
+#asstfab { position: fixed; right: max(16px, env(safe-area-inset-right)); bottom: calc(96px + env(safe-area-inset-bottom)); z-index: 8; width: 56px; height: 56px; border-radius: 50%; border: 0; padding: 0; cursor: pointer;
+  background: radial-gradient(circle at 35% 30%, color-mix(in srgb, var(--blue) 40%, #fff), var(--blue) 60%, color-mix(in srgb, var(--blue) 60%, #000));
+  box-shadow: 0 10px 30px -8px color-mix(in srgb, var(--blue) 70%, transparent), inset 0 1px 1px rgba(255,255,255,.5); display: grid; place-items: center; }
+#asstfab .aorb { width: 40px; height: 40px; pointer-events: none; }
+#asstfab[hidden] { display: none; }
+@media (min-width: 900px), (orientation: landscape) and (max-height: 540px) { #asstfab { bottom: calc(22px + env(safe-area-inset-bottom)); } }

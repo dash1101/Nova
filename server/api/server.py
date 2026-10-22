@@ -41,7 +41,7 @@ try:                       # optional module: fan/case lighting (modules/fan-gig
 except ImportError:
     nova_rgb = None
 
-API_VERSION = "0.9.0-alpha"
+API_VERSION = "0.9.1-alpha"
 # The API contract (docs/API.md). API_LEVEL only ever goes up: each new level adds endpoints or fields, never removes or
 # changes one. MIN_LEVEL is the oldest level this server still answers in full (old apps keep working back to it).
 # MIN_CLIENT: the oldest app builds still served, per platform — 0 = all of them. Raising it is the last resort, after
@@ -86,7 +86,7 @@ FEATURES = {"lighting": {"name": "Nova controls the lights", "about": "Off: Nova
 def feat_on(k): return load_json(SETTINGS, {}).get("features", {}).get(k) is not False
 WOL = f"{DATA}/wol.json"                         # Labs → Wake-on-LAN: [{id, name, mac}]
 LABS_STATE = f"{DATA}/labs-state.json"           # written by labs.py (root): last weekly update, …
-RAW_BODY_PATHS = ("/api/v1/files/upload", "/api/v1/files/save")
+RAW_BODY_PATHS = ("/api/v1/files/upload", "/api/v1/files/save", "/api/v1/assistant/hear")
 FILE_UNLOCK = {}          # browser device id → until when it may change files (after a phone approved it)
 NOTIFY_KEYS = {"push_min_level": ("info", "warning", "critical"), "push_logins": bool, "push_usb": bool,
                "discord_paused": bool}
@@ -720,6 +720,7 @@ def describe_action(a):
     if p[:1] == ["store"]: return f"{p[2].title()} {p[1]} from the app store"
     if p[:1] == ["programs"]: return f"{p[2].title()} the program {p[1]}"
     if p[:1] == ["drives"]: return f"{p[2].title()} a drive"
+    if p == ["assistant", "voice"]: return "Download voice for the assistant (0.2 GB) and run it on this server — what you say stays on the server"
     if p == ["assistant", "brain"]:
         k = (a.get("data", {}) or {}).get("model")
         return f"Download the assistant's {'Smart (2.5 GB)' if k == 'smart' else 'Light (1.1 GB)'} brain and run it on this server — it stays private, on the server only"
@@ -856,7 +857,7 @@ def needs_stepup(method, parts):
     if parts == ["labs", "images", "clean"]: return True                    # deletes images: fingerprint
     if parts == ["notify", "discord"]: return True                         # where alerts get sent: fingerprint
     if parts == ["lights", "ha"]: return True                              # a token for your Home Assistant: fingerprint
-    if parts == ["assistant", "brain"]: return True                         # downloads a model and runs it as a service: fingerprint
+    if parts in (["assistant", "brain"], ["assistant", "voice"]): return True   # downloads a model and runs it as a service: fingerprint
     if parts[:1] == ["backups"] and len(parts) == 3 and parts[2] == "restore": return True
     if parts == ["backups", "legacy", "script"]: return True                 # the script runs as root: fingerprint
     return False
@@ -1161,6 +1162,15 @@ class Handler(BaseHTTPRequestHandler):
                 for _ in range(mb): self.wfile.write(chunk)
             except (BrokenPipeError, ConnectionResetError): pass
             return
+        if method == "POST" and parts == ["assistant", "hear"]:          # speech → text, on the server (raw WAV, signed like a file upload)
+            fq = {k: v[0] for k, v in urllib.parse.parse_qs(self.path.split("?", 1)[1] if "?" in self.path else "").items()}
+            if not load_json(SETTINGS, {}).get("labs", {}).get("assistant"): return self.send(403, {"error": "turn on Nova assistant in Settings → Labs first"})
+            if role_of(dev) != "admin": return self.send(403, {"error": "admins only"})
+            w = body or b""
+            if not (1024 <= len(w) <= 4 * 1024 * 1024 and w[:4] == b"RIFF" and w[8:12] == b"WAVE"): return self.send(400, {"error": "send a WAV recording (up to 2 minutes)"})
+            import brain
+            t = brain.hear(w, fq.get("lang", "auto")[:5])
+            return self.send(200, {"text": t}) if t is not None else self.send(503, {"error": "voice isn't set up — download it in the assistant"})
         if parts[:1] == ["files"] and parts != ["files", "unlock"]:
             # the file manager — as your normal account on the server (files.py), admins only
             if role_of(dev) != "admin" or dev.get("type") in ("watch", "head"): return self.send(403, {"error": "admins only"})
@@ -1263,7 +1273,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Referrer-Policy", "no-referrer")
         self.send_header("X-Frame-Options", "SAMEORIGIN")         # only Nova itself frames Nova (Files and Terminal in their own windows)
-        self.send_header("Permissions-Policy", "camera=(), microphone=(), geolocation=(self), payment=(), usb=(), interest-cohort=()")
+        self.send_header("Permissions-Policy", "camera=(), microphone=(self), geolocation=(self), payment=(), usb=(), interest-cohort=()")
         self.send_header("Cross-Origin-Opener-Policy", "same-origin")
         # apps can open in Nova windows (frame-src), and the page may ask an app's own address whether you're signed in
         # to it (connect-src) — only the addresses of apps Nova knows, nothing else
@@ -2497,8 +2507,16 @@ class Handler(BaseHTTPRequestHandler):
             env = {"lights": lights, "containers": lambda: helper("containers")[1].get("containers", []), "store": lambda: helper("store-list", timeout=60)[1].get("items", []),
                    "hub": hub_search, "drives": drives}
             import brain
-            if brain.status().get("model"): env["brain"] = lambda t: brain.ask(t, brain_facts())
+            hist = data.get("history") if isinstance(data.get("history"), list) else []
+            hist = [h for h in hist[-6:] if isinstance(h, dict)]
+            if len(json.dumps(hist)) > 12000: hist = hist[-2:]
+            env["history"] = hist
+            if brain.status().get("model"): env["brain"] = lambda t: brain.ask(t, brain_facts(), hist)
             return 200, assistant.plan(text, env)
+        if parts == ["assistant", "voice"] and method in ("POST", "DELETE"):
+            if role_of(dev) != "admin": return 403, {"error": "admins only"}
+            if method == "POST": rc, res = helper("task-start", "voice-install", "{}"); return (202 if rc == 0 else 400), ({"task": res.get("id"), **res} if rc == 0 else res)
+            rc, res = helper("voice-remove", timeout=60); return (200 if rc == 0 else 400), res
         # ── the assistant's brain: a small model on this server (download, status, remove) ──
         if parts == ["assistant", "brain"]:
             import brain

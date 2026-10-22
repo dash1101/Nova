@@ -160,7 +160,7 @@ fun searchNova(app: AppState, q0: String, data: Map<String, org.json.JSONObject?
     LaunchedEffect(Unit) { if (Assistant.on == null) Assistant.refresh(app) }
     val ask = Assistant.on == true && app.isAdmin && q.isNotBlank() && (Assistant.looksLikeRequest(q) || hits.isEmpty())
     fun askNova() { Assistant.pending = q.trim(); app.go(Route.Assistant) }
-    fun keep(term: String) { val t = term.trim().take(80); if (t.length < 2) return
+    fun keep(term: String) { val t = term.trim().take(500); if (t.length < 2) return
         AppPrefs.set("search_recent", (listOf(t) + AppPrefs.searchRecent.filter { !it.equals(t, true) }).take(12).joinToString("\n")) }
     fun pin(t: String) { AppPrefs.set("search_pinned", (if (t in AppPrefs.searchPinned) AppPrefs.searchPinned - t else (AppPrefs.searchPinned + t).takeLast(8)).joinToString("\n")) }
     Page("Search", app::back) {
@@ -169,7 +169,7 @@ fun searchNova(app: AppState, q0: String, data: Map<String, org.json.JSONObject?
             Icon(Icons.Rounded.Search, null, tint = N.sub); Spacer(Modifier.width(12.dp))
             Box(Modifier.weight(1f)) {
                 if (q.isEmpty()) Text("Screens, settings, containers, apps, drives…", color = N.sub, fontSize = 17.sp)
-                BasicTextField(q, { q = it.take(80) }, Modifier.fillMaxWidth().focusRequester(focus), singleLine = true,
+                BasicTextField(q, { q = it.take(500) }, Modifier.fillMaxWidth().focusRequester(focus), singleLine = true,
                     textStyle = TextStyle(color = N.text, fontSize = 17.sp), cursorBrush = SolidColor(N.blue),
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go), keyboardActions = KeyboardActions(onGo = { if (ask) { keep(q); askNova() } else hits.firstOrNull()?.let { keep(q); it.go(app) } }))
             }
