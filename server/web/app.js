@@ -11,6 +11,7 @@ import * as SR from "./start.js";
 import * as SV from "./servers.js";
 import * as FM from "./files.js";
 import * as PT from "./parts.js";
+import * as AS from "./assistant.js";
 import * as SEC from "./sec.js";
 import * as WM from "./winmgr.js";
 import * as SND from "./sounds.js";
@@ -48,10 +49,10 @@ function applyTheme() {
   const dark = t === "dark" || (t === "system" && !matchMedia("(prefers-color-scheme: light)").matches);
   // Style: Material You on Android phones that aren't Samsung (or another One UI/iOS-like maker); the Default look elsewhere
   const autoMaterial = /Android/i.test(navigator.userAgent) && !/SamsungBrowser|SM-[A-Z0-9]|Xiaomi|Redmi|POCO|HUAWEI|HONOR|vivo|OPPO|realme/i.test(navigator.userAgent);
-  const preset = ["liquid", "fluent", "breeze", "aero"].includes(prefs.style) ? prefs.style : "";
+  const preset = ["liquid", "fluent", "breeze", "aero", "lumen"].includes(prefs.style) ? prefs.style : "";
   const material = !preset && (prefs.style === "material" || (prefs.style !== "default" && autoMaterial));
   root.classList.toggle("material", material); root.classList.toggle("m-dark", material && dark); root.classList.toggle("m-light", material && !dark);
-  for (const p of ["liquid", "fluent", "breeze", "aero"]) root.classList.toggle(p, preset === p);
+  for (const p of ["liquid", "fluent", "breeze", "aero", "lumen"]) root.classList.toggle(p, preset === p);
   root.classList.toggle("l-light", !dark);
   // Background (Appearance → Wallpaper): the look's own, the Default look's glow on any look, or plain
   for (const k of ["glow", "vivid", "soft", "aero", "plain"]) root.classList.toggle("bg-" + k, prefs.lookBg === k);
@@ -140,7 +141,7 @@ matchMedia("(prefers-color-scheme: light)").addEventListener?.("change", applyTh
 const ROUTES = {
   home: V.home, menu: V.menu, status: V.status, containers: V.containers, store: V.store, inbox: V.inbox, notify: V.notify,
   quick: V.quick, "edit-quick": V.editQuick, lighting: V.lighting, lights: V.lights, schedules: V.schedules, schedule: V.schedule, hardware: V.hardware,
-  partitions: PT.partitions, disks: PT.disks, recommended: V.recommended, security: SEC.security, devices: V.devices, settings: V.settings, server: V.serverSettings, appearance: V.appearance, "appearance-icons": V.appearanceIcons, "edit-home": V.editHome,
+  partitions: PT.partitions, disks: PT.disks, recommended: V.recommended, security: SEC.security, devices: V.devices, settings: V.settings, server: V.serverSettings, assistant: AS.assistant, appearance: V.appearance, "appearance-icons": V.appearanceIcons, "edit-home": V.editHome,
   "edit-shortcuts": V.editShortcuts, "edit-tabs": V.editTabs, about: V.about, guide: V.guide, faq: V.faq, terminal: V.terminal,
   dashboard: V.dashboard, "edit-dash": V.editDash, archive: V.archive,
   apps: ST.apps, updates: ST.updates, search: SR.search, start: SR.start, "start-edit": SR.startEdit, favorites: SR.favorites, servers: SV.servers, "container-new": ST.containerNew, term: V.hostTerminal, files: FM.files, cmdapp: ST.cmdApp, labs: ST.labs, freeup: ST.freeup, automation: ST.automation, features: ST.features, plugins: ST.plugins, "labs-images": ST.labsImages, wol: ST.wol, openrgb: ST.openrgb, access: ST.access, cloudflare: ST.cloudflare, setup: ST.setup, pool: ST.pool, task: ST.task, backups: ST.backups, backup: ST.backup, "backup-edit": ST.backupEdit, dev: V.dev, "ha-light": V.haLight, "backup-script": ST.backupScript, restore: ST.restore, diag: ST.diag,
@@ -613,3 +614,15 @@ addEventListener("pointerdown", e => {
   const move = ev => set(ev.clientX), up = () => { removeEventListener("pointermove", move); removeEventListener("pointerup", up); removeEventListener("pointercancel", up); r.dispatchEvent(new Event("change", { bubbles: true })); };
   addEventListener("pointermove", move); addEventListener("pointerup", up); addEventListener("pointercancel", up);
 }, true);
+
+// Lumen: the navigation pill's buttons lean toward the pointer (magnetic), and spring back when it leaves
+addEventListener("pointermove", e => {
+  if (!document.documentElement.classList.contains("lumen") || document.documentElement.classList.contains("reduce") || e.pointerType !== "mouse") return;
+  const nav = document.getElementById("nav"); if (!nav || nav.hidden) return;
+  const r = nav.getBoundingClientRect(), near = e.clientX > r.left - 40 && e.clientX < r.right + 40 && e.clientY > r.top - 40 && e.clientY < r.bottom + 40;
+  for (const b of nav.querySelectorAll("button")) {
+    if (!near) { b.style.transform = ""; continue; }
+    const q = b.getBoundingClientRect(), dx = e.clientX - (q.left + q.width / 2), dy = e.clientY - (q.top + q.height / 2), d = Math.hypot(dx, dy);
+    b.style.transform = d < 70 ? `translate(${(dx * .18).toFixed(1)}px, ${(dy * .18).toFixed(1)}px)` : "";
+  }
+}, { passive: true });

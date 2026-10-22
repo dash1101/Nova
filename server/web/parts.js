@@ -8,14 +8,18 @@ import * as ST from "./storage.js";
 const MiB = 1 << 20;
 const FS_COLOR = { ext4: "#3e91ff", xfs: "#bf5af2", btrfs: "#30b0c7", exfat: "#ff9f0a", vfat: "#34c759", swap: "#ff453a", ntfs: "#ffd60a" };
 const FS_NEW = [["ext4", "ext4", "Linux's everyday filesystem — the safe choice"], ["xfs", "XFS", "Good for very large files; can grow but never shrink"],
-  ["btrfs", "btrfs", "Snapshots and checksums"], ["exfat", "exFAT", "Readable by Windows and Macs too"], ["vfat", "FAT32", "For an EFI system partition, or old devices"],
+  ["btrfs", "btrfs", "Snapshots and checksums"], ["exfat", "exFAT", "Readable by Windows and Macs too"], ["ntfs", "NTFS", "Windows' own filesystem — for a drive you'll also plug into a Windows PC"], ["vfat", "FAT32", "For an EFI system partition, or old devices"],
   ["swap", "Swap", "Extra memory on disk"], ["none", "Leave it empty", "Just the partition, no filesystem"]];
 const FLAG_NAMES = { none: "Normal data partition", esp: "EFI system partition", bios_grub: "BIOS boot", raid: "RAID member", lvm: "LVM member" };
 const mib = (sectors, ss) => Math.floor(sectors * ss / MiB);
 
+// A plan the assistant made ("erase it, NTFS, 33% root + 67% home"): it waits here to be checked and applied as usual
+let STAGED = null;
+export function stage(serial, fs, parts, after = "") { STAGED = { serial, fs, parts: parts || [], after }; }
+
 export async function partitions(ctx) {
   const serial = ctx.args[0];
-  let lay = null, ops = [], planned = null, sel = null, err = "";
+  let lay = null, ops = [], planned = null, sel = null, err = "", staged = null;
   const load = async () => { lay = await get(`/api/v1/drives/${encodeURIComponent(serial)}/partitions`); ops = []; planned = null; sel = null; };
   const replan = async () => {
     if (!ops.length) { planned = null; return true; }
@@ -75,7 +79,9 @@ export async function partitions(ctx) {
   };
   const pending = () => {
     if (!ops.length) return "";
-    return sec(`Waiting to apply · ${ops.length}`) + group((planned?.steps || []).map((s, i) => row(s, { icon: i === ops.length - 1 ? "back" : "history", tint: "var(--amber)", click: i === ops.length - 1 ? "undo" : "" })).join(""))
+    const fromAssistant = staged ? `<div class="hint" style="margin:10px var(--gutter);border:1px solid color-mix(in srgb,var(--amber) 50%,transparent)"><b style="color:var(--amber)">Planned by the assistant — nothing has changed yet</b>
+      <p class="muted" style="margin:6px 0 0">Check the steps below. Apply asks you to type this drive's serial and approve it — everything on the drive is erased.${staged.after ? " " + esc(staged.after) : ""}</p></div>` : "";
+    return fromAssistant + sec(`Waiting to apply · ${ops.length}`) + group((planned?.steps || []).map((s, i) => row(s, { icon: i === ops.length - 1 ? "back" : "history", tint: "var(--amber)", click: i === ops.length - 1 ? "undo" : "" })).join(""))
       + `<div style="display:flex;gap:10px;margin:8px var(--gutter)"><button class="btn ghost" style="flex:1" data-act="clear">Clear</button><button class="btn" style="flex:2" data-act="apply" ${lay.editable ? "" : "disabled"}>Apply changes (${ops.length})</button></div>`;
   };
   const draw = () => {
@@ -146,6 +152,22 @@ export async function partitions(ctx) {
   });
   draw();
   try { await load(); } catch (e) { err = e.message; }
+  if (STAGED && STAGED.serial === serial && lay?.editable) {
+    staged = STAGED; STAGED = null;
+    // a new GPT table, then each partition in turn in the free space it leaves (the last one takes what's left)
+    ops = [{ op: "table", type: "gpt" }];
+    if (await replan()) {
+      const v = view(), g = (v.gaps || [])[0];
+      if (g) {
+        let start = mib(g.start, v.sector); const total = mib(g.end - g.start + 1, v.sector), sum = staged.parts.reduce((a, p) => a + p.pct, 0);
+        staged.parts.forEach((p, i) => {
+          const last = i === staged.parts.length - 1 && sum >= 99.5, size = last ? total - (start - mib(g.start, v.sector)) - 1 : Math.floor(total * p.pct / 100);
+          ops.push({ op: "create", start_mib: start, size_mib: size, fs: staged.fs, label: p.label || "" }); start += size;
+        });
+        if (!(await replan())) { ops = []; planned = null; }
+      }
+    }
+  } else if (STAGED?.serial === serial) { STAGED = null; toast("This drive can't be changed right now — see why below"); }
   if (ctx.alive()) draw();
 }
 

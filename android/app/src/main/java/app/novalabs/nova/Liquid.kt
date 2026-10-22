@@ -38,6 +38,7 @@ import androidx.compose.ui.unit.dp
 
 // ── tokens ──────────────────────────────────────────────────────────────────────────────
 fun presetTokens(preset: String, dark: Boolean, seed: Color?): NovaColors? = when (preset) {
+    "lumen" -> lumenTokens(dark, seed)
     "liquid" -> (if (dark) DarkTokens else LightTokens).copy(preset = "liquid",
         card = if (dark) Color(0xFF16161C) else Color(0xFFFAFAFC), divider = if (dark) Color(0x22FFFFFF) else Color(0x14000000))
     "fluent" -> {
@@ -86,7 +87,7 @@ fun winK(): Float = AppPrefs.winRound.coerceIn(0, 300) / 100f
 /** Corner radius for a card in the current style (Corner roundness scales the presets). */
 @Composable fun cardRadius(default: Dp): Dp {
     val k = roundK()
-    return when (N.preset) { "liquid" -> 28.dp * k; "fluent" -> 8.dp * k; "breeze" -> 7.dp * k; "aero" -> 6.dp * k; else -> default }
+    return when (N.preset) { "liquid" -> 28.dp * k; "fluent" -> 8.dp * k; "breeze" -> 7.dp * k; "aero" -> 6.dp * k; "lumen" -> 20.dp * k; else -> default }
 }
 
 // ── soft, smooth small copies ───────────────────────────────────────────────────────────

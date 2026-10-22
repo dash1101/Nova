@@ -114,7 +114,7 @@ import org.json.JSONObject
     }
     // Hero: the server with the live fan — tap the fan for Lighting, the drive lights for Storage, the power button for power
     var powerMenu by remember { mutableStateOf(false) }
-    var powerAsk by remember { mutableStateOf<String?>(null) }
+    var powerAsk by remember { mutableStateOf<String?>(null) }; var scheduling by remember { mutableStateOf(false) }
     if (powerMenu) OneDialog({ powerMenu = false }, "Power", null, listOf(DialogButton("Cancel") { powerMenu = false })) {
         listOf("reboot" to ("Restart server" to "Everything goes offline for about 2 minutes"),
             "poweroff" to ("Shut down server" to "You'll need to press the power button to turn it back on"),
@@ -122,8 +122,10 @@ import org.json.JSONObject
             "nova-stop" to ("Shut down Nova" to "The server keeps running, but Nova can't be reached until it's started again")).forEach { (id, t) ->
             DialogChoice(t.first, t.second, false, action = true) { powerMenu = false; powerAsk = id }
         }
+        DialogChoice("Schedule a restart or shutdown", "Pick a day and time — cancel it any time before", false, action = true) { powerMenu = false; scheduling = true }
     }
     powerAsk?.let { PowerConfirm(app, it) { powerAsk = null } }
+    if (scheduling) ScheduleDialog(app, { scheduling = false }) {}
     val hero: @Composable (androidx.compose.ui.unit.Dp) -> Unit = { h ->
         Box(Modifier.fillMaxWidth().height(h).pointerInput(Unit) {
             detectTapGestures { o ->

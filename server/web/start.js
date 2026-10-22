@@ -3,6 +3,7 @@
 import { S, $, $$, esc, get, prefs, isAdmin, bytes, serverName, pct } from "./core.js";
 import { I, row, group, sec, note, switchRow, toast, dialog, reorderable, wireCommon } from "./ui.js";
 import { poolKind } from "./storage.js";
+import * as AS from "./assistant.js";
 
 const enc = encodeURIComponent;
 
@@ -24,6 +25,7 @@ export const PLACES = [
   ["Sounds", "sounds sound pack clicks volume alert sounds chime vibration haptics", "palette", "appearance"], ["Living wallpaper", "living animated wallpaper moving background beta", "palette", "appearance"],
   ["Ambience", "ambience ambient music background sound beta", "palette", "appearance"], ["Apps in Nova windows", "windows window apps open inside nova labs", "science", "labs"],
   ["Glass clarity", "glass clarity transparency frosted liquid", "palette", "appearance"], ["Corner roundness", "corner radius roundness rounded corners", "palette", "appearance"],
+  ["Assistant", "assistant ask nova do it for me ai help voice command", "star", "assistant"],
   ["Icons", "icon style tiles glossy circles outline symbols monochrome app icon shape silhouette accent color own colors", "apps", "appearance-icons"],
   ["Window roundness", "window corners dialog radius roundness rounded windows", "palette", "appearance"], ["Readability", "readability text contrast bold legible easier to read font", "article", "appearance"],
   ["Fade color", "fades top bottom tint scrim color", "palette", "appearance"], ["Built-in background", "background gallery wallpaper glow vivid sky plain", "palette", "appearance"], ["Swap", "swap memory set up swap file", "mem", "status"],
@@ -64,9 +66,13 @@ export function searchNova(q0) {
 
 export async function search(ctx) {
   let q = ctx.args[0] ? decodeURIComponent(ctx.args[0]) : "";
+  // the assistant (Labs): a sentence that asks for something gets "Ask Nova" on top
+  const asst = () => S.cache["/api/v1/labs"]?.labs?.assistant && isAdmin();
+  const askRow = () => asst() && q.trim() && (AS.looksLikeRequest(q) || !searchNova(q).length)
+    ? group(`<div class="row click askrow" data-act="asknova" role="button" tabindex="0">${`<span class="ri">${I("star")}</span>`}<div class="t"><b>Ask Nova</b><small class="blue">“${esc(q.trim().slice(0, 120))}”</small></div></div>`) : "";
   const results = () => { const hits = searchNova(q), groups = {}; hits.forEach(h => (groups[h.kind] ||= []).push(h));
-    return !q.trim() ? historyHtml() + note("Try “dark mode”, “raid”, “speed test” or a container's name. Press / anywhere in Nova to search.")
-      : hits.length ? Object.entries(groups).map(([k, l]) => sec(k) + group(l.map(h => row(h.title, { sub: h.sub, icon: h.icon, click: `hit:${h.go}` })).join(""))).join("") : note(`Nothing called “${q}”.`); };
+    return askRow() + (!q.trim() ? historyHtml() + note("Try “dark mode”, “raid”, “speed test” or a container's name. Press / anywhere in Nova to search.")
+      : hits.length ? Object.entries(groups).map(([k, l]) => sec(k) + group(l.map(h => row(h.title, { sub: h.sub, icon: h.icon, click: `hit:${h.go}` })).join(""))).join("") : asst() ? "" : note(`Nothing called “${q}”.`)); };
   // recent and pinned searches (this browser)
   const recent = () => prefs.searchRecent || [], pinned = () => prefs.searchPinned || [];
   const keep = t => { t = t.trim().slice(0, 80); if (t.length < 2) return; prefs.searchRecent = [t, ...recent().filter(x => x.toLowerCase() !== t.toLowerCase())].slice(0, 12); };
@@ -85,12 +91,14 @@ export async function search(ctx) {
     pinq: i => { const t = recent()[+i]; if (t && !pinned().includes(t)) prefs.searchPinned = [...pinned(), t].slice(-8); redraw(); },
     rmq: i => { prefs.searchRecent = recent().filter((_, j) => j !== +i); redraw(); },
     clearq: () => { prefs.searchRecent = []; redraw(); },
+    asknova: () => { keep(q); AS.ask(q.trim()); },
   });
   ctx.show(`<div class="searchbox glass">${I("search")}<input id="sq" class="sq" placeholder="Screens, settings, containers, apps, drives…" value="${esc(q)}" autocomplete="off" aria-label="Search Nova"></div><div id="sres">${results()}</div>`, { title: "Search" });
   const inp = $("#sq"); inp.focus();
   inp.oninput = () => { q = inp.value; redraw(); };
-  inp.onkeydown = e => { if (e.key === "Enter") { const h = searchNova(q)[0]; if (h) { keep(q); ctx.go(h.go); } } };
-  redraw(); await loadSearchData(); if (ctx.alive()) redraw();
+  inp.onkeydown = e => { if (e.key === "Enter") { if (asst() && (AS.looksLikeRequest(q) || !searchNova(q).length)) { keep(q); return AS.ask(q.trim()); }
+    const h = searchNova(q)[0]; if (h) { keep(q); ctx.go(h.go); } } };
+  redraw(); if (!S.cache["/api/v1/labs"]) get("/api/v1/labs").then(() => ctx.alive() && redraw()).catch(() => {}); await loadSearchData(); if (ctx.alive()) redraw();
 }
 
 // ── the start page ─────────────────────────────────────────────────────────────

@@ -7,10 +7,10 @@ import { prefs, kv } from "./core.js";
 
 let cv = null, g = null, box = null, media = null, mediaUrl = "", raf = 0, last = 0, t0 = performance.now(), scene = "", pal = null;
 const SOFT = .3;                                   // soft scenes are drawn this small (they look the same, at a tenth of the cost)
-export const SCENES = { default: "Nebula", aero: "Harmony (Aero)", fluent: "Bloom (Mica)", breeze: "Flow (Breeze)", liquid: "Liquid (Glass)", material: "Shapes (Material)" };
+export const SCENES = { default: "Nebula", aero: "Harmony (Aero)", fluent: "Bloom (Mica)", breeze: "Flow (Breeze)", liquid: "Liquid (Glass)", material: "Shapes (Material)", lumen: "Aurora (Lumen)" };
 
 const root = () => document.documentElement;
-const look = () => { const c = root().classList; return c.contains("aero") ? "aero" : c.contains("fluent") ? "fluent" : c.contains("breeze") ? "breeze" : c.contains("liquid") ? "liquid" : c.contains("material") ? "material" : "default"; };
+const look = () => { const c = root().classList; return c.contains("lumen") ? "lumen" : c.contains("aero") ? "aero" : c.contains("fluent") ? "fluent" : c.contains("breeze") ? "breeze" : c.contains("liquid") ? "liquid" : c.contains("material") ? "material" : "default"; };
 const dark = () => !root().classList.contains("l-light");
 export const sceneId = () => { const p = prefs.livingScene || "auto"; return p === "auto" ? look() : p; };
 const fpsCap = () => Math.min(root().classList.contains("lite") ? 15 : 120, Math.max(10, Math.min(120, +(prefs.livingFps || 30))));   // Lighter effects: 15
@@ -170,6 +170,21 @@ function draw(t) {
         const x = w * (.5 + .38 * Math.sin(t * (.05 + i * .013) + i * 1.3)), y = hh * (.5 + .38 * Math.cos(t * (.04 + i * .011) + i * 2.1));
         blob(x, y, m * (.38 + .06 * Math.sin(t * .3 + i)), d ? hsl(hu, s, 50, .55) : hsl(hu, s * .9, 74, .6));
       });
+    },
+    // Lumen: curtains of aurora light over near-black, and a few slow sparks
+    lumen() {
+      g.fillStyle = d ? hsl(h, s * .4, 3) : hsl(h, s * .25, 95); g.fillRect(0, 0, w, hh);
+      g.globalCompositeOperation = d ? "lighter" : "multiply";
+      for (let k = 0; k < 4; k++) {
+        const hu = h + [0, 60, -40, 140][k], y0 = hh * (.18 + k * .12), ph = t * (.07 + k * .02) + k * 2;
+        const lg = g.createLinearGradient(0, y0 - hh * .25, 0, y0 + hh * .35);
+        lg.addColorStop(0, hsl(hu, s, 60, 0)); lg.addColorStop(.45, d ? hsl(hu, s, 55, .32) : hsl(hu, s * .8, 70, .35)); lg.addColorStop(1, hsl(hu, s, 60, 0));
+        g.fillStyle = lg; g.beginPath(); g.moveTo(0, hh);
+        for (let x = 0, dx = Math.max(6, w / 160); x <= w + dx; x += dx) g.lineTo(x, y0 + Math.sin(x / w * 5 + ph) * hh * .06 + Math.sin(x / w * 11 - ph * 1.3) * hh * .02);
+        g.lineTo(w, hh); g.closePath(); g.fill();
+      }
+      if (d) for (let i = 0; i < 18; i++) { const x = (i * .618 % 1) * w, y = ((i * .37 + t * .004 * (1 + i % 3)) % 1) * hh, a = .2 + .3 * Math.sin(t * .8 + i);
+        g.fillStyle = `rgba(255,255,255,${Math.max(0, a).toFixed(3)})`; const z = Math.max(1.2, m * .0012); g.fillRect(x, y, z, z); }
     },
     // Material You: soft shapes in the accent's tones floating by — circles, rounded squares, flowers
     material() {

@@ -202,7 +202,7 @@ object DialogStack {
 }
 
 /** Inside a dialog's card: counts the dialog, and (on the top one) shows toasts just above the card. */
-@Composable private fun DialogToasts() {
+@Composable fun DialogToasts() {
     val mine = remember { DialogStack.depth + 1 }
     DisposableEffect(Unit) { DialogStack.depth++; onDispose { DialogStack.depth-- } }
     val snack = DialogStack.snack ?: return
@@ -333,6 +333,7 @@ private fun DialogButton.role(t: NovaColors) = when { color == null -> "cancel";
                     else if (buttons.isNotEmpty()) Row(Modifier.fillMaxWidth().padding(top = 16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) { buttons.forEach { Capsule(it, Modifier.weight(1f)) } }
                 }
             }
+            "lumen" -> LumenDialogBody(title, text, buttons, content)
             "fluent" -> {
                 val shape = RoundedCornerShape(8.dp * roundK() * winK())
                 Column(Modifier.padding(horizontal = 24.dp).widthIn(max = 480.dp).fillMaxWidth().shadow(24.dp, shape).clip(shape).background(t.card)
@@ -435,6 +436,7 @@ private fun DialogButton.role(t: NovaColors) = when { color == null -> "cancel";
         return
     }
     when (N.preset) {
+        "lumen" -> { LumenSwitch(checked, onChange, enabled); return }
         "liquid" -> {     // a capsule: green when on, a round white knob with a soft shadow
             val x by animateDpAsState(if (checked) 20.dp else 0.dp, spring(0.7f, 500f), label = "sw")
             val track by animateColorAsState(if (checked) (if (N.dark) Color(0xFF30D158) else Color(0xFF34C759)) else (if (N.dark) Color(0x52787880) else Color(0x29787880)), label = "swc")
@@ -484,6 +486,7 @@ private fun DialogButton.role(t: NovaColors) = when { color == null -> "cancel";
 
 @Composable fun OneRadio(selected: Boolean, enabled: Boolean = true) {
     if (N.material) { androidx.compose.material3.RadioButton(selected, null, enabled = enabled); return }
+    if (N.preset == "lumen") { LumenRadio(selected, enabled); return }
     if (N.preset == "liquid") {       // Glass: a checkmark on the chosen one, nothing on the rest
         Box(Modifier.size(24.dp), contentAlignment = Alignment.Center) { if (selected) Icon(Icons.Rounded.Check, null, tint = if (enabled) N.blue else N.sub, modifier = Modifier.size(22.dp)) }
         return
@@ -656,6 +659,7 @@ val LocalNavPad = staticCompositionLocalOf { 0.dp }
                 .then(androidx.compose.ui.Modifier.drawWithContent { drawContent(); drawLine(t.sub, Offset(0f, size.height - 0.5f), Offset(size.width, size.height - 0.5f), 1.dp.toPx()) }) }
         "breeze" -> { val sh = RoundedCornerShape(3.dp * roundK()); this.clip(sh).background(t.card).border(1.dp, t.divider, sh) }
         "liquid" -> this.clip(RoundedCornerShape(50)).background(N.pill)
+        "lumen" -> { val sh = RoundedCornerShape(14.dp * roundK()); this.clip(sh).background(if (t.dark) Color(0x47000000) else Color(0xB3FFFFFF)).border(1.dp, if (t.dark) Color(0x17FFFFFF) else Color(0x170A0C18), sh) }
         else -> this.clip(RoundedCornerShape(round)).background(N.pill)
     }
 }

@@ -799,6 +799,55 @@ if verb == "power" and args in (["nova-restart"], ["nova-stop"]):
                       "systemctl", "stop" if stop else "restart", "nova-api.service"])
     out({"ok": rc == 0, "in_seconds": 2, "error": "" if rc == 0 else se.strip()[:200]}, 0 if rc == 0 else 1)
 
+# ── scheduled restarts / shutdowns: a timer + service in /etc/systemd/system (so they survive a restart before then),
+#    removed by the service itself when it runs. Only nova-sched-<8 hex> units are ever made or removed here.
+SCHED_DIR = "/etc/systemd/system"
+def _scheds():
+    out = []
+    for f in sorted(glob.glob(f"{SCHED_DIR}/nova-sched-*.timer")):
+        m = re.fullmatch(r"nova-sched-([0-9a-f]{8})\.timer", os.path.basename(f))
+        if not m: continue
+        txt = open(f).read()
+        at = re.search(r"^# at=(\d+) action=(reboot|poweroff)$", txt, re.M)
+        if at: out.append({"id": m.group(1), "at": int(at.group(1)), "action": at.group(2)})
+    return out
+if verb == "brain-remove" and not args:
+    sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+    import brain
+    brain.remove(); changelog("Assistant's brain removed from the Nova app"); out({"ok": True})
+
+if verb == "power-schedule-list" and not args:
+    out({"schedules": [s for s in _scheds() if s["at"] > time.time() - 120]})
+if verb == "power-schedule" and len(args) == 2 and args[0] in ("reboot", "poweroff") and args[1].isdigit():
+    at = int(args[1])
+    if not time.time() + 30 <= at <= time.time() + 367 * 86400: fail("pick a time from a minute from now to a year from now")
+    if len(_scheds()) >= 10: fail("there are already 10 scheduled — cancel one first")
+    sid = os.urandom(4).hex(); unit = f"nova-sched-{sid}"
+    when = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(at))
+    with open(f"{SCHED_DIR}/{unit}.service", "w") as f:
+        f.write(f"[Unit]\nDescription=Nova: scheduled {args[0]}\n[Service]\nType=oneshot\n"
+                f"ExecStartPre=-/bin/rm -f {SCHED_DIR}/{unit}.timer {SCHED_DIR}/{unit}.service\nExecStart={os.path.realpath(__file__)} power {args[0]}\n")
+    with open(f"{SCHED_DIR}/{unit}.timer", "w") as f:
+        f.write(f"# at={at} action={args[0]}\n[Unit]\nDescription=Nova: scheduled {args[0]} at {when}\n[Timer]\nOnCalendar={when}\nAccuracySec=1s\nPersistent=false\n[Install]\nWantedBy=timers.target\n")
+    run(["systemctl", "daemon-reload"])
+    rc, so, se = run(["systemctl", "enable", "--now", f"{unit}.timer"])
+    if rc != 0:
+        for e in ("timer", "service"):
+            try: os.remove(f"{SCHED_DIR}/{unit}.{e}")
+            except OSError: pass
+        run(["systemctl", "daemon-reload"]); fail("couldn't set the timer: " + se.strip()[:200])
+    changelog(f"Server {'restart' if args[0] == 'reboot' else 'shutdown'} scheduled for {when} from the Nova app")
+    out({"ok": True, "id": sid, "at": at, "action": args[0]})
+if verb == "power-unschedule" and len(args) == 1 and re.fullmatch(r"[0-9a-f]{8}", args[0]):
+    unit = f"nova-sched-{args[0]}"
+    if not os.path.exists(f"{SCHED_DIR}/{unit}.timer"): fail("no such schedule")
+    run(["systemctl", "disable", "--now", f"{unit}.timer"])
+    for e in ("timer", "service"):
+        try: os.remove(f"{SCHED_DIR}/{unit}.{e}")
+        except OSError: pass
+    run(["systemctl", "daemon-reload"]); changelog(f"Scheduled {unit} cancelled from the Nova app")
+    out({"ok": True})
+
 if verb == "power" and len(args) == 1 and args[0] in ("reboot", "poweroff"):
     changelog(f"Server {args[0]} requested from the Nova app")
     notify("warning", f"Server {'restarting' if args[0] == 'reboot' else 'shutting down'} (from the Nova app)", "")

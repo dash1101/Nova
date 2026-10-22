@@ -9,7 +9,7 @@ install -d "$P$L/web" "$P$L/store" "$P$L/monitor" "$P/usr/bin" "$P/usr/sbin" "$P
            "$P/etc/logrotate.d" "$P/usr/share/doc/nova-server" "$P/DEBIAN"
 install -m 755 "$S/api/server.py" "$P$L/server.py"
 install -m 755 "$S/api/helper.py" "$P$L/helper"
-install -m 644 "$S/api/plugins.py" "$S/api/safeio.py" "$S/api/nova_tz.py" "$S/api/storage.py" "$S/api/diag.py" "$S/api/apps.py" "$S/api/apkver.py" "$S/api/updates.py" "$S/api/nodes.py" "$S/api/installs.py" "$S/api/files.py" "$S/api/cfsync.py" "$S/api/appfix.py" "$S/api/pkg.py" "$S/api/preflight.py" "$S/api/totp.py" "$S/api/partitions.py" "$S/api/recommend.py" "$S/api/passkeys.py" "$S/api/guides.py" "$P$L/"
+install -m 644 "$S/api/plugins.py" "$S/api/safeio.py" "$S/api/nova_tz.py" "$S/api/storage.py" "$S/api/diag.py" "$S/api/apps.py" "$S/api/apkver.py" "$S/api/updates.py" "$S/api/nodes.py" "$S/api/installs.py" "$S/api/files.py" "$S/api/cfsync.py" "$S/api/appfix.py" "$S/api/pkg.py" "$S/api/preflight.py" "$S/api/totp.py" "$S/api/partitions.py" "$S/api/recommend.py" "$S/api/passkeys.py" "$S/api/guides.py" "$S/api/assistant.py" "$S/api/brain.py" "$S/api/assistant_examples.json" "$P$L/"
 install -m 755 "$S/api/backups.py" "$S/api/tasks.py" "$S/api/labs.py" "$S/api/freeup.py" "$P$L/"
 install -m 755 "$S/api/helper-sock.py" "$P$L/helper-sock"
 install -m 755 "$S/monitor/nova_alerts.py" "$P$L/monitor/nova_alerts.py"

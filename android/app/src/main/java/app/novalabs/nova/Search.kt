@@ -103,6 +103,7 @@ val PLACES: List<Triple<String, String, Pair<ImageVector, Route>>> = listOf(
     Triple("Weekly container updates", "automatic updates weekly schedule containers images auto update automation", Icons.Rounded.Update to Route.Automation),
     Triple("Clean up old images", "docker images prune free space disk cleanup old versions automation", Icons.Rounded.CleaningServices to Route.Automation),
     Triple("Wake-on-LAN", "wake on lan wol turn on computer pc magic packet automation", Icons.Rounded.PowerSettingsNew to Route.Automation),
+    Triple("Assistant", "assistant ask nova do it for me ai help", Icons.Rounded.AutoAwesome to Route.Assistant),
     Triple("App icon", "app icon launcher icon home screen outline glass black white silhouette material you color", Icons.Rounded.Palette to Route.Icons),
     Triple("Server terminal", "terminal shell bash console command line root sudo", Icons.Rounded.Terminal to Route.Ssh),
     Triple("Approve a browser or watch", "approve browser watch wear code pair computer", Icons.Rounded.Watch to Route.Devices),
@@ -156,6 +157,9 @@ fun searchNova(app: AppState, q0: String, data: Map<String, org.json.JSONObject?
     val focus = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
     val hits = searchNova(app, q, data)
+    LaunchedEffect(Unit) { if (Assistant.on == null) Assistant.refresh(app) }
+    val ask = Assistant.on == true && app.isAdmin && q.isNotBlank() && (Assistant.looksLikeRequest(q) || hits.isEmpty())
+    fun askNova() { Assistant.pending = q.trim(); app.go(Route.Assistant) }
     fun keep(term: String) { val t = term.trim().take(80); if (t.length < 2) return
         AppPrefs.set("search_recent", (listOf(t) + AppPrefs.searchRecent.filter { !it.equals(t, true) }).take(12).joinToString("\n")) }
     fun pin(t: String) { AppPrefs.set("search_pinned", (if (t in AppPrefs.searchPinned) AppPrefs.searchPinned - t else (AppPrefs.searchPinned + t).takeLast(8)).joinToString("\n")) }
@@ -167,7 +171,7 @@ fun searchNova(app: AppState, q0: String, data: Map<String, org.json.JSONObject?
                 if (q.isEmpty()) Text("Screens, settings, containers, apps, drives…", color = N.sub, fontSize = 17.sp)
                 BasicTextField(q, { q = it.take(80) }, Modifier.fillMaxWidth().focusRequester(focus), singleLine = true,
                     textStyle = TextStyle(color = N.text, fontSize = 17.sp), cursorBrush = SolidColor(N.blue),
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go), keyboardActions = KeyboardActions(onGo = { hits.firstOrNull()?.let { keep(q); it.go(app) } }))
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go), keyboardActions = KeyboardActions(onGo = { if (ask) { keep(q); askNova() } else hits.firstOrNull()?.let { keep(q); it.go(app) } }))
             }
             if (q.isNotEmpty()) Icon(Icons.Rounded.Close, "Clear", tint = N.sub, modifier = Modifier.clickable { q = "" })
         }
@@ -200,7 +204,8 @@ fun searchNova(app: AppState, q0: String, data: Map<String, org.json.JSONObject?
             }
             Text("Try “dark mode”, “raid”, “speed test” or a container's name. Hold a pinned search to unpin it.", color = N.sub, fontSize = 14.sp, modifier = Modifier.padding(horizontal = 30.dp, vertical = 8.dp))
         }
-        else if (hits.isEmpty()) Text("Nothing called “$q”.", color = N.sub, modifier = Modifier.padding(30.dp))
+        if (ask) Group { Row1("Ask Nova", "“${q.trim().take(120)}”", true, Icons.Rounded.AutoAwesome, onClick = { keep(q); askNova() }) }
+        else if (q.isNotBlank() && hits.isEmpty()) Text("Nothing called “$q”.", color = N.sub, modifier = Modifier.padding(30.dp))
         hits.groupBy { it.kind }.forEach { (kind, list) ->
             SectionLabel(kind)
             Group { list.forEachIndexed { i, h -> if (i > 0) RowDivider(); Row1(h.title, h.sub, false, h.icon, N.blue, onClick = { keep(q); h.go(app) }) } }

@@ -126,7 +126,23 @@ const POWER = [
   ["poweroff", "Shut down server", "You'll need to press the power button to turn it back on", "power", "var(--red)"],
   ["nova-restart", "Restart Nova", "Only Nova restarts, in a few seconds — containers and everything else keep running", "restart", "var(--blue)"],
   ["nova-stop", "Shut down Nova", "The server keeps running, but Nova can't be reached until it's started again", "stop", "var(--red)"],
+  ["schedule", "Schedule a restart or shutdown", "Pick a day and time — cancel it here any time before then", "clock", "var(--blue)"],
 ];
+const schedWhen = at => new Date(at * 1000).toLocaleString([], { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+/** Scheduled restarts and shutdowns (made here or by the assistant), each with Cancel. */
+function schedRows() {
+  const l = S.cache["/api/v1/power/schedule"]?.schedules || [];
+  return l.map(x => row(`${x.action === "poweroff" ? "Shutdown" : "Restart"} scheduled`, { sub: schedWhen(x.at), icon: "clock", tint: "var(--amber)",
+    end: `<button class="pillbtn press" data-act="unsched:${esc(x.id)}">Cancel</button>` })).join("");
+}
+async function scheduleDialog() {
+  const d = new Date(Date.now() + 86400e3); d.setMinutes(0, 0, 0);
+  const local = new Date(d.getTime() - d.getTimezoneOffset() * 60e3).toISOString().slice(0, 16);
+  const v = await dialog("Schedule", "The server's own clock is used. You can cancel it from the power menu any time before.", [{ label: "Cancel", value: null }, { label: "Schedule", color: "var(--blue)", value: "ok" }],
+    `<div class="pad" style="display:flex;flex-direction:column;gap:10px"><select class="field" id="sact" aria-label="What"><option value="reboot">Restart the server</option><option value="poweroff">Shut down the server</option></select>
+     <input class="field" id="sat" type="datetime-local" value="${local}" aria-label="When"></div>`);
+  return v;
+}
 async function powerDo(v) {
   const [title, body, btn, done] = {
     reboot: ["Restart the server?", "Everything running on it will be unavailable until it's back. Your phone confirms it.", "Restart", s => `Done — the server will restart in ${s} seconds`],
@@ -134,8 +150,21 @@ async function powerDo(v) {
     "nova-restart": ["Restart Nova?", "The apps and this page lose the server for a few seconds, then reconnect. Nothing else is touched. Your phone confirms it.", "Restart", () => "Nova is restarting — back in a few seconds"],
     "nova-stop": ["Shut down Nova?", "Nova stops until the server restarts or someone runs “sudo systemctl start nova-api” on it — the apps and this page can't start it again. Everything else keeps running. Your phone confirms it.", "Shut down", () => "Nova is shutting down"],
   }[v] || [];
+  if (v === "schedule") {
+    let act = "reboot", at = 0;
+    const p = scheduleDialog();
+    // read the fields when Schedule is pressed (the dialog closes right after)
+    document.querySelector('#sheet [data-b="1"]')?.addEventListener("click", () => { act = $("#sact")?.value || "reboot"; at = Math.floor(new Date($("#sat")?.value || 0).getTime() / 1000); }, { capture: true });
+    if ((await p) !== "ok") return;
+    if (!at || at < Date.now() / 1000 + 60) return toast("Pick a time at least a minute from now");
+    try { await post("/api/v1/power/schedule", { action: act, at }); await get("/api/v1/power/schedule"); toast(`${act === "poweroff" ? "Shutdown" : "Restart"} scheduled for ${schedWhen(at)}`); } catch (e) { toast(e.message); }
+    return;
+  }
   if (!title || !(await confirm(title, body, btn))) return;
   try { const r = await post(`/api/v1/power/${v}`); toast(done(r.in_seconds || 8)); } catch (e) { toast(e.message); }
+}
+export async function unschedule(id) {
+  try { await del(`/api/v1/power/schedule/${encodeURIComponent(id)}`); await get("/api/v1/power/schedule"); toast("Cancelled"); } catch (e) { toast(e.message); }
 }
 
 const speedText = v => v == 100 ? "Normal (1×)" : `${+(v / 100).toFixed(2)}× ${v > 100 ? "faster" : "speed"}`;
@@ -284,8 +313,9 @@ export async function home(ctx) {
       if (hit === "drives") return ctx.go("hardware");
       if (hit === "power") {
         if (!isAdmin()) return viewOnly();
-        const v = await choose("Power", POWER.map(([id, label, sub]) => [id, label, sub]), null);
-        if (v) await powerDo(v);
+        const sc = (await get("/api/v1/power/schedule").catch(() => ({}))).schedules || [];
+        const v = await choose("Power", [...sc.map(x => ["unsched:" + x.id, `Cancel the ${x.action === "poweroff" ? "shutdown" : "restart"} on ${schedWhen(x.at)}`, "Scheduled"]), ...POWER.map(([id, label, sub]) => [id, label, sub])], null);
+        if (v?.startsWith("unsched:")) await unschedule(v.slice(8)); else if (v) await powerDo(v);
       }
     };
     animate($("#hero"), "server", () => S.error ? "#9e9ea4" : getComputedStyle(document.documentElement).getPropertyValue(lvl === "ok" ? "--green" : lvl === "warning" ? "--amber" : "--red").trim());
@@ -1135,7 +1165,7 @@ export async function quick(ctx) {
         return `<button class="tile glass press${on ? " on" : ""}" data-act="run:${esc(id)}" data-hold="${esc(id)}"><span class="ti">${I(d.icon)}</span><span class="tt"><b>${esc(d.label)}</b>${st ? `<small>${esc(st)}</small>` : ""}</span></button>`; }).join("")}</div>
       <p class="note" style="margin-left:24px">Tip: hold a tile for its settings.${ids.length ? "" : " No quick actions — tap the pencil to add some."}</p>
       ${(busy === "backup" || b?.running) && b ? sec("Backup") + group(`<div style="padding:16px 22px">${bar(b.progress?.phase === "copying" ? b.progress.pct / 100 : .1)}<p class="muted" style="font-size:13px;margin:8px 0 0">${esc(backupLine(b))}</p></div>`) : ""}
-      ${isAdmin() ? sec("Power") + group(POWER.map(([id, label, sub, icon, tint]) => row(label, { sub, icon, tint, click: "power:" + id })).join("")) : ""}`,
+      ${isAdmin() ? sec("Power") + group(schedRows() + POWER.map(([id, label, sub, icon, tint]) => row(label, { sub, icon, tint, click: "power:" + id })).join("")) : ""}`,
       { title: "Quick panel", actions: [{ icon: "edit", label: "Edit", act: "go:edit-quick" }] });
     wireFanSlider($("#fantile"), draw, () => ctx.go("lighting"));
     $$("[data-hold]").forEach(t => onHold(t, () => { const r = { fan: "lighting", dim: "lighting", bright: "lighting", status_light: "lighting", lighting: "lighting", backup: "status", freeram: "status", status: "status", discord: "notify", inbox: "notify", containers: "containers", storage: "hardware" }[t.dataset.hold] || (t.dataset.hold.startsWith("restart:") ? "containers/" + t.dataset.hold.slice(8) : null); if (r) ctx.go(r); }));
@@ -1155,9 +1185,11 @@ export async function quick(ctx) {
         else if (id.startsWith("restart:")) { const n = id.slice(8); if (!(await confirm(`Restart ${n}?`, "Your phone will ask you to confirm with your fingerprint.", "Restart"))) return; busy = id; draw(); await post(`/api/v1/containers/${encodeURIComponent(n)}/restart`); toast(`${n} restarted`); }
       } catch (e) { toast(e.message); } finally { busy = null; if (ctx.alive()) draw(); }
     },
-    power: what => powerDo(what),
+    power: async what => { await powerDo(what); if (ctx.alive()) draw(); },
+    unsched: async id => { await unschedule(id); if (ctx.alive()) draw(); },
   });
   draw();
+  if (isAdmin()) get("/api/v1/power/schedule").then(() => ctx.alive() && draw()).catch(() => {});
   get("/api/v1/notify").then(() => ctx.alive() && draw()).catch(() => {});
   ctx.every(3000, async () => { await get("/api/v1/backup"); if (!$("#fantile")?.hasPointerCapture?.()) draw(); }, true);
 }
@@ -1716,7 +1748,7 @@ const ICON_THEMES = [["style", "Matches the style", "Each style's own icons"], [
   ["glossy", "Glossy", "White symbols on shiny glossy tiles"]];
 /** One icon drawn the way an icon style draws it, for the picker — shown beside each choice, all the time. */
 function iconSample(theme, icon, tint) {
-  const look = theme !== "style" ? theme : ({ liquid: "tiles", fluent: "glyph", breeze: "glyph", aero: "glossy" })[prefs.style] || "tonal";
+  const look = theme !== "style" ? theme : ({ liquid: "tiles", fluent: "glyph", breeze: "glyph", aero: "glossy", lumen: "glyph" })[prefs.style] || "tonal";
   const base = "display:inline-grid;place-items:center;flex:none;";
   const st = { tonal: `width:30px;height:30px;border-radius:50%;color:${tint};background:color-mix(in srgb, ${tint} 16%, transparent)`,
     tiles: `width:28px;height:28px;border-radius:8px;color:#fff;background:${tint}`, circles: `width:28px;height:28px;border-radius:50%;color:#fff;background:${tint}`,
@@ -1752,7 +1784,8 @@ const STYLES = [["auto", "Automatic", ""], ["default", "Default", "Nova's own lo
   ["liquid", "Glass", "Clear glass that bends the light behind it at its edges"],
   ["fluent", "Mica", "A soft, tinted base with frosted menus and crisp, small corners"],
   ["breeze", "Breeze", "Flat and tidy: a thin frame, gentle corners, the accent as the focus color"],
-  ["aero", "Aero", "Tinted frosted glass frames with a glossy shine and glowing buttons"]];
+  ["aero", "Aero", "Tinted frosted glass frames with a glossy shine and glowing buttons"],
+  ["lumen", "Lumen · Beta", "Light on dark glass: beams along the edges, liquid-metal buttons, gooey switches and a slow aurora"]];
 const autoMaterialUA = () => /Android/i.test(navigator.userAgent) && !/SamsungBrowser|SM-[A-Z0-9]|Xiaomi|Redmi|POCO|HUAWEI|HONOR|vivo|OPPO|realme/i.test(navigator.userAgent);
 /** A phone that can buzz: the Vibration API exists on desktop browsers too, where nothing would happen. */
 export const canVibrate = () => "vibrate" in navigator && matchMedia("(pointer: coarse)").matches && /Android/i.test(navigator.userAgent);
@@ -1764,17 +1797,17 @@ const READ = [["auto", "Automatic", "Stronger text only where the glass or the b
 export async function appearance(ctx) {
   const draw = () => {
     const st = prefs.style || "auto", mat = document.documentElement.classList.contains("material");
-    const preset = ["liquid", "fluent", "breeze", "aero"].includes(st) ? st : "";
-    const look = mat ? "Material You" : ({ liquid: "Glass", fluent: "Mica", breeze: "Breeze", aero: "Aero" })[preset] || "Default";
+    const preset = ["liquid", "fluent", "breeze", "aero", "lumen"].includes(st) ? st : "";
+    const look = mat ? "Material You" : ({ liquid: "Glass", fluent: "Mica", breeze: "Breeze", aero: "Aero", lumen: "Lumen" })[preset] || "Default";
     const stl = STYLES.find(s => s[0] === st) || STYLES[0];
     const rk = "round_" + (preset || "default"), rnow = Math.max(25, Math.min(200, prefs[rk] ?? prefs.round ?? 100));
     // the sliders for the look: its own (glass, light splitting, see-through, frost), then corners and windows for every look
     const tune = (preset === "liquid" ? rng("prism", "Light splitting", 0, 100, 50, "%") : "")
-      + (preset && preset !== "breeze" ? rng("glass", "Glass clarity", 0, 100, 60, "%") : "")
+      + (preset && !["breeze", "lumen"].includes(preset) ? rng("glass", "Glass clarity", 0, 100, 60, "%") : "")
       + (!preset && !mat ? rng("dTrans", "Transparency", 0, 85, 0, "%") + rng("dFrost", "Frost", 0, 40, 26, "px") : "")
       + `<div class="range-row"><div class="h"><span>Corner roundness</span><span id="roundl">${rnow}%</span></div><input type="range" min="25" max="200" value="${rnow}" data-range="${rk}" style="--p:${(rnow - 25) / 175 * 100}%" aria-label="Corner roundness"></div>`
       + rng("winRound", "Window roundness", 0, 300, 100, "%", 5);
-    const tuneSub = [preset === "liquid" && `Splitting ${prefs.prism ?? 50}%`, preset && preset !== "breeze" && `Clarity ${prefs.glass ?? 60}%`,
+    const tuneSub = [preset === "liquid" && `Splitting ${prefs.prism ?? 50}%`, preset && !["breeze", "lumen"].includes(preset) && `Clarity ${prefs.glass ?? 60}%`,
       !preset && !mat && `See-through ${prefs.dTrans ?? 0}%`, `Corners ${rnow}%`, `Windows ${prefs.winRound ?? 100}%`].filter(Boolean).join(" · ");
     const liveSub = (prefs.livingScene || "auto") === "auto" ? `Match the look (${LV.SCENES[LV.sceneId()]})` : prefs.livingScene === "media" ? "Your own GIF or video" : LV.SCENES[prefs.livingScene];
     const iconSub = [(WEB_ICONS || []).find(w => w[0] === (prefs.webIcon || "default"))?.[1] || "Default", SHAPES[prefs.iconShape || "rounded"],

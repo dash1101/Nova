@@ -32,7 +32,7 @@ private const val MIB = 1L shl 20
 private val FS_COLOR = mapOf("ext4" to Color(0xFF3E91FF), "xfs" to Color(0xFFBF5AF2), "btrfs" to Color(0xFF30B0C7), "exfat" to Color(0xFFFF9F0A),
     "vfat" to Color(0xFF34C759), "swap" to Color(0xFFFF453A), "ntfs" to Color(0xFFFFD60A))
 private val FS_NEW = listOf("ext4" to ("ext4" to "Linux's everyday filesystem — the safe choice"), "xfs" to ("XFS" to "Good for very large files; can grow but never shrink"),
-    "btrfs" to ("btrfs" to "Snapshots and checksums"), "exfat" to ("exFAT" to "Readable by Windows and Macs too"), "vfat" to ("FAT32" to "For an EFI system partition, or old devices"),
+    "btrfs" to ("btrfs" to "Snapshots and checksums"), "exfat" to ("exFAT" to "Readable by Windows and Macs too"), "ntfs" to ("NTFS" to "Windows' own filesystem — for a drive you'll also plug into a Windows PC"), "vfat" to ("FAT32" to "For an EFI system partition, or old devices"),
     "swap" to ("Swap" to "Extra memory on disk"), "none" to ("Leave it empty" to "Just the partition, no filesystem"))
 private val FLAG_NAMES = linkedMapOf("none" to "Normal data partition", "esp" to "EFI system partition", "bios_grub" to "BIOS boot", "raid" to "RAID member", "lvm" to "LVM member")
 
@@ -44,7 +44,25 @@ private val FLAG_NAMES = linkedMapOf("none" to "Normal data partition", "esp" to
     var planned by remember { mutableStateOf<JSONObject?>(null) }
     var sel by remember { mutableStateOf<String?>(null) }
     var dialog by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(serial) { try { lay = app.api.get("/api/v1/drives/$serial/partitions") } catch (e: Exception) { err = e.message } }
+    var staged by remember { mutableStateOf<JSONObject?>(null) }
+    LaunchedEffect(serial) {
+        try { lay = app.api.get("/api/v1/drives/$serial/partitions") } catch (e: Exception) { err = e.message }
+        // a plan the assistant made: a new GPT table, then each partition in turn in the free space (the last takes what's left)
+        val st = PartitionStage.take(serial); val l = lay
+        if (st != null && l != null && l.optBoolean("editable")) runCatching {
+            ops.add(JSONObject().put("op", "table").put("type", "gpt"))
+            var p = app.api.post("/api/v1/drives/$serial/partitions/plan", JSONObject().put("ops", JSONArray(ops.toList())))
+            val v = p.optJSONObject("result") ?: l; val g = v.optJSONArray("gaps").objs().firstOrNull() ?: error("no free space")
+            val ss = v.optLong("sector", 512); val mib = 1L shl 20
+            var start = g.optLong("start") * ss / mib; val total = (g.optLong("end") - g.optLong("start") + 1) * ss / mib; val first = start
+            val parts = st.optJSONArray("parts").objs(); val sum = parts.sumOf { it.optDouble("pct") }
+            parts.forEachIndexed { i, q -> val last = i == parts.lastIndex && sum >= 99.5
+                val size = if (last) total - (start - first) - 1 else (total * q.optDouble("pct") / 100).toLong()
+                ops.add(JSONObject().put("op", "create").put("start_mib", start).put("size_mib", size).put("fs", st.optString("fs", "ext4")).put("label", q.optString("label"))); start += size }
+            p = app.api.post("/api/v1/drives/$serial/partitions/plan", JSONObject().put("ops", JSONArray(ops.toList())))
+            planned = p; staged = st
+        }.onFailure { ops.clear(); planned = null; app.toast(it.message ?: "The assistant's plan doesn't fit this drive") }
+    }
     fun add(op: JSONObject) = app.act {
         ops.add(op)
         try { planned = app.api.post("/api/v1/drives/$serial/partitions/plan", JSONObject().put("ops", JSONArray(ops.toList()))); sel = null }
@@ -68,6 +86,8 @@ private val FLAG_NAMES = linkedMapOf("none" to "Normal data partition", "esp" to
             when (l.optString("table")) { "gpt" -> "GPT"; "dos" -> "MBR"; else -> "no partition table" }, color = N.sub, fontSize = 15.sp,
             modifier = Modifier.padding(start = 30.dp, end = 22.dp, bottom = 6.dp))
         if (planned != null) Note("Showing the drive as it will be after your changes.", 13.sp, 0.dp)
+        staged?.let { st -> if (ops.isNotEmpty()) Note("Planned by the assistant — nothing has changed yet. Check the steps below; Apply asks for this drive's serial and your fingerprint, and erases everything on it." +
+            st.optString("after").let { if (it.isNotEmpty()) " $it" else "" }, 13.sp, 4.dp, N.amber) }
         // the drive, to scale (a small partition keeps a visible sliver); free space is lighter
         Row(Modifier.fillMaxWidth().height(54.dp).padding(horizontal = Space.gutter, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
             if (items.isEmpty()) Box(Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(smallCorner(10.dp))).background(N.pill), contentAlignment = Alignment.Center) {

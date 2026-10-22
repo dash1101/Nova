@@ -163,9 +163,9 @@ object AppPrefs {
  *  Nothing, Sony, OnePlus…) gets Material You Expressive, so Nova matches the rest of the phone. */
 private val DEFAULT_LOOK_MAKERS = setOf("samsung", "xiaomi", "redmi", "poco", "huawei", "honor", "vivo", "iqoo", "oppo", "realme", "meizu")
 fun autoMaterial(): Boolean = android.os.Build.MANUFACTURER.lowercase() !in DEFAULT_LOOK_MAKERS && android.os.Build.BRAND.lowercase() !in DEFAULT_LOOK_MAKERS
-fun materialStyle(): Boolean = when (AppPrefs.style) { "material" -> true; "default", "liquid", "fluent", "breeze", "aero" -> false; else -> autoMaterial() }
+fun materialStyle(): Boolean = when (AppPrefs.style) { "material" -> true; "default", "liquid", "fluent", "breeze", "aero", "lumen" -> false; else -> autoMaterial() }
 /** Glass, Mica or Breeze (Appearance → Style; internally liquid / fluent / breeze), "" for Default / Material You. */
-fun presetStyle(): String = AppPrefs.style.takeIf { it in setOf("liquid", "fluent", "breeze", "aero") } ?: ""
+fun presetStyle(): String = AppPrefs.style.takeIf { it in setOf("liquid", "fluent", "breeze", "aero", "lumen") } ?: ""
 /** Reduce transparency (Appearance): solid surfaces everywhere, no blur or bending. */
 fun solidGlass(): Boolean = AppPrefs.solid
 
@@ -213,7 +213,7 @@ object AppLock {
     }
 }
 
-private val STYLE_CHOICES = listOf("auto" to "Automatic", "default" to "Default", "material" to "Material You", "liquid" to "Glass", "fluent" to "Mica", "breeze" to "Breeze", "aero" to "Aero")
+private val STYLE_CHOICES = listOf("auto" to "Automatic", "default" to "Default", "material" to "Material You", "liquid" to "Glass", "fluent" to "Mica", "breeze" to "Breeze", "aero" to "Aero", "lumen" to "Lumen · Beta")
 private fun styleDesc(k: String): String = when (k) {
     "auto" -> "${if (autoMaterial()) "Material You" else "Default"} — picked to suit this ${DeviceForm.noun}"
     "default" -> "Nova's own look: frosted glass and a soft glow"
@@ -221,6 +221,7 @@ private fun styleDesc(k: String): String = when (k) {
     "liquid" -> "Clear glass that bends the light behind it at its edges" + if (android.os.Build.VERSION.SDK_INT < 33) " (the bending needs Android 13)" else ""
     "fluent" -> "A soft, tinted base with frosted menus and crisp, small corners"
     "breeze" -> "Flat and tidy: a thin frame, gentle corners, the accent as the focus color"
+    "lumen" -> "Light on dark glass: beams along the edges, liquid-metal buttons, gooey switches and a slow aurora"
     else -> "Tinted frosted glass frames with a glossy shine and glowing buttons"
 }
 private val READ_CHOICES = listOf("auto" to ("Automatic" to "Stronger text only where the glass or the background makes it hard to read"),
@@ -246,12 +247,12 @@ private fun hasVibrator(ctx: Context): Boolean = runCatching {
             Segmented(listOf("Automatic", "Light", "Dark"), listOf("system", "light", "dark").indexOf(AppPrefs.theme).coerceAtLeast(0)) { AppPrefs.set("theme", listOf("system", "light", "dark")[it]) }
             RowDivider()
             val rs = ps
-            val sum = listOfNotNull(if (ps == "liquid") "Splitting ${AppPrefs.prism}%" else null, if (ps.isNotEmpty() && ps != "breeze") "Clarity ${AppPrefs.glass}%" else null,
+            val sum = listOfNotNull(if (ps == "liquid") "Splitting ${AppPrefs.prism}%" else null, if (ps.isNotEmpty() && ps !in setOf("breeze", "lumen")) "Clarity ${AppPrefs.glass}%" else null,
                 if (ps.isEmpty() && !mat) "See-through ${AppPrefs.dTrans}%" else null, "Corners ${AppPrefs.roundFor(rs)}%", "Windows ${AppPrefs.winRound}%").joinToString(" · ")
             ExpandRow("Shape and glass", sum, icon = Icons.Rounded.Tune) {
                 Column(Modifier.padding(start = 0.dp)) {
                     if (ps == "liquid") TuneSlider("Light splitting", AppPrefs.prism, 0f..100f, "%") { AppPrefs.choosePrism(it) }
-                    if (ps.isNotEmpty() && ps != "breeze") TuneSlider("Glass clarity", AppPrefs.glass, 0f..100f, "%") { AppPrefs.set("glass", it) }
+                    if (ps.isNotEmpty() && ps !in setOf("breeze", "lumen")) TuneSlider("Glass clarity", AppPrefs.glass, 0f..100f, "%") { AppPrefs.set("glass", it) }
                     if (ps.isEmpty() && !mat) {
                         TuneSlider("Transparency", AppPrefs.dTrans, 0f..85f, "%") { AppPrefs.chooseDefaultGlass(trans = it) }
                         TuneSlider("Frost", AppPrefs.dFrost, 0f..40f, " dp") { AppPrefs.chooseDefaultGlass(frost = it) }

@@ -21,7 +21,7 @@ feature, not the rule (or argue for changing the rule here first).
 
 ## Feel
 
-- Every look (Default, Material You, Glass, Mica, Breeze, Aero) is faithful in every element: cards, pills, dialogs,
+- Every look (Default, Material You, Glass, Mica, Breeze, Aero, Lumen) is faithful in every element: cards, pills, dialogs,
   switches, sliders, toasts, windows. A new element gets every look's treatment, not just the default one.
 - Motion is quick and springy, respects Reduce motion and Animation speed, and never blocks a tap.
 - Sound and touch feedback: one sound and one buzz per press, from the look's own pack; each kind can be turned off.
@@ -51,3 +51,14 @@ Look, Colors, Background, Icons and text, Motion and effects, Sounds and touch, 
 now. Pickers with many options open a dialog or a gallery with previews. Sliders that tune one thing sit together in a
 dropdown. A setting that does nothing here isn't shown: Vibration on devices that can't buzz, Color strength outside
 Material You.
+
+## The assistant
+
+- It only plans. Every step is one of Nova's ordinary API calls, made by the device that asked, so every rule still holds:
+  roles, fingerprints, approvals and the action log. The server never gets a back door to run things for it.
+- Steps come from a fixed list, and names from the sentence (a container, an app, a drive) must match real ones before
+  they go in a path. When more than one thing matches, it asks instead of guessing.
+- Its brain (a local model) only ever writes Nova's own commands, which the rules read again, so it can't add an action
+  the rules don't know. Numbers it reports (space freed, memory freed) are measured.
+- Destructive steps never run from the assistant: a drive plan is handed to the Partition manager for the usual typed
+  serial and fingerprint.

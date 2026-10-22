@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.9.0-alpha (server, Nova web, app and watch)
+- **Nova assistant · Labs** (app and web): ask in plain words — “apply the fire light theme, free up some storage and RAM, turn off the status light, dim the fan a bit, install Brave and restart the server at 5pm a week from now” — and Nova shows its plan, then does it one step at a time with a hint of the next, and a Stop button.
+  - **Safe by design:** the server only plans; every step is one of Nova's ordinary actions that your phone or browser signs itself, so risky steps still need your fingerprint (or a phone's approval) and everything is in the action log. A drive is never erased from here: the plan waits in the Partition manager for the serial and your fingerprint.
+  - **Asks instead of guessing:** two drives that match, several Brave containers on Docker Hub, an ambiguous container — you pick from a list.
+  - **Real numbers:** “Freed 4.1 GB of storage and 900 MB of RAM” is measured, not estimated.
+  - From **Search** (type a request, pick “Ask Nova”) or its own page.
+- **The assistant's brain** (optional download in the assistant): a small language model that runs on your server — no Ollama, nothing to set up. It understands what the rules don't (“make the lights look like a police car”) and answers questions about your server (“is my disk ok?”). **Smart** (Qwen3 4B, 2.5 GB) or **Light** (Qwen2.5 1.5B, 1.1 GB), run by llama.cpp; both pinned to an exact file and checked against its fingerprint. It runs as its own service on 127.0.0.1 only, with no access to your files or the internet and a low share of the CPU. It learns from a set of worked examples, and it can only suggest Nova's own commands, which the rules check again.
+- **Lumen · Beta** — a new look (app and web), inspired by libraries.dev: light on dark glass, a slow aurora behind it all, a beam of light running round the navigation pill and dialogs, liquid-metal buttons, gooey switches, glowing icons and bars, and (web) a navigation pill that leans toward the pointer. Light and dark, plus an Aurora living wallpaper.
+- **Schedule a restart or shutdown** from the power menu (Quick panel, and the server picture's power button): pick a day and time, cancel it any time before. It survives a restart in between.
+- **NTFS** in the Partition manager, for drives you also plug into Windows.
+
 ## 0.8.14-alpha (server, Nova web, app and watch)
 - **A tidier Appearance** (app and web): seven short groups — Look, Colors, Background, Icons and text, Motion and effects, Sounds and touch, Home — each showing what it's set to now, with the details folded into dropdowns and dialogs.
   - **Style** is one row with the current style; tap it to pick another. Light or dark is a three-way switch.

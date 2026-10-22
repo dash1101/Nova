@@ -41,7 +41,7 @@ try:                       # optional module: fan/case lighting (modules/fan-gig
 except ImportError:
     nova_rgb = None
 
-API_VERSION = "0.8.14-alpha"
+API_VERSION = "0.9.0-alpha"
 # The API contract (docs/API.md). API_LEVEL only ever goes up: each new level adds endpoints or fields, never removes or
 # changes one. MIN_LEVEL is the oldest level this server still answers in full (old apps keep working back to it).
 # MIN_CLIENT: the oldest app builds still served, per platform — 0 = all of them. Raising it is the last resort, after
@@ -65,6 +65,7 @@ LABS = {"cloudflare_sync": {"name": "Cloudflare auto-setup", "about": "Put an ap
         "auto_updates": {"name": "Weekly container updates", "about": "Once a week, Nova updates the containers that have a newer version. One that won't start on its new version is put back on the old one."},
         "image_cleanup": {"name": "Clean up old images", "about": "See the container images nothing uses anymore (old versions left behind by updates) and remove them to free up space. The versions Nova keeps to roll back to stay."},
         "wake_on_lan": {"name": "Wake-on-LAN", "about": "Turn on other computers on your network from Nova: the server sends them a wake-up packet."},
+        "assistant": {"name": "Nova assistant", "about": "Ask Nova in plain words — “set the lights to fire, free up some space and restart Jellyfin” — from Search or the assistant button. It shows its plan first, does one step at a time with a hint of the next, asks when it isn't sure, and risky steps still need your fingerprint. It runs on your server; nothing is sent anywhere."},
         "openrgb": {"name": "OpenRGB", "about": "Run your lights through OpenRGB, so Nova's effects work on any RGB device it supports (motherboards, RAM, GPUs, fans, strips). Nova stops talking to the motherboard's lighting controller directly. Needs OpenRGB with its SDK server on."}}
 # Labs features that have had enough use: shown in Settings → Automation instead of Labs (same switches)
 LABS_STABLE = ["crash_guard", "auto_updates", "image_cleanup", "wake_on_lan"]
@@ -565,7 +566,7 @@ def der_sig(raw):
 # the name instead of guessing from version numbers; a server that doesn't list one doesn't have it.
 CAPABILITIES = {"devices": 1, "approvals": 1, "containers": 1, "apps": 1, "store": 1, "storage": 1, "storage-wizard": 1, "backups": 1, "lights": 1,
                 "cloudflare": 1, "nodes": 1, "tasks": 1, "events": 1, "stats": 1, "terminal": 1, "files": 1, "updates": 1, "freeup": 1, "diag": 1,
-                "totp": 2, "passkeys": 2, "partitions": 2, "mount-points": 2, "swap-setup": 2, "recommendations": 2, "security-activity": 2, "capabilities": 2,
+                "assistant": 1, "power-schedule": 1, "totp": 2, "passkeys": 2, "partitions": 2, "mount-points": 2, "swap-setup": 2, "recommendations": 2, "security-activity": 2, "capabilities": 2,
                 "force-unmount": 2, "nova-power": 2}
 REC_CACHE = {}             # recommended actions, worked out at most once a minute
 browser_requests = {}      # id -> {pem, name, code, expires, state, device_id}
@@ -648,6 +649,42 @@ def shell_account():
         return people[0] if len(people) == 1 else "your account"
     except Exception: return "your account"
 
+_facts = {"t": 0, "v": ""}
+def brain_facts():
+    """What the assistant's brain knows about the server right now (it answers questions from this; nothing private).
+    Kept for 30 seconds: reading the containers and the store takes a moment."""
+    if time.time() - _facts["t"] < 30: return _facts["v"]
+    _facts.update(t=time.time(), v=_brain_facts()); return _facts["v"]
+
+def _brain_facts():
+    try:
+        m = open("/proc/meminfo").read(); kb = lambda k: int(re.search(rf"^{k}:\s+(\d+)", m, re.M).group(1))
+        mem = f"Memory {(kb('MemTotal') - kb('MemAvailable')) / 1048576:.1f} of {kb('MemTotal') / 1048576:.1f} GB used"
+    except Exception: mem = ""
+    import shutil as _sh
+    du = _sh.disk_usage("/"); la = os.getloadavg()[0]
+    st = load_json(STATUS, {}); met = st.get("metrics") or {}
+    temp = next((f"{v}°C" for k, v in met.items() if "cpu" in k and "temp" in k and isinstance(v, (int, float))), "")
+    alerts = [a.get("title", "") for a in (st.get("active") or []) if a.get("level") in ("warning", "critical")][:6]
+    try: cs = helper("containers", timeout=20)[1].get("containers", [])
+    except Exception: cs = []
+    run = [c.get("name") for c in cs if c.get("state") == "running"]; off = [c.get("name") for c in cs if c.get("state") != "running"]
+    try: store = [f"{x['id']} ({x.get('description', '')[:40]})" for x in helper("store-list", timeout=30)[1].get("items", []) if not x.get("installed")]
+    except Exception: store = []
+    return ("Server facts: " + "; ".join(x for x in [f"CPU load {la:.1f} on {os.cpu_count()} cores" + (f", {temp}" if temp else ""), mem,
+            f"system drive {du.free / 1e9:.0f} GB free of {du.total / 1e9:.0f} GB", "alerts: " + (", ".join(alerts) if alerts else "none"),
+            "containers running: " + ", ".join(run[:40]), "stopped: " + (", ".join(off[:20]) or "none")] if x)
+            + ".\nApp store (not installed yet): " + ", ".join(store[:60]) + ".")
+
+def hub_search(text):
+    """Docker Hub's image search, the well-known ones first (the store's search and the assistant)."""
+    req = urllib.request.Request("https://hub.docker.com/v2/search/repositories/?page_size=25&query=" + urllib.parse.quote(str(text)[:60]), headers={"User-Agent": "Nova"})
+    with urllib.request.urlopen(req, timeout=8) as r: j = json.loads(r.read(2_000_000))
+    out = [{"image": x.get("repo_name", ""), "description": (x.get("short_description") or "")[:200], "stars": x.get("star_count", 0),
+            "official": bool(x.get("is_official")), "pulls": x.get("pull_count", 0)} for x in j.get("results", []) if re.fullmatch(r"[a-z0-9][a-z0-9._/-]{0,200}", x.get("repo_name", ""))]
+    out.sort(key=lambda x: (not x["official"], -x["stars"]))
+    return out
+
 def describe_action(a):
     p = [x for x in a["path"].split("/") if x][2:]
     if p == ["labs", "images", "clean"]: return "Remove the container images nothing uses anymore (the versions kept for rolling back stay)"
@@ -683,6 +720,14 @@ def describe_action(a):
     if p[:1] == ["store"]: return f"{p[2].title()} {p[1]} from the app store"
     if p[:1] == ["programs"]: return f"{p[2].title()} the program {p[1]}"
     if p[:1] == ["drives"]: return f"{p[2].title()} a drive"
+    if p == ["assistant", "brain"]:
+        k = (a.get("data", {}) or {}).get("model")
+        return f"Download the assistant's {'Smart (2.5 GB)' if k == 'smart' else 'Light (1.1 GB)'} brain and run it on this server — it stays private, on the server only"
+    if p == ["power", "schedule"]:
+        d = a.get("data", {}) or {}
+        try: at = time.strftime("%A %b %-d at %-I:%M %p", time.localtime(int(d.get("at", 0))))
+        except (TypeError, ValueError, OverflowError): at = "?"
+        return f"Schedule the server to {'shut down' if d.get('action') == 'poweroff' else 'restart'} on {at}"
     if p[:1] == ["power"]: return {"reboot": "Restart the server", "nova-restart": "Restart Nova", "nova-stop": "Shut down Nova (the server keeps running)"}.get(p[1] if len(p) > 1 else "", "Shut down the server")
     if p[:1] == ["devices"] and a.get("method") == "DELETE" and len(p) == 2:
         d = load_json(DEVICES, {}).get(p[1], {})
@@ -811,6 +856,7 @@ def needs_stepup(method, parts):
     if parts == ["labs", "images", "clean"]: return True                    # deletes images: fingerprint
     if parts == ["notify", "discord"]: return True                         # where alerts get sent: fingerprint
     if parts == ["lights", "ha"]: return True                              # a token for your Home Assistant: fingerprint
+    if parts == ["assistant", "brain"]: return True                         # downloads a model and runs it as a service: fingerprint
     if parts[:1] == ["backups"] and len(parts) == 3 and parts[2] == "restore": return True
     if parts == ["backups", "legacy", "script"]: return True                 # the script runs as root: fingerprint
     return False
@@ -2353,14 +2399,8 @@ class Handler(BaseHTTPRequestHandler):
             if role_of(dev) != "admin": return 403, {"error": "admins only"}
             text = urllib.parse.unquote_plus(q.get("q", ""))[:60].strip()
             if not text: return 200, {"results": []}
-            try:
-                req = urllib.request.Request("https://hub.docker.com/v2/search/repositories/?page_size=25&query=" + urllib.parse.quote(text), headers={"User-Agent": "Nova"})
-                with urllib.request.urlopen(req, timeout=8) as r: j = json.loads(r.read(2_000_000))
+            try: return 200, {"results": hub_search(text)}
             except Exception: return 502, {"error": "Docker Hub didn't answer — try again in a moment"}
-            out = [{"image": x.get("repo_name", ""), "description": (x.get("short_description") or "")[:200], "stars": x.get("star_count", 0),
-                    "official": bool(x.get("is_official")), "pulls": x.get("pull_count", 0)} for x in j.get("results", []) if re.fullmatch(r"[a-z0-9][a-z0-9._/-]{0,200}", x.get("repo_name", ""))]
-            out.sort(key=lambda x: (not x["official"], -x["stars"]))          # the well-known ones first
-            return 200, {"results": out}
         if method == "POST" and len(parts) == 3 and parts[0] == "store" and parts[2] in ("install", "uninstall"):
             rc, res = helper("task-start", f"store-{parts[2]}", json.dumps({"id": parts[1]})); return (202 if rc == 0 else 400), ({"task": res.get("id"), **res} if rc == 0 else res)
         if method == "GET" and parts == ["programs"]:
@@ -2426,6 +2466,49 @@ class Handler(BaseHTTPRequestHandler):
         if method == "POST" and len(parts) == 3 and parts[0] == "drives" and parts[2] in ("mount", "unmount"):
             extra = ["force"] if parts[2] == "unmount" and data.get("force") is True else []      # force: stops the containers using it, detaches the rest
             rc, res = helper(f"drive-{parts[2]}", parts[1], *extra, timeout=180); return (200 if rc == 0 else 409 if res.get("busy") else 400), res
+        # ── scheduled restarts and shutdowns (the power menu lists them; the assistant can make one) ──
+        if parts == ["power", "schedule"] and method == "GET":
+            rc, res = helper("power-schedule-list"); return (200 if rc == 0 else 500), res
+        if parts == ["power", "schedule"] and method == "POST":
+            if role_of(dev) != "admin": return 403, {"error": "admins only"}
+            act = data.get("action"); at = data.get("at")
+            if act not in ("reboot", "poweroff") or not isinstance(at, int) or isinstance(at, bool): raise ValueError("an action (reboot or poweroff) and a time")
+            if not time.time() + 60 <= at <= time.time() + 366 * 86400: raise ValueError("pick a time from a minute from now to a year from now")
+            rc, res = helper("power-schedule", act, str(at)); return (200 if rc == 0 else 400), res
+        if len(parts) == 3 and parts[:2] == ["power", "schedule"] and method == "DELETE":
+            if role_of(dev) != "admin": return 403, {"error": "admins only"}
+            if not re.fullmatch(r"[0-9a-f]{8}", parts[2]): return 404, {"error": "no such schedule"}
+            rc, res = helper("power-unschedule", parts[2]); return (200 if rc == 0 else 404), res
+        # ── the assistant (Labs): a sentence → a plan of ordinary calls, which the device then runs itself ──
+        if parts == ["assistant", "plan"] and method == "POST":
+            if not load_json(SETTINGS, {}).get("labs", {}).get("assistant"): return 403, {"error": "turn on Nova assistant in Settings → Labs first"}
+            if role_of(dev) != "admin": return 403, {"error": "admins only"}
+            import assistant
+            text = str(data.get("text", ""))
+            if len(text) > 2000: raise ValueError("that's too long — try a few shorter requests")
+            def lights():
+                if not (nova_rgb and feat_on("lighting")): return None
+                with rgb_lock: return nova_rgb.load()
+            def drives():
+                rc, res = helper("drives", timeout=60)
+                vend = lambda m: ("seagate " if m.upper().startswith("ST") else "western digital wd " if m.upper().startswith("WD") else "crucial " if m.upper().startswith("CT") else "") + m
+                return [{"serial": d.get("serial", ""), "model": vend(d.get("model", "")), "size": d.get("size", 0), "size_text": f"{d.get('size', 0) / 1e12:.1f} TB" if d.get("size", 0) >= 1e12 else f"{d.get('size', 0) / 1e9:.0f} GB",
+                         "mounts": d.get("mounts") or [], "system": "/" in (d.get("mounts") or []) or d.get("role") == "Boot drive" or bool(d.get("protected"))} for d in res.get("drives", [])]
+            env = {"lights": lights, "containers": lambda: helper("containers")[1].get("containers", []), "store": lambda: helper("store-list", timeout=60)[1].get("items", []),
+                   "hub": hub_search, "drives": drives}
+            import brain
+            if brain.status().get("model"): env["brain"] = lambda t: brain.ask(t, brain_facts())
+            return 200, assistant.plan(text, env)
+        # ── the assistant's brain: a small model on this server (download, status, remove) ──
+        if parts == ["assistant", "brain"]:
+            import brain
+            if method == "GET": return 200, {**brain.status(), "ready": brain.ready()}
+            if role_of(dev) != "admin": return 403, {"error": "admins only"}
+            if method == "POST":
+                if data.get("model") not in brain.MODELS: raise ValueError("pick Smart or Light")
+                rc, res = helper("task-start", "brain-install", json.dumps({"model": data["model"]})); return (202 if rc == 0 else 400), ({"task": res.get("id"), **res} if rc == 0 else res)
+            if method == "DELETE":
+                rc, res = helper("brain-remove", timeout=60); return (200 if rc == 0 else 400), res
         if method == "POST" and len(parts) == 2 and parts[0] == "power" and parts[1] in ("reboot", "poweroff", "nova-restart", "nova-stop"):
             rc, res = helper("power", parts[1]); return (200 if rc == 0 else 500), res
 

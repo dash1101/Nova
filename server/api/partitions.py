@@ -17,11 +17,11 @@ import storage as S
 MiB = 1 << 20
 DATA = "/var/lib/nova-api"
 BACKUPS = os.environ.get("NOVA_PART_BACKUPS", f"{DATA}/partition-backups") if S.TEST else f"{DATA}/partition-backups"
-NEW_FS = ("ext4", "xfs", "btrfs", "exfat", "vfat", "swap", "none")      # what Create / Format can make ("none": leave it empty)
-MIN_SIZE = {"ext4": 32 * MiB, "xfs": 300 * MiB, "btrfs": 256 * MiB, "exfat": 8 * MiB, "vfat": 33 * MiB, "swap": 16 * MiB, "none": 1 * MiB}
+NEW_FS = ("ext4", "xfs", "btrfs", "exfat", "ntfs", "vfat", "swap", "none")      # what Create / Format can make ("none": leave it empty)
+MIN_SIZE = {"ext4": 32 * MiB, "xfs": 300 * MiB, "btrfs": 256 * MiB, "exfat": 8 * MiB, "ntfs": 8 * MiB, "vfat": 33 * MiB, "swap": 16 * MiB, "none": 1 * MiB}
 GROWS = {"ext4", "xfs", "btrfs"}          # filesystems Nova can grow with their partition
 SHRINKS = {"ext4"}                         # …and shrink (XFS can't shrink at all; btrfs only while mounted)
-LABEL_MAX = {"ext4": 16, "xfs": 12, "btrfs": 255, "exfat": 11, "vfat": 11, "swap": 15}
+LABEL_MAX = {"ext4": 16, "xfs": 12, "btrfs": 255, "exfat": 11, "ntfs": 32, "vfat": 11, "swap": 15}
 FLAGS = ("none", "esp", "bios_grub", "raid", "lvm")
 GPT_TYPES = {"esp": "C12A7328-F81F-11D2-BA4B-00A0C93EC93B", "bios_grub": "21686148-6449-6E6F-744E-656564454649",
              "raid": "A19D880F-05FC-4D3B-A006-743F0F84911E", "lvm": "E6D6D379-F507-44C2-A23C-238F2A3DF928",
@@ -235,20 +235,22 @@ def _node(path, n):
     raise RuntimeError(f"partition {n} didn't show up")
 
 def _type_for(table, fs, flag):
-    key = flag if flag != "none" else ("swap" if fs == "swap" else "msdata" if fs in ("exfat", "vfat") else "linux")
+    key = flag if flag != "none" else ("swap" if fs == "swap" else "msdata" if fs in ("exfat", "vfat", "ntfs") else "linux")
     return (GPT_TYPES if table == "gpt" else DOS_TYPES).get(key, GPT_TYPES["linux"] if table == "gpt" else "83")
 
 def _mkfs(node, fs, label, log):
     S.run(["wipefs", "-a", "-f", node], timeout=120, check=True)
     if fs in ("ext4", "xfs", "btrfs", "exfat"): S.mkfs(node, fs, label or "", log); return
     log(f"Creating the {fs} filesystem…")
+    if fs == "ntfs":                                     # for drives Windows reads too (ntfs-3g; "fast": no zeroing the whole drive)
+        S.ensure_tools(["mkfs.ntfs"], log); S.run(["mkfs.ntfs", "-f", "-F"] + (["-L", label[:32]] if label else []) + [node], timeout=600, check=True); return
     S.ensure_tools(["mkfs.vfat"] if fs == "vfat" else [], log)
     cmd = ["mkfs.vfat", "-F", "32"] + (["-n", label[:11].upper()] if label else []) + [node] if fs == "vfat" else ["mkswap"] + (["-L", label[:15]] if label else []) + [node]
     S.run(cmd, timeout=600, check=True)
 
 def _set_label(node, fs, label, log):
     cmd = {"ext4": ["e2label", node, label], "xfs": ["xfs_admin", "-L", label or "--", node], "btrfs": ["btrfs", "filesystem", "label", node, label],
-           "exfat": ["tune.exfat", "-L", label, node], "vfat": ["fatlabel", node, label.upper() or "NO NAME"], "swap": ["swaplabel", "-L", label, node]}[fs]
+           "exfat": ["tune.exfat", "-L", label, node], "ntfs": ["ntfslabel", node, label], "vfat": ["fatlabel", node, label.upper() or "NO NAME"], "swap": ["swaplabel", "-L", label, node]}[fs]
     S.run(cmd, timeout=120, check=True)
 
 def _grow_fs(node, fs, log):

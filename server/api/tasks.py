@@ -22,7 +22,7 @@ STORAGE_KINDS = {"format", "combine", "raid", "pool-remove", "pool-add", "fstab-
 DIAG_KINDS = {"net-internet", "disk-speed", "cpu-stress", "mem-test"}
 BACKUP_KINDS = {"backup-run", "restore", "tools"}
 UPDATE_KINDS = {"updates-check", "apt-upgrade", "containers-update"}
-LABS_KINDS = {"images-prune", "freeup"}
+LABS_KINDS = {"images-prune", "freeup", "brain-install"}
 INSTALL_KINDS = {"run-command", "store-install", "store-uninstall", "custom-install", "custom-uninstall", "program-install", "program-remove", "share-setup"}
 WATCH_KINDS = {"drive-test"}                          # follows something the hardware does by itself (a SMART self-test)
 KINDS = STORAGE_KINDS | DIAG_KINDS | BACKUP_KINDS | UPDATE_KINDS | INSTALL_KINDS | LABS_KINDS | WATCH_KINDS
@@ -30,7 +30,7 @@ TITLES = {"repair": "Repair a drive", "clone": "Clone a drive", "format": "Set u
           "pool-add": "Add a drive", "fstab-nofail": "Boot without missing drives", "fstab-add": "Keep a drive mounted", "swap-setup": "Set up swap", "partition-apply": "Change partitions", "partition-restore": "Restore a partition table", "mount-set": "Change where a drive is mounted", "mount-clear": "Clear a leftover mount",
           "net-internet": "Internet speed test", "disk-speed": "Drive speed test", "cpu-stress": "CPU stress test", "mem-test": "Memory test",
           "backup-run": "Backup", "restore": "Restore from backup", "tools": "Install tools",
-          "updates-check": "Check for updates", "apt-upgrade": "Update packages", "containers-update": "Update containers", "images-prune": "Clean up old images", "freeup": "Free up space", "drive-test": "Drive health test"}
+          "updates-check": "Check for updates", "apt-upgrade": "Update packages", "containers-update": "Update containers", "images-prune": "Clean up old images", "freeup": "Free up space", "drive-test": "Drive health test", "brain-install": "Download the assistant's brain"}
 GROUP = {**{k: "storage" for k in STORAGE_KINDS}, **{k: "diag" for k in DIAG_KINDS}, "restore": "storage", "tools": "storage",
          **{k: "updates" for k in UPDATE_KINDS | LABS_KINDS}, "program-install": "updates", "program-remove": "updates"}     # one apt at a time
 
@@ -96,6 +96,7 @@ def check_spec(kind, spec):
         import freeup
         it = spec.get("items")
         if not (isinstance(it, list) and it and all(isinstance(x, str) and x in freeup.ITEMS for x in it)): raise ValueError("pick what to remove")
+    if kind == "brain-install" and spec.get("model") not in ("smart", "light"): raise ValueError("pick Smart or Light")
     if kind == "drive-test":
         if not re.fullmatch(r"[A-Za-z0-9_.:-]{1,64}", str(spec.get("serial", ""))) or spec.get("type") not in ("short", "long"): raise ValueError("bad drive test")
         spec["minutes"] = max(1, min(2000, int(spec.get("minutes") or (2 if spec["type"] == "short" else 120))))
@@ -186,6 +187,10 @@ def execute(tid):
             import freeup
             res = freeup.run_freeup(spec, log, progress)
             changelog(f"Free up space: {', '.join(spec.get('items') or [])} — freed {res['freed'] / 1e9:.1f} GB (from the Nova app)")
+        elif kind == "brain-install":
+            import brain
+            res = brain.install(spec, log, progress)
+            changelog(f"Assistant's brain installed ({spec.get('model')}) from the Nova app")
         elif kind == "tools":
             import storage
             storage.ensure_tools(spec["tools"], log); res = {"installed": spec["tools"]}

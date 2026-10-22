@@ -870,6 +870,7 @@ export async function labs(ctx, stable = false) {
         stable && l.labs.auto_updates ? row("Weekly updates", { sub: sched ? `${DAYS[sched.day]}s at ${hh(sched.hour)}${sched.last ? " · last ran " + new Date(sched.last * 1000).toLocaleDateString() : ""}` : "…", blue: true, icon: "update", click: isAdmin() ? "sched" : "" }) : "",
         stable && l.labs.image_cleanup ? row("Old images", { sub: "See what's taking space, and clean it up", blue: true, icon: "disk", click: "go:labs-images" }) : "",
         stable && l.labs.wake_on_lan ? row("Wake-on-LAN", { sub: "Turn on other computers on your network", blue: true, icon: "power", click: "go:wol" }) : "",
+        !stable && l.labs.assistant ? row("Open the assistant", { sub: "Or type a request in Search and pick “Ask Nova”", blue: true, icon: "star", click: "go:assistant" }) : "",
         !stable && l.labs.openrgb ? row("OpenRGB", { sub: "Where it runs, and the devices it has", blue: true, icon: "bulb", click: "go:openrgb" }) : "",
       ].join("")) : ""}
       ${stable ? group(row("Experimental features (Labs)", { icon: "science", blue: true, click: "go:labs" })) : sec("This browser") + group(switchRow("Apps in Nova windows", "Apps open in a window inside Nova — with minimize, maximize and close, in the look you picked — instead of a new tab. Minimized ones wait in the navigation pill. Only in this browser.", !!prefs.appWindows, "appwin")

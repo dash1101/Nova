@@ -30,7 +30,7 @@ TOOLS = {"mergerfs": "mergerfs", "mdadm": "mdadm", "mkfs.xfs": "xfsprogs", "mkfs
          "mkfs.exfat": "exfatprogs", "parted": "parted", "wipefs": "util-linux", "mount.nfs": "nfs-common",
          "mount.cifs": "cifs-utils", "rsync": "rsync", "fio": "fio", "stress-ng": "stress-ng",
          "smartctl": "smartmontools", "tracepath": "iputils-tracepath", "setfattr": "attr",
-         "mkfs.vfat": "dosfstools", "ddrescue": "gddrescue", "sgdisk": "gdisk", "fatlabel": "dosfstools", "tune.exfat": "exfatprogs", "ntfslabel": "ntfs-3g"}
+         "mkfs.vfat": "dosfstools", "ddrescue": "gddrescue", "sgdisk": "gdisk", "fatlabel": "dosfstools", "tune.exfat": "exfatprogs", "ntfslabel": "ntfs-3g", "mkfs.ntfs": "ntfs-3g"}
 
 
 def run(cmd, timeout=600, check=False, **kw):

@@ -138,6 +138,8 @@ private fun settingsFor(id: String): Route? = when {
 }
 
 @Composable fun QuickPanelScreen(app: AppState) {
+    var scheds by remember { mutableStateOf(listOf<org.json.JSONObject>()) }; var scheduling by remember { mutableStateOf(false) }
+    LaunchedEffect(app.isAdmin) { if (app.isAdmin) scheds = loadScheds(app) }
     var confirm by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf<String?>(null) }
     val backupState = live(app, "/api/v1/backup", 3_000)
@@ -213,6 +215,12 @@ private fun settingsFor(id: String): Route? = when {
         if (running && backup != null) { SectionLabel("Backup"); Group { Spacer(Modifier.height(16.dp)); BackupProgress(backup, inset = 22.dp) } }
         if (app.isAdmin) SectionLabel("Power")
         if (app.isAdmin) Group {
+            // restarts and shutdowns scheduled here or by the assistant, each with Cancel
+            scheds.forEach { s ->
+                Row1("${if (s.optString("action") == "poweroff") "Shutdown" else "Restart"} scheduled", schedWhen(s.optLong("at")), false, Icons.Rounded.Schedule, N.amber) {
+                    PillButton("Cancel") { app.act("Cancelled") { app.api.delete("/api/v1/power/schedule/${s.optString("id")}"); scheds = loadScheds(app) } } }
+                RowDivider()
+            }
             Row1("Restart server", "Everything goes offline for about 2 minutes", false, Icons.Rounded.RestartAlt, N.amber,
                 onClick = { confirm = "reboot" })
             RowDivider()
@@ -224,9 +232,38 @@ private fun settingsFor(id: String): Route? = when {
             RowDivider()
             Row1("Shut down Nova", "The server keeps running, but Nova can't be reached until it's started again", false,
                 Icons.Rounded.StopCircle, N.red, onClick = { confirm = "nova-stop" })
+            RowDivider()
+            Row1("Schedule a restart or shutdown", "Pick a day and time — cancel it here any time before then", true, Icons.Rounded.Schedule, N.blue, onClick = { scheduling = true })
         }
     }
     confirm?.let { what -> PowerConfirm(app, what) { confirm = null } }
+    if (scheduling) ScheduleDialog(app, { scheduling = false }) { scheds = it }
+}
+
+fun schedWhen(at: Long): String = java.text.SimpleDateFormat("EEE MMM d, h:mm a", java.util.Locale.getDefault()).format(java.util.Date(at * 1000))
+suspend fun loadScheds(app: AppState): List<org.json.JSONObject> = runCatching { app.api.get("/api/v1/power/schedule").optJSONArray("schedules").objs() }.getOrDefault(emptyList())
+
+/** Schedule a restart or shutdown: what, which day (today … two weeks out), and the time. Needs the fingerprint. */
+@Composable fun ScheduleDialog(app: AppState, close: () -> Unit, done: (List<org.json.JSONObject>) -> Unit) {
+    var act by remember { mutableStateOf("reboot") }; var day by remember { mutableIntStateOf(1) }
+    var hour by remember { mutableIntStateOf(3) }; var minute by remember { mutableIntStateOf(0) }
+    val days = (0..14).map { d -> d to when (d) { 0 -> "Today"; 1 -> "Tomorrow"; else -> java.text.SimpleDateFormat("EEE MMM d", java.util.Locale.getDefault()).format(java.util.Date(System.currentTimeMillis() + d * 86_400_000L)) } }
+    var pickDay by remember { mutableStateOf(false) }
+    OneDialog(close, "Schedule", "The server's own clock is used. You can cancel it from here any time before.", listOf(DialogButton("Cancel") { close() }, DialogButton("Schedule", N.blue) {
+        val c = java.util.Calendar.getInstance().apply { add(java.util.Calendar.DAY_OF_YEAR, day); set(java.util.Calendar.HOUR_OF_DAY, hour); set(java.util.Calendar.MINUTE, minute); set(java.util.Calendar.SECOND, 0) }
+        val at = c.timeInMillis / 1000
+        if (at < System.currentTimeMillis() / 1000 + 60) { app.toast("Pick a time at least a minute from now"); return@DialogButton }
+        close(); app.act("${if (act == "poweroff") "Shutdown" else "Restart"} scheduled for ${schedWhen(at)}") {
+            app.stepUp("Schedule a server ${if (act == "poweroff") "shutdown" else "restart"}", "POST", "/api/v1/power/schedule", org.json.JSONObject().put("action", act).put("at", at)); done(loadScheds(app)) }
+    })) {
+        Segmented(listOf("Restart", "Shut down"), if (act == "reboot") 0 else 1) { act = if (it == 0) "reboot" else "poweroff" }
+        Row1("Day", days.first { it.first == day }.second, true, Icons.Rounded.CalendarMonth, onClick = { pickDay = true })
+        TimeWheels(hour, minute) { h, m -> hour = h; minute = m }
+    }
+    if (pickDay) OneDialog({ pickDay = false }, "Day") {
+        androidx.compose.foundation.layout.Column(Modifier.heightIn(max = 460.dp).verticalScroll(rememberScrollState())) {
+            days.forEach { (d, l) -> DialogChoice(l, null, day == d) { day = d; pickDay = false } } }
+    }
 }
 
 /** Confirms one power action (the server, or just Nova) and sends it — the phone's fingerprint approves it. */
