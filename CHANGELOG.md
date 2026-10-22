@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.9.2-alpha (server, Nova web, app and watch)
+- **One ongoing conversation** (assistant): kept on your server and shared by every phone and browser. After a few quiet hours it starts afresh, but Nova remembers what it did (for a month), so “how much RAM did we free yesterday?” still works. **Forget the conversation** is in the assistant's settings.
+- **Just talk to it:** with its brain, Nova chats and answers general questions too (“yo, what's up?”, “give me a dinner idea”), friendlier all round. Without a brain, greetings get a friendly answer instead of “I didn't understand”.
+- **More it can change:** the living wallpaper and its scene, your accent color, window and corner roundness, the frame rate meter, Reduce transparency, reading replies aloud, and the Lumen look — and when the brain is there, it fills in whatever the rules missed instead of dropping it.
+- **A new orb** (web): a turning sphere of dots in your accent color that thinks, listens and works; a **Thinking…** bubble while Nova plans and the current step while it works; no more box around the text field.
+- **Off by default:** the assistant and its brain stay off on new installs; setup now asks whether you'd like them (default no).
+
 ## 0.9.1-alpha (server, Nova web, app and watch)
 - **Talk to Nova** (assistant, app and web): tap the mic and say it. With **Voice** downloaded on the assistant page (0.2 GB, Whisper), your server turns speech into text itself — nothing goes to an outside service. Without it, the app uses the phone's own speech recognizer (offline when it can). It stops listening when you pause.
 - **Read replies aloud** (optional): Nova says what it's about to do, and what it did, in your device's own voice.

@@ -88,6 +88,7 @@ object Assistant {
     val scope = rememberCoroutineScope()
     var text by remember { mutableStateOf(Assistant.pending.also { Assistant.pending = "" }) }
     var plan by remember { mutableStateOf<JSONObject?>(null) }
+    var turnId by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }; var stop by remember { mutableStateOf(false) }
     var cur by remember { mutableIntStateOf(-1) }; var summary by remember { mutableStateOf("") }; var err by remember { mutableStateOf("") }
     val results = remember { mutableStateMapOf<String, Pair<Boolean, String>>() }
@@ -99,10 +100,11 @@ object Assistant {
     fun planIt(t: String) { val q = t.trim(); if (q.isEmpty() || busy) return
         text = q; busy = true; plan = null; results.clear(); choice.clear(); summary = ""; err = ""; cur = -1
         scope.launch { try { val r = app.api.post("/api/v1/assistant/plan", JSONObject().put("text", q).put("history", Assistant.history()))
-                plan = r; Assistant.turns.add(Assistant.Turn(q, r.optString("reply"))); text = ""
+                plan = r; turnId = r.optString("turn"); Assistant.turns.add(Assistant.Turn(q, r.optString("reply"))); text = ""
                 if (AppPrefs.asstSpeak) Voice.speak(app.activity, r.optString("reply"))
             } catch (e: Exception) { err = e.message ?: "That didn't work" }; busy = false } }
-    fun noteDone(done: List<String>) { val i = Assistant.turns.lastIndex; if (i >= 0) Assistant.turns[i] = Assistant.turns[i].copy(done = done.take(8)) }
+    fun noteDone(done: List<String>) { val i = Assistant.turns.lastIndex; if (i >= 0) Assistant.turns[i] = Assistant.turns[i].copy(done = done.take(8))
+        val id = turnId; if (id.isNotEmpty()) scope.launch { runCatching { app.api.post("/api/v1/assistant/convo", JSONObject().put("turn", id).put("done", JSONArray(done.take(12)))) } } }
     // the mic: the server's speech model when it has one, the phone's recognizer when it doesn't
     var listening by remember { mutableStateOf(false) }; var hearing by remember { mutableStateOf(false) }; var level by remember { mutableFloatStateOf(0f) }
     val lang = (if (AppPrefs.lang != "auto") AppPrefs.lang else java.util.Locale.getDefault().language).take(2)
@@ -128,7 +130,10 @@ object Assistant {
     suspend fun runStep(s: JSONObject): Done {
         val kind = s.optString("kind"); val done = s.optString("done")
         when (kind) {
-            "ui" -> { when (s.optString("pref")) { "theme" -> AppPrefs.set("theme", s.optString("value")); "style" -> AppPrefs.set("style", s.optString("value")); "reduce_motion" -> AppPrefs.set("reduce_motion", s.optBoolean("value")) }
+            "ui" -> { val v = s.opt("value"); when (s.optString("pref")) { "theme" -> AppPrefs.set("theme", s.optString("value")); "style" -> AppPrefs.set("style", s.optString("value")); "reduce_motion" -> AppPrefs.set("reduce_motion", s.optBoolean("value"))
+                    "accent" -> AppPrefs.set("accent", s.optString("value")); "win_round" -> AppPrefs.chooseWinRound(s.optInt("value", 100)); "corner_round" -> AppPrefs.setRound(AppPrefs.style, s.optInt("value", 100))
+                    "living" -> if (v == "off") Living.set(false) else { Living.set(true); Living.chooseScene(s.optString("value", "auto")) }
+                    "fps" -> Dev.set(app.activity, "fps", s.optBoolean("value")); "solid" -> AppPrefs.set("solid", s.optBoolean("value")); "speak" -> AppPrefs.chooseAsstSpeak(s.optBoolean("value")) }
                 return Done(true, done) }
             "nav", "partition" -> return Done(true, "Opening it at the end", later = true)
         }
