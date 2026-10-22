@@ -30,9 +30,11 @@ object Living {
     var scene by mutableStateOf("auto"); private set     // auto = match the look, or one of SCENES
     var speed by mutableIntStateOf(100); private set     // % of normal
     var accent by mutableStateOf(""); private set        // its own color, or "" for the accent
+    var tint by mutableIntStateOf(0); private set        // a wash of the page color over it, 0–80 % (as on the web)
+    fun chooseTint(v: Int) { tint = v; sp.edit().putInt("living_tint", v).apply() }
     val SCENES = linkedMapOf("default" to "Nebula", "aero" to "Harmony (Aero)", "fluent" to "Bloom (Mica)", "breeze" to "Flow (Breeze)", "liquid" to "Liquid (Glass)", "material" to "Shapes (Material)")
     fun init(ctx: Context) { sp = ctx.getSharedPreferences("nova_ui", Context.MODE_PRIVATE); on = sp.getBoolean("living_wall", false)
-        scene = sp.getString("living_scene", "auto")!!; speed = sp.getInt("living_speed", 100); accent = sp.getString("living_accent", "")!! }
+        scene = sp.getString("living_scene", "auto")!!; speed = sp.getInt("living_speed", 100); accent = sp.getString("living_accent", "")!!; tint = sp.getInt("living_tint", 0) }
     fun set(v: Boolean) { on = v; sp.edit().putBoolean("living_wall", v).apply() }
     fun chooseScene(v: String) { scene = v; sp.edit().putString("living_scene", v).apply() }
     fun chooseSpeed(v: Int) { speed = v; sp.edit().putInt("living_speed", v).apply() }
@@ -71,6 +73,12 @@ private fun DrawScope.blob(x: Float, y: Float, r: Float, c: Color, blend: BlendM
     drawCircle(Brush.radialGradient(listOf(c, c.copy(alpha = 0f)), center = Offset(x, y), radius = r), r, Offset(x, y), blendMode = blend)
 }
 
+/** A blob with a body: full color most of the way out, fading only at the rim (Mica's petals — a plain blob read as blurred). */
+private fun DrawScope.petal(x: Float, y: Float, r: Float, c: Color) {
+    if (r <= 0f) return
+    drawCircle(Brush.radialGradient(0f to c, .8f to c, 1f to c.copy(alpha = 0f), center = Offset(x, y), radius = r), r, Offset(x, y))
+}
+
 /** What Glass cards bend: the scene, drawn once per tick (on a background thread, at half size) into one window-sized
  *  picture that every card copies its part of. Each card used to draw the whole scene itself — during a back gesture
  *  (two pages, every card re-recording its backdrop as the page moves) that was the scene a dozen times a frame, and
@@ -107,7 +115,7 @@ fun DrawScope.drawLivingShared(t: NovaColors, origin: Offset, W: Float, H: Float
     if (W < 2f || H < 2f) return
     LivingFrame.version                                  // (read: a new picture redraws this card)
     val k = if (lite()) .35f else .5f
-    val key = listOf(Living.time, t.blue, t.dark, t.material, t.preset, Living.sceneFor(t), Living.accent, W.toInt(), H.toInt(), k)
+    val key = listOf(Living.time, t.blue, t.dark, t.material, t.preset, Living.sceneFor(t), Living.accent, Living.tint, W.toInt(), H.toInt(), k)
     LivingFrame.request(key, t, W, H, k, androidx.compose.ui.unit.Density(1f))   // (the scenes are drawn in pixels; reading this scope's density inside a card's recording loops in Compose)
     val b = LivingFrame.front
     val fk = LivingFrame.frontKey
@@ -118,9 +126,10 @@ fun DrawScope.drawLivingShared(t: NovaColors, origin: Offset, W: Float, H: Float
 }
 
 /** The scene at this spot: [origin] is where this layer sits on the screen, [W]×[H] the whole window. */
-fun DrawScope.drawLiving(t: NovaColors, origin: Offset, W: Float, H: Float, time: Float = Living.time) {
+fun DrawScope.drawLiving(t: NovaColors, origin: Offset, W: Float, H: Float, time: Float = Living.time, scene: String? = null) {
     val own = Living.accent.takeIf { it.length == 7 }?.let { runCatching { Color(android.graphics.Color.parseColor(it)) }.getOrNull() }
-    val (h, s) = hueSat(own ?: t.blue); val d = t.dark; val m = max(W, H); val sc = Living.sceneFor(t)
+    val (h, s) = hueSat(own ?: t.blue); val d = t.dark; val m = max(W, H)
+    val sc = when (scene) { null -> Living.sceneFor(t); "auto" -> if (t.material) "material" else t.preset.ifEmpty { "default" }; else -> scene }
     translate(-origin.x, -origin.y) {
         when {
             sc == "material" -> {                            // soft shapes in the accent's tones
@@ -160,7 +169,7 @@ fun DrawScope.drawLiving(t: NovaColors, origin: Offset, W: Float, H: Float, time
                 for (i in 0 until 7) {
                     val a = time * .03f + i / 7f * 2 * PI.toFloat(); val br = 1 + .08f * sin(time * .4f + i)
                     translate(cx, cy) { rotate(a * 57.3f, Offset.Zero) { scale(1f, .42f, Offset.Zero) {
-                        blob(m * .22f * br, 0f, m * .3f * br, if (d) hsl(h + (i - 3) * 7, s, 54f, .5f) else hsl(h + (i - 3) * 9, s, 62f, .38f))
+                        petal(m * .22f * br, 0f, m * .3f * br, if (d) hsl(h + (i - 3) * 7, s, 54f, .5f) else hsl(h + (i - 3) * 9, s, 62f, .38f))
                     } } }
                 }
                 blob(cx, cy, m * .2f, if (d) hsl(h + 15, s * .7f, 70f, .3f) else hsl(h + 15, s * .5f, 92f, .65f))
@@ -192,5 +201,6 @@ fun DrawScope.drawLiving(t: NovaColors, origin: Offset, W: Float, H: Float, time
                     drawCircle(Color.White.copy(alpha = a), 1.6f, Offset((i * .6180339f % 1f) * W, (i * .5377f % 1f) * H)) }
             }
         }
+        if (Living.tint > 0) drawRect(t.bg.copy(alpha = Living.tint.coerceIn(0, 80) / 100f), size = Size(W, H))     // Tint: a wash of the page color
     }
 }

@@ -11,12 +11,14 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Palette
+import androidx.compose.material.icons.rounded.Apps
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
@@ -38,6 +40,8 @@ object AppIcon {
         Choice("wb", "White on black", ".IconWb", R.mipmap.ic_launcher_wb),
         Choice("glass", "Glossy", ".IconGlass", R.mipmap.ic_launcher_glass),
         Choice("clear", "Glass (see-through)", ".IconClear", R.drawable.ic_launcher_clear_plain),
+        Choice("sil_black", "Silhouette (black)", ".IconSilBlack", R.drawable.ic_launcher_sil_black),
+        Choice("sil_white", "Silhouette (white)", ".IconSilWhite", R.drawable.ic_launcher_sil_white),
         Choice("aero", "Aero", ".IconAero", R.mipmap.ic_launcher_aero),
         Choice("mica", "Mica", ".IconMica", R.mipmap.ic_launcher_mica),
         Choice("breeze", "Breeze", ".IconBreeze", R.mipmap.ic_launcher_breeze),
@@ -96,43 +100,75 @@ object AppIcon {
     }
 }
 
-/** Settings → Appearance → App icon: a grid of previews. */
-@Composable fun AppIconPicker(app: AppState) {
+/** Appearance → Icons: Nova's own icon (a grid of previews in your icon shape), its shape, and the icons inside Nova. */
+@Composable fun IconsScreen(app: AppState) {
+    Page("Icons", app::back) {
+        AppIconPicker(app)
+        SectionLabel("Icons inside Nova")
+        Group {
+            val th = ICON_THEMES.firstOrNull { it.first == AppPrefs.iconTheme } ?: ICON_THEMES[0]
+            ExpandRow("Icon style", th.second) { IconThemeList() }
+            RowDivider()
+            SwitchRow("Icons in your accent color", "Every icon takes on the accent color instead of its own — warnings stay red", AppPrefs.iconAccent) { AppPrefs.chooseIconAccent(it) }
+        }
+    }
+}
+
+/** An icon's full square (not the launcher's mask — Android draws adaptive icons in its own shape), so the preview can
+ *  take the icon shape you picked: the two layers, with the middle 72 of their 108 units filling the square. */
+private fun iconPreview(ctx: Context, res: Int, px: Int = 168): androidx.compose.ui.graphics.ImageBitmap {
+    val d = ctx.getDrawable(res)!!
+    if (d !is android.graphics.drawable.AdaptiveIconDrawable) return d.toBitmap(px, px).asImageBitmap()
+    val b = android.graphics.Bitmap.createBitmap(px, px, android.graphics.Bitmap.Config.ARGB_8888); val cv = android.graphics.Canvas(b); val e = px / 4
+    listOfNotNull(d.background, d.foreground).forEach { it.setBounds(-e, -e, px + e, px + e); it.draw(cv) }
+    return b.asImageBitmap()
+}
+
+@Composable private fun AppIconPicker(app: AppState) {
     val ctx = LocalContext.current
     var cur by remember { mutableStateOf(AppIcon.current(ctx)) }
     var ask by remember { mutableStateOf<AppIcon.Choice?>(null) }
-    SectionLabel("App icon")
+    var custom by remember { mutableStateOf(false) }; var shape by remember { mutableStateOf(false) }
+    var match by remember { mutableStateOf(AppIcon.matching(ctx)) }
+    val accent = N.blue; val dark = N.dark
+    SectionLabel("Nova's icon")
     Group {
-        Column(Modifier.padding(horizontal = 14.dp, vertical = 14.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            AppIcon.base.chunked(4).forEach { row ->
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    row.forEach { c ->
-                        val bmp = remember(c.res) { ctx.getDrawable(c.res)!!.toBitmap(168, 168).asImageBitmap() }
-                        val on = cur == c.id
-                        Column(Modifier.weight(1f).clip(RoundedCornerShape(16.dp)).clickable { if (!on) ask = c }.padding(vertical = 6.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally) {
-                            Image(bmp, c.label, Modifier.size(58.dp).clip(RoundedCornerShape(18.dp))
-                                .then(if (on) Modifier.border(3.dp, N.blue, RoundedCornerShape(18.dp)) else Modifier))
-                            Text(c.label, color = if (on) N.blue else N.sub, fontSize = 12.sp, textAlign = TextAlign.Center, maxLines = 2,
-                                modifier = Modifier.padding(top = 6.dp))
+        ExpandRow("App icon", AppIcon.base.firstOrNull { it.id == cur }?.label ?: "Your color") {
+            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                AppIcon.base.chunked(4).forEach { row ->
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        row.forEach { c ->
+                            val bmp = remember(c.res) { iconPreview(ctx, c.res) }
+                            val on = cur == c.id; val sh = IconShape.shape()
+                            // plain (not adaptive) icons — see-through and silhouettes — draw as they are; the rest in your icon shape
+                            val plain = c.id == "clear" || c.id.startsWith("sil_")
+                            Column(Modifier.weight(1f).clip(RoundedCornerShape(16.dp)).clickable { if (!on) ask = c }.padding(vertical = 6.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally) {
+                                Image(bmp, c.label, Modifier.size(52.dp).then(if (plain) Modifier.background(if (c.id == "sil_white") Color(0xFF3A3A40) else if (c.id == "sil_black") Color(0xFFE6E6EB) else Color.Transparent, sh) else Modifier).clip(sh)
+                                    .then(if (on) Modifier.border(3.dp, N.blue, sh) else Modifier))
+                                Text(c.label, color = if (on) N.blue else N.sub, fontSize = 11.sp, textAlign = TextAlign.Center, maxLines = 2,
+                                    modifier = Modifier.padding(top = 6.dp))
+                            }
                         }
+                        repeat(4 - row.size) { Spacer(Modifier.weight(1f)) }
                     }
-                    repeat(4 - row.size) { Spacer(Modifier.weight(1f)) }
                 }
             }
         }
+        RowDivider()
+        SwitchRow("Match my accent color", "The icon takes on your accent color in Material You's tonal style, and changes with it", match) { on ->
+            match = on; AppIcon.setMatching(ctx, on)
+            if (on) { AppIcon.follow(ctx, accent.toArgb(), dark); cur = AppIcon.current(ctx); app.toast("App icon changed") } }
+        RowDivider()
+        Row1("Your own colors", "Pick the background and the symbol's color — added to your home screen as a Nova icon", true, Icons.Rounded.Palette, onClick = { custom = true })
+        RowDivider()
+        Row1("Icon shape", "${IconShape.NAMES[IconShape.id]} — the previews above and your apps' icons inside Nova", true, Icons.Rounded.Apps, onClick = { shape = true })
     }
-    var custom by remember { mutableStateOf(false) }
-    var match by remember { mutableStateOf(AppIcon.matching(ctx)) }
-    val accent = N.blue; val dark = N.dark
-    Group { SwitchRow("Match my accent color", "The icon takes on your accent color in Material You's tonal style, and changes with it", match) { on ->
-        match = on; AppIcon.setMatching(ctx, on)
-        if (on) { AppIcon.follow(ctx, accent.toArgb(), dark); cur = AppIcon.current(ctx); app.toast("App icon changed") } } }
     if (match) TONE_ICONS.firstOrNull { it.id == cur }?.let { t ->
-        Note("Now: the ${if (t.mode == "d") "dark" else "light"} tonal icon nearest your accent. Picking an icon above turns this off.", 13.sp, 4.dp) }
-    Group { Row1("Your own colors", "Pick the background and the symbol's color — added to your home screen as a Nova icon", true, Icons.Rounded.Palette, onClick = { custom = true }) }
+        Note("Now: the ${if (t.mode == "d") "dark" else "light"} tonal icon nearest your accent. Picking an icon turns this off.", 13.sp, 4.dp) }
+    Note("Your home screen app decides the shape of Nova's icon there (and with themed icons on, Android 13+ turns every choice into its themed style).", 13.sp, 4.dp)
     if (custom) CustomIconDialog(app) { custom = false }
-    Note("Material You follows your wallpaper's colors. With themed icons on (Android 13+), every choice turns into your phone's themed style.", 13.sp, 4.dp)
+    if (shape) OneDialog({ shape = false }, "Icon shape") { IconShape.NAMES.forEach { (k, n) -> DialogChoice(n, selected = IconShape.id == k) { IconShape.set(k); shape = false } } }
     ask?.let { c -> OneDialog({ ask = null }, "Use the ${c.label} icon?",
         "Your home screen switches to it in a moment. If Nova was on your home screen, you may need to add it there again.",
         listOf(DialogButton("Cancel") { ask = null }, DialogButton("Change", N.blue) { ask = null; AppIcon.setMatching(ctx, false); match = false; AppIcon.set(ctx, c.id); cur = c.id; app.toast("App icon changed") })) }
@@ -168,7 +204,7 @@ private val ICON_SWATCHES = listOf(0xFF0A0A0C, 0xFF1C2541, 0xFF0B3D91, 0xFF2F80E
         OneTextField(hex, { v -> hex = v.take(7); Regex("#?([0-9a-fA-F]{6})").matchEntire(v.trim())?.let { pick(0xFF000000.toInt() or it.groupValues[1].toInt(16)) } },
             "#RRGGBB", Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 6.dp), mono = true)
     }
-    OneDialog(onDone, "Your own colors", "Android only lets an app switch between icons it ships with. Use as the app icon picks the closest of Nova's 38 icons; Add to home screen adds one in exactly these colors (you can remove the old one).",
+    OneDialog(onDone, "Your own colors", "Android only lets an app switch between icons it ships with. Use as the app icon picks the closest of Nova's own icons; Add to home screen adds one in exactly these colors (you can remove the old one).",
         listOf(DialogButton("Cancel", onClick = onDone), DialogButton("Use as the app icon", N.blue) {
             sp.edit().putInt("bg", bg).putInt("fg", fg).putBoolean("match", false).apply()
             AppIcon.set(ctx, AppIcon.nearest(ctx, bg, fg)); app.toast("App icon changed to the closest match"); onDone() },

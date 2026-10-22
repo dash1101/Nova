@@ -866,7 +866,7 @@ html.breeze input[type=range] { height: 6px; border-radius: 3px; }
 html.breeze input[type=range]::-webkit-slider-thumb { width: 18px; height: 18px; box-shadow: 0 0 0 1px var(--bz-frame); }
 html.breeze #sheet { background: rgba(0,0,0,.35); align-items: center; padding: 24px; }
 html.breeze #sheet .box { animation: none; }
-html.breeze #sheet .box.alert, html.breeze #sheet .box.menu { background: var(--card); }
+html.breeze #sheet .box { background: var(--card); }      /* no blur in Breeze, so a see-through dialog showed the page through its text */
 html.breeze #sheet .box.alert { width: min(460px, 100%); padding: 16px 18px 14px; }
 html.breeze #sheet .box.alert h2 { margin: 0 0 8px; font-size: 16px; font-weight: 700; }
 html.breeze #sheet .box.alert p { margin: 0; font-size: 14px; color: var(--text); }
@@ -1129,7 +1129,7 @@ html.material .nav .wdock button { height: 64px; }
 html:not(.material, .liquid, .fluent, .breeze, .aero) .wbar { height: 46px; padding: 0 8px 0 14px; } html:not(.material, .liquid, .fluent, .breeze, .aero) .wtitle { font-weight: 700; font-size: 15px; }
 html:not(.material, .liquid, .fluent, .breeze, .aero) .wb { width: 32px; height: 32px; border-radius: 16px; background: color-mix(in srgb, var(--text) 8%, transparent); margin-left: 4px; }
 html:not(.material, .liquid, .fluent, .breeze, .aero) .wb.wclose:hover { background: var(--red); }
-html:not(.material, .liquid, .fluent, .breeze, .aero) .win { --wr: 26px; }
+html:not(.material, .liquid, .fluent, .breeze, .aero) .win { --wr: 16px; }
 /* Material You: the surface color, tonal round buttons */
 html.material .win { --wr: 28px; border: 0; background: var(--card); backdrop-filter: none; }
 html.material .wbar { height: 52px; padding: 0 10px 0 18px; } html.material .wtitle { font-size: 16px; font-weight: 500; }
@@ -1329,10 +1329,51 @@ html.liquid .bar > i { border-radius: 99px; box-shadow: inset 0 1px 0 rgba(255,2
 html.material .bar { height: 10px; border-radius: 5px; background: color-mix(in srgb, var(--blue) 18%, transparent); }
 html.material .bar > i { border-radius: 5px; }
 /* dialogs have the same corners as windows in every look (Labs → Window corners and Corner roundness apply to both) */
-html { --wrb: 26px; } html.material { --wrb: 28px; } html.liquid { --wrb: 16px; } html.fluent { --wrb: 8px; } html.breeze { --wrb: 6px; } html.aero { --wrb: 7px; }
+html { --wrb: 18px; } html.material { --wrb: 28px; } html.liquid { --wrb: 16px; } html.fluent { --wrb: 8px; } html.breeze { --wrb: 6px; } html.aero { --wrb: 7px; }
 #sheet .box, html :is(.material, .liquid, .fluent, .breeze, .aero) #sheet .box { border-radius: calc(var(--wrb) * var(--rk, 1) * var(--wrk, 1)) !important; }
 
 /* Appearance → Top and bottom fades: off, or in a color of your own */
 html.no-scrims .scrim, html.no-scrims .scrim-bottom { display: none !important; }
 html:not(.material, .liquid, .fluent, .breeze, .aero) { --wp-own: var(--wp-glow); } html.liquid { --wp-own: var(--wp-vivid); } html.fluent { --wp-own: var(--wp-soft); } html.aero { --wp-own: var(--wp-aero); }
 .wpgal .wpv > i { position: absolute; left: 0; top: 0; width: 100vw; height: 100vh; transform-origin: 0 0; transform: scale(var(--s, .1)); background-color: var(--bg); }
+
+/* ── 0.8.14: Appearance ─────────────────────────────────────────────────────────────── */
+/* dropdowns that hold rows and sliders: no indented text column */
+.expand.xrows .xb { padding: 0; color: inherit; font-size: inherit; line-height: inherit; }
+.expand.xrows .xb > :first-child { position: relative; }
+.expand.xrows .xb > .row:first-child::before, .expand.xrows .xb > .range-row:first-child::before { content: ""; position: absolute; left: 22px; right: 22px; top: 0; border-top: .8px solid var(--divider); }
+.expand.xrows .xb .wicons { padding: 6px 12px 12px; }
+.seg-row { display: flex; flex-direction: column; gap: 8px; padding-top: 12px; padding-bottom: 14px; }
+.seg-row > .muted { font-size: 13px; padding: 0 10px; }
+/* color picker: the page's color and recent colors on top */
+.cp-quick { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 12px; }
+.cp-quick .swatch { width: 30px; height: 30px; }
+.cp-quick .cp-l { font-size: 12px; margin-left: 4px; }
+.cp-reset { display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px 6px 6px; border-radius: 999px; background: var(--pill); color: var(--text); font: inherit; font-size: 14px; border: 0; cursor: pointer; }
+.cp-auto { background: conic-gradient(from 45deg, var(--bg) 0 50%, var(--text) 0 100%) !important; box-shadow: inset 0 0 0 1px var(--divider); width: 22px !important; height: 22px !important; }
+/* scene gallery: a still frame of each living wallpaper */
+.wpgal .wpv canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.wpgal .wpmedia { position: absolute; inset: 0; display: grid; place-items: center; color: var(--sub); }
+.wpgal .wpmedia svg { width: 34px; height: 34px; fill: currentColor; }
+/* Icons in your accent color (warnings stay red) */
+html.icon-acc .row .ri:not([style*="--red"]) { color: var(--blue) !important; }
+html.icon-acc:not([data-icons]):not(.liquid):not(.aero) .row .ri:not([style*="--red"]) { background: color-mix(in srgb, var(--blue) 16%, transparent) !important; }
+html.icon-acc .icprev > span { color: var(--blue) !important; }
+/* Readability: a soft halo in the page color behind text on see-through surfaces, gray text nearer the text color */
+html.rd1 { --rdh: color-mix(in srgb, var(--bg) 78%, transparent); }
+html.rd1 :is(.glass, .frost, .topbar, .sec, .note) :is(b, small, h1, h2, h3, p, span, .muted, label) { text-shadow: 0 0 .45em var(--rdh), 0 0 2px var(--rdh); }
+html.rd1 :is(.row small:not(.blue), .muted, .note, .sec) { color: color-mix(in srgb, var(--sub) 65%, var(--text)); }
+html.rd2 :is(.row small:not(.blue), .muted, .note, .sec) { color: color-mix(in srgb, var(--sub) 40%, var(--text)); font-weight: 500; }
+html.rd2 .row b { font-weight: 650; }
+html.rd-bg { --rdh: color-mix(in srgb, var(--bg) 80%, transparent); }
+html.rd-bg :is(.sec, .topbar h1, .topbar .title, .home-title) { text-shadow: 0 0 .5em var(--rdh), 0 0 3px var(--rdh), 0 0 1px var(--rdh); }
+html.rd-bg .note:not(:is(.glass, .frost, #sheet) .note) { background: color-mix(in srgb, var(--bg) 72%, transparent); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+  border-radius: calc(12px * var(--rk, 1)); padding: 8px 12px; color: color-mix(in srgb, var(--sub) 55%, var(--text)); }
+/* keyboard focus: a clear ring on whatever has it (Mica and Breeze draw their own) */
+html:not(.fluent):not(.breeze) :focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+html:not(.fluent):not(.breeze) .row:focus-visible, html:not(.fluent):not(.breeze) .choice:focus-visible { outline-offset: -3px; border-radius: inherit; }
+html .searchbox .sq:focus-visible, html .vtbox:focus-visible { outline: none; }
+html .searchbox:has(.sq:focus-visible) { box-shadow: 0 0 0 2px var(--blue); }
+/* accent-colored text over a living wallpaper (drawn in the same accent) or a busy picture: mixed toward the text color */
+html.rd1 .row small.blue { color: color-mix(in srgb, var(--blue) 62%, var(--text)); }
+html.rd2 .row small.blue { color: color-mix(in srgb, var(--blue) 45%, var(--text)); font-weight: 500; }

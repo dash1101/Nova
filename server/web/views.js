@@ -1165,7 +1165,7 @@ export async function editQuick(ctx) {
   const draw = () => {
     const ids = prefs.quick, more = QUICK.filter(q => !ids.includes(q.id));
     ctx.show(`${sec("In the panel · hold and drag to reorder")}
-      <div class="group glass rl" id="rl">${ids.length ? ids.map(id => { const d = quickDef(id); return d ? `<div class="row" data-key="${esc(id)}"><span class="handle">${I("drag")}</span><span style="color:var(--blue);display:flex">${I(d.icon)}</span><div class="t"><b>${esc(d.label)}</b></div><button data-noreorder data-act="rm:${esc(id)}" style="color:var(--red)">${I("remc")}</button></div>` : ""; }).join("") : `<div class="row"><div class="t muted">Nothing yet — add some below.</div></div>`}</div>
+      <div class="group glass rl" id="rl">${ids.length ? ids.map(id => { const d = quickDef(id); return d ? `<div class="row" data-key="${esc(id)}"><span class="handle">${I("drag")}</span><span style="color:var(--blue);display:flex">${I(d.icon)}</span><div class="t"><b>${esc(d.label)}</b></div><button data-noreorder data-act="rm:${esc(id)}" style="color:var(--red)" aria-label="Remove">${I("remc")}</button></div>` : ""; }).join("") : `<div class="row"><div class="t muted">Nothing yet — add some below.</div></div>`}</div>
       ${sec("Add")}${group(more.map(q => row(q.label, { sub: q.hint, icon: q.icon, click: "add:" + q.id, end: `<span style="color:var(--green)">${I("addc")}</span>` })).join("") + row("Restart a container…", { sub: "Pick one — your phone confirms each restart", icon: "restart", click: "addc", end: `<span style="color:var(--green)">${I("addc")}</span>` }))}
       ${links([["Reset to the default tiles", "reset"]])}`, { title: "Edit quick panel" });
     reorderable($("#rl"), keys => { prefs.quick = keys; draw(); });
@@ -1243,7 +1243,7 @@ export async function lighting(ctx) {
     const presets = f.presets || [], soft = SOFT.has(eff) || eff === "cycle", mode = soft ? (pal.length >= 2 && !(eff !== "fire" && rb) ? 2 : rb ? 0 : 1) : -1;
     const pfx = !soft && PALETTE_FX.has(eff), pmode = pal.length >= 2 ? 1 : 0;      // static, pulse, flash, gradient: color(s) or a palette
     const palEditor = () => `<div style="padding:14px 20px"><div style="display:flex;flex-wrap:wrap;gap:12px">${pal.map((c, i) => `<button class="swatch" style="width:44px;height:44px;background:${c}" data-act="${on ? "pal:" + i : ""}" data-pi="${i}" aria-label="${c}"></button>`).join("")}
-                ${pal.length < 8 && on ? `<button class="swatch" style="width:44px;height:44px;border:1.5px dashed var(--sub)" data-act="paladd">${I("add")}</button>` : ""}</div>
+                ${pal.length < 8 && on ? `<button class="swatch" style="width:44px;height:44px;border:1.5px dashed var(--sub)" data-act="paladd" aria-label="Add a color">${I("add")}</button>` : ""}</div>
               <p class="muted" style="font-size:12px;margin:8px 0 10px">Tap a color to change it, hold (or right-click) to remove it.</p>
               <div style="display:flex;gap:8px;overflow-x:auto;scrollbar-width:none">${PALS.map(([n, c]) => `<button style="display:flex;flex-direction:column;align-items:center;gap:4px;padding:4px" data-act="${on ? "palset:" + n : ""}"><span style="width:64px;height:22px;border-radius:11px;background:${palBg(c)}"></span><small class="muted">${n}</small></button>`).join("")}</div></div>`;
     const chips = S.lights ? `<div class="chips litchips" style="padding:0 var(--gutter);margin-bottom:6px">${zs.map(x => chip(x.name, "lit:" + x.id, x.id === litCur)).join("")}
@@ -1747,84 +1747,100 @@ export async function dev(ctx) {
   draw(); ctx.every(2000, () => draw());
 }
 const PACKS = { default: "Droplets", material: "Material", aero: "Aero", fluent: "Mica", breeze: "Breeze", liquid: "Glass" };
+const STYLES = [["auto", "Automatic", ""], ["default", "Default", "Nova's own look: frosted glass and a soft glow"],
+  ["material", "Material You", "Material 3 Expressive: tonal colors from the accent, bolder shapes, springy motion"],
+  ["liquid", "Glass", "Clear glass that bends the light behind it at its edges"],
+  ["fluent", "Mica", "A soft, tinted base with frosted menus and crisp, small corners"],
+  ["breeze", "Breeze", "Flat and tidy: a thin frame, gentle corners, the accent as the focus color"],
+  ["aero", "Aero", "Tinted frosted glass frames with a glossy shine and glowing buttons"]];
+const autoMaterialUA = () => /Android/i.test(navigator.userAgent) && !/SamsungBrowser|SM-[A-Z0-9]|Xiaomi|Redmi|POCO|HUAWEI|HONOR|vivo|OPPO|realme/i.test(navigator.userAgent);
+/** A phone that can buzz: the Vibration API exists on desktop browsers too, where nothing would happen. */
+export const canVibrate = () => "vibrate" in navigator && matchMedia("(pointer: coarse)").matches && /Android/i.test(navigator.userAgent);
+/** A slider row: [key, label, min, max, default, unit, step] */
+const rng = (k, l, a, b, d, u, step = 1, id = k + "l") => { const v = prefs[k] ?? d;
+  return `<div class="range-row"><div class="h"><span>${esc(l)}</span><span id="${id}">${v}${u}</span></div><input type="range" min="${a}" max="${b}" step="${step}" value="${v}" data-range="${k}" style="--p:${(v - a) / (b - a) * 100}%" aria-label="${esc(l)}"></div>`; };
+const READ = [["auto", "Automatic", "Stronger text only where the glass or the background makes it hard to read"], ["off", "Off", "Text exactly as the look draws it"], ["more", "Always stronger", "Bolder, higher-contrast text everywhere"]];
+
 export async function appearance(ctx) {
   const draw = () => {
-    const rnow = Math.max(25, Math.min(200, prefs["round_" + prefs.style] ?? prefs.round ?? 100));   // each look keeps its own roundness
-    const t = prefs.theme, st = prefs.style, mat = document.documentElement.classList.contains("material"), look = mat ? "Material" : ({ liquid: "Glass", fluent: "Mica", breeze: "Breeze", aero: "Aero" })[st] || "Default";
-    const autoMat = /Android/i.test(navigator.userAgent) && !/SamsungBrowser|SM-[A-Z0-9]|Xiaomi|Redmi|POCO|HUAWEI|HONOR|vivo|OPPO|realme/i.test(navigator.userAgent);
-    ctx.show(`${sec("Style")}${group([["auto", "Automatic", `${autoMat ? "Material You" : "Default"} — picked to suit this device`], ["default", "Default", "Nova's own look: frosted glass and a soft glow"],
-        ["material", "Material You", "Material 3 Expressive: tonal colors from the accent, bolder shapes, springy motion"],
-        ["liquid", "Glass", "Clear glass that bends the light behind it at its edges"],
-        ["fluent", "Mica", "A soft, tinted base with frosted menus and crisp, small corners"],
-        ["breeze", "Breeze", "Flat and tidy: a thin frame, gentle corners, the accent as the focus color"],
-        ["aero", "Aero", "Tinted frosted glass frames with a glossy shine and glowing buttons"]].map(([k, l, d]) => row(l, { sub: d, end: radio(st === k), click: "style:" + k })).join(""))}
-      ${["liquid", "fluent", "breeze", "aero"].includes(st) ? group((st === "liquid" ? `<div class="range-row"><div class="h"><span>Light splitting</span><span id="prisml">${prefs.prism ?? 50}%</span></div><input type="range" min="0" max="100" value="${prefs.prism ?? 50}" data-range="prism" style="--p:${prefs.prism ?? 50}%"></div>` : "")
-        + (st !== "breeze" ? `<div class="range-row"><div class="h"><span>Glass clarity</span><span id="glassl">${prefs.glass ?? 60}%</span></div><input type="range" min="0" max="100" value="${prefs.glass ?? 60}" data-range="glass" style="--p:${prefs.glass ?? 60}%"></div>` : "")
-        + `<div class="range-row"><div class="h"><span>Corner roundness</span><span id="roundl">${rnow}%</span></div><input type="range" min="25" max="200" value="${rnow}" data-range="round_${st}" style="--p:${(rnow - 25) / 175 * 100}%"></div>`) : ""}
-      ${!mat && !["liquid", "fluent", "breeze", "aero"].includes(st) ? group([["dTrans", "Transparency", 0, 85, 0, "%"], ["dFrost", "Frost", 0, 40, 26, "px"]].map(([k, l, a, b, d, u]) =>
-          `<div class="range-row"><div class="h"><span>${l}</span><span id="${k}l">${prefs[k] ?? d}${u}</span></div><input type="range" min="${a}" max="${b}" value="${prefs[k] ?? d}" data-range="${k}" style="--p:${((prefs[k] ?? d) - a) / (b - a) * 100}%"></div>`).join("")) : ""}
-      ${st === "liquid" && !canRefract() ? note("This browser shows Glass frosted, without the bending at the edges — that part needs a Chromium-based browser.") : ""}
-      ${st === "liquid" ? note("Glass is the most demanding look: on some devices it can make things warm, use more battery or stutter. Lighter effects (below) keeps the look with less work.") : ""}
-      ${sec("Theme")}${group([["system", "Same as this device"], ["light", `${look} light`], ["dark", `${look} dark`]].map(([k, l]) => row(l, { end: radio(t === k), click: "theme:" + k })).join(""))}
-      ${group(switchRow("Reduce motion", "Simple fades instead of slides and bounces", prefs.reduceMotion, "motion", { blue: false })
-        + `<div class="range-row"><div class="h"><span>Animation speed</span><span id="speedl">${speedText(prefs.animSpeed ?? 100)}</span></div><input type="range" min="25" max="300" step="5" value="${prefs.animSpeed ?? 100}" data-range="animSpeed" style="--p:${((prefs.animSpeed ?? 100) - 25) / 275 * 100}%"></div>`
-        + switchRow("Reduce transparency", "Solid surfaces instead of glass — easier to read, lighter to draw", !!prefs.reduceTransparency, "solid", { blue: false }))}
-      ${sec("Sounds & haptics")}${group(switchRow("Sounds", "Clicks, switches, pages, pop-ups and windows — each look has its own sound pack", SND.soundsOn(), "snd")
-        + (SND.soundsOn() ? row("Sound pack", { sub: (prefs.soundPack || "auto") === "auto" ? `Match the look (${PACKS[SND.packId()]})` : PACKS[prefs.soundPack] || "Match the look", blue: true, icon: "tune", click: "spack" })
-          + `<div class="range-row"><div class="h"><span>Volume</span><span id="voll">${prefs.soundVol ?? 60}%</span></div><input type="range" min="0" max="100" step="5" value="${prefs.soundVol ?? 60}" data-range="soundVol" style="--p:${prefs.soundVol ?? 60}%"></div>`
-          + switchRow("Alert sounds", "A chime when something needs you — a more urgent one when it's serious", prefs.alertSounds ?? true, "asnd")
-          // which kinds play: folded away (most people never change them) — keep things simple until you want the detail
-          + expand("Which sounds", Object.entries(SND.KINDS).filter(([k]) => SND.kindOn(k)).map(([, [l]]) => l).join(", ") || "None", "tune",
-              Object.entries(SND.KINDS).map(([k, [l, d]]) => switchRow(l, d, SND.kindOn(k), "skind:" + k, { blue: false })).join("")) : "")
-        + switchRow("Ambience · Beta", "Soft, slowly changing music under everything, in the mood of the look you picked", !!prefs.ambience, "amb")
-        + (prefs.ambience ? row("Track", { sub: (prefs.ambTrack || "auto") === "auto" ? `Match the look (${AMB.TRACKS[AMB.trackId()]})` : AMB.TRACKS[prefs.ambTrack], blue: true, icon: "tune", click: "ambtrack" }) + `<div class="range-row"><div class="h"><span>Ambience volume</span><span id="ambl">${prefs.ambVol ?? 35}%</span></div><input type="range" min="0" max="100" step="5" value="${prefs.ambVol ?? 35}" data-range="ambVol" style="--p:${prefs.ambVol ?? 35}%"></div>` : "")
-        + ("vibrate" in navigator ? switchRow("Vibration", "A light buzz with taps, switches and alerts (on phones)", prefs.haptics ?? true, "hap") : ""))}
-      ${sec("Controller")}${group(row("Button hints", { sub: `${({ auto: "Match the controller", xbox: "Xbox (A B X Y)", ps: "PlayStation (✕ ○ □ △)", generic: "Plain (1 2 3 4)" })[prefs.padGlyphs || "auto"]}${prefs.padHints === false ? " · hidden" : ""} — shown in the corner while you use a game controller`, blue: true, icon: "tune", click: "padg" }))}
+    const st = prefs.style || "auto", mat = document.documentElement.classList.contains("material");
+    const preset = ["liquid", "fluent", "breeze", "aero"].includes(st) ? st : "";
+    const look = mat ? "Material You" : ({ liquid: "Glass", fluent: "Mica", breeze: "Breeze", aero: "Aero" })[preset] || "Default";
+    const stl = STYLES.find(s => s[0] === st) || STYLES[0];
+    const rk = "round_" + (preset || "default"), rnow = Math.max(25, Math.min(200, prefs[rk] ?? prefs.round ?? 100));
+    // the sliders for the look: its own (glass, light splitting, see-through, frost), then corners and windows for every look
+    const tune = (preset === "liquid" ? rng("prism", "Light splitting", 0, 100, 50, "%") : "")
+      + (preset && preset !== "breeze" ? rng("glass", "Glass clarity", 0, 100, 60, "%") : "")
+      + (!preset && !mat ? rng("dTrans", "Transparency", 0, 85, 0, "%") + rng("dFrost", "Frost", 0, 40, 26, "px") : "")
+      + `<div class="range-row"><div class="h"><span>Corner roundness</span><span id="roundl">${rnow}%</span></div><input type="range" min="25" max="200" value="${rnow}" data-range="${rk}" style="--p:${(rnow - 25) / 175 * 100}%" aria-label="Corner roundness"></div>`
+      + rng("winRound", "Window roundness", 0, 300, 100, "%", 5);
+    const tuneSub = [preset === "liquid" && `Splitting ${prefs.prism ?? 50}%`, preset && preset !== "breeze" && `Clarity ${prefs.glass ?? 60}%`,
+      !preset && !mat && `See-through ${prefs.dTrans ?? 0}%`, `Corners ${rnow}%`, `Windows ${prefs.winRound ?? 100}%`].filter(Boolean).join(" · ");
+    const liveSub = (prefs.livingScene || "auto") === "auto" ? `Match the look (${LV.SCENES[LV.sceneId()]})` : prefs.livingScene === "media" ? "Your own GIF or video" : LV.SCENES[prefs.livingScene];
+    const iconSub = [(WEB_ICONS || []).find(w => w[0] === (prefs.webIcon || "default"))?.[1] || "Default", SHAPES[prefs.iconShape || "rounded"],
+      ICON_THEMES.find(t => t[0] === (prefs.iconTheme || "style"))?.[1], prefs.iconAccent ? "in your accent color" : ""].filter(Boolean).join(" · ");
+    const g = gpuInfo();
+    ctx.show(`${sec("Look")}${group(row("Style", { sub: st === "auto" ? `Automatic — ${autoMaterialUA() ? "Material You" : "Default"}, picked to suit this device` : `${stl[1]} — ${stl[2]}`, blue: true, icon: "palette", click: "stylepick" })
+        + `<div class="pad seg-row"><span class="muted">Light or dark</span>${segmented(["Automatic", "Light", "Dark"], ["system", "light", "dark"].indexOf(prefs.theme || "system"), "theme")}</div>`
+        + expand("Shape and glass", tuneSub, "tune", tune, { rows: true }))}
+      ${preset === "liquid" && !canRefract() ? note("This browser shows Glass frosted, without the bending at the edges — that part needs a Chromium-based browser.") : ""}
+      ${preset === "liquid" ? note("Glass is the most demanding look: on some devices it can make things warm, use more battery or stutter. Lighter effects (below) keeps the look with less work.") : ""}
       ${sec("Colors")}${group(row("Accent color", { sub: prefs.accentLocal ? "This browser's own color" : `The server's color${S.overview?.server?.accent ? "" : " (Nova blue)"} — tap to pick your own`, blue: !!prefs.accentLocal,
             end: `<span class="swatch" style="background:${esc(prefs.accentLocal || S.overview?.server?.accent || "#3e91ff")}"></span>`, click: "accent" })
-          + `<div class="swatches pad">${ACCENTS.filter(Boolean).map(c => `<button class="swatch press${prefs.accentLocal === c ? " on" : ""}" style="background:${c}" data-act="acc:${c}" aria-label="${c}"></button>`).join("")}</div>`
+          + `<div class="swatches pad">${ACCENTS.filter(Boolean).map(c => `<button class="swatch press${prefs.accentLocal === c ? " on" : ""}" style="background:${c}" data-act="acc:${c}" aria-label="Accent ${c}"></button>`).join("")}</div>`
           + (prefs.accentLocal ? row("Use the server's color", { icon: "refresh", click: "acc:" }) : "")
-          + `<div class="range-row"><div class="h"><span>Color strength${mat ? "" : " (Material You)"}</span><span id="tintl">${prefs.tint ?? 50}%</span></div>${`<input type="range" min="0" max="100" value="${prefs.tint ?? 50}" data-range="tint" style="--p:${prefs.tint ?? 50}%">`}</div>`)}
-      ${sec("Wallpaper")}${group(switchRow("Living wallpaper · Beta", wallHas ? "An animated wallpaper for each look, in your accent color — your picture shows instead while it's set" : "An animated wallpaper for each look, in your accent color: Aero's ribbons of light, Mica's bloom, Breeze's waves, Glass's liquid color and more", !!prefs.livingWall, "livewall")
-        + (prefs.livingWall ? row("Scene", { sub: (prefs.livingScene || "auto") === "auto" ? `Match the look (${LV.SCENES[LV.sceneId()]})` : prefs.livingScene === "media" ? "Your own GIF or video" : LV.SCENES[prefs.livingScene], blue: true, icon: "image", click: "lvscene" })
+          + (mat ? rng("tint", "Color strength", 0, 100, 50, "%") : ""))}
+      ${sec("Background")}${group(
+          (wallHas ? rng("wallBlur", "Picture blur", 0, 40, 16, "px", 1, "blurl") + rng("wallDim", "Picture dim", 0, 90, 35, "%", 1, "diml")
+              + row("Change the picture", { icon: "image", blue: true, click: "wall" }) + row("Remove the picture", { icon: "del", tint: "var(--red)", click: "unwall" })
+            : row("Your own picture", { sub: "Behind every page, blurred and dimmed as you like. Kept in this browser only.", icon: "image", blue: true, click: "wall" })
+              + row("Built-in background", { sub: WALLS.find(w => w[0] === (prefs.lookBg || ""))?.[1] || "This look's own", blue: true, icon: "palette", click: "lookbg" }))
+        + switchRow("Living wallpaper · Beta", wallHas ? "An animated wallpaper in your accent color — your picture shows instead while it's set" : "An animated wallpaper in your accent color: Aero's ribbons of light, Mica's bloom, Breeze's waves and more", !!prefs.livingWall, "livewall")
+        + (prefs.livingWall ? row("Scene", { sub: liveSub, blue: true, icon: "image", click: "lvscene" })
           + (prefs.livingScene === "media" ? row("Choose a GIF or video", { sub: "Kept in this browser only (up to 60 MB)", icon: "image", blue: true, click: "lvmedia" }) : "")
-          + row("Color", { sub: prefs.livingAccent ? "Its own color" : "Same as the accent color", blue: !!prefs.livingAccent, end: `<span class="swatch" style="background:${esc(prefs.livingAccent || "var(--blue)")}"></span>`, click: "lvcolor" })
-          + [["livingSpeed", "Speed", 10, 300, 100, "%"], ["livingBlur", "Blur", 0, 40, 0, "px"], ["livingTint", "Tint", 0, 80, 0, "%"], ["livingFps", "Frame rate limit", 10, 120, 30, " fps"]].map(([k, l, a, b, d, u]) =>
-              `<div class="range-row"><div class="h"><span>${l}</span><span id="${k}l">${prefs[k] ?? d}${u}</span></div><input type="range" min="${a}" max="${b}" step="${k === "livingFps" ? 5 : 1}" value="${prefs[k] ?? d}" data-range="${k}" style="--p:${((prefs[k] ?? d) - a) / (b - a) * 100}%"></div>`).join("") : ""))}
-      ${wallHas ? group(`<div class="range-row"><div class="h"><span>Blur</span><span id="blurl">${prefs.wallBlur ?? 16}px</span></div><input type="range" min="0" max="40" value="${prefs.wallBlur ?? 16}" data-range="wallBlur" style="--p:${(prefs.wallBlur ?? 16) / 40 * 100}%"></div>
-            <div class="range-row"><div class="h"><span>Dim</span><span id="diml">${prefs.wallDim ?? 35}%</span></div><input type="range" min="0" max="90" value="${prefs.wallDim ?? 35}" data-range="wallDim" style="--p:${(prefs.wallDim ?? 35) / 90 * 100}%"></div>`
-            + row("Change the picture", { icon: "image", blue: true, click: "wall" }) + row("Remove the wallpaper", { icon: "del", tint: "var(--red)", click: "unwall" }))
-          : group(row("Choose a picture", { sub: "Behind every page, blurred and dimmed as you like. Kept in this browser only.", icon: "image", blue: true, click: "wall" })
-            + row("Background", { sub: WALLS.find(w => w[0] === (prefs.lookBg || ""))?.[1] || "This look's own", icon: "palette", click: "lookbg" }))}
-      ${group(switchRow("Top and bottom fades", "The soft tint at the top and bottom of the screen, so the page fades out under the bars", prefs.scrims !== false, "scrims", { blue: false })
-        + (prefs.scrims !== false ? row("Fade color", { sub: prefs.scrimColor ? "Your own color" : "The page's color", blue: !!prefs.scrimColor, end: `<span class="swatch" style="background:${esc(prefs.scrimColor || "var(--bg)")}"></span>`, click: "scrimcolor" }) : ""))}
-      ${sec("Language")}${group(row("Language", { sub: prefs.lang && prefs.lang !== "auto" ? (LANGS.find(l => l[0] === prefs.lang)?.[1] || prefs.lang) : `Same as this browser (${LANGS.find(l => l[0] === pickLang("auto"))?.[1] || "English"})`, blue: true, icon: "article", click: "lang" }))}
-      ${note("Nova's own words are translated (by machine, so some may read oddly — tell us on GitHub). Messages written by the server, like alert details, stay in English for now.")}
-      ${(() => { const g = gpuInfo(); if (!g.software && g.blur) return "";
-        return `<div class="hint" style="margin:10px var(--gutter);border:1px solid color-mix(in srgb,var(--amber) 50%,transparent)"><b style="color:var(--amber)">${g.software ? "This browser isn't using the graphics card" : "This browser can't blur"}</b>
-          <p class="muted" style="margin:6px 0 0">${g.software ? "Glass, blur and the live graphs are drawn by the processor instead, so they can stutter and use more power. Turn on hardware acceleration and restart the browser — Chrome or Edge: Settings → System → “Use graphics acceleration when available”. Firefox: Settings → Performance. Until then, Lighter effects is on automatically." : "Frosted glass shows as plain, see-through surfaces here. Update the browser, or turn on Reduce transparency for solid surfaces."}</p></div>`; })()}
-      ${sec("App icon")}<div class="group glass wicons">${(WEB_ICONS || [["default", "Default"]]).map(([k, l]) => `<button class="wicon press${(prefs.webIcon || "default") === k ? " on" : ""}" data-act="wicon:${k}"><img data-wicon="${k}" alt=""><small>${esc(l)}</small></button>`).join("")}</div>
-      ${group(row("Icon shape", { sub: `${SHAPES[prefs.iconShape || "rounded"]} — Nova's own icon here and your apps' icons inside Nova`, blue: true, icon: "apps", click: "ishape" }))}
-      ${note("This browser's tab icon, and the icon Nova gets when you add it to an iPhone or iPad home screen. The phone app has its own (Appearance → App icon in the app).")}
-      ${sec("Icons")}${group(ICON_THEMES.map(([k, l, d]) => `<div class="row click" data-act="icon:${k}"><div class="t"><b>${esc(l)}</b><small>${esc(d)}</small></div>
-          <span class="icprev" aria-hidden="true">${[["status", "#3ecf6e"], ["backup", "var(--blue)"], ["del", "var(--amber)"]].map(([ic, c]) => iconSample(k, ic, c)).join("")}</span>${radio((prefs.iconTheme || "style") === k)}</div>`).join(""))}
-      ${sec("Lighter effects")}${segmented(["Automatic", "On", "Off"], ["auto", "on", "off"].indexOf(prefs.lite || "auto"), "lite")}
-      ${note("No frosted-glass blur or soft shadows — much smoother on older computers and phones. Automatic turns it on when this device looks slow.")}
+          + row("Wallpaper color", { sub: prefs.livingAccent ? "Its own color" : "Same as the accent color", blue: !!prefs.livingAccent, icon: "palette", end: `<span class="swatch" style="background:${esc(prefs.livingAccent || "var(--blue)")}"></span>`, click: "lvcolor" })
+          + expand("Motion and blur", `Speed ${prefs.livingSpeed ?? 100}% · Blur ${prefs.livingBlur ?? 0} px · Tint ${prefs.livingTint ?? 0}% · ${prefs.livingFps ?? 30} fps`, "tune",
+              rng("livingSpeed", "Speed", 10, 300, 100, "%") + rng("livingBlur", "Blur", 0, 40, 0, "px") + rng("livingTint", "Tint", 0, 80, 0, "%") + rng("livingFps", "Frame rate limit", 10, 120, 30, " fps", 5), { rows: true }) : "")
+        + switchRow("Top and bottom fades", "The soft tint at the top and bottom of the screen, so the page fades out under the bars", prefs.scrims !== false, "scrims", { blue: false })
+        + (prefs.scrims !== false ? row("Fade color", { sub: prefs.scrimColor ? "Your own color" : "The page's color", blue: !!prefs.scrimColor, icon: "dim", end: `<span class="swatch" style="background:${esc(prefs.scrimColor || "var(--bg)")}"></span>`, click: "scrimcolor" }) : ""))}
+      ${sec("Icons and text")}${group(row("Icons", { sub: iconSub, blue: true, icon: "apps", click: "go:appearance-icons" })
+        + row("Readability", { sub: READ.find(r => r[0] === (prefs.readability || "auto"))[1] + " — " + READ.find(r => r[0] === (prefs.readability || "auto"))[2], blue: true, icon: "article", click: "readpick" })
+        + row("Language", { sub: prefs.lang && prefs.lang !== "auto" ? (LANGS.find(l => l[0] === prefs.lang)?.[1] || prefs.lang) : `Same as this browser (${LANGS.find(l => l[0] === pickLang("auto"))?.[1] || "English"})`, blue: true, icon: "translate", click: "lang" }))}
+      ${sec("Motion and effects")}${group(switchRow("Reduce motion", "Simple fades instead of slides and bounces", prefs.reduceMotion, "motion", { blue: false })
+        + `<div class="range-row"><div class="h"><span>Animation speed</span><span id="speedl">${speedText(prefs.animSpeed ?? 100)}</span></div><input type="range" min="25" max="300" step="5" value="${prefs.animSpeed ?? 100}" data-range="animSpeed" style="--p:${((prefs.animSpeed ?? 100) - 25) / 275 * 100}%" aria-label="Animation speed"></div>`
+        + switchRow("Reduce transparency", "Solid surfaces instead of glass — easier to read, lighter to draw", !!prefs.reduceTransparency, "solid", { blue: false })
+        + `<div class="pad seg-row"><span class="muted">Lighter effects — no blur or soft shadows, smoother on older devices</span>${segmented(["Automatic", "On", "Off"], ["auto", "on", "off"].indexOf(prefs.lite || "auto"), "lite")}</div>`)}
+      ${!g.software && g.blur ? "" : `<div class="hint" style="margin:10px var(--gutter);border:1px solid color-mix(in srgb,var(--amber) 50%,transparent)"><b style="color:var(--amber)">${g.software ? "This browser isn't using the graphics card" : "This browser can't blur"}</b>
+          <p class="muted" style="margin:6px 0 0">${g.software ? "Glass, blur and the live graphs are drawn by the processor instead, so they can stutter and use more power. Turn on hardware acceleration and restart the browser — Chrome or Edge: Settings → System → “Use graphics acceleration when available”. Firefox: Settings → Performance. Until then, Lighter effects is on automatically." : "Frosted glass shows as plain, see-through surfaces here. Update the browser, or turn on Reduce transparency for solid surfaces."}</p></div>`}
+      ${sec("Sounds and touch")}${group(switchRow("Sounds", "Clicks, switches, pages, pop-ups and windows — each look has its own sound pack", SND.soundsOn(), "snd")
+        + (SND.soundsOn() ? expand("Sound options", `${(prefs.soundPack || "auto") === "auto" ? `Match the look (${PACKS[SND.packId()]})` : PACKS[prefs.soundPack] || "Match the look"} · ${prefs.soundVol ?? 60}%${prefs.alertSounds ?? true ? " · alert chimes" : ""}`, "tune",
+            row("Sound pack", { sub: (prefs.soundPack || "auto") === "auto" ? `Match the look (${PACKS[SND.packId()]})` : PACKS[prefs.soundPack] || "Match the look", blue: true, click: "spack" })
+            + `<div class="range-row"><div class="h"><span>Volume</span><span id="voll">${prefs.soundVol ?? 60}%</span></div><input type="range" min="0" max="100" step="5" value="${prefs.soundVol ?? 60}" data-range="soundVol" style="--p:${prefs.soundVol ?? 60}%" aria-label="Volume"></div>`
+            + switchRow("Alert sounds", "A chime when something needs you — a more urgent one when it's serious", prefs.alertSounds ?? true, "asnd")
+            + expand("Which sounds", Object.entries(SND.KINDS).filter(([k]) => SND.kindOn(k)).map(([, [l]]) => l).join(", ") || "None", "",
+                Object.entries(SND.KINDS).map(([k, [l, d]]) => switchRow(l, d, SND.kindOn(k), "skind:" + k, { blue: false })).join(""), { rows: true }), { rows: true }) : "")
+        + switchRow("Ambience · Beta", "Soft, slowly changing music under everything, in the mood of the look you picked", !!prefs.ambience, "amb")
+        + (prefs.ambience ? row("Track", { sub: (prefs.ambTrack || "auto") === "auto" ? `Match the look (${AMB.TRACKS[AMB.trackId()]})` : AMB.TRACKS[prefs.ambTrack], blue: true, icon: "tune", click: "ambtrack" }) + rng("ambVol", "Ambience volume", 0, 100, 35, "%", 5, "ambl") : "")
+        + (canVibrate() ? switchRow("Vibration", "A light buzz with taps, switches and alerts", prefs.haptics ?? true, "hap") : "")
+        + row("Controller button hints", { sub: `${({ auto: "Match the controller", xbox: "Xbox (A B X Y)", ps: "PlayStation (✕ ○ □ △)", generic: "Plain (1 2 3 4)" })[prefs.padGlyphs || "auto"]}${prefs.padHints === false ? " · hidden" : ""} — while you use a game controller`, blue: true, icon: "gamepad", click: "padg" }))}
       ${sec("Home")}${group(row("Home layout", { sub: homeOrder().filter(id => prefs[HOME_SECTIONS.find(s => s[0] === id)[3]]).map(id => HOME_SECTIONS.find(s => s[0] === id)[1]).join(" · ") || "Just the header", blue: true, icon: "dash", click: "go:edit-home" })
         + row("Choose shortcuts", { sub: homeChips().map(s => s.label).join(", ") || "None", blue: true, icon: "tune", click: "go:edit-shortcuts" })
         + row("Start page", { sub: `Search, stats, apps and bookmarks · Nova opens on ${({ home: "Home", start: "the start page", status: "Status", apps: "Apps", inbox: "the Inbox", dashboard: "the dashboard" })[prefs.startRoute || "home"]}`, blue: true, icon: "home", click: "go:start-edit" })
         + row("Navigation pill", { sub: navTabs().map(s => s.label).join(", ") + " · along the bottom, or down the left on wide screens", blue: true, icon: "viewday", click: "go:edit-tabs" }))}
-      ${note("These choices are saved in this browser. Each server also has its own name and accent color (Settings → Server).")}`, { title: "Appearance" });
+      ${note("These choices are saved in this browser. Each server also has its own name and accent color (Settings → Server). Nova's own words are translated by machine, so some may read oddly — tell us on GitHub.")}`, { title: "Appearance" });
     if (!WEB_ICONS) webIcons().then(l => { WEB_ICONS = l; if (ctx.alive()) draw(); }).catch(() => {});
-    $$("[data-wicon]", ctx.root).forEach(async im => { try { im.src = svgUrl(await iconSvg(im.dataset.wicon)); } catch {} });
-    wireCommon(ctx.root, { onSeg: (k, i) => { if (k === "lite") { prefs.lite = ["auto", "on", "off"][i]; ctx.applyTheme(); draw(); } },
+    wireCommon(ctx.root, { onSeg: (k, i) => {
+        if (k === "lite") { prefs.lite = ["auto", "on", "off"][i]; ctx.applyTheme(); }
+        if (k === "theme") { prefs.theme = ["system", "light", "dark"][i]; ctx.applyTheme(); }
+      },
       onRangeInput: (k, v) => {                                   // live while dragging
         prefs[k] = v; ctx.applyTheme();
         if (k === "animSpeed" && $("#speedl")) $("#speedl").textContent = speedText(v);
+        if (k === "winRound") document.documentElement.style.setProperty("--wrk", String(v / 100));
         if (/^living/.test(k)) { const u = { livingSpeed: "%", livingBlur: "px", livingTint: "%", livingFps: " fps" }[k]; if ($("#" + k + "l")) $("#" + k + "l").textContent = v + u; LV.update(); }
         if (k === "ambVol") { if ($("#ambl")) $("#ambl").textContent = v + "%"; AMB.update(); }
         if (k === "soundVol") { if ($("#voll")) $("#voll").textContent = v + "%"; clearTimeout(volT); volT = setTimeout(() => SND.play("tap"), 60); }
-        const l = { tint: ["tintl", "%"], wallBlur: ["blurl", "px"], wallDim: ["diml", "%"], glass: ["glassl", "%"], round: ["roundl", "%"], prism: ["prisml", "%"], dTrans: ["dTransl", "%"], dFrost: ["dFrostl", "px"] }[/^round_/.test(k) ? "round" : k]; if (l && $("#" + l[0])) $("#" + l[0]).textContent = v + l[1];
+        const l = { tint: ["tintl", "%"], wallBlur: ["blurl", "px"], wallDim: ["diml", "%"], glass: ["glassl", "%"], round: ["roundl", "%"], prism: ["prisml", "%"], dTrans: ["dTransl", "%"], dFrost: ["dFrostl", "px"], winRound: ["winRoundl", "%"] }[/^round_/.test(k) ? "round" : k]; if (l && $("#" + l[0])) $("#" + l[0]).textContent = v + l[1];
       } });
   };
   let wallHas = false, volT = 0;
@@ -1836,10 +1852,27 @@ export async function appearance(ctx) {
     ctx.applyTheme(); draw();
   };
   ctx.handlers({
-    icon: k => { prefs.iconTheme = k; ctx.applyTheme(); draw(); },
+    stylepick: async () => {
+      const v = await choose("Style", STYLES.map(([k, l, d]) => [k, l, k === "auto" ? `${autoMaterialUA() ? "Material You" : "Default"} — picked to suit this device` : d]), prefs.style || "auto");
+      if (v) { prefs.style = v; ctx.applyTheme(); ctx.refreshNav(); draw(); }
+    },
+    readpick: async () => { const v = await choose("Readability", READ, prefs.readability || "auto"); if (v) { prefs.readability = v; ctx.applyTheme(); draw(); } },
     lvscene: async () => {
-      const v = await choose("Scene", [["auto", "Match the look", "Changes with the style you pick"], ...Object.entries(LV.SCENES), ["media", "Your own GIF or video"]], prefs.livingScene || "auto");
-      if (!v) return; prefs.livingScene = v; if (v === "media" && !(await kv("livemedia").catch(() => null))) return ctx.run("lvmedia"); LV.update(); draw();
+      // a gallery: a still frame of every scene, in your colors
+      const cur = prefs.livingScene || "auto";
+      const opts = [["auto", "Match the look"], ...Object.entries(LV.SCENES), ["media", "Your own GIF or video"]];
+      const p = dialog("Scene", "Every look's living wallpaper — pick one for any look.", [{ label: "Close", value: null }],
+        `<div class="pad"><div class="wpgal">${opts.map(([k, l]) => `<button class="press${k === cur ? " on" : ""}" data-sc="${k}"><span class="wpv">${k === "media" ? `<b class="wpmedia">${I("image")}</b>` : `<canvas width="120" height="200"></canvas>`}</span>${esc(l)}</button>`).join("")}</div></div>`);
+      document.querySelectorAll("#sheet [data-sc]").forEach(b => {
+        const v = b.querySelector(".wpv"); v.style.aspectRatio = `${innerWidth} / ${innerHeight}`;
+        const c = b.querySelector("canvas"); if (c) { c.width = 150; c.height = Math.round(150 * innerHeight / innerWidth); try { LV.preview(c, b.dataset.sc); } catch {} }
+        b.onclick = async () => {
+          prefs.livingScene = b.dataset.sc; document.querySelectorAll("#sheet [data-sc]").forEach(x => x.classList.toggle("on", x === b));
+          if (b.dataset.sc === "media" && !(await kv("livemedia").catch(() => null))) { closeSheet(); return ctx.run("lvmedia"); }
+          LV.update();
+        };
+      });
+      await p; draw();
     },
     lvmedia: () => {
       const inp = document.createElement("input"); inp.type = "file"; inp.accept = "image/gif,image/webp,image/apng,video/mp4,video/webm";
@@ -1849,9 +1882,10 @@ export async function appearance(ctx) {
       inp.click();
     },
     lvcolor: async () => {
-      const v = await choose("Living wallpaper color", [["", "Same as the accent color"], ["pick", "Pick a color…"]], prefs.livingAccent ? "pick" : "");
-      if (v == null) return; if (v === "") prefs.livingAccent = ""; else { const c = await colorPicker(prefs.livingAccent || "#3e91ff"); if (!c) return; prefs.livingAccent = c; }
-      LV.update(); draw();
+      const was = prefs.livingAccent || "";
+      const c = await colorPicker(was || getComputedStyle(document.documentElement).getPropertyValue("--blue").trim() || "#3e91ff",
+        { title: "Wallpaper color", reset: ["Same as the accent color"], live: v => { prefs.livingAccent = v ?? was; LV.update(); } });
+      if (c == null) return; prefs.livingAccent = c; LV.update(); draw();
     },
     ambtrack: async () => {
       const v = await choose("Ambience", [["auto", "Match the look", "Changes with the style you pick"], ...Object.entries(AMB.TRACKS)], prefs.ambTrack || "auto");
@@ -1863,15 +1897,15 @@ export async function appearance(ctx) {
     },
     livewall: () => { prefs.livingWall = !prefs.livingWall; ctx.applyTheme(); draw(); },
     scrims: () => { prefs.scrims = prefs.scrims === false; ctx.applyTheme(); draw(); },
-    scrimcolor: async () => {
-      const v = await choose("Fade color", [["", "The page's color", "Follows your look and light or dark"], ["pick", "Pick a color…"]], prefs.scrimColor ? "pick" : ""); if (v == null) return;
-      if (v === "pick") { const c = await colorPicker(prefs.scrimColor || "#000000"); if (!c) return; prefs.scrimColor = c; } else prefs.scrimColor = "";
-      ctx.applyTheme(); draw();
+    scrimcolor: async () => {       // straight to the picker — with your recent colors, and the page's own color as the first choice
+      const was = prefs.scrimColor || "";
+      const c = await colorPicker(was || "#000000", { title: "Fade color", reset: ["The page's color", "Follows your look and light or dark"], live: v => { prefs.scrimColor = v ?? was; ctx.applyTheme(); } });
+      if (c == null) return; prefs.scrimColor = c; ctx.applyTheme(); draw();
     },
     lookbg: async () => {
       // a small gallery: each look's own background, shown as it would look here
       const cur = prefs.lookBg || "";
-      const p = dialog("Background", "Every look's built-in background — pick one for any look.", [{ label: "Close", value: null }],
+      const p = dialog("Built-in background", "Every look's background — pick one for any look.", [{ label: "Close", value: null }],
         `<div class="pad"><div class="wpgal">${WALLS.map(([k, l, wp]) => `<button class="press${k === cur ? " on" : ""}" data-wp="${k}"><span class="wpv"><i style="background-image:${wp}"></i></span>${esc(l)}</button>`).join("")}</div></div>`);
       document.querySelectorAll("#sheet .wpv").forEach(v => { v.style.aspectRatio = `${innerWidth} / ${innerHeight}`; v.style.setProperty("--s", v.clientWidth / innerWidth); });      // a whole screen, shrunk
       document.querySelectorAll("#sheet [data-wp]").forEach(b => b.onclick = () => { prefs.lookBg = b.dataset.wp; ctx.applyTheme(); document.querySelectorAll("#sheet [data-wp]").forEach(x => x.classList.toggle("on", x === b)); });
@@ -1887,10 +1921,7 @@ export async function appearance(ctx) {
       const v = await choose("Sound pack", [["auto", "Match the look", "Changes with the style you pick"], ...Object.entries(PACKS).map(([k, n]) => [k, n])], prefs.soundPack || "auto");
       if (!v) return; prefs.soundPack = v; draw(); SND.play("info", { force: true });       // a taste of it
     },
-    ishape: async () => { const v = await choose("Icon shape", Object.entries(SHAPES), prefs.iconShape || "rounded"); if (!v) return;
-      prefs.iconShape = v; document.documentElement.dataset.icshape = v; await applyWebIcon(); draw(); },
-    wicon: async k => { prefs.webIcon = k; await applyWebIcon(); draw(); },
-    accent: async () => { const c = await colorPicker(prefs.accentLocal || S.overview?.server?.accent || "#3e91ff"); if (c) setAccent(c); },
+    accent: async () => { const c = await colorPicker(prefs.accentLocal || S.overview?.server?.accent || "#3e91ff", { title: "Accent color" }); if (c) setAccent(c); },
     acc: c => setAccent(c && /^#[0-9a-f]{6}$/i.test(c) ? c : ""),
     wall: () => {
       const inp = document.createElement("input"); inp.type = "file"; inp.accept = "image/*";
@@ -1911,12 +1942,57 @@ export async function appearance(ctx) {
       const v = await choose("Language", [["auto", "Same as this browser"], ...LANGS.map(([k, n]) => [k, n])], prefs.lang || "auto");
       if (v && v !== (prefs.lang || "auto")) { prefs.lang = v; location.reload(); }
     },
-    theme: k => { prefs.theme = k; ctx.applyTheme(); draw(); },
-    style: k => { prefs.style = k; ctx.applyTheme(); ctx.refreshNav(); draw(); },
     motion: () => { prefs.reduceMotion = !prefs.reduceMotion; ctx.applyTheme(); draw(); },
     solid: () => { prefs.reduceTransparency = !prefs.reduceTransparency; ctx.applyTheme(); draw(); },
   });
   draw(); checkWall();
+}
+
+/** Appearance → Icons: Nova's own icon (here: the tab and the home-screen icon), its shape, and the icons inside Nova. */
+export async function appearanceIcons(ctx) {
+  const draw = () => {
+    const cur = prefs.webIcon || "default", curL = (WEB_ICONS || []).find(w => w[0] === cur)?.[1] || "Default";
+    const th = ICON_THEMES.find(t => t[0] === (prefs.iconTheme || "style")) || ICON_THEMES[0];
+    ctx.show(`${sec("Nova's icon")}${group(expand("App icon", curL, "", `<div class="wicons">${(WEB_ICONS || [["default", "Default"]]).map(([k, l]) => `<button class="wicon press${cur === k ? " on" : ""}" data-act="wicon:${k}" aria-pressed="${cur === k}"><img data-wicon="${k}" alt=""><small>${esc(l)}</small></button>`).join("")}</div>`, { rows: true })
+        + row("Your own colors", { sub: "A background and a symbol color of your choice", blue: cur === "custom", icon: "palette", click: "custom",
+            end: `<span class="swatch" style="background:${esc(prefs.webIconBg || "#1c2541")};box-shadow:inset 0 0 0 5px ${esc(prefs.webIconFg || "#ffffff")}"></span>` })
+        + row("Icon shape", { sub: `${SHAPES[prefs.iconShape || "rounded"]} — Nova's icon here, and your apps' icons inside Nova`, blue: true, icon: "apps", click: "ishape" }))}
+      ${note("This browser's tab icon, and the icon Nova gets when you add it to an iPhone or iPad home screen. The phone app has its own (Appearance → Icons in the app).")}
+      ${sec("Icons inside Nova")}${group(expand("Icon style", th[1] + " — " + th[2], "",
+          ICON_THEMES.map(([k, l, d]) => `<div class="row click" data-act="icon:${k}"><div class="t"><b>${esc(l)}</b><small>${esc(d)}</small></div>
+            <span class="icprev" aria-hidden="true">${[["status", "#3ecf6e"], ["backup", "var(--blue)"], ["del", "var(--amber)"]].map(([ic, c]) => iconSample(k, ic, c)).join("")}</span>${radio((prefs.iconTheme || "style") === k)}</div>`).join(""), { rows: true })
+        + switchRow("Icons in your accent color", "Every icon takes on the accent color instead of its own — warnings stay red", !!prefs.iconAccent, "iacc", { blue: false }))}`, { title: "Icons" });
+    if (!WEB_ICONS) webIcons().then(l => { WEB_ICONS = l; if (ctx.alive()) draw(); }).catch(() => {});
+    $$("[data-wicon]", ctx.root).forEach(async im => { try { im.src = svgUrl(await iconSvg(im.dataset.wicon)); } catch {} });
+    wireCommon(ctx.root, {});
+  };
+  ctx.handlers({
+    icon: k => { prefs.iconTheme = k; ctx.applyTheme(); draw(); },
+    iacc: () => { prefs.iconAccent = !prefs.iconAccent; ctx.applyTheme(); draw(); },
+    ishape: async () => { const v = await choose("Icon shape", Object.entries(SHAPES), prefs.iconShape || "rounded"); if (!v) return;
+      prefs.iconShape = v; document.documentElement.dataset.icshape = v; await applyWebIcon(); draw(); },
+    wicon: async k => { if (k === "custom") return ctx.run("custom"); prefs.webIcon = k; await applyWebIcon(); draw(); },
+    custom: async () => {
+      // the two colors, each straight from the picker, previewed in the icon as you go
+      let bg = prefs.webIconBg || "#1c2541", fg = prefs.webIconFg || "#ffffff"; const was = [prefs.webIconBg, prefs.webIconFg];
+      const prev = async () => { prefs.webIconBg = bg; prefs.webIconFg = fg; const im = $("#sheet #cip"); if (im) im.src = svgUrl(await iconSvg("custom")); };
+      for (;;) {
+        let which = null;
+        const p = dialog("Your own colors", "", [{ label: "Cancel", value: null }, { label: "Use it", color: "var(--blue)", value: "ok" }],
+          `<div class="pad" style="text-align:center"><img id="cip" alt="Preview" style="width:96px;height:96px"></div>
+           ${row("Background", { end: `<span class="swatch" style="background:${esc(bg)}"></span>`, icon: "palette", attrs: 'data-pick="bg" role="button" tabindex="0" style="cursor:pointer"' })}
+           ${row("Symbol", { end: `<span class="swatch" style="background:${esc(fg)}"></span>`, icon: "palette", attrs: 'data-pick="fg" role="button" tabindex="0" style="cursor:pointer"' })}`);
+        await prev();
+        const v = await Promise.race([p, new Promise(r => $$("#sheet [data-pick]").forEach(x => x.onclick = () => { which = x.dataset.pick; closeSheet(); r(null); }))]);
+        if (which) { const c = await colorPicker(which === "bg" ? bg : fg, { title: which === "bg" ? "Background" : "Symbol" }); if (c) which === "bg" ? bg = c : fg = c; continue; }
+        if (v === "ok") { prefs.webIconBg = bg; prefs.webIconFg = fg; prefs.webIcon = "custom"; await applyWebIcon(); }
+        else { prefs.webIconBg = was[0]; prefs.webIconFg = was[1]; }
+        break;
+      }
+      draw();
+    },
+  });
+  draw();
 }
 export async function editHome(ctx) {
   const draw = () => {
@@ -1934,7 +2010,7 @@ function editList(ctx, { title, label, all, key, max, fixed, preview, resetLabel
   const draw = () => {
     const ids = prefs[key], more = all.filter(s => !ids.includes(s.id) && (!s.feature || has(s.feature)));
     ctx.show(`${preview()}
-      ${sec(label)}<div class="group glass rl" id="rl">${ids.length ? ids.map(id => { const s = all.find(x => x.id === id); return s ? `<div class="row" data-key="${id}"><span class="handle">${I("drag")}</span><span style="color:var(--blue);display:flex">${I(s.icon)}</span><div class="t"><b>${esc(s.label)}</b></div>${id === fixed ? `<span class="end">Always</span>` : `<button data-noreorder data-act="rm:${id}" style="color:var(--red)">${I("remc")}</button>`}</div>` : ""; }).join("") : `<div class="row"><div class="t muted">Nothing here yet.</div></div>`}</div>
+      ${sec(label)}<div class="group glass rl" id="rl">${ids.length ? ids.map(id => { const s = all.find(x => x.id === id); return s ? `<div class="row" data-key="${id}"><span class="handle">${I("drag")}</span><span style="color:var(--blue);display:flex">${I(s.icon)}</span><div class="t"><b>${esc(s.label)}</b></div>${id === fixed ? `<span class="end">Always</span>` : `<button data-noreorder data-act="rm:${id}" style="color:var(--red)" aria-label="Remove">${I("remc")}</button>`}</div>` : ""; }).join("") : `<div class="row"><div class="t muted">Nothing here yet.</div></div>`}</div>
       ${sec(ids.length >= max ? `Add · the bar is full (${max} max)` : "Add")}${group(more.map(s => row(s.label, { icon: s.icon, click: "add:" + s.id, end: `<span style="color:${ids.length < max ? "var(--green)" : "var(--divider)"}">${I("addc")}</span>` })).join("") || row("Everything is already there", { dis: true }))}
       ${links([[resetLabel, "reset"]])}`, { title });
     reorderable($("#rl"), keys => { prefs[key] = keys; draw(); });
@@ -2137,7 +2213,7 @@ export async function editDash(ctx) {
   const all = DASH_TILES.map(([id, label, icon]) => ({ id, label, icon }));
   const draw = () => {
     const ids = prefs.dashTiles, more = all.filter(t => !ids.includes(t.id));
-    ctx.show(`${sec("Tiles · hold and drag to reorder")}<div class="group glass rl" id="rl">${ids.map(id => { const t = all.find(x => x.id === id); return t ? `<div class="row" data-key="${id}"><span class="handle">${I("drag")}</span><span style="color:var(--blue);display:flex">${I(t.icon)}</span><div class="t"><b>${t.label}</b></div><button data-noreorder class="pillbtn press" data-act="size:${id}" title="Tile size" style="margin-right:6px">${SIZE_NAMES[dashSpan(id)] || "Small"}</button><button data-noreorder data-act="rm:${id}" style="color:var(--red)">${I("remc")}</button></div>` : ""; }).join("")}</div>
+    ctx.show(`${sec("Tiles · hold and drag to reorder")}<div class="group glass rl" id="rl">${ids.map(id => { const t = all.find(x => x.id === id); return t ? `<div class="row" data-key="${id}"><span class="handle">${I("drag")}</span><span style="color:var(--blue);display:flex">${I(t.icon)}</span><div class="t"><b>${t.label}</b></div><button data-noreorder class="pillbtn press" data-act="size:${id}" title="Tile size" style="margin-right:6px">${SIZE_NAMES[dashSpan(id)] || "Small"}</button><button data-noreorder data-act="rm:${id}" style="color:var(--red)" aria-label="Remove">${I("remc")}</button></div>` : ""; }).join("")}</div>
       ${more.length ? sec("Add") + group(more.map(t => row(t.label, { icon: t.icon, click: "add:" + t.id, end: `<span style="color:var(--green)">${I("addc")}</span>` })).join("")) : ""}
       ${sec("Layout")}${group(row("Columns", { sub: prefs.dashCols ? `${prefs.dashCols} columns (fewer on a narrow screen)` : "Automatic — as many as fit", icon: "viewday", click: "cols" })
         + slider("Text size", "scale", prefs.dashScale || 100, 80, 160, (prefs.dashScale || 100) + "%")

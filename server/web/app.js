@@ -62,6 +62,8 @@ function applyTheme() {
   root.classList.toggle("dtune", dlook && (dtr > 0 || dfr !== 26));
   if (dlook) { root.style.setProperty("--dtr", String(dtr)); root.style.setProperty("--dfr", dfr + "px"); } else { root.style.removeProperty("--dtr"); root.style.removeProperty("--dfr"); }
   root.dataset.icshape = prefs.iconShape || "rounded";             // Appearance → Icon shape
+  root.classList.toggle("icon-acc", !!prefs.iconAccent);           // Appearance → Icons → in your accent color
+  root.style.setProperty("--wrk", String(Math.max(0, Math.min(300, +(prefs.winRound ?? 100))) / 100));   // Window roundness: windows and dialogs
   // Reduce transparency: every glass surface solid (also when the system asks for it)
   const solid = !!prefs.reduceTransparency || matchMedia("(prefers-reduced-transparency: reduce)").matches;
   root.classList.toggle("solid", solid);
@@ -84,8 +86,38 @@ function applyTheme() {
   // Your own colors (Appearance → Colors): an accent for this device, how strongly it tints, and a wallpaper
   root.style.setProperty("--tintk", String(Math.max(0, Math.min(100, prefs.tint ?? 50)) / 50));
   if (/^#[0-9a-f]{6}$/i.test(prefs.accentLocal || "")) root.style.setProperty("--blue", prefs.accentLocal);
-  wallpaper();
+  wallpaper().then(readability);
+  readability();
   requestAnimationFrame(() => { try { prefs.bgc = getComputedStyle(root).getPropertyValue("--bg").trim(); } catch {} });   // for early.js next load
+}
+/** Readability (Appearance → Icons and text). Automatic: text is drawn stronger — a soft halo in the page color, gray
+ *  text closer to the text color, and at level 2 a little bolder — only where it's needed: see-through surfaces over a
+ *  picture, a living wallpaper or a vivid background, or a picture whose brightness fights the text (light text on a
+ *  bright picture, dark text on a dark one). "more": always level 2; "off": never. */
+function readability() {
+  const root = document.documentElement, c = root.classList, pref = prefs.readability || "auto";
+  let lv = pref === "more" ? 2 : 0;
+  if (pref === "auto" && !c.contains("solid")) {
+    const clear = Math.max(0, Math.min(100, prefs.glass ?? 60)) / 100, dark = !c.contains("l-light");
+    const busy = c.contains("has-wall") || c.contains("living") || ["vivid", "aero"].includes(prefs.lookBg);
+    const seeThrough = c.contains("liquid") ? clear >= .3 : c.contains("aero") ? clear >= .55 : c.contains("fluent") ? clear >= .75
+      : !c.contains("material") && !c.contains("breeze") && (+(prefs.dTrans ?? 0)) >= 30;
+    const lum = c.contains("has-wall") ? wallLum : null;                  // 0 (black) … 1 (white), measured once per picture
+    const fights = lum != null && (dark ? lum > .62 : lum < .3);
+    if (busy && seeThrough) lv = 1;
+    if (busy && seeThrough && (fights || (c.contains("liquid") && clear >= .7) || (+(prefs.dTrans ?? 0)) >= 60)) lv = 2;
+  }
+  // text straight on the background (notes, section names, the title) over a picture or a living wallpaper: always helped
+  c.toggle("rd-bg", pref !== "off" && (c.contains("has-wall") || c.contains("living") || ["vivid", "aero"].includes(prefs.lookBg)));
+  c.toggle("rd1", lv >= 1); c.toggle("rd2", lv >= 2);
+}
+let wallLum = null, wallLumV = "";
+async function measure(blob) {          // the picture's average brightness, from a tiny copy
+  try { const b = await createImageBitmap(blob, { resizeWidth: 24, resizeHeight: 24 }), cv = new OffscreenCanvas(24, 24), g = cv.getContext("2d");
+    g.drawImage(b, 0, 0); const d = g.getImageData(0, 0, 24, 24).data; let t = 0;
+    for (let i = 0; i < d.length; i += 4) t += (.2126 * d[i] + .7152 * d[i + 1] + .0722 * d[i + 2]) / 255;
+    const dim = (prefs.wallDim ?? 35) / 100; return t / (d.length / 4) * (1 - dim);      // the dimming darkens it
+  } catch { return null; }
 }
 let wallUrl = null;
 async function wallpaper() {
@@ -97,6 +129,7 @@ async function wallpaper() {
   if (!w) { w = document.createElement("div"); w.id = "wall"; w.innerHTML = "<i></i>"; document.body.prepend(w); }
   if (!wallUrl || w.dataset.v !== String(data.size)) { if (wallUrl) URL.revokeObjectURL(wallUrl); wallUrl = URL.createObjectURL(data); w.dataset.v = String(data.size); }
   w.style.backgroundImage = `url("${wallUrl}")`;
+  const key = data.size + ":" + (prefs.wallDim ?? 35); if (wallLumV !== key) { wallLumV = key; wallLum = await measure(data); }
   w.style.setProperty("--wblur", (prefs.wallBlur ?? 16) + "px"); w.style.setProperty("--wdim", String((prefs.wallDim ?? 35) / 100));
 }
 export { applyTheme, tab };
@@ -107,7 +140,7 @@ matchMedia("(prefers-color-scheme: light)").addEventListener?.("change", applyTh
 const ROUTES = {
   home: V.home, menu: V.menu, status: V.status, containers: V.containers, store: V.store, inbox: V.inbox, notify: V.notify,
   quick: V.quick, "edit-quick": V.editQuick, lighting: V.lighting, lights: V.lights, schedules: V.schedules, schedule: V.schedule, hardware: V.hardware,
-  partitions: PT.partitions, disks: PT.disks, recommended: V.recommended, security: SEC.security, devices: V.devices, settings: V.settings, server: V.serverSettings, appearance: V.appearance, "edit-home": V.editHome,
+  partitions: PT.partitions, disks: PT.disks, recommended: V.recommended, security: SEC.security, devices: V.devices, settings: V.settings, server: V.serverSettings, appearance: V.appearance, "appearance-icons": V.appearanceIcons, "edit-home": V.editHome,
   "edit-shortcuts": V.editShortcuts, "edit-tabs": V.editTabs, about: V.about, guide: V.guide, faq: V.faq, terminal: V.terminal,
   dashboard: V.dashboard, "edit-dash": V.editDash, archive: V.archive,
   apps: ST.apps, updates: ST.updates, search: SR.search, start: SR.start, "start-edit": SR.startEdit, favorites: SR.favorites, servers: SV.servers, "container-new": ST.containerNew, term: V.hostTerminal, files: FM.files, cmdapp: ST.cmdApp, labs: ST.labs, freeup: ST.freeup, automation: ST.automation, features: ST.features, plugins: ST.plugins, "labs-images": ST.labsImages, wol: ST.wol, openrgb: ST.openrgb, access: ST.access, cloudflare: ST.cloudflare, setup: ST.setup, pool: ST.pool, task: ST.task, backups: ST.backups, backup: ST.backup, "backup-edit": ST.backupEdit, dev: V.dev, "ha-light": V.haLight, "backup-script": ST.backupScript, restore: ST.restore, diag: ST.diag,

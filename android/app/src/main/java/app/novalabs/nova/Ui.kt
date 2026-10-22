@@ -138,7 +138,49 @@ private fun tinted(c: ColorScheme, strength: Int): ColorScheme {
     // "Match my accent color" (Appearance → App icon): the launcher icon follows the colors
     val iconColor = if (material) t.blue else seed ?: t.blue
     LaunchedEffect(iconColor, dark) { if (!view.isInEditMode) runCatching { AppIcon.follow(ctx, iconColor.toArgb(), dark) } }
-    CompositionLocalProvider(LocalNova provides t) { MaterialTheme(colorScheme = scheme, content = content) }
+    // Readability (Appearance → Icons and text): gray text nearer the text color, a soft halo in the page color, bolder at level 2
+    val ctx2 = ctx
+    LaunchedEffect(AppPrefs.wallV, AppPrefs.wallDim) { Readability.measure(ctx2) }
+    val busy = Readability.busy(); val lv = Readability.level(t)
+    val tr = if (lv > 0) t.copy(sub = lerp(t.sub, t.text, if (lv >= 2) .6f else .35f), link = lerp(t.link, t.text, if (lv >= 2) .55f else .38f)) else t
+    val halo = (lv > 0 || (busy && AppPrefs.readability != "off"))
+    CompositionLocalProvider(LocalNova provides tr, LocalReadBold provides (lv >= 2)) {
+        MaterialTheme(colorScheme = scheme) {
+            if (!halo) content()
+            else CompositionLocalProvider(androidx.compose.material3.LocalTextStyle provides androidx.compose.material3.LocalTextStyle.current.copy(
+                shadow = androidx.compose.ui.graphics.Shadow(tr.bg.copy(alpha = .8f), Offset.Zero, 10f)), content = content)
+        }
+    }
+}
+/** Level 2 readability: the Text wrapper (I18n.kt) draws a little bolder. */
+val LocalReadBold = staticCompositionLocalOf { false }
+
+/** Readability. Automatic: stronger text only where see-through surfaces sit over a picture, a living wallpaper or a vivid
+ *  background, or where the picture's brightness fights the text. Same rules as Nova web. */
+object Readability {
+    /** Your picture's average brightness (0 black … 1 white) after its dimming, or null without one. */
+    var wallLum by mutableStateOf<Float?>(null); private set
+    suspend fun measure(ctx: android.content.Context) {
+        wallLum = if (AppPrefs.wallV <= 0L) null else kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { runCatching {
+            val o = android.graphics.BitmapFactory.Options().apply { inSampleSize = 32 }
+            val b = android.graphics.BitmapFactory.decodeFile(java.io.File(ctx.filesDir, "wallpaper.jpg").path, o)!!
+            val s = android.graphics.Bitmap.createScaledBitmap(b, 24, 24, true); var t = 0.0
+            for (y in 0 until 24) for (x in 0 until 24) { val c = s.getPixel(x, y)
+                t += (.2126 * ((c shr 16) and 255) + .7152 * ((c shr 8) and 255) + .0722 * (c and 255)) / 255 }
+            (t / 576 * (1 - AppPrefs.wallDim / 100.0)).toFloat() }.getOrNull() }
+    }
+    fun busy() = AppPrefs.wallV > 0L || Living.on || AppPrefs.lookBg in setOf("vivid", "aero")
+    fun level(t: NovaColors): Int {
+        val p = AppPrefs.readability
+        if (p == "more") return 2
+        if (p == "off" || AppPrefs.solid) return 0
+        val clear = AppPrefs.glass / 100f
+        val see = when (t.preset) { "liquid" -> clear >= .3f; "aero" -> clear >= .55f; "fluent" -> clear >= .75f; "breeze" -> false; else -> !t.material && AppPrefs.dTrans >= 30 }
+        if (!busy() || !see) return 0
+        val lum = if (AppPrefs.wallV > 0L) wallLum else null
+        val fights = lum != null && (if (t.dark) lum > .62f else lum < .3f)
+        return if (fights || (t.preset == "liquid" && clear >= .7f) || AppPrefs.dTrans >= 60) 2 else 1
+    }
 }
 
 /** Per-server accent color (set in Settings → Server) replaces the blue throughout. */
@@ -261,8 +303,9 @@ fun androidx.compose.ui.graphics.drawscope.DrawScope.drawWall(t: NovaColors, kin
 }
 
 /** A row's icon in the chosen icon style ([theme] = one of ICON_THEMES, or the current setting). */
-@Composable fun RowIcon(icon: ImageVector, c: Color, theme: String = AppPrefs.iconTheme) {
+@Composable fun RowIcon(icon: ImageVector, tint: Color, theme: String = AppPrefs.iconTheme) {
     val t = N
+    val c = if (AppPrefs.iconAccent && tint != t.red) t.blue else tint        // Icons in your accent color (warnings stay red)
     when (theme.takeIf { it != "style" } ?: when (t.preset) { "liquid" -> "tiles"; "aero" -> "glossy"; "fluent", "breeze" -> "glyph"; else -> "tonal" }) {
         "tiles" -> Box(Modifier.size(30.dp).clip(RoundedCornerShape(cardRadius(8.dp))).background(c), contentAlignment = Alignment.Center) { Icon(icon, null, tint = Color.White, modifier = Modifier.size(19.dp)) }
         // Aero's own: a colored tile with a shine on its top half, a dark edge and a light line along the top

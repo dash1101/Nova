@@ -72,6 +72,9 @@ fun presetTokens(preset: String, dark: Boolean, seed: Color?): NovaColors? = whe
 fun roundK(): Float { val v = AppPrefs.roundFor(presetStyle()).coerceIn(25, 200)
     return if (v <= 100) v / 100f else 1f + (v - 100) / 100f * (if (presetStyle() == "liquid") .8f else 3f) }
 
+/** Window roundness (Appearance → Shape and glass): dialogs on top of the look's own corners. */
+fun winK(): Float = AppPrefs.winRound.coerceIn(0, 300) / 100f
+
 /** Floating pills (the nav pill, the dock): Mica, Breeze and Aero use their own small corners, scaled by Corner roundness
  *  (never rounder than the usual capsule). */
 @Composable fun pillCorner(default: Dp): Dp { val k = roundK()

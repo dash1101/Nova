@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.8.14-alpha (server, Nova web, app and watch)
+- **A tidier Appearance** (app and web): seven short groups — Look, Colors, Background, Icons and text, Motion and effects, Sounds and touch, Home — each showing what it's set to now, with the details folded into dropdowns and dialogs.
+  - **Style** is one row with the current style; tap it to pick another. Light or dark is a three-way switch.
+  - **Shape and glass** holds the look's sliders together: light splitting, glass clarity or transparency and frost, corner roundness, and the new **Window roundness** (dialogs and windows, every look).
+  - **Living wallpaper:** pick the scene from a gallery of previews; speed, blur, tint and frame rate sit in one dropdown. Mica's bloom is crisper (it looked blurred).
+  - **Colors:** tapping a color (fade color, wallpaper color, accent) opens the color picker straight away, with your recent colors and the "page's color" choice on top.
+  - **Icons** has its own page: the app icon gallery (now in your icon shape), your own colors (now on the web too), icon shape, in-app icon style, and **Icons in your accent color**.
+  - **New app icons:** Silhouette, black or white — just Nova's symbol.
+  - Settings that do nothing on a device are hidden: **Vibration** where there's no vibration motor (and on computers), **Color strength** outside Material You.
+- **Readability** (Appearance → Icons and text): Automatic makes text stronger only where it's hard to read — see-through glass over a picture or a living wallpaper, or a picture whose brightness fights the text (Nova measures it) — with a soft halo, gray and accent text closer to the text color and, where it's worst, a little bolder. Or set it to Off or Always stronger.
+- **Softer windows:** the Default look's dialogs and windows are much less round.
+- **Small things:** Breeze's dialogs are solid (the page showed through); every button-like row works with Enter and Space and shows a clear focus ring; switches tell screen readers whether they're on; icon-only buttons have labels (web).
+
 ## 0.8.13-alpha (server, Nova web, app and watch)
 - **Alerts arrive in a second or two, not a minute:** a new message goes out the moment it's queued, the server checks for new events every 15 seconds instead of every minute, and Nova web now waits on the server like the app does instead of checking every 20 seconds.
 - **Home Assistant behind Cloudflare, fixed for new versions:** Home Assistant 2026 keeps its proxy settings in its own store and ignores configuration.yaml, so the old fix no longer worked (that's the "400: Bad Request"). Recommended → **Fix it** now changes the right setting, with a backup.

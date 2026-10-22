@@ -11,9 +11,11 @@ const load = async () => icons || (icons = await import("./appicons.js"));
 export async function webIcons() {
   const { APP_ICONS } = await load();
   const l = Object.entries(APP_ICONS).map(([k, v]) => [k, v.label]);
-  return [l[0], ["accent", "Your color"], ...l.slice(1)];
+  const at = l.findIndex(([k]) => k === "clear") + 1;          // the silhouettes sit next to the see-through one, as in the app
+  return [l[0], ["accent", "Your color"], ["custom", "Your own colors"], ...l.slice(1, at), ["sil_black", "Silhouette (black)"], ["sil_white", "Silhouette (white)"], ...l.slice(at)];
 }
 
+const hex = (v, d) => /^#[0-9a-f]{6}$/i.test(v || "") ? v : d;
 const accent = () => getComputedStyle(document.documentElement).getPropertyValue("--blue").trim() || "#3e91ff";
 const dark = () => document.documentElement.classList.contains("l-light") ? false : matchMedia("(prefers-color-scheme: dark)").matches || document.documentElement.dataset.theme === "dark";
 
@@ -34,6 +36,11 @@ export async function iconSvg(id) {
   const { APP_ICONS, TONE_ICONS } = await load();
   let body;
   if (id === "accent") { const k = forAccent(accent(), dark()) || "default"; body = k.startsWith("tone:") ? TONE_ICONS[k.slice(5)] : APP_ICONS[k]?.svg; }
+  else if (id === "custom") body = APP_ICONS.bw.svg.replace('fill="#FFFFFF"', `fill="${hex(prefs.webIconBg, "#1c2541")}"`).replaceAll("#000000", hex(prefs.webIconFg, "#ffffff"));
+  else if (id.startsWith("sil_")) {               // just the symbol, a little larger, nothing behind it
+    const glyph = APP_ICONS.bw.svg.replace(/^<path d="M0,0h108v108h-108z" fill="#FFFFFF"\/>/, "").replaceAll("#000000", id === "sil_black" ? "#101012" : "#ffffff");
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="18 18 72 72"><g transform="translate(54 54) scale(1.12) translate(-58.9 -50.6)">${glyph}</g></svg>`;
+  }
   else body = APP_ICONS[id]?.svg;
   body = body || APP_ICONS.default.svg;
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="18 18 72 72"><defs><clipPath id="cl">${SHAPE_PATHS[prefs.iconShape] || SHAPE_PATHS.rounded}</clipPath></defs><g clip-path="url(#cl)">${body}</g></svg>`;
@@ -50,7 +57,7 @@ export const svgUrl = s => "data:image/svg+xml;charset=utf-8," + encodeURICompon
 export async function applyWebIcon() {
   const id = prefs.webIcon || "default";
   const link = document.querySelector('link[rel="icon"]'), apple = document.querySelector('link[rel="apple-touch-icon"]');
-  if (id === "default") { if (link) link.href = "/web/icon.svg"; if (apple) apple.href = "/web/apple-touch-icon.png"; return; }
+  if (id === "default" && (prefs.iconShape || "rounded") === "rounded") { if (link) link.href = "/web/icon.svg"; if (apple) apple.href = "/web/apple-touch-icon.png"; return; }
   try {
     const url = svgUrl(await iconSvg(id));
     if (link) link.href = url;

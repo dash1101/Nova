@@ -56,7 +56,7 @@ sealed class Route {
     data object QuickPanel : Route(); data object EditQuick : Route(); data object Status : Route()
     data object Ssh : Route(); data object SshTerm : Route()
     data object Servers : Route(); data object ServerSettings : Route(); data object Dashboard : Route(); data object Approvals : Route()
-    data object Appearance : Route(); data object SetupGuide : Route(); data object EditShortcuts : Route(); data object EditHome : Route(); data object EditTabs : Route(); data object Archive : Route()
+    data object Appearance : Route(); data object Icons : Route(); data object SetupGuide : Route(); data object EditShortcuts : Route(); data object EditHome : Route(); data object EditTabs : Route(); data object Archive : Route()
     data object Settings : Route(); data object Devices : Route(); data object About : Route(); data object Faq : Route(); data object FreeUp : Route()
     data class StorageWizard(val goal: String? = null, val drives: List<String> = emptyList(), val pool: String? = null) : Route()
     data class Pool(val id: String) : Route(); data class Task(val id: String, val then: String? = null) : Route()
@@ -633,6 +633,7 @@ private fun Modifier.paneTouch(app: AppState, left: Boolean) = pointerInput(left
         Route.Dashboard -> DashboardScreen(app)
         Route.Approvals -> ApprovalsScreen(app)
         Route.Appearance -> AppearanceScreen(app)
+        Route.Icons -> IconsScreen(app)
         Route.SetupGuide -> Page("Setup guide", app::back) { SetupGuideBody() }
         Route.Settings -> SettingsScreen(app)
         Route.Devices -> DevicesScreen(app)

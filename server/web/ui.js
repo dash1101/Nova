@@ -39,6 +39,8 @@ const P = {
   term: "M20 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2Zm0 14H4V8h16ZM6.7 16.3 5.3 14.9 7.6 12.6 5.3 10.3 6.7 8.9l3.7 3.7ZM12 15h6v2h-6Z",
   play: "M8 5v14l11-7Z", stop: "M6 6h12v12H6Z", restart: "M12 5V2L8 6l4 4V7a5 5 0 1 1-5 5H5a7 7 0 1 0 7-7Z",
   update: "M5 20h14v-2H5Zm7-3 5-5h-3V4h-4v8H7Z",
+  translate: "M12.87 15.07l-2.54-2.51.03-.03c1.74-1.94 2.98-4.17 3.71-6.53H17V4h-7V2H8v2H1v1.99h11.17C11.5 7.92 10.44 9.75 9 11.35 8.07 10.32 7.3 9.19 6.69 8h-2c.73 1.63 1.73 3.17 2.98 4.56l-5.09 5.02L4 19l5-5 3.11 3.11.76-2.04zM18.5 10h-2L12 22h2l1.12-3h4.75L21 22h2l-4.5-12zm-2.62 7l1.62-4.33L19.12 17h-3.24z",
+  gamepad: "M21.58 16.09l-1.09-7.66C20.21 6.46 18.52 5 16.53 5H7.47C5.48 5 3.79 6.46 3.51 8.43l-1.09 7.66C2.2 17.63 3.39 19 4.94 19c.68 0 1.32-.27 1.8-.75L9 16h6l2.25 2.25c.48.48 1.13.75 1.8.75 1.56 0 2.75-1.37 2.53-2.91zM11 11H9v2H8v-2H6v-1h2V8h1v2h2v1zm4-1c-.55 0-1-.45-1-1s.45-1 1-1 1 .45 1 1-.45 1-1 1zm2 3c-.55 0-1-.45-1-1s.45-1 1-1 1 .45 1 1-.45 1-1 1z",
   article: "M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z",
   more: "M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z",
   okc: "M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm-2 15-5-5 1.4-1.4 3.6 3.6 7.6-7.6L19 8Z",
@@ -89,7 +91,7 @@ export const logo = (size = 46) => `<img class="logo" src="/web/icon.svg" width=
 // ── building blocks (HTML strings; wiring is done by data-* attributes) ───────────
 /** Row with optional icon bubble, subtitle (blue when it's a live state), and end content. */
 export function row(title, { sub, blue, icon, tint = "var(--blue)", end = "", click, attrs = "", dis } = {}) {
-  return `<div class="row${click ? " click" : ""}${dis ? " dis" : ""}" ${click ? `data-act="${esc(click)}"` : ""} ${attrs}>
+  return `<div class="row${click ? " click" : ""}${dis ? " dis" : ""}" ${click ? `data-act="${esc(click)}" role="button" tabindex="${dis ? -1 : 0}"` : ""}${dis ? ' aria-disabled="true"' : ""} ${attrs}>
     ${icon ? `<span class="ri" style="color:${tint};background:color-mix(in srgb, ${tint} 16%, transparent)">${I(icon)}</span>` : ""}
     <div class="t"><b>${esc(title)}</b>${sub ? `<small class="${blue ? "blue" : ""}">${esc(sub)}</small>` : ""}</div>${end}</div>`;
 }
@@ -101,10 +103,13 @@ export const note = t => String(t).length > 170
   : `<p class="note">${esc(t)}</p>`;
 export const sw = on => `<span class="sw${on ? " on" : ""}"></span>`;
 export const radio = on => `<span class="radio${on ? " on" : ""}"></span>`;
-export const switchRow = (title, sub, on, key, { blue, dis } = {}) => row(title, { sub, blue: blue ?? on, end: sw(on), click: key, dis });
+export const switchRow = (title, sub, on, key, { blue, dis } = {}) => row(title, { sub, blue: blue ?? on, end: sw(on), click: key, dis }).replace('role="button"', `role="switch" aria-checked="${!!on}"`);
 export const links = (items) => `<div class="links glass"><b>Looking for something else?</b>${items.map(([l, k]) => `<button data-act="${esc(k)}">${esc(l)}</button>`).join("")}</div>`;
-export function expand(title, sub, icon, body, { blue, tint } = {}) {
-  return `<div class="expand"><div class="row click" data-expand>${icon ? `<span class="ri" style="color:${tint || "var(--blue)"};background:color-mix(in srgb, ${tint || "var(--blue)"} 16%, transparent)">${I(icon)}</span>` : ""}
+// dropdowns stay open across redraws (a switch inside one redraws the page) — by title, for this visit
+const OPEN = new Set();
+/** A row that opens to show more. rows: the inside holds rows and sliders (no indented text). */
+export function expand(title, sub, icon, body, { blue, tint, rows } = {}) {
+  return `<div class="expand${rows ? " xrows" : ""}${OPEN.has(title) ? " open" : ""}" data-xk="${esc(title)}"><div class="row click" data-expand role="button" tabindex="0" aria-expanded="${OPEN.has(title)}">${icon ? `<span class="ri" style="color:${tint || "var(--blue)"};background:color-mix(in srgb, ${tint || "var(--blue)"} 16%, transparent)">${I(icon)}</span>` : ""}
     <div class="t"><b>${esc(title)}</b>${sub ? `<small class="${blue ? "blue" : ""}">${esc(sub)}</small>` : ""}</div><span class="chev muted">${I("down")}</span></div><div class="xb">${body}</div></div>`;
 }
 export function slider(title, key, value, min, max, label, dis) {
@@ -217,7 +222,8 @@ export async function waitApproval(id, get, code, totp = false, post = null, pk 
 /** Expand rows, segmented controls (with sliding bead), ranges with a live label. */
 const segLast = new Map();          // segmented control → the option it showed last, so a redraw can glide from there
 export function wireCommon(root, { onSeg, onRange, onRangeInput } = {}) {
-  $$("[data-expand]", root).forEach(r => r.onclick = () => r.parentElement.classList.toggle("open"));
+  $$("[data-expand]", root).forEach(r => r.onclick = () => { const x = r.parentElement, on = x.classList.toggle("open"); r.setAttribute("aria-expanded", on);
+    if (x.dataset.xk) on ? OPEN.add(x.dataset.xk) : OPEN.delete(x.dataset.xk); });
   // a screen that redraws after a tap gets a fresh control: start its bead where the old one was, then slide it over
   $$("[data-seg]", root).forEach(s => {
     const bead = $(".bead", s), on = $$("[data-segi]", s).findIndex(b => b.classList.contains("on")), was = segLast.get(s.dataset.seg);
@@ -422,14 +428,20 @@ export function swipeable(root, { onRight, onLeft } = {}) {
 }
 
 /** Custom color: hue / saturation / brightness, exact R G B values, or a hex code. Resolves "#rrggbb" or null. */
-export function colorPicker(initial = "#3e91ff") {
+/** Custom color, with the colors you used last on top. opts.reset: [label, sub] — a choice that resolves "" (e.g. "The
+ *  page's color"); opts.live(hex|null): called as the color changes (null = put back what it was, on Cancel). */
+export function colorPicker(initial = "#3e91ff", opts = {}) {
+  const recent = (Array.isArray(prefs.recentColors) ? prefs.recentColors : []).filter(c => /^#[0-9a-f]{6}$/i.test(c)).slice(0, 8);
+  const remember = c => { prefs.recentColors = [c, ...recent.filter(x => x.toLowerCase() !== c.toLowerCase())].slice(0, 8); };
   const toHsv = ([r, g, b]) => { r /= 255; g /= 255; b /= 255; const mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn;
     let h = 0; if (d) h = mx === r ? ((g - b) / d) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4; return [(h * 60 + 360) % 360, mx ? d / mx : 0, mx]; };
   const fromHsv = (h, s, v) => { const f = n => { const k = (n + h / 60) % 6; return Math.round(255 * (v - v * s * Math.max(0, Math.min(k, 4 - k, 1)))); }; return [f(5), f(3), f(1)]; };
   const hx = rgb => "#" + rgb.map(x => x.toString(16).padStart(2, "0")).join("");
   let rgb = [1, 3, 5].map(i => parseInt((initial || "#3e91ff").slice(i, i + 2), 16) || 0), hue = toHsv(rgb)[0];
   return new Promise(res => {
-    const box = sheet(`<h2>Custom color</h2><div class="pad">
+    const box = sheet(`<h2>${esc(opts.title || "Custom color")}</h2><div class="pad">
+      ${opts.reset || recent.length ? `<div class="cp-quick">${opts.reset ? `<button class="cp-reset press" data-q="" title="${esc(opts.reset[1] || "")}"><span class="swatch cp-auto"></span>${esc(opts.reset[0])}</button>` : ""}
+        ${recent.length ? `<span class="muted cp-l">Recent</span>${recent.map(c => `<button class="swatch press" data-q="${c}" style="background:${c}" aria-label="${c}" title="${c}"></button>`).join("")}` : ""}</div>` : ""}
       <div id="cp-prev" style="height:56px;border-radius:18px;margin-bottom:12px"></div>
       ${["Hue:h:0:360", "Saturation:s:0:100", "Brightness:v:0:100"].map(x => { const [l, k, a, b] = x.split(":"); return `<div class="muted" style="font-size:13px;margin-top:6px">${l}</div><input type="range" min="${a}" max="${b}" data-cp="${k}">`; }).join("")}
       ${["R:#ff453a", "G:#32d74b", "B:#0a84ff"].map((x, i) => { const [l, c] = x.split(":"); return `<div style="display:flex;align-items:center;gap:10px;margin-top:10px"><b style="color:${c};width:16px">${l}</b><input type="range" min="0" max="255" data-ch="${i}" style="flex:1"><input class="field" data-num="${i}" inputmode="numeric" maxlength="3" style="width:76px;padding:10px 12px;font-family:ui-monospace,monospace"></div>`; }).join("")}
@@ -442,14 +454,19 @@ export function colorPicker(initial = "#3e91ff") {
         set("h", Math.round(hue)); set("s", Math.round(s * 100)); set("v", Math.round(v * 100)); }
       rgb.forEach((x, i) => { const e = $(`[data-ch="${i}"]`, box); e.value = x; e.style.setProperty("--p", x / 255 * 100 + "%"); if (from !== "num" + i) $(`[data-num="${i}"]`, box).value = x; });
       if (from !== "hex") $("#cp-hex", box).value = hx(rgb);
+      if (from !== undefined || started) opts.live?.(hx(rgb)); started = true;
     };
+    let started = false;
     $$("[data-cp]", box).forEach(e => e.oninput = () => { e.style.setProperty("--p", e.value / e.max * 100 + "%");
       const g = k => +$(`[data-cp="${k}"]`, box).value; hue = g("h"); rgb = fromHsv(hue, g("s") / 100, g("v") / 100); sync("hsv"); });
     $$("[data-ch]", box).forEach(e => e.oninput = () => { rgb[+e.dataset.ch] = +e.value; sync(); });
     $$("[data-num]", box).forEach(e => e.oninput = () => { const n = parseInt(e.value.replace(/\D/g, ""), 10); if (!isNaN(n)) { rgb[+e.dataset.num] = Math.max(0, Math.min(255, n)); sync("num" + e.dataset.num); } });
     $("#cp-hex", box).oninput = e => { const v = e.target.value.startsWith("#") ? e.target.value : "#" + e.target.value; if (/^#[0-9a-f]{6}$/i.test(v)) { rgb = [1, 3, 5].map(i => parseInt(v.slice(i, i + 2), 16)); sync("hex"); } };
-    $$("[data-b]", box).forEach(b => b.onclick = () => { closeSheet(); res(b.dataset.b === "1" ? hx(rgb) : null); });
-    sync();
+    const done = v => { closeSheet(); if (v == null) opts.live?.(null); else if (v) remember(v); res(v); };
+    $$("[data-b]", box).forEach(b => b.onclick = () => done(b.dataset.b === "1" ? hx(rgb) : null));
+    $$("[data-q]", box).forEach(b => b.onclick = () => done(b.dataset.q));
+    $("#sheet").onclick = e => { if (e.target.id === "sheet") done(null); };
+    started = false; sync(); started = true;
   });
 }
 
@@ -485,3 +502,10 @@ document.addEventListener("input", e => {
   if (tickK.has(r) && tickK.get(r) !== k) try { navigator.vibrate(4); } catch {}
   tickK.set(r, k);
 }, true);
+
+// Keyboard: rows that act like buttons (role="button" / "switch" on a div) answer Enter and Space like real buttons
+document.addEventListener("keydown", e => {
+  if (e.key !== "Enter" && e.key !== " ") return;
+  const t = e.target; if (!(t instanceof HTMLElement) || !t.matches('div[role="button"], div[role="switch"]') || t.getAttribute("aria-disabled") === "true") return;
+  e.preventDefault(); t.click();
+});

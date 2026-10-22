@@ -27,3 +27,27 @@ feature, not the rule (or argue for changing the rule here first).
 - Sound and touch feedback: one sound and one buzz per press, from the look's own pack; each kind can be turned off.
 - Performance comes first on modest hardware: effects degrade gracefully (Lighter effects, frame-rate limits) rather
   than stutter.
+
+## Readable everywhere
+
+- **Readability (Appearance → Icons and text)** has three settings. *Off* draws text exactly as the look does. *Always
+  stronger* uses level 2 everywhere. *Automatic* (the default) strengthens text only where it's needed:
+  - **Level 1:** see-through surfaces over a busy background. That means Glass at 30 %+ clarity, Aero at 55 %+, Mica at
+    75 %+, or the Default look at 30 %+ transparency, over a picture, a living wallpaper or the vivid/sky backgrounds.
+    Gray and accent text move toward the text color, and text gets a soft halo in the page color.
+  - **Level 2:** the same, but where the picture's measured brightness fights the text (light text on a picture brighter
+    than 62 %, dark text on one darker than 30 %, after its dimming), or the surfaces are nearly clear (Glass 70 %+,
+    Default 60 %+). Gray and accent text move further toward the text color, and text gets a little bolder.
+  - **Text straight on the background** (section names, notes, titles) over a picture or living wallpaper always gets
+    the halo. On the web, notes also get a frosted backing.
+- **Solid where there's no blur.** A dialog or menu that can't blur what's behind it (Breeze) is fully opaque. See-through
+  without blur puts the page's text inside the dialog's.
+- **Reachable by keyboard and screen readers.** Every row that acts like a button is focusable and answers Enter and
+  Space. Switches say whether they're on. Icon-only buttons have a label. Focus shows as a clear ring.
+
+## Appearance is a few short groups
+
+Look, Colors, Background, Icons and text, Motion and effects, Sounds and touch, Home. Each choice shows what it's set to
+now. Pickers with many options open a dialog or a gallery with previews. Sliders that tune one thing sit together in a
+dropdown. A setting that does nothing here isn't shown: Vibration on devices that can't buzz, Color strength outside
+Material You.

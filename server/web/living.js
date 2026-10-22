@@ -67,7 +67,7 @@ export async function update() {
   size();
   // the scenes are drawn small and come out soft when scaled up; a blur over the whole screen on every frame cost too much
   // on slower graphics, so only Mica and Glass keep a little (plus your Blur setting)
-  const base = scene === "fluent" ? 6 : scene === "liquid" ? 8 : 0;   // the soft ones: just enough to hide the drawing's pixels
+  const base = scene === "fluent" ? 1.5 : scene === "liquid" ? 8 : 0;   // the soft ones: just enough to hide the drawing's pixels
   cv.style.filter = `blur(calc(${base}px + var(--lvblur, 0px)))`;
   if (!raf) raf = requestAnimationFrame(frame);
 }
@@ -77,7 +77,8 @@ function size() {
   // sharpness, as the app does; Mica's bloom and Glass's liquid color are soft anyway, so they're drawn small and blurred up.
   // Lighter effects draws everything small.
   const lite = root().classList.contains("lite");
-  const k = scene === "fluent" || scene === "liquid" ? SOFT : lite ? .5 : Math.min(1.5, devicePixelRatio || 1);
+  // (Mica's bloom at half size: a third was too soft — it looked blurred rather than like soft light)
+  const k = scene === "liquid" ? SOFT : scene === "fluent" ? (lite ? SOFT : .5) : lite ? .5 : Math.min(1.5, devicePixelRatio || 1);
   cv.width = Math.max(64, Math.round(innerWidth * k)); cv.height = Math.max(64, Math.round(innerHeight * k));
 }
 
@@ -140,7 +141,9 @@ function draw(t) {
       for (let i = 0; i < n; i++) {                       // petals layered over each other, not added (that went muddy)
         const a = t * .03 + i / n * Math.PI * 2, br = 1 + .08 * Math.sin(t * .4 + i);
         g.save(); g.translate(cx, cy); g.rotate(a); g.scale(1, .42);
-        blob(m * .22 * br, 0, m * .3 * br, d ? hsl(h + (i - 3) * 7, s, 54, .5) : hsl(h + (i - 3) * 9, s, 62, .38));
+        const c = d ? hsl(h + (i - 3) * 7, s, 54, .5) : hsl(h + (i - 3) * 9, s, 62, .38), x = m * .22 * br, r = m * .3 * br;
+        const gr = g.createRadialGradient(x, 0, 0, x, 0, r); gr.addColorStop(0, c); gr.addColorStop(.8, c); gr.addColorStop(1, c.replace(/[\d.]+\)$/, "0)"));
+        g.fillStyle = gr; g.beginPath(); g.arc(x, 0, r, 0, Math.PI * 2); g.fill();
         g.restore();
       }
       blob(cx, cy, m * .2, d ? hsl(h + 15, s * .7, 70, .3) : hsl(h + 15, s * .5, 92, .65));
@@ -183,6 +186,13 @@ function draw(t) {
       }
     },
   })[scene]?.();
+}
+
+/** One still frame of a scene, drawn into [canvas] (Appearance → Scene's gallery). */
+export function preview(canvas, id, t = 20) {
+  const keep = [cv, g, scene, pal];
+  try { cv = canvas; g = canvas.getContext("2d", { alpha: false }); scene = id === "auto" ? look() : id; pal = palette(); draw(t); }
+  finally { [cv, g, scene, pal] = keep; }
 }
 
 // the accent, the look or light/dark changed: new colors (the app calls update() from applyTheme)

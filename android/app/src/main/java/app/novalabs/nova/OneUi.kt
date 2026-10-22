@@ -238,7 +238,7 @@ data class DialogButton(val label: String, val color: Color? = null, val enabled
     if (N.preset.isNotEmpty()) { PresetDialog(onDismiss, title, text, buttons, content); return }
     if (N.material) {                       // M3 dialog: centered, 28dp corners, text buttons on the right
         MotionDialog(onDismiss) {
-            Column(Modifier.padding(horizontal = 24.dp).widthIn(max = 560.dp).fillMaxWidth().clip(RoundedCornerShape(28.dp))
+            Column(Modifier.padding(horizontal = 24.dp).widthIn(max = 560.dp).fillMaxWidth().clip(RoundedCornerShape(28.dp * winK()))
                 .background(MaterialTheme.colorScheme.surfaceContainerHigh).padding(top = 24.dp, bottom = 12.dp)) {
                 DialogToasts()
                 if (title != null) Text(title, color = N.text, fontSize = 24.sp, modifier = Modifier.padding(horizontal = 24.dp))
@@ -264,7 +264,7 @@ data class DialogButton(val label: String, val color: Color? = null, val enabled
         SideEffect { (view.parent as? DialogWindowProvider)?.window?.setGravity(Gravity.BOTTOM) }
         Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.BottomCenter) {
         Column(Modifier.padding(start = 12.dp, end = 12.dp, bottom = 28.dp).widthIn(max = 600.dp).fillMaxWidth()
-            .clip(RoundedCornerShape(30.dp)).background(N.card).padding(top = 24.dp, bottom = 6.dp)) {
+            .clip(RoundedCornerShape(20.dp * winK())).background(N.card).padding(top = 24.dp, bottom = 6.dp)) {
             DialogToasts()
             if (title != null) Text(title, color = N.text, fontSize = 20.sp, fontWeight = FontWeight.Bold,
                 modifier = Modifier.padding(horizontal = 26.dp))
@@ -311,9 +311,9 @@ private fun DialogButton.role(t: NovaColors) = when { color == null -> "cancel";
       androidx.compose.runtime.CompositionLocalProvider(LocalInDialog provides true) {
         when (t.preset) {
             "liquid" -> {
-                val k = roundK(); val shape = RoundedCornerShape(34.dp * k)
+                val k = roundK(); val wk = winK(); val shape = RoundedCornerShape(34.dp * k * wk)
                 Column(Modifier.padding(horizontal = 28.dp).widthIn(max = if (content != null) 440.dp else 320.dp).fillMaxWidth()
-                    .liquidCard(shape, 34.dp * k, 18.dp).padding(start = maxOf(16.dp, 34.dp * k * .3f), end = maxOf(16.dp, 34.dp * k * .3f), top = 22.dp, bottom = maxOf(16.dp, 34.dp * k * .3f)),
+                    .liquidCard(shape, 34.dp * k * wk, 18.dp).padding(start = maxOf(16.dp, 34.dp * k * .3f), end = maxOf(16.dp, 34.dp * k * .3f), top = 22.dp, bottom = maxOf(16.dp, 34.dp * k * .3f)),
                     horizontalAlignment = Alignment.CenterHorizontally) {
                     DialogToasts()
                     if (title != null) Text(title, color = t.text, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, textAlign = androidx.compose.ui.text.style.TextAlign.Center, modifier = Modifier.padding(horizontal = 8.dp))
@@ -334,7 +334,7 @@ private fun DialogButton.role(t: NovaColors) = when { color == null -> "cancel";
                 }
             }
             "fluent" -> {
-                val shape = RoundedCornerShape(8.dp)
+                val shape = RoundedCornerShape(8.dp * roundK() * winK())
                 Column(Modifier.padding(horizontal = 24.dp).widthIn(max = 480.dp).fillMaxWidth().shadow(24.dp, shape).clip(shape).background(t.card)
                     .border(1.dp, if (t.dark) Color(0x1FFFFFFF) else Color(0x14000000), shape)) {
                     Column(Modifier.padding(start = 24.dp, end = 24.dp, top = 22.dp, bottom = 20.dp)) {
@@ -357,7 +357,7 @@ private fun DialogButton.role(t: NovaColors) = when { color == null -> "cancel";
                 }
             }
             "aero" -> {       // a glass task dialog: the title on the glass frame, a plain panel for the words, glossy buttons
-                val k = roundK(); val shape = RoundedCornerShape(8.dp * k)
+                val k = roundK(); val shape = RoundedCornerShape(8.dp * k * winK())
                 Column(Modifier.padding(horizontal = 24.dp).widthIn(max = 480.dp).fillMaxWidth().aeroCard(shape, 20.dp).padding(maxOf(8.dp, 8.dp * k * .3f))) {   // keeps the buttons clear of a very round corner
                     DialogToasts()
                     if (title != null) Text(title, style = TextStyle(color = t.text, fontSize = 16.sp, shadow = aeroGlow(t.dark)),
@@ -379,7 +379,7 @@ private fun DialogButton.role(t: NovaColors) = when { color == null -> "cancel";
                 }
             }
             else -> {   // breeze
-                val shape = RoundedCornerShape(6.dp)
+                val shape = RoundedCornerShape(6.dp * roundK() * winK())
                 Column(Modifier.padding(horizontal = 24.dp).widthIn(max = 480.dp).fillMaxWidth().shadow(16.dp, shape).clip(shape).background(t.card)
                     .border(1.dp, if (t.dark) Color(0x1AFFFFFF) else Color(0x24000000), shape).padding(start = 18.dp, end = 18.dp, top = 16.dp, bottom = 14.dp)) {
                     DialogToasts()

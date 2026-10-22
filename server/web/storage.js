@@ -873,7 +873,7 @@ export async function labs(ctx, stable = false) {
         !stable && l.labs.openrgb ? row("OpenRGB", { sub: "Where it runs, and the devices it has", blue: true, icon: "bulb", click: "go:openrgb" }) : "",
       ].join("")) : ""}
       ${stable ? group(row("Experimental features (Labs)", { icon: "science", blue: true, click: "go:labs" })) : sec("This browser") + group(switchRow("Apps in Nova windows", "Apps open in a window inside Nova — with minimize, maximize and close, in the look you picked — instead of a new tab. Minimized ones wait in the navigation pill. Only in this browser.", !!prefs.appWindows, "appwin")
-        + (prefs.appWindows ? `<div class="range-row"><div class="h"><span>Window corners</span><span id="wrl">${prefs.winRound ?? 100}%</span></div><input type="range" min="0" max="300" step="5" value="${prefs.winRound ?? 100}" id="wround" style="--p:${(prefs.winRound ?? 100) / 3}%"></div>` : ""))}`, { title }); wireRound();
+        + (prefs.appWindows ? row("Window roundness", { sub: "Now in Appearance → Shape and glass", blue: true, icon: "palette", click: "go:appearance" }) : ""))}`, { title }); wireRound();
   };
   const wireRound = () => { const r = $("#wround", ctx.root); if (r) r.oninput = () => { prefs.winRound = +r.value; r.style.setProperty("--p", r.value / 3 + "%"); $("#wrl").textContent = r.value + "%";
     document.documentElement.style.setProperty("--wrk", String(r.value / 100)); }; };

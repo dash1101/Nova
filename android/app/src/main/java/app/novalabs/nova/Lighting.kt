@@ -82,7 +82,10 @@ fun col(h: String) = runCatching { Color(android.graphics.Color.parseColor(h)) }
 }
 
 /** Custom color: hue / saturation / brightness, or exact R G B values, or a hex code. */
-@Composable fun ColorPickerDialog(initial: String, onDismiss: () -> Unit, onPick: (String) -> Unit) {
+/** [reset]: a first choice that isn't a color (e.g. "The page's color") — tapping it calls [onReset]. [onLive]: the color
+ *  as it changes (null = put back what it was, on Cancel). The colors you picked last are on top. */
+@Composable fun ColorPickerDialog(initial: String, onDismiss: () -> Unit, title: String = "Custom color", reset: String? = null, onReset: (() -> Unit)? = null,
+                                  onLive: ((String?) -> Unit)? = null, onPick: (String) -> Unit) {
     val start = col(initial)
     var r by remember { mutableIntStateOf((start.red * 255).toInt()) }
     var g by remember { mutableIntStateOf((start.green * 255).toInt()) }
@@ -93,8 +96,27 @@ fun col(h: String) = runCatching { Color(android.graphics.Color.parseColor(h)) }
         val c = android.graphics.Color.HSVToColor(floatArrayOf(h, s, v)); r = (c shr 16) and 255; g = (c shr 8) and 255; b = c and 255 }
     val cur = Color(r, g, b); val hexNow = "#%02x%02x%02x".format(r, g, b)
     var hexText by remember(hexNow) { mutableStateOf(hexNow) }
-    OneDialog(onDismiss, "Custom color", buttons = listOf(DialogButton("Cancel", onClick = onDismiss), DialogButton("Done", N.blue) { onPick(hexNow) })) {
+    var moved by remember { mutableStateOf(false) }
+    LaunchedEffect(hexNow) { if (moved) onLive?.invoke(hexNow); moved = true }
+    val cancel = { onLive?.invoke(null); onDismiss() }
+    val pick = { c: String -> AppPrefs.rememberColor(c); onPick(c) }
+    OneDialog(cancel, title, buttons = listOf(DialogButton("Cancel", onClick = cancel), DialogButton("Done", N.blue) { pick(hexNow) })) {
         Column(Modifier.padding(horizontal = 26.dp)) {
+            val recent = AppPrefs.recentColors
+            if (reset != null || recent.isNotEmpty()) {
+                @OptIn(ExperimentalLayoutApi::class)
+                FlowRow(Modifier.fillMaxWidth().padding(bottom = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (reset != null) Row(Modifier.height(34.dp).clip(RoundedCornerShape(50)).background(N.pill).clickable { onReset?.invoke() }.padding(start = 6.dp, end = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.size(22.dp).clip(androidx.compose.foundation.shape.CircleShape).background(Brush.linearGradient(0f to N.bg, .5f to N.bg, .5f to N.text, 1f to N.text))
+                            .border(1.dp, N.divider, androidx.compose.foundation.shape.CircleShape))
+                        Spacer(Modifier.width(8.dp)); Text(reset, color = N.text, fontSize = 14.sp)
+                    }
+                    if (recent.isNotEmpty()) Text("Recent", color = N.sub, fontSize = 12.sp, modifier = Modifier.align(Alignment.CenterVertically))
+                    recent.forEach { c -> Box(Modifier.size(34.dp).clip(androidx.compose.foundation.shape.CircleShape).background(col(c))
+                        .border(1.dp, N.divider, androidx.compose.foundation.shape.CircleShape).clickable { pick(c) }) }
+                }
+            }
             Box(Modifier.fillMaxWidth().height(56.dp).clip(RoundedCornerShape(18.dp)).background(cur))
             Spacer(Modifier.height(10.dp))
             val sat = if (hsv[1] == 0f && hsv[2] == 0f) 0f else hsv[1]; val hue = if (hsv[1] == 0f) hueMemo else hsv[0]
