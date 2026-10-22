@@ -669,12 +669,37 @@ def _brain_facts():
     try: cs = helper("containers", timeout=20)[1].get("containers", [])
     except Exception: cs = []
     run = [c.get("name") for c in cs if c.get("state") == "running"]; off = [c.get("name") for c in cs if c.get("state") != "running"]
-    try: store = [f"{x['id']} ({x.get('description', '')[:40]})" for x in helper("store-list", timeout=30)[1].get("items", []) if not x.get("installed")]
+    try: store = [f"{x['id']} ({x.get('description', '')[:40]})" for x in helper("store-list", timeout=30)[1].get("items", []) if not x.get("installed")][:40]
     except Exception: store = []
     return ("Server facts: " + "; ".join(x for x in [f"CPU load {la:.1f} on {os.cpu_count()} cores" + (f", {temp}" if temp else ""), mem,
             f"system drive {du.free / 1e9:.0f} GB free of {du.total / 1e9:.0f} GB", "alerts: " + (", ".join(alerts) if alerts else "none"),
             "containers running: " + ", ".join(run[:40]), "stopped: " + (", ".join(off[:20]) or "none")] if x)
             + ".\nApp store (not installed yet): " + ", ".join(store[:60]) + ".")
+
+# ── the assistant's conversation: one ongoing conversation for the whole server (every admin phone and browser) ──
+# After six quiet hours it starts afresh, but what was done (freed 4.9 GB, restarted Jellyfin…) is kept as memory for a month.
+CONVO = f"{DATA}/assistant-convo.json"
+CONVO_IDLE, CONVO_KEEP = 6 * 3600, 30 * 86400
+convo_lock = threading.Lock()
+
+def convo_load():
+    c = load_json(CONVO, {}); turns = [t for t in c.get("turns", []) if isinstance(t, dict)]; mem = [m for m in c.get("memory", []) if isinstance(m, dict)]
+    now = time.time()
+    if turns and now - max(t.get("t", 0) for t in turns) > CONVO_IDLE:
+        for t in turns:
+            d = [str(x) for x in (t.get("done") or []) if x and "canceled" not in str(x).lower()]
+            if d: mem.append({"t": t.get("t", now), "text": f"“{str(t.get('q', ''))[:120]}” → " + "; ".join(d)[:300]})
+        turns = []
+    mem = [m for m in mem if now - m.get("t", 0) < CONVO_KEEP][-24:]
+    return {"turns": turns[-30:], "memory": mem}
+
+def convo_save(c): save_json(CONVO, {"turns": c["turns"][-30:], "memory": c["memory"][-24:]})
+
+def convo_history(c):
+    """What the brain reads: what it remembers from before, then this conversation's last turns."""
+    when = lambda t: time.strftime("%b %-d %H:%M", time.localtime(t))
+    return {"memory": [f"{when(m['t'])}: {m['text']}" for m in c["memory"][-12:]],
+            "turns": [{"q": t.get("q", ""), "reply": t.get("reply", ""), "done": t.get("done") or []} for t in c["turns"][-6:]]}
 
 def hub_search(text):
     """Docker Hub's image search, the well-known ones first (the store's search and the assistant)."""
@@ -2507,12 +2532,30 @@ class Handler(BaseHTTPRequestHandler):
             env = {"lights": lights, "containers": lambda: helper("containers")[1].get("containers", []), "store": lambda: helper("store-list", timeout=60)[1].get("items", []),
                    "hub": hub_search, "drives": drives}
             import brain
-            hist = data.get("history") if isinstance(data.get("history"), list) else []
-            hist = [h for h in hist[-6:] if isinstance(h, dict)]
-            if len(json.dumps(hist)) > 12000: hist = hist[-2:]
-            env["history"] = hist
-            if brain.status().get("model"): env["brain"] = lambda t: brain.ask(t, brain_facts(), hist)
-            return 200, assistant.plan(text, env)
+            with convo_lock: c = convo_load()
+            hist = convo_history(c)
+            env["history"] = hist["turns"]
+            if brain.status().get("model"): env["brain"] = lambda t: brain.ask(t, brain_facts(), hist["turns"], hist["memory"])
+            p = assistant.plan(text, env)
+            with convo_lock:                      # this turn joins the conversation (what its steps did comes back from the device)
+                c = convo_load(); tid = secrets.token_hex(6)
+                c["turns"].append({"id": tid, "q": p["text"], "reply": p.get("reply", ""), "done": [], "t": time.time(), "by": dev.get("name", "")[:40]})
+                convo_save(c)
+            p["turn"] = tid
+            return 200, p
+        if parts == ["assistant", "convo"]:
+            if not load_json(SETTINGS, {}).get("labs", {}).get("assistant"): return 403, {"error": "turn on Nova assistant in Settings → Labs first"}
+            if role_of(dev) != "admin": return 403, {"error": "admins only"}
+            with convo_lock:
+                c = convo_load()
+                if method == "GET": convo_save(c); return 200, {"turns": [{k: t.get(k) for k in ("id", "q", "reply", "done", "t")} for t in c["turns"][-20:]], "memory": len(c["memory"]), "idle_hours": CONVO_IDLE // 3600}
+                if method == "POST":                # what a turn's steps did (the device ran them)
+                    tid = str(data.get("turn", ""))
+                    t = next((x for x in c["turns"] if x.get("id") == tid), None)
+                    if not t: return 404, {"error": "no such turn"}
+                    t["done"] = ["".join(ch for ch in str(x) if ch.isprintable())[:200] for x in (data.get("done") or [])][:12]
+                    convo_save(c); return 200, {"ok": True}
+                if method == "DELETE": save_json(CONVO, {"turns": [], "memory": []}); return 200, {"ok": True}
         if parts == ["assistant", "voice"] and method in ("POST", "DELETE"):
             if role_of(dev) != "admin": return 403, {"error": "admins only"}
             if method == "POST": rc, res = helper("task-start", "voice-install", "{}"); return (202 if rc == 0 else 400), ({"task": res.get("id"), **res} if rc == 0 else res)

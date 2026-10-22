@@ -1556,3 +1556,17 @@ html.reduce.lumen body::before, html.reduce.lumen .glass::after, html.reduce.lum
 #asstfab .aorb { width: 40px; height: 40px; pointer-events: none; }
 #asstfab[hidden] { display: none; }
 @media (min-width: 900px), (orientation: landscape) and (max-height: 540px) { #asstfab { bottom: calc(22px + env(safe-area-inset-bottom)); } }
+
+/* the assistant, 0.9.2: the dotted orb, a thinking bubble, and no box inside the box */
+.norb { display: block; flex: none; }
+.ahead.small { padding-top: 0; }
+html .abox textarea:is(:focus, :focus-visible) { outline: none !important; box-shadow: none !important; }
+.athink { align-self: flex-start; display: flex; align-items: center; gap: 10px; padding: 8px 16px 8px 8px; border-radius: 22px; border-top-left-radius: 8px;
+  background: color-mix(in srgb, var(--card) 80%, var(--blue) 10%); border: 1px solid color-mix(in srgb, var(--blue) 22%, transparent); color: var(--sub); font-size: 15px; }
+.athink.work { margin: 8px var(--gutter) 0; }
+.athink i { font-style: normal; animation: athink 1.2s infinite; opacity: .2; } .athink i:nth-child(2) { animation-delay: .2s; } .athink i:nth-child(3) { animation-delay: .4s; }
+@keyframes athink { 0%, 100% { opacity: .2; } 40% { opacity: 1; } }
+.alinks { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 18px; margin: 4px var(--gutter) 0; }
+.alinks .alink { padding: 8px 4px; }
+.aturn .areply { white-space: pre-line; }
+#asstfab .norb { pointer-events: none; }

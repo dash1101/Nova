@@ -203,6 +203,12 @@ def s_tools(cfg, st):
     if not miss: ok("Drive tools are installed (pools, RAID, NAS backups, tests)")
     elif yes(f"Install the drive tools — for pools, RAID, NAS backups and tests ({len(miss)} packages)?", True, key="install_tools"):
         ok("Installed") if apt_install(miss, recommends=False) else warn("Some didn't install — Nova offers each again when a feature needs it")
+    # the assistant's brain: a small AI model on this server — off unless you ask for it here (or later, in the app)
+    try: mem = int(open("/proc/meminfo").read().split()[1]) / 1e6
+    except Exception: mem = 0
+    info("Nova assistant (Labs): ask Nova in plain words, by voice or text. Its brain is a small AI model that runs only on this server.")
+    if yes(f"Turn on the assistant and download its brain ({'2.5 GB, needs about 6 GB of memory' if mem >= 12 else '1.1 GB, needs about 3 GB of memory'})?", False, key="assistant"):
+        st["assistant"] = "smart" if mem >= 12 else "light"
     if any("048D:00005702" in open(u).read().upper() for u in glob.glob("/sys/class/hidraw/hidraw*/device/uevent")):
         print(f"  {B}Lighting:{X} found a Gigabyte RGB Fusion 2 controller — set it up with {B}sudo nova-setup-lighting{X}")
 
@@ -284,6 +290,16 @@ def s_start(cfg, st):
     sh("systemctl", "enable", "nova-api.service"); sh("systemctl", "restart", "nova-api.service")
     if sh("systemctl", "is-active", "nova-api.service")[0] != 0: sys.exit(f"  {R}Nova didn't start — see: journalctl -u nova-api -n 50{X}")
     ok("Nova is running")
+    if st.get("assistant"):
+        try:
+            sp = "/var/lib/nova-api/settings.json"
+            try: sj = json.load(open(sp))
+            except Exception: sj = {}
+            sj.setdefault("labs", {})["assistant"] = True
+            json.dump(sj, open(sp + ".tmp", "w")); shutil.chown(sp + ".tmp", "nova-api", "nova-api"); os.chmod(sp + ".tmp", 0o640); os.replace(sp + ".tmp", sp)
+            rc, out = sh("/usr/lib/nova-api/helper", "task-start", "brain-install", json.dumps({"model": st["assistant"]}))
+            ok("The assistant is on — its brain is downloading in the background (see the app's Inbox)") if rc == 0 else warn("The assistant is on, but its brain didn't start downloading — get it from the assistant page in the app")
+        except Exception as e: warn(f"Couldn't turn on the assistant ({e}) — turn it on in the app: Settings → Labs")
     try:
         import preflight, time; time.sleep(1.5)
         if not preflight.reachable(host): warn(f"Nova is running, but {host}:8495 doesn't answer — check the firewall and that {host} is this server's address")

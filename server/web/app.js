@@ -11,6 +11,7 @@ import * as SR from "./start.js";
 import * as SV from "./servers.js";
 import * as FM from "./files.js";
 import * as PT from "./parts.js";
+import { orbHtml, runOrbs } from "./orb.js";
 import * as AS from "./assistant.js";
 import * as SEC from "./sec.js";
 import * as WM from "./winmgr.js";
@@ -294,8 +295,8 @@ function drawFab(r) {
   const on = S.cache["/api/v1/labs"]?.labs?.assistant && prefs.asstButton !== false && S.overview && r !== "assistant" && !WM.EMBED && !S.target;
   if (!on) { if (b) b.hidden = true; return; }
   if (!b) { b = document.createElement("button"); b.id = "asstfab"; b.className = "press"; b.setAttribute("aria-label", "Ask Nova");
-    b.innerHTML = `<div class="aorb" aria-hidden="true"><i></i><i></i><i></i><b></b></div>`; b.onclick = () => AS.ask(""); document.body.append(b); }
-  b.hidden = false;
+    b.innerHTML = orbHtml("idle", 44); b.onclick = () => AS.ask(""); document.body.append(b); }
+  b.hidden = false; runOrbs();
 }
 let labsAsked = false;
 function render(dir = 0) {

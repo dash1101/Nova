@@ -2,12 +2,14 @@
 // The server only plans (POST /api/v1/assistant/plan); every step is an ordinary call this browser signs itself, so the
 // usual rules hold: risky steps wait for an admin phone's approval, everything is in the action log. Stop halts before the
 // next step (a task the server already started — an install, freeing space — finishes on its own).
-// It's a conversation: earlier turns (what you asked, what Nova said, what its steps did) go with each request, so
-// follow-ups work ("how much did that free?", "actually make it 6pm"). Voice: the mic records here and the server's own
+// It's one ongoing conversation, kept on the server and shared by every admin phone and browser: what you asked, what Nova
+// said and what its steps did, so follow-ups work ("how much did that free?", "actually make it 6pm"). After a few quiet
+// hours it starts afresh, but Nova keeps what was done as memory. Voice: the mic records here and the server's own
 // speech model turns it into text (nothing goes to an outside service); replies can be read out by this browser.
 import { S, $, $$, esc, get, post, del, prefs, waitTask, bytes, signedRaw } from "./core.js";
 import { I, group, sec, note, toast, choose, bar, confirm } from "./ui.js";
 import { stage as stagePartitions } from "./parts.js";
+import { orbHtml, runOrbs, setLevel } from "./orb.js";
 
 let pending = "";                                       // text handed over by Search ("Ask Nova: …") or the assistant button
 export const ask = text => { pending = text || ""; location.hash = "#/assistant"; };
@@ -19,15 +21,22 @@ const allowed = c => c && ALLOWED.some(([m, re]) => m === c.method && re.test(c.
 const ROUTES = { home: "home", status: "status", containers: "containers", store: "store", inbox: "inbox", lighting: "lighting", hardware: "hardware", backups: "backups",
   updates: "updates", settings: "settings", appearance: "appearance", security: "security", devices: "devices", files: "files", terminal: "term", dashboard: "dashboard",
   apps: "apps", freeup: "freeup", recommended: "recommended", power: "quick", "container-new": "container-new" };
-const UI = { theme: v => { prefs.theme = v; }, style: v => { prefs.style = v; }, reduce_motion: v => { prefs.reduceMotion = !!v; } };
+const LOOKS = ["liquid", "fluent", "breeze", "aero", "lumen"];
+const UI = { theme: v => { prefs.theme = v; }, style: v => { prefs.style = v; }, reduce_motion: v => { prefs.reduceMotion = !!v; },
+  accent: v => { prefs.accentLocal = /^#[0-9a-f]{6}$/i.test(v) ? v : ""; }, win_round: v => { prefs.winRound = Math.max(0, Math.min(300, +v || 100)); },
+  corner_round: v => { prefs["round_" + (LOOKS.includes(prefs.style) ? prefs.style : "default")] = Math.max(25, Math.min(200, +v || 100)); },
+  living: v => { if (v === "off") prefs.livingWall = false; else { prefs.livingWall = true; prefs.livingScene = v || "auto"; } },
+  fps: v => { prefs.devFps = !!v; }, solid: v => { prefs.reduceTransparency = !!v; }, speak: v => { prefs.asstSpeak = !!v; } };
 
-/** The orb: soft light in the accent, turning while Nova thinks (still with Reduce motion). */
-export const orb = (state = "") => `<div class="aorb ${state}" aria-hidden="true"><i></i><i></i><i></i><b></b></div>`;
+/** The orb: a sphere of dots in the accent (orb.js) — idle, think, listen or work. */
+export const orb = (state = "idle", size = 96) => orbHtml(state || "idle", size);
 
-// the conversation (kept while this tab is open): [{q, plan, results, choice, summary, done: [what happened]}]
-let turns = (() => { try { return JSON.parse(sessionStorage.getItem("nova.asst") || "[]"); } catch { return []; } })();
-const save = () => { try { sessionStorage.setItem("nova.asst", JSON.stringify(turns.slice(-12))); } catch {} };
-const history = () => turns.filter(t => t.plan).slice(-6).map(t => ({ q: t.q, reply: t.plan.reply || "", done: t.done || [] }));
+// the conversation: the server's (one for everyone, GET /api/v1/assistant/convo), plus the full plan and results of the
+// turns asked from this tab: [{id, q, plan, results, choice, summary, done: [what happened]}]
+let turns = [];
+const local = (() => { try { return JSON.parse(sessionStorage.getItem("nova.asst") || "[]"); } catch { return []; } })();
+const save = () => { try { sessionStorage.setItem("nova.asst", JSON.stringify(turns.filter(t => t.plan?.steps?.length || t.results).slice(-6))); } catch {} };
+const record = (t, done) => { if (t?.id) post("/api/v1/assistant/convo", { turn: t.id, done }).catch(() => {}); };
 
 // ── speaking: this browser's own voices ──
 const speak = t => { try { if (prefs.asstSpeak && t && "speechSynthesis" in window) { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(t); u.rate = 1.05; speechSynthesis.speak(u); } } catch {} };
@@ -79,7 +88,11 @@ export async function assistant(ctx) {
       ${group(`<div class="row click" data-act="go:labs" role="button" tabindex="0"><span class="ri">${I("science")}</span><div class="t"><b>Open Labs</b></div></div>`)}`, { title: "Assistant" });
     return;
   }
-  let busy = false, stop = false, cur = -1, err = "", listening = false, hearing = false, level = 0;
+  let showSet = false, busy = false, stop = false, cur = -1, err = "", listening = false, hearing = false, level = 0;
+  // the conversation so far, from the server (this tab's own turns keep their full plans)
+  try { const c = await get("/api/v1/assistant/convo");
+    turns = (c.turns || []).map(x => local.find(l => l.id === x.id) || { id: x.id, q: x.q, plan: { reply: x.reply, steps: [] }, results: {}, choice: {}, summary: "", done: x.done || [], past: true });
+  } catch { turns = local; }
   const now = () => turns[turns.length - 1];
   const risky = s => s.danger ? "danger" : /\/(power|store|freeup)\b|\/(stop|restart)$/.test(s.call?.path || "") ? "stepup" : "";
   const stepsOf = t => (t?.plan?.steps || []).map(s => s.kind === "ask" ? (t.choice?.[s.id] != null ? { ...s.options[t.choice[s.id]].step, id: s.id, asked: s } : s) : s);
@@ -89,16 +102,18 @@ export async function assistant(ctx) {
     if (live && i === cur) return `<span class="astate run"><span class="spinner"></span></span>`; return `<span class="astate">${i + 1}</span>`; };
   // an earlier turn, folded: what you said, what Nova said, what happened
   const pastHtml = t => `<div class="aturn"><div class="aq">${esc(t.q)}</div>${t.plan?.reply ? `<div class="areply">${esc(t.plan.reply)}</div>` : ""}
-    ${(t.done || []).length ? `<div class="adone">${t.done.map(d => `<span>${I("check")}${esc(d)}</span>`).join("")}</div>` : ""}${t.summary ? `<div class="muted asum">${esc(t.summary)}</div>` : ""}</div>`;
+    ${(t.done || []).length ? `<div class="adone">${t.done.map(d => `<span>${I(/didn't work|failed/i.test(d) ? "err" : "check")}${esc(d)}</span>`).join("")}</div>` : ""}${t.summary && !(t.done || []).includes(t.summary) ? `<div class="muted asum">${esc(t.summary)}</div>` : ""}</div>`;
   const currentHtml = t => {
     const steps = stepsOf(t), next = steps.find((s, i) => i > cur && !t.results?.[s.id]), waiting = steps.find(s => s.kind === "ask");
-    return `<div class="aturn now"><div class="aq">${esc(t.q)}</div>${t.plan?.reply ? `<div class="areply">${esc(t.plan.reply)}</div>` : ""}</div>`
+    return `<div class="aturn now"><div class="aq">${esc(t.q)}</div>${t.plan?.reply ? `<div class="areply">${esc(t.plan.reply)}</div>`
+        : !t.plan ? `<div class="athink" role="status">${orbHtml("think", 30)}<span>Thinking<i>.</i><i>.</i><i>.</i></span></div>` : ""}</div>`
       + (steps.length || (t.plan && !t.plan.reply) ? sec(`Plan · ${steps.length} step${steps.length === 1 ? "" : "s"}`) + group(steps.map((s, i) => `<div class="row astep${busy && i === cur ? " now" : ""}${t.results?.[s.id] ? " did" : ""}">${stIcon(t, s, i, busy)}
           <div class="t"><b>${esc(s.say)}</b>${s.kind === "ask" ? `<small>${esc(s.ask)}</small><div class="achips">${s.options.map((o, k) => `<button class="achip press" data-act="pick:${s.id}:${k}" title="${esc(o.sub || "")}">${esc(o.label)}${o.sub ? `<small>${esc(o.sub)}</small>` : ""}</button>`).join("")}</div>`
             : t.results?.[s.id] ? `<small class="${t.results[s.id].ok ? "" : "bad"}">${esc(t.results[s.id].msg)}</small>` : badge(s)}
             ${s.asked && !busy && !t.results?.[s.id] ? `<button class="alink" data-act="unpick:${s.id}">Change</button>` : ""}</div></div>`).join("") || `<div class="row"><div class="t muted">Nothing I can do from that.</div></div>`) : "")
-      + (t.plan?.unknown?.length ? note(`I didn't understand: ${t.plan.unknown.map(u => `“${u}”`).join(", ")}. Try saying it another way.`) : "")
+      + (t.plan?.unknown?.length ? note(`Sorry, I couldn't work out ${t.plan.unknown.map(u => `“${u}”`).join(", ")} — try saying it another way${br?.model ? "" : ", or give me a brain (below) so I understand more"}.`) : "")
       + (t.plan?.notes || []).map(n => note(n)).join("")
+      + (busy && t.plan && cur >= 0 ? `<div class="athink work" role="status">${orbHtml("work", 30)}<span>${esc(steps[cur]?.say || "Working")}<i>.</i><i>.</i><i>.</i></span></div>` : "")
       + (busy && next ? `<div class="anext">${I("history")}<span>Next: ${esc(next.say)}</span></div>` : "")
       + (steps.length ? `<div class="aacts">${busy && t.plan ? `<button class="btn ghost" data-act="stop" ${stop ? "disabled" : ""}>${stop ? "Stopping after this step…" : "Stop"}</button>`
           : t.summary ? "" : `<button class="btn ghost" data-act="skip">Not now</button><button class="btn" data-act="run" ${waiting ? "disabled" : ""}>${waiting ? "Answer the question first" : "Do it"}</button>`}</div>` : "")
@@ -106,20 +121,22 @@ export async function assistant(ctx) {
       + (t.summary ? `<p class="muted asum" style="text-align:center">${esc(t.summary)}</p>` : "");
   };
   const draw = () => {
-    const t = now(), earlier = turns.slice(0, -1).slice(-5);
-    ctx.show(`<div class="ahead">${orb(busy || hearing ? "think" : listening ? "listen" : t ? "" : "idle")}<h2>${listening ? "Listening…" : hearing ? "Hearing you…" : busy ? (cur >= 0 ? "On it…" : "Thinking…") : t ? "" : "What can I do?"}</h2>
-        ${t ? "" : `<p class="muted">Say it or type it — several things at once is fine, or ask about your server. Follow-ups work too.</p>`}</div>
-      ${earlier.map(pastHtml).join("")}${t ? currentHtml(t) : ""}
+    const t = now(), earlier = turns.slice(0, -1).slice(-12);
+    ctx.show(`<div class="ahead${t ? " small" : ""}">${orb(listening ? "listen" : hearing || (busy && cur < 0) ? "think" : busy ? "work" : "idle", t ? 56 : 96)}${t ? "" : `<h2>Hey! What can I do?</h2>
+        <p class="muted">Say it or type it — several things at once is fine. Ask about your server, or just chat${br?.model ? "" : " (with my brain, below)"}.</p>`}
+        ${listening || hearing ? `<h2>${listening ? "Listening…" : "Hearing you…"}</h2>` : ""}</div>
+      ${earlier.map(pastHtml).join("")}${t ? (t.past ? pastHtml(t).replace('class="aturn"', 'class="aturn now"') : currentHtml(t)) : ""}
       <form class="abox" id="aform" autocomplete="off"><textarea id="aq" rows="2" maxlength="500" placeholder="${t ? "Reply, or ask something else…" : "e.g. Set the lights to fire, free up some space and restart Jellyfin"}" aria-label="Ask Nova">${esc(text)}</textarea>
         <button class="abtn mic press${listening ? " on" : ""}" type="button" data-act="mic" aria-label="${listening ? "Stop listening" : "Speak"}" style="--lv:${level.toFixed(2)}" ${busy || hearing ? "disabled" : ""}>${I(listening ? "stop" : "mic")}</button>
         <button class="abtn press" id="ago" type="submit" aria-label="Send" ${busy ? "disabled" : ""}>${I("back")}</button></form>
       ${err ? `<p class="note" style="color:var(--red)">${esc(err)}</p>` : ""}
-      ${turns.length ? `<div class="links glass" style="margin-top:6px"><button data-act="newchat">New conversation</button><button data-act="speak">${prefs.asstSpeak ? "Don't read replies aloud" : "Read replies aloud"}</button></div>` : ""}
-      ${!turns.length ? note("Runs on your server — nothing is sent anywhere. Risky steps still need approval on your phone, and everything goes in the action log.") + brainHtml() : ""}`, { title: "Assistant" });
+      ${turns.length ? `<div class="alinks"><button class="alink" data-act="speak">${prefs.asstSpeak ? "Stop reading replies aloud" : "Read replies aloud"}</button><button class="alink" data-act="settings">${showSet ? "Hide settings" : "Assistant settings"}</button></div>` : ""}
+      ${!turns.length ? note("Runs on your server — nothing is sent anywhere. Risky steps still need approval on your phone, and everything goes in the action log.") : ""}${!turns.length || showSet ? brainHtml() : ""}`, { title: "Assistant" });
     const q = $("#aq"); if (!listening) q?.focus({ preventScroll: true });
     q && (q.onkeydown = e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); $("#aform").requestSubmit(); } });
     $("#aform").onsubmit = e => { e.preventDefault(); if (!busy) planIt($("#aq").value); };
-    if (turns.length > 1) document.querySelector(".aturn.now")?.scrollIntoView({ block: "start", behavior: "smooth" });
+    if (turns.length) (document.querySelector(".aturn.now") || document.querySelector(".aturn:last-of-type"))?.scrollIntoView({ block: "start", behavior: "smooth" });
+    runOrbs();
   };
   // its brain and its voice: models on the server, downloaded once
   let br = S.cache["/api/v1/assistant/brain"] || null, brTask = null;
@@ -135,15 +152,14 @@ export async function assistant(ctx) {
     const voice = sec("Voice") + group(v.installed
         ? `<div class="row"><span class="ri">${I("mic")}</span><div class="t"><b>Voice · ${v.running ? "ready" : "stopped"}</b><small>Speech to text on this server (Whisper). Tap the mic to talk.</small></div></div><div class="row click" data-act="voicerm" role="button" tabindex="0"><div class="t"><b style="color:var(--red)">Remove voice</b><small>Frees 0.2 GB</small></div></div>`
         : `<div class="row click" data-act="voice" role="button" tabindex="0"><span class="ri">${I("mic")}</span><div class="t"><b>Talk to Nova</b><small>Download voice (0.2 GB): what you say is turned into text on your server, never by an outside service.</small></div></div>`);
-    return brain + voice + group(`<div class="row click" data-act="fab" role="switch" tabindex="0" aria-checked="${prefs.asstButton !== false}"><span class="ri">${I("star")}</span><div class="t"><b>Assistant button</b><small>The orb in the corner of every page, to ask from anywhere</small></div><span class="sw${prefs.asstButton !== false ? " on" : ""}"></span></div>`);
+    return brain + voice + group(`<div class="row click" data-act="forget" role="button" tabindex="0"><span class="ri">${I("history")}</span><div class="t"><b>Forget the conversation</b><small>Nova keeps one conversation for all your devices; after a few quiet hours it starts afresh but remembers what it did. This clears both.</small></div></div><div class="row click" data-act="fab" role="switch" tabindex="0" aria-checked="${prefs.asstButton !== false}"><span class="ri">${I("star")}</span><div class="t"><b>Assistant button</b><small>The orb in the corner of every page, to ask from anywhere</small></div><span class="sw${prefs.asstButton !== false ? " on" : ""}"></span></div>`);
   };
   const loadBrain = async () => { try { br = await get("/api/v1/assistant/brain"); } catch { br = null; } if (ctx.alive() && !busy && !listening) draw(); };
   const planIt = async t => {
     t = t.trim(); if (!t) return;
     text = ""; err = ""; cur = -1; busy = true;
-    const hist = history();
-    turns.push({ q: t, plan: null, results: {}, choice: {}, summary: "", done: [] }); save(); draw();
-    try { now().plan = await post("/api/v1/assistant/plan", { text: t, history: hist }); }
+    turns.push({ q: t, plan: null, results: {}, choice: {}, summary: "", done: [] }); draw();
+    try { const p = await post("/api/v1/assistant/plan", { text: t }); now().plan = p; now().id = p.turn; }
     catch (e) { err = e.message; turns.pop(); }
     busy = false; save(); if (ctx.alive()) draw();
     const p = now()?.plan; if (p?.reply) speak(p.reply);
@@ -181,11 +197,13 @@ export async function assistant(ctx) {
     voicerm: async () => { if (!(await confirm("Remove voice?", "The speech model is deleted from the server. You can download it again any time.", "Remove"))) return;
       try { await del("/api/v1/assistant/voice"); toast("Removed"); } catch (e) { toast(e.message); } loadBrain(); },
     fab: () => { prefs.asstButton = prefs.asstButton === false; ctx.applyTheme(); draw(); },
+    settings: () => { showSet = !showSet; draw(); },
     speak: () => { prefs.asstSpeak = !prefs.asstSpeak; if (!prefs.asstSpeak) try { speechSynthesis.cancel(); } catch {} draw(); },
-    newchat: () => { turns = []; save(); text = ""; draw(); },
+    forget: async () => { if (!(await confirm("Forget the conversation?", "Nova forgets what you've talked about and what it remembers doing. Nothing on the server changes.", "Forget"))) return;
+      try { await del("/api/v1/assistant/convo"); turns = []; save(); toast("Forgotten"); } catch (e) { toast(e.message); } draw(); },
     pick: v => { const [id, k] = v.split(":"); now().choice[id] = +k; save(); draw(); },
     unpick: id => { delete now().choice[id]; save(); draw(); },
-    skip: () => { now().summary = "Not done."; save(); draw(); },
+    skip: () => { now().summary = "Okay, I'll leave it."; now().done = ["You said not now — nothing was changed"]; record(now(), now().done); save(); draw(); },
     stop: () => { stop = true; draw(); },
     mic: async () => {
       if (listening) { rec?.stop(); return; }
@@ -194,7 +212,7 @@ export async function assistant(ctx) {
       try {
         listening = true; draw();
         let last = 0;
-        const w = await listen(l => { level = l; const b = $(".abtn.mic"); if (b && performance.now() - last > 60) { last = performance.now(); b.style.setProperty("--lv", l.toFixed(2)); } });
+        const w = await listen(l => { level = l; setLevel(l); const b = $(".abtn.mic"); if (b && performance.now() - last > 60) { last = performance.now(); b.style.setProperty("--lv", l.toFixed(2)); } });
         listening = false; level = 0;
         if (!w) { draw(); toast("I didn't hear anything"); return; }
         hearing = true; draw();
@@ -220,6 +238,7 @@ export async function assistant(ctx) {
       const got = [freed ? `${bytes(freed)} of storage` : "", ram ? `${ram} MB of RAM` : ""].filter(Boolean).join(" and "), extra = got ? "freed " + got : "";
       const left = steps.length - Object.keys(t.results).length;
       t.summary = stop && left ? `Stopped — ${okN} done, ${left} not started.` : bad ? `${okN} done, ${bad} didn't work — see above.` : `All done!${extra ? ` I ${extra}.` : ""}`;
+      record(t, [...t.done, t.summary]);
       save(); if (ctx.alive()) draw(); else toast(t.summary);
       speak(t.summary);
       const go = later[later.length - 1];

@@ -217,7 +217,8 @@ def ready():
 
 
 # ── asking it (from nova-api) ─────────────────────────────────────────────────────────
-SYS = """You are Nova, the assistant built into a home-server app. Turn the user's request into short commands Nova knows, and write one friendly sentence back in "reply".
+SYS = """You are Nova, the friendly assistant built into a home-server app — warm, relaxed and a little playful, like a helpful friend who knows computers. You can chat, answer general questions, and run the server.
+Answer in JSON: "commands" (Nova commands to run, often none) and "reply" (what you say back).
 Commands (use these shapes exactly; fill in the CAPS parts with real values, never the CAPS words themselves):
 - set the lights to EFFECT   (EFFECT: static pulse blink cycle wave random gradient comet scanner twinkle fire breathe)
 - make the lights COLOR   (COLOR: red orange yellow green blue purple pink white warm white cyan teal magenta)
@@ -231,13 +232,21 @@ Commands (use these shapes exactly; fill in the CAPS parts with real values, nev
 - check for updates
 - schedule a reboot WHEN | schedule a shutdown WHEN   (WHEN like: at 5pm tomorrow, on friday at noon, in 2 hours)
 - reboot the server
-- switch to dark mode | switch to light mode | apply the STYLE theme   (STYLE: default material glass mica breeze aero)
+- switch to dark mode | switch to light mode | apply the STYLE theme   (STYLE: default material glass mica breeze aero lumen)
+- set the accent color to COLOR | reset the accent color
+- set the living wallpaper to SCENE | turn off the living wallpaper   (SCENE: nebula harmony bloom flow liquid shapes aurora)
+- set window roundness to N% | set corner roundness to N%
+- show the frame rate meter | hide the frame rate meter
+- turn on reduce transparency | turn off reduce transparency
 - open SCREEN   (SCREEN: home status containers store inbox lighting storage backups updates settings appearance security devices files terminal)
-If the user only asks a question, give no commands and answer it in "reply" from the server facts and the conversation (numbers included), in one or two sentences.
-When there are commands, "reply" says what you're about to do ("Freeing up memory now.") — never claim something is done or give results you don't have yet. Numbers under "What happened" in the conversation are real; use them when asked.
-Never invent containers or apps. If nothing fits, give no commands and say what you can do."""
-SCHEMA = {"type": "object", "properties": {"commands": {"type": "array", "items": {"type": "string", "maxLength": 120}, "maxItems": 8},
-                                           "reply": {"type": "string", "maxLength": 400}}, "required": ["commands", "reply"]}
+How to answer:
+- Small talk ("yo, what's up?", "thanks", "how are you?"): be friendly and natural, no commands. You can mention how the server is doing.
+- General questions (facts, explanations, advice, ideas, writing, math): answer them well from what you know, no commands. Be concise — a few sentences — unless asked for more.
+- Questions about the server: answer from the server facts, the conversation and what you remember (numbers included).
+- Requests: give the commands. "reply" then says what you're about to do ("Freeing up memory now!") — never claim it's done or give results you don't have yet. Numbers under "What happened" are real; use them when asked.
+- Never invent containers or apps, and never make up server numbers. If you can't do something on the server, say so kindly and suggest what you can do."""
+SCHEMA = {"type": "object", "properties": {"commands": {"type": "array", "items": {"type": "string", "maxLength": 120}, "maxItems": 10},
+                                           "reply": {"type": "string", "maxLength": 1500}}, "required": ["commands", "reply"]}
 _EX = None
 def examples():
     """The worked examples it learns from (assistant_examples.json): the closest ones go with each request."""
@@ -256,29 +265,32 @@ def pick(text, k=8):
     if q: out.append(q)
     return list(reversed(out))
 
-def convo(history):
-    """The conversation so far, as the model reads it: what you asked, what Nova said, and what its steps did."""
+def convo(history, memory=None):
+    """The conversation so far, as the model reads it: what it remembers from before, then what you asked, what Nova said,
+    and what its steps did."""
+    mem = "What you remember from earlier conversations (things that were done):\n" + "\n".join(f"- {m}" for m in (memory or [])[-12:]) if memory else ""
     out = []
     for h in (history or [])[-6:]:
         if not isinstance(h, dict): continue
         q = str(h.get("q", ""))[:200]; r = str(h.get("reply", ""))[:240]; d = [str(x)[:140] for x in (h.get("done") or [])][:8]
         out.append(f"- You asked: {q}" + (f"\n  Nova said: {r}" if r else "") + (f"\n  What happened: {'; '.join(d)}" if d else ""))
-    return ("Earlier in this conversation (use it for follow-ups like “how much did that free?” or “actually make it 6pm”):\n" + "\n".join(out)) if out else ""
+    now = ("This conversation so far (use it for follow-ups like “how much did that free?” or “actually make it 6pm”):\n" + "\n".join(out)) if out else ""
+    return "\n\n".join(x for x in (mem, now) if x)
 
-def ask(text, facts, history=None, timeout=30):
+def ask(text, facts, history=None, memory=None, timeout=45):
     """{"commands": [...], "reply": "..."} from the model, or None if it isn't installed or running."""
     # the fixed instructions first (the model keeps them processed between requests), then the closest examples, and the
     # server's facts last with the request — they change every time
     msgs = [{"role": "system", "content": SYS}]
     for u, c, r in pick(text): msgs += [{"role": "user", "content": u}, {"role": "assistant", "content": json.dumps({"commands": c, "reply": r})}]
-    c = convo(history)
-    msgs.append({"role": "user", "content": facts + ("\n\n" + c if c else "") + "\n\nRequest: " + text[:500]})
-    body = {"messages": msgs, "temperature": 0.1, "max_tokens": 260, "cache_prompt": True, "response_format": {"type": "json_schema", "json_schema": {"schema": SCHEMA}}}
+    c = convo(history, memory)
+    msgs.append({"role": "user", "content": time.strftime("It's %A, %B %-d %Y, %H:%M. ") + facts + ("\n\n" + c if c else "") + "\n\nThe user says: " + text[:500]})
+    body = {"messages": msgs, "temperature": 0.3, "max_tokens": 520, "cache_prompt": True, "response_format": {"type": "json_schema", "json_schema": {"schema": SCHEMA}}}
     try:
         req = urllib.request.Request(f"http://127.0.0.1:{PORT}/v1/chat/completions", json.dumps(body).encode(), {"Content-Type": "application/json"})
         with urllib.request.urlopen(req, timeout=timeout) as r: j = json.loads(r.read(200_000))
         out = json.loads(j["choices"][0]["message"]["content"])
         cmds = [str(c)[:160] for c in (out.get("commands") or []) if isinstance(c, str)][:8]
-        return {"commands": cmds, "reply": "".join(ch for ch in str(out.get("reply", "")) if ch.isprintable())[:400]}
+        return {"commands": cmds, "reply": "".join(ch for ch in str(out.get("reply", "")) if ch.isprintable() or ch == "\n")[:1500]}
     except Exception:
         return None

@@ -116,5 +116,24 @@ check("brain: a question gets an answer and no steps", p["steps"] == [] and p["r
 p = A.plan("bake me a cake", {**ENV, "brain": lambda t: None}, NOW)
 check("brain: not running → the rules' plan", p["unknown"] == ["bake me a cake"] and "reply" not in p)
 
+# Nova's look, more of it (the request that used to half-fail)
+p = P("set the live wallpaper to aero, set the theme to glass, set the accent color to orange, set window radius to 20%, enable the frame rate viewer from developer options, set the led theme to fire, and check for updates")
+check("look: nothing left over", p["unknown"] == [], p["unknown"])
+got = [(x.get("pref"), x.get("value")) for x in p["steps"] if x["kind"] == "ui"]
+check("look: living wallpaper, style, accent, window roundness, fps meter", got == [("living", "aero"), ("style", "liquid"), ("accent", "#ff7a00"), ("win_round", 20), ("fps", True)], got)
+check("look: the lights still go to the lights", any((x.get("call") or {}).get("body") == {"on": True, "effect": "fire", "rainbow": True} for x in p["steps"]), p["steps"])
+check("look: lumen", P("apply the lumen theme")["steps"][0]["value"] == "lumen")
+check("look: living wallpaper off", P("turn off the living wallpaper")["steps"][0]["value"] == "off")
+check("look: corner roundness clamped", P("set corner roundness to 900%")["steps"][0]["value"] == 200)
+check("look: the lights' color isn't the accent", P("make the lights orange")["steps"][0]["kind"] == "call")
+# small talk without the brain: a friendly answer, not "I didn't understand"
+for t in ("Yo, whats up?", "hey nova", "thanks!", "how are you?"):
+    q_ = P(t); check(f"chat: “{t}” gets a reply", q_["steps"] == [] and q_["unknown"] == [] and q_.get("reply"), q_)
+# the brain fills in what the rules missed, and the rules' steps stay
+p = A.plan("turn off the lights and make it feel like a police car", {**ENV, "brain": lambda t: {"commands": ["set the lights to pulse", "make the lights blue"], "reply": "Police lights!"}}, NOW)
+check("brain: adds to the rules' steps", len(p["steps"]) == 3 and p["unknown"] == [], p)
+p = A.plan("yo whats up", {**ENV, "brain": lambda t: {"commands": [], "reply": "Not much! Your server's chilling."}}, NOW)
+check("brain: small talk is the brain's", p["reply"].startswith("Not much") and p["unknown"] == [], p)
+
 print(f"\n{'all passed' if not fails else f'{fails} failed'}")
 sys.exit(1 if fails else 0)

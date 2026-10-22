@@ -112,7 +112,12 @@ EFFECT_WORDS = {"solid": "static", "steady": "static", "flame": "fire", "flames"
 COLORS = {"red": "#ff2a1a", "orange": "#ff7a00", "yellow": "#ffd000", "green": "#22d36a", "blue": "#2f7dff", "purple": "#8a3cff", "violet": "#8a3cff",
           "pink": "#ff3c9a", "white": "#ffffff", "warm white": "#ffd9a0", "cyan": "#00d8e8", "teal": "#00c7be", "magenta": "#ff2bd6"}
 STYLES = {"default": "default", "material": "material", "material you": "material", "glass": "liquid", "liquid glass": "liquid", "mica": "fluent",
-          "fluent": "fluent", "breeze": "breeze", "aero": "aero", "windows 7": "aero"}
+          "fluent": "fluent", "breeze": "breeze", "aero": "aero", "windows 7": "aero", "lumen": "lumen"}
+STYLE_NAMES = {"default": "Default", "material": "Material You", "liquid": "Glass", "fluent": "Mica", "breeze": "Breeze", "aero": "Aero", "lumen": "Lumen"}
+# the living wallpaper's scenes (named after the look they come from, or by their own names)
+SCENES = {"nebula": "default", "default": "default", "harmony": "aero", "aero": "aero", "bloom": "fluent", "mica": "fluent", "fluent": "fluent",
+          "flow": "breeze", "breeze": "breeze", "liquid": "liquid", "glass": "liquid", "shapes": "material", "material": "material", "aurora": "lumen", "lumen": "lumen"}
+SCENE_NAMES = {"default": "Nebula", "aero": "Harmony (Aero)", "fluent": "Bloom (Mica)", "breeze": "Flow (Breeze)", "liquid": "Liquid (Glass)", "material": "Shapes (Material)", "lumen": "Aurora (Lumen)"}
 SCREENS = {"home": "home", "status": "status", "containers": "containers", "store": "store", "app store": "store", "inbox": "inbox", "alerts": "inbox",
            "lighting": "lighting", "lights": "lighting", "storage": "hardware", "drives": "hardware", "backups": "backups", "updates": "updates",
            "settings": "settings", "appearance": "appearance", "security": "security", "devices": "devices", "files": "files", "terminal": "terminal",
@@ -122,6 +127,13 @@ FS = {"ntfs": "ntfs", "ext4": "ext4", "exfat": "exfat", "xfs": "xfs", "btrfs": "
 
 def norm(s): return re.sub(r"[^a-z0-9]+", "", s.lower())
 FOLLOW = re.compile(r"^\s*(?:actually|instead|no\b|nope|also|and|then|change|make it|do (?:that|it)|undo|again|same|what about|how (?:much|many|long)|did (?:it|that|you)|that|it|those|them)\b", re.I)
+# small talk the rules can answer on their own (the brain, when installed, answers these itself — more naturally)
+CHAT = [(re.compile(r"^\W*(?:yo|hi|hey|hello|hiya|howdy|sup|good (?:morning|afternoon|evening))\b[\s,!.]*(?:nova)?\W*$|^\W*(?:yo|hey|hi)?\W*(?:what'?s|whats|wassup|what is) up\W*$", re.I),
+         "Hey! 👋 All good here. Ask me to do something on your server — like “free up some space” or “set the lights to fire”."),
+        (re.compile(r"^\W*how(?: are|'?re| r) (?:you|u)(?: doing)?(?: today)?\W*$", re.I), "Doing great, thanks! What can I do for you?"),
+        (re.compile(r"^\W*(?:thanks|thank you|thx|ty|cheers|nice|great|awesome|cool|perfect)\b(?: (?:a lot|so much|nova))?\W*$", re.I), "Anytime! 😊"),
+        (re.compile(r"^\W*(?:who are you|what are you)\W*$", re.I), "I'm Nova, the assistant on your server. I can set your lights, free up space, install apps, restart containers, run backups, schedule restarts and change how Nova looks."),
+        (re.compile(r"^\W*(?:what can you do|help|what do you do)\W*$", re.I), "I can set your lights, free up space and memory, install apps, restart containers, run backups, check for updates, schedule restarts and change Nova's look — several at once is fine. Download my brain (below) and I can chat and answer questions too.")]
 QUESTION = re.compile(r"\?\s*$|^\s*(?:what|why|how|is|are|does|do|when|where|which|who|should|any)\b", re.I)
 
 
@@ -145,6 +157,9 @@ class Planner:
         return self._drives
 
     def run(self, text):
+        if not self.env.get("brain"):
+            hit = next((r for rx, r in CHAT if rx.search(text)), None)
+            if hit: return {"steps": [], "unknown": [], "notes": [], "reply": hit, "chat": True, "text": text[:MAX_TEXT]}
         p = self.read(clauses(text))
         # the brain (brain.py), when it's installed: for anything the rules didn't get, and for questions. It answers in
         # Nova's own commands, which the rules read again — so it can't add an action they don't know.
@@ -153,10 +168,17 @@ class Planner:
             b = self.env["brain"](text)
             if b is not None:
                 q = self.read(b["commands"], from_brain=True)
-                # a question or a follow-up: the brain's reading wins (the rules would act on "how much RAM did we free?")
-                if asked or follow or len(q["steps"]) >= len(p["steps"]) or not p["steps"]:
-                    q["unknown"] = [] if not b["commands"] or q["steps"] else p["unknown"]
+                if not p["steps"] or ((asked or follow) and not p["unknown"]):
+                    # nothing the rules could do, or a question / follow-up: the brain's reading wins (the rules would act on
+                    # "how much RAM did we free?")
+                    q["unknown"] = [] if b["reply"] or q["steps"] else p["unknown"]
                     p = q
+                else:
+                    # the rules got some of it: keep their steps, add what the brain found for the rest
+                    have = {s_["say"] for s_ in p["steps"]}
+                    p["steps"] += [s_ for s_ in q["steps"] if s_["say"] not in have]
+                    p["notes"] += [n for n in q["notes"] if n not in p["notes"]]
+                    if q["steps"]: p["unknown"] = []
                 p["reply"] = b["reply"]; p["brain"] = True
         for i, s in enumerate(p["steps"]): s["id"] = f"s{i + 1}"
         p["text"] = text[:MAX_TEXT]
@@ -359,13 +381,37 @@ class Planner:
 
     # ── Nova's own look (this device only: the app or browser sets it) ──
     def ui(self, s):
+        U = lambda say, pref, value, done: ("ui", [{"kind": "ui", "say": say, "pref": pref, "value": value, "done": done}])
+        off = bool(re.search(r"\b(?:off|disable|stop|hide|no)\b", s))
+        # the living (animated) wallpaper: on, off, or a scene
+        if re.search(r"\b(?:live|living|animated|moving)\s+(?:wall ?paper|background|scene)\b", s):
+            if off and not re.search(r"\bto\b", s): return U("Turn off the living wallpaper", "living", "off", "Living wallpaper off")
+            sc = next((v for k, v in sorted(SCENES.items(), key=lambda x: -len(x[0])) if re.search(rf"\b{k}\b", s)), None)
+            return U(f"Set the living wallpaper to {SCENE_NAMES[sc]}" if sc else "Turn on the living wallpaper", "living", sc or "auto", "Living wallpaper set")
+        # the accent color (this device's own)
+        if re.search(r"\b(?:accent|highlight|main) colou?r\b|\baccent\b", s) and not re.search(LIGHT_WORDS, s):
+            if re.search(r"\b(?:reset|default|server'?s?)\b", s): return U("Use the server's accent color", "accent", "", "Accent color reset")
+            hx = re.search(r"#[0-9a-f]{6}\b", s)
+            col = hx.group(0) if hx else next((v for k, v in sorted(COLORS.items(), key=lambda x: -len(x[0])) if re.search(rf"\b{k}\b", s)), None)
+            if col: return U(f"Make the accent color {next((k for k, v in COLORS.items() if v == col), col)}", "accent", col, "Accent color changed")
+        # roundness: windows (and dialogs), or the look's corners
+        m = re.search(r"\b(window|dialog|popup|corner|card)s?\s*(?:radius|roundness|rounding|corners?)?\b.*?\b(\d{1,3})\s*%", s) or re.search(r"\b(\d{1,3})\s*%.*\b(window|dialog|corner)s?\b", s)
+        if m and re.search(r"\b(?:radius|round|roundness|rounding|corners?)\b", s):
+            g = m.groups(); kind, n = (g[0], int(g[1])) if g[0].isalpha() else (g[1], int(g[0]))
+            if kind in ("window", "dialog", "popup"): return U(f"Set window roundness to {max(0, min(300, n))}%", "win_round", max(0, min(300, n)), "Window roundness set")
+            return U(f"Set corner roundness to {max(25, min(200, n))}%", "corner_round", max(25, min(200, n)), "Corner roundness set")
+        # developer options: the frame rate meter
+        if re.search(r"\b(?:frame ?rate|fps)\b", s) and re.search(r"\b(?:show|enable|turn on|display|viewer|meter|counter|overlay|hide|disable|turn off|off)\b", s):
+            return U("Hide the frame rate meter" if off else "Show the frame rate meter (Developer options)", "fps", not off, "Frame rate meter " + ("off" if off else "on"))
+        if re.search(r"\breduce transparency\b|\bsolid (?:surfaces|look)\b", s): return U("Turn " + ("off" if off else "on") + " Reduce transparency", "solid", not off, "Reduce transparency set")
+        if re.search(r"\b(?:read|speak|say)\b.*\b(?:replies|answers|aloud|out loud)\b", s): return U(("Stop reading" if off else "Read") + " my replies aloud", "speak", not off, "Done")
         if re.search(r"\bdark (?:mode|theme)\b", s) and not re.search(LIGHT_WORDS, s): return ("ui", [{"kind": "ui", "say": "Switch Nova to dark", "pref": "theme", "value": "dark", "done": "Dark mode on"}])
         if re.search(r"\blight (?:mode|theme)\b", s) and not re.search(r"\b(?:lights|leds?|rgb|fans?)\b", s) and not any(re.search(rf"\b{e}\b", s) for e in EFFECTS):
             return ("ui", [{"kind": "ui", "say": "Switch Nova to light", "pref": "theme", "value": "light", "done": "Light mode on"}])
         if re.search(r"\breduce motion\b", s): return ("ui", [{"kind": "ui", "say": "Turn on Reduce motion", "pref": "reduce_motion", "value": not re.search(r"\b(?:off|disable)\b", s), "done": "Reduce motion set"}])
         if re.search(r"\b(?:theme|look|style)\b", s) and not re.search(LIGHT_WORDS, s):
             st = next((v for k, v in sorted(STYLES.items(), key=lambda x: -len(x[0])) if re.search(rf"\b{k}\b", s)), None)
-            if st: return ("ui", [{"kind": "ui", "say": f"Switch Nova's look to {[k for k, v in STYLES.items() if v == st][0].title()}", "pref": "style", "value": st, "done": "Look changed"}])
+            if st: return ("ui", [{"kind": "ui", "say": f"Switch Nova's look to {STYLE_NAMES[st]}", "pref": "style", "value": st, "done": "Look changed"}])
         return None
 
     def navigate(self, s):

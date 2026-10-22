@@ -184,14 +184,15 @@ const STEPS = [
   () => `<h2>Notifications and tools</h2><p class="lead">Alerts always show in the Nova app. The rest is optional.</p>
     <div class="card">${field("discord_webhook", D.discord ? "Discord webhook (leave empty to keep the current one)" : "Discord webhook (optional)", "A channel's settings → Integrations → Webhooks → Copy Webhook URL", "", true)}</div>
     <div class="card">${D.docker ? `<p class="hint ok">✓ Docker is installed (containers and the app store)</p>` : tog("install_docker", "Install Docker", "For containers and Nova's app store.", true)}
-    ${D.missing_tools.length ? tog("install_tools", "Install the drive tools", "Pools, RAID, NAS backups and drive tests (" + D.missing_tools.length + " packages). Skipping is fine — Nova offers each when it's needed.", true) : `<p class="hint ok">✓ Drive tools are installed</p>`}</div>`,
+    ${D.missing_tools.length ? tog("install_tools", "Install the drive tools", "Pools, RAID, NAS backups and drive tests (" + D.missing_tools.length + " packages). Skipping is fine — Nova offers each when it's needed.", true) : `<p class="hint ok">✓ Drive tools are installed</p>`}
+    ${tog("assistant", "Nova assistant (Labs)", "Ask Nova in plain words, by voice or text. Downloads its brain — a small AI model that runs only on this server (1–2.5 GB). Off unless you turn it on; you can add it later in the app.", false)}</div>`,
   () => `<h2>This server</h2><p class="lead">Small details. The suggestions are fine for most homes.</p>
     <div class="card">${field("ssh_user", "Account the app's Terminal signs in as", "Your normal account on this server", D.ssh_user)}
     ${field("location", "Location for sunrise and sunset (optional)", D.near ? "Empty: near " + esc(D.near) + ", from the time zone. Or latitude, longitude like 40.71, -74.01" : "Latitude, longitude, like 40.71, -74.01", "")}</div>
     ${D.firewall ? `<div class="card">${tog("firewall", "Let your home network through the firewall", "Opens Nova's ports (8495 and 8496) to " + esc(A.lan_subnet || D.lan_subnet) + " only.", true)}</div>` : ""}`,
   () => `<h2>Ready</h2><p class="lead">Here's what happens next:</p><div class="card"><dl class="kv">
     <dt>Nova at</dt><dd>https://${esc(A.lan_host)}:8495</dd><dt>Home network</dt><dd>${esc(A.lan_subnet)}</dd>
-    <dt>Install</dt><dd>${["install_docker:Docker", "install_tools:drive tools", "install_tailscale:Tailscale", "install_cloudflared:cloudflared"].filter(x => A[x.split(":")[0]]).map(x => x.split(":")[1]).join(", ") || "nothing"}</dd>
+    <dt>Install</dt><dd>${["install_docker:Docker", "install_tools:drive tools", "assistant:the assistant's brain", "install_tailscale:Tailscale", "install_cloudflared:cloudflared"].filter(x => A[x.split(":")[0]]).map(x => x.split(":")[1]).join(", ") || "nothing"}</dd>
     <dt>Discord</dt><dd>${A.discord_webhook ? "set" : D.discord ? "kept" : "off"}</dd><dt>Terminal account</dt><dd>${esc(A.ssh_user || "—")}</dd></dl></div>
     <p class="hint">Installing can take a few minutes. Keep this page open.</p>`,
 ];

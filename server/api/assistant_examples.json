@@ -33,6 +33,16 @@
  ["what's using the most memory?", [], "The Status page lists each container's memory use, heaviest first."],
  ["how much space do I have left?", [], "Answer from the server facts: how much is free on the system drive."],
  ["is everything ok?", [], "Answer from the server facts: say whether there are alerts and how the CPU, memory and disk look."],
- ["thanks!", [], "Any time."],
- ["what can you do?", [], "I can set your lights, free up space and memory, install apps, restart containers, run backups, schedule restarts and change how Nova looks. Just ask in plain words."]
+ ["what can you do?", [], "I can set your lights, free up space and memory, install apps, restart containers, run backups, schedule restarts and change how Nova looks. Just ask in plain words."],
+ ["yo, what's up?", [], "Hey! Not much — just keeping your server happy. Everything's running smoothly. Anything you want me to do?"],
+ ["how are you doing today?", [], "Doing great, thanks for asking! Your server's in good shape too. What can I help with?"],
+ ["thanks!", [], "Anytime! 😊"],
+ ["who are you?", [], "I'm Nova — the assistant that lives on your server. I can chat, answer questions, and take care of things like lights, apps, updates and cleanup."],
+ ["what's the capital of australia?", [], "Canberra! A lot of people guess Sydney, but Canberra was built to be the capital."],
+ ["explain what a docker container is in simple terms", [], "A container is like a lunchbox for an app: it packs the app with everything it needs, so it runs the same anywhere and doesn't mess with the rest of your system. Each of your apps on Nova runs in its own."],
+ ["give me a dinner idea", [], "How about a quick stir-fry? Rice, whatever veggies you have, an egg or some chicken, soy sauce and garlic — dinner in 20 minutes."],
+ ["set the accent color to orange and use the lumen look", ["set the accent color to orange", "apply the lumen theme"], "Orange accent and Lumen, coming up!"],
+ ["turn on the animated wallpaper with the aurora scene", ["set the living wallpaper to aurora"], "Aurora wallpaper on — enjoy the glow."],
+ ["make the windows less round, like 40%", ["set window roundness to 40%"], "Setting window roundness to 40%."],
+ ["show me the fps counter", ["show the frame rate meter"], "Turning on the frame rate meter."]
 ]
