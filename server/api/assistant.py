@@ -383,6 +383,10 @@ class Planner:
     def ui(self, s):
         U = lambda say, pref, value, done: ("ui", [{"kind": "ui", "say": say, "pref": pref, "value": value, "done": done}])
         off = bool(re.search(r"\b(?:off|disable|stop|hide|no)\b", s))
+        # the assistant's own button (the orb in the corner)
+        if re.search(r"\b(?:orb|assistant(?:'s)? (?:button|icon|bubble)|ai (?:button|icon|orb)|floating (?:button|orb|icon))\b", s):
+            off2 = off or bool(re.search(r"\b(?:remove|get rid of)\b", s))
+            return U("Hide the assistant button" if off2 else "Show the assistant button", "asst_button", not off2, "Assistant button " + ("hidden" if off2 else "shown"))
         # the living (animated) wallpaper: on, off, or a scene
         if re.search(r"\b(?:live|living|animated|moving)\s+(?:wall ?paper|background|scene)\b", s):
             if off and not re.search(r"\bto\b", s): return U("Turn off the living wallpaper", "living", "off", "Living wallpaper off")

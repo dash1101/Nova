@@ -5,6 +5,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -57,22 +58,46 @@ object Assistant {
     fun needsStepUp(path: String) = Regex("^/api/v1/(power/|store/|freeup$|containers/.+/(stop|restart)$)").containsMatchIn(path)
 }
 
-/** The orb: soft lights in the accent turning round each other and a bright core — faster while Nova thinks. */
-@Composable fun AssistantOrb(thinking: Boolean, size: androidx.compose.ui.unit.Dp = 96.dp) {
-    val acc = N.blue; val still = reduceMotion()
-    val tr = rememberInfiniteTransition(label = "orb")
-    val spin by tr.animateFloat(0f, 360f, infiniteRepeatable(tween(if (thinking) 2400 else 9000, easing = LinearEasing)), label = "spin")
-    val br by tr.animateFloat(.9f, 1.15f, infiniteRepeatable(tween(if (thinking) 550 else 1600), RepeatMode.Reverse), label = "breathe")
+/** The orb: a sphere of dots in the accent color turning in 3D over a dark sphere (near dots bigger and brighter), the same
+ *  as Nova web's. Its state shows what Nova is doing: idle (slow, breathing), think (a bright band scans over it while it
+ *  turns faster), listen (a wave rolls through it with your voice), work (a band sweeps round it while steps run). */
+object OrbLevel { var v by mutableFloatStateOf(0f) }
+private val ORB_PTS = HashMap<Int, List<FloatArray>>()
+private fun orbSphere(n: Int) = ORB_PTS.getOrPut(n) { val g = Math.PI * (3 - Math.sqrt(5.0))
+    List(n) { i -> val y = 1 - 2 * (i + .5) / n; val r = Math.sqrt(1 - y * y); val a = i * g; floatArrayOf((r * Math.cos(a)).toFloat(), y.toFloat(), (r * Math.sin(a)).toFloat()) } }
+
+@Composable fun AssistantOrb(state: String = "idle", size: androidx.compose.ui.unit.Dp = 96.dp) {
+    val acc = N.blue; val reduce = reduceMotion()
+    var t by remember { mutableFloatStateOf(1.2f) }
+    LaunchedEffect(state, reduce) {
+        if (reduce && state == "idle") { t = 1.2f; return@LaunchedEffect }
+        val k = if (reduce) .45f else 1f
+        while (true) withFrameNanos { t = (it / 1e9f) * k }
+    }
     Canvas(Modifier.size(size)) {
-        val r = this.size.minDimension / 2; val c = center
-        val a = if (still) 0f else spin; val b = if (still) 1f else br
-        drawCircle(Brush.radialGradient(listOf(acc.copy(alpha = .35f), Color.Transparent), c, r), r)
-        listOf(acc to 0f, lerp(acc, Color(0xFFFF4FD8), .5f) to 120f, lerp(acc, Color(0xFF3EE6FF), .45f) to 240f).forEachIndexed { i, (col, off) ->
-            val ang = Math.toRadians((a * (if (i == 1) -1.3f else 1f + i * .2f) + off).toDouble())
-            val p = Offset(c.x + (r * .28f * kotlin.math.cos(ang)).toFloat(), c.y + (r * .28f * kotlin.math.sin(ang)).toFloat())
-            drawCircle(Brush.radialGradient(listOf(col.copy(alpha = .85f), Color.Transparent), p, r * .62f), r * .62f, p, blendMode = BlendMode.Screen)
-        }
-        drawCircle(Brush.radialGradient(listOf(Color.White, lerp(acc, Color.White, .6f), Color.Transparent), c, r * .34f * b), r * .34f * b)
+        val s = this.size.minDimension; val c = s / 2; val dn = density
+        val n = if (s / dn >= 72) 340 else if (s / dn >= 40) 190 else 110
+        val spin = when (state) { "think" -> 1.05f; "listen" -> .45f; "work" -> .7f; else -> .22f }
+        val yaw = t * spin; val tilt = .42f + kotlin.math.sin(t * .27f) * .14f
+        val cy = kotlin.math.cos(yaw); val sy = kotlin.math.sin(yaw); val ct = kotlin.math.cos(tilt); val st = kotlin.math.sin(tilt)
+        val R = s * .36f * (if (state == "idle") 1 + .035f * kotlin.math.sin(t * 1.5f) else 1f)
+        val rs = Math.pow((s / dn / 96.0), .62).toFloat() * dn
+        val scan = kotlin.math.sin(t * 1.9f); val sweep = t * 2.2f; val lv = OrbLevel.v
+        // the dark sphere behind, with a faint ring of the accent
+        drawCircle(Brush.radialGradient(0f to Color(acc.red * .12f, acc.green * .12f, acc.blue * .16f + .04f, .96f), .72f to Color(acc.red * .08f, acc.green * .08f, acc.blue * .1f + .02f, .92f),
+            .94f to Color(acc.red * .1f, acc.green * .1f, acc.blue * .12f + .03f, .9f), .985f to acc.copy(alpha = .35f), 1f to Color.Transparent, center = Offset(c, c * .9f), radius = c), c)
+        val pts = orbSphere(n).map { p ->
+            val x = p[0]; val y = p[1]; val z = p[2]; var k = 1f; var hot = 0f
+            when (state) {
+                "listen" -> k = 1 + (.04f + .2f * lv) * kotlin.math.sin(y * 7 - t * 7)
+                "think" -> { k = 1 + .045f * kotlin.math.sin(x * 5 + t * 3.1f) * kotlin.math.cos(z * 4 - t * 2.3f); hot = kotlin.math.exp(-((y - scan) * (y - scan)) / .025f) }
+                "work" -> { val d = kotlin.math.atan2(z, x) - sweep; val w = kotlin.math.atan2(kotlin.math.sin(d), kotlin.math.cos(d)); hot = kotlin.math.exp(-(w * w) / .09f) }
+            }
+            val x1 = x * cy + z * sy; val z1 = -x * sy + z * cy; val y1 = y * ct - z1 * st; val z2 = y * st + z1 * ct
+            val near = (z2 + 1) / 2
+            floatArrayOf(c + x1 * R * k, c - y1 * R * k, z2, (.45f + 1.55f * near + 1.1f * hot) * rs, (.12f + .78f * near + .5f * hot).coerceAtMost(1f), (near * .55f + hot * .6f).coerceAtMost(1f))
+        }.sortedBy { it[2] }
+        for (p in pts) drawCircle(lerp(acc, Color.White, p[5]).copy(alpha = p[4]), p[3], Offset(p[0], p[1]))
     }
 }
 
@@ -93,7 +118,13 @@ object Assistant {
     var cur by remember { mutableIntStateOf(-1) }; var summary by remember { mutableStateOf("") }; var err by remember { mutableStateOf("") }
     val results = remember { mutableStateMapOf<String, Pair<Boolean, String>>() }
     val choice = remember { mutableStateMapOf<String, Int>() }
-    LaunchedEffect(Unit) { Assistant.refresh(app) }
+    LaunchedEffect(Unit) {
+        Assistant.refresh(app)
+        // the conversation is the server's — one for every phone and browser
+        if (plan == null && !busy) runCatching { app.api.get("/api/v1/assistant/convo") }.getOrNull()?.optJSONArray("turns")?.let { a ->
+            Assistant.turns.clear(); Assistant.turns.addAll(a.objs().map { Assistant.Turn(it.optString("q"), it.optString("reply"), it.optJSONArray("done")?.let { d -> (0 until d.length()).map { d.getString(it) } } ?: emptyList()) })
+        }
+    }
     fun steps(): List<JSONObject> = plan?.optJSONArray("steps").objs().map { s ->
         if (s.optString("kind") == "ask" && choice[s.optString("id")] != null) JSONObject(s.optJSONArray("options")!!.getJSONObject(choice[s.optString("id")]!!).getJSONObject("step").toString())
             .put("id", s.optString("id")).put("asked", true) else s }
@@ -133,7 +164,7 @@ object Assistant {
             "ui" -> { val v = s.opt("value"); when (s.optString("pref")) { "theme" -> AppPrefs.set("theme", s.optString("value")); "style" -> AppPrefs.set("style", s.optString("value")); "reduce_motion" -> AppPrefs.set("reduce_motion", s.optBoolean("value"))
                     "accent" -> AppPrefs.set("accent", s.optString("value")); "win_round" -> AppPrefs.chooseWinRound(s.optInt("value", 100)); "corner_round" -> AppPrefs.setRound(AppPrefs.style, s.optInt("value", 100))
                     "living" -> if (v == "off") Living.set(false) else { Living.set(true); Living.chooseScene(s.optString("value", "auto")) }
-                    "fps" -> Dev.set(app.activity, "fps", s.optBoolean("value")); "solid" -> AppPrefs.set("solid", s.optBoolean("value")); "speak" -> AppPrefs.chooseAsstSpeak(s.optBoolean("value")) }
+                    "fps" -> Dev.set(app.activity, "fps", s.optBoolean("value")); "solid" -> AppPrefs.set("solid", s.optBoolean("value")); "speak" -> AppPrefs.chooseAsstSpeak(s.optBoolean("value")); "asst_button" -> AppPrefs.chooseAsstButton(s.optBoolean("value")) }
                 return Done(true, done) }
             "nav", "partition" -> return Done(true, "Opening it at the end", later = true)
         }
@@ -186,10 +217,13 @@ object Assistant {
         }
     }
 
-    Page("Assistant", app::back) {
+    val sc = rememberScrollState()
+    // the latest message stays in view: on opening, and as the conversation goes on
+    LaunchedEffect(Assistant.turns.size, plan, busy, summary, cur) { kotlinx.coroutines.delay(60); sc.animateScrollTo(sc.maxValue) }
+    Page("Assistant", app::back, scroll = sc) {
         if (Assistant.on == false) {
             Column(Modifier.fillMaxWidth().padding(vertical = 10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                AssistantOrb(false); Spacer(Modifier.height(10.dp))
+                AssistantOrb("idle"); Spacer(Modifier.height(10.dp))
                 Text("The assistant is in Labs", color = N.text, fontSize = 22.sp, fontWeight = FontWeight.Bold)
                 Text("Turn on “Nova assistant” in Settings → Labs, then ask Nova in plain words — here or from Search.", color = N.sub, fontSize = 15.sp, textAlign = TextAlign.Center, modifier = Modifier.padding(horizontal = 30.dp, vertical = 6.dp))
             }
@@ -206,22 +240,25 @@ object Assistant {
             if (said.isNotEmpty()) Text(said, color = N.text, fontSize = 15.sp, lineHeight = 21.sp, modifier = Modifier.padding(top = 6.dp).widthIn(max = 320.dp).clip(RoundedCornerShape(6.dp, 18.dp, 18.dp, 18.dp)).background(lerp(N.card, N.blue, .08f)).padding(horizontal = 14.dp, vertical = 9.dp))
         } }
         if (plan != null || busy) Assistant.turns.lastOrNull()?.takeIf { plan != null }?.let { Mine(it.q) } ?: run { if (busy && text.isNotBlank()) Mine(text) }
+        if (busy && plan == null) Row(Modifier.padding(horizontal = Space.gutter, vertical = 4.dp).clip(RoundedCornerShape(5.dp, 16.dp, 16.dp, 16.dp)).background(lerp(N.card, N.blue, .08f))
+                .border(1.dp, N.blue.copy(alpha = .22f), RoundedCornerShape(5.dp, 16.dp, 16.dp, 16.dp)).padding(start = 8.dp, end = 16.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            AssistantOrb("think", 30.dp); Spacer(Modifier.width(10.dp)); Text("Thinking…", color = N.sub, fontSize = 15.sp) }
         val answerOnly = plan != null && (plan?.optJSONArray("steps")?.length() ?: 0) == 0
         Column(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            AssistantOrb(busy || hearing || listening, if (earlier.isEmpty()) 96.dp else 64.dp)
-            if (!answerOnly || busy) Text(if (listening) "Listening…" else if (hearing) "Hearing you…" else if (busy) (if (cur >= 0) "On it…" else "Thinking…") else if (plan != null) (if (summary.isNotEmpty()) "Done" else "Here's my plan") else if (earlier.isEmpty()) "What can I do?" else "Anything else?",
+            AssistantOrb(if (listening) "listen" else if (hearing || (busy && cur < 0)) "think" else if (busy) "work" else "idle", if (earlier.isEmpty()) 96.dp else 56.dp)
+            if ((!answerOnly || busy) && (listening || hearing || busy || plan != null || earlier.isEmpty())) Text(if (listening) "Listening…" else if (hearing) "Hearing you…" else if (busy) (if (cur >= 0) "On it…" else "Thinking…") else if (plan != null) (if (summary.isNotEmpty()) "Done" else "Here's my plan") else if (earlier.isEmpty()) "What can I do?" else "",
                 color = N.text, fontSize = 22.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 10.dp))
             val reply = plan?.optString("reply").orEmpty()
             if (reply.isNotEmpty() && summary.isEmpty()) Text(reply, color = N.text, fontSize = 16.sp, lineHeight = 22.sp,
                 modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp).clip(RoundedCornerShape(topStart = 6.dp, topEnd = 18.dp, bottomEnd = 18.dp, bottomStart = 18.dp))
                     .background(lerp(N.card, N.blue, .12f)).border(1.dp, N.blue.copy(alpha = .25f), RoundedCornerShape(topStart = 6.dp, topEnd = 18.dp, bottomEnd = 18.dp, bottomStart = 18.dp)).padding(horizontal = 16.dp, vertical = 12.dp))
-            Text(summary.ifEmpty { if (plan != null) (if (plan?.optJSONArray("steps")?.length() ?: 0 > 0) "Check it, answer anything I asked, then tap Do it. Nothing has changed yet." else "") else "Say it in plain words — several things at once is fine, or ask about your server." },
+            Text(summary.ifEmpty { if (plan != null) (if (plan?.optJSONArray("steps")?.length() ?: 0 > 0) "Check it, answer anything I asked, then tap Do it. Nothing has changed yet." else "") else if (earlier.isNotEmpty()) "" else "Say it in plain words — several things at once is fine. Ask about your server, or just chat." },
                 color = N.sub, fontSize = 15.sp, textAlign = TextAlign.Center, modifier = Modifier.padding(horizontal = 30.dp, vertical = 4.dp))
         }
         BeamBox {
             Row(Modifier.padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.weight(1f)) {
-                    if (text.isEmpty()) Text("e.g. Set the lights to fire, free up some space and restart Jellyfin", color = N.sub, fontSize = 16.sp)
+                    if (text.isEmpty()) Text(if (Assistant.turns.isNotEmpty()) "Reply, or ask something else…" else "e.g. Set the lights to fire, free up some space and restart Jellyfin", color = N.sub, fontSize = 16.sp, maxLines = 2)
                     BasicTextField(text, { v -> if (v.endsWith("\n") && v.length > text.length) planIt(v.trim()) else text = v.take(500) }, Modifier.fillMaxWidth(), textStyle = TextStyle(color = N.text, fontSize = 16.sp), cursorBrush = SolidColor(N.blue),
                         maxLines = 5, keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send), keyboardActions = KeyboardActions(onSend = { planIt(text) }))
                 }
@@ -235,12 +272,13 @@ object Assistant {
         }
         if (err.isNotEmpty()) Note(err, 14.sp, 4.dp, N.red)
         if (Assistant.turns.isNotEmpty() && !busy) Row(Modifier.fillMaxWidth().padding(horizontal = Space.gutter), horizontalArrangement = Arrangement.spacedBy(18.dp, Alignment.CenterHorizontally)) {
-            Text("New conversation", color = N.link, fontSize = 14.sp, modifier = Modifier.clickable { Assistant.turns.clear(); plan = null; summary = ""; results.clear(); Voice.hush() }.padding(vertical = 8.dp))
+            Text("Assistant settings", color = N.link, fontSize = 14.sp, modifier = Modifier.clickable { app.go(Route.AssistantSettings) }.padding(vertical = 8.dp))
             Text(if (AppPrefs.asstSpeak) "Don't read replies aloud" else "Read replies aloud", color = N.link, fontSize = 14.sp, modifier = Modifier.clickable { AppPrefs.chooseAsstSpeak(!AppPrefs.asstSpeak); if (!AppPrefs.asstSpeak) Voice.hush() }.padding(vertical = 8.dp))
         }
         val p = plan
         if (p == null && Assistant.turns.isNotEmpty()) return@Page
-        if (p == null) { Note("Runs on your server — nothing is sent anywhere. Risky steps still need your fingerprint, and everything goes in the action log.", 13.sp, 6.dp); BrainSettings(app); return@Page }
+        if (p == null) { Note("Runs on your server — nothing is sent anywhere. Risky steps still need your fingerprint, and everything goes in the action log.", 13.sp, 6.dp)
+            Group { Row1("Assistant settings", "Its brain, voice, the assistant button and its memory", true, Icons.Rounded.Settings, onClick = { app.go(Route.AssistantSettings) }) }; return@Page }
         if (list.isEmpty() && p.optString("reply").isNotEmpty()) return@Page
         SectionLabel("Plan · ${list.size} step${if (list.size == 1) "" else "s"}")
         Group {
@@ -279,6 +317,8 @@ object Assistant {
         }
         p.optJSONArray("unknown").let { u -> if (u != null && u.length() > 0) Note("I didn't understand: " + (0 until u.length()).joinToString(", ") { "“${u.getString(it)}”" } + ". Try saying it another way, or search for it.", 13.sp, 4.dp) }
         p.optJSONArray("notes").let { n -> if (n != null) for (k in 0 until n.length()) Note(n.getString(k), 13.sp, 2.dp) }
+        if (busy && cur >= 0) list.getOrNull(cur)?.let { s0 -> Row(Modifier.padding(horizontal = Space.gutter, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            AssistantOrb("work", 30.dp); Spacer(Modifier.width(10.dp)); Text(s0.optString("say") + "…", color = N.sub, fontSize = 15.sp) } }
         if (busy) list.drop(cur + 1).firstOrNull { results[it.optString("id")] == null }?.let { nx ->
             Row(Modifier.padding(horizontal = Space.gutter, vertical = 8.dp).fillMaxWidth().clip(RoundedCornerShape(14.dp * roundK())).background(N.blue.copy(alpha = .1f)).padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Rounded.History, null, tint = N.blue, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text("Next: ${nx.optString("say")}", color = N.text, fontSize = 14.sp) }
@@ -304,6 +344,18 @@ object PartitionStage {
 
 private fun fmtBytes(b: Long): String { if (b <= 0) return "0 B"; val u = listOf("B", "KB", "MB", "GB", "TB"); var v = b.toDouble(); var i = 0
     while (v >= 1000 && i < u.size - 1) { v /= 1000; i++ }; return (if (v >= 100 || i == 0) "%.0f" else "%.1f").format(v) + " " + u[i] }
+
+/** Assistant settings: its brain, its voice, the button, and forgetting the conversation. */
+@Composable fun AssistantSettingsScreen(app: AppState) {
+    var forget by remember { mutableStateOf(false) }; val scope = rememberCoroutineScope()
+    Page("Assistant settings", app::back) {
+        BrainSettings(app)
+        SectionLabel("Conversation")
+        Group { Row1("Forget the conversation", "Nova keeps one conversation for all your devices; after a few quiet hours it starts afresh but remembers what it did. This clears both.", false, Icons.Rounded.History, onClick = { forget = true }) }
+    }
+    if (forget) OneDialog({ forget = false }, "Forget the conversation?", "Nova forgets what you've talked about and what it remembers doing. Nothing on the server changes.",
+        listOf(DialogButton("Cancel") { forget = false }, DialogButton("Forget", N.red) { forget = false; scope.launch { runCatching { app.api.delete("/api/v1/assistant/convo") }; Assistant.turns.clear(); app.toast("Forgotten") } }))
+}
 
 /** The assistant's brain: a small language model on the server (Smart or Light) — download it, see it, remove it. */
 @Composable private fun BrainSettings(app: AppState) {

@@ -126,6 +126,8 @@ check("look: lumen", P("apply the lumen theme")["steps"][0]["value"] == "lumen")
 check("look: living wallpaper off", P("turn off the living wallpaper")["steps"][0]["value"] == "off")
 check("look: corner roundness clamped", P("set corner roundness to 900%")["steps"][0]["value"] == 200)
 check("look: the lights' color isn't the accent", P("make the lights orange")["steps"][0]["kind"] == "call")
+check("look: “disable the orb for the ai assistant” hides the assistant button", [(x.get("pref"), x.get("value")) for x in P("disable the orb for the ai assistant")["steps"]] == [("asst_button", False)], P("disable the orb for the ai assistant"))
+check("look: the status light is still the status light", P("turn off the status light")["steps"][0]["kind"] == "call")
 # small talk without the brain: a friendly answer, not "I didn't understand"
 for t in ("Yo, whats up?", "hey nova", "thanks!", "how are you?"):
     q_ = P(t); check(f"chat: “{t}” gets a reply", q_["steps"] == [] and q_["unknown"] == [] and q_.get("reply"), q_)

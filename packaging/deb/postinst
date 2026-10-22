@@ -24,6 +24,8 @@ if [ "$1" = configure ]; then
     if [ -f /etc/nova-api/config.json ]; then
         systemctl enable nova-api.service >/dev/null 2>&1 || true
         systemctl restart nova-api.service || true
+        # the assistant's brain, if it's installed: this version may run it with different settings (more context)
+        [ -f /etc/systemd/system/nova-brain.service ] && python3 -c "import sys; sys.path.insert(0, '/usr/lib/nova-api'); import brain; brain.refresh_unit()" >/dev/null 2>&1 || true
         # lighting module set up (nova-setup-lighting): make sure the boot/shutdown unit is active,
         # so the lights switch off at the next shutdown, and the animator is running
         if systemctl is-enabled nova-rgb-restore.service >/dev/null 2>&1; then

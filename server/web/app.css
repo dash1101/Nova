@@ -1570,3 +1570,11 @@ html .abox textarea:is(:focus, :focus-visible) { outline: none !important; box-s
 .alinks .alink { padding: 8px 4px; }
 .aturn .areply { white-space: pre-line; }
 #asstfab .norb { pointer-events: none; }
+/* 0.9.3: steady bubble corners (the same however many lines), the text box centered until it grows */
+.aturn .aq, .aturn .areply, .athink { border-radius: 16px !important; }
+.aturn .aq { border-bottom-right-radius: 5px !important; } .aturn .areply, .athink { border-top-left-radius: 5px !important; }
+.abox { align-items: center; } .abox.tall { align-items: flex-end; }
+.abox textarea { max-height: 9.5em; overflow-y: auto; }
+/* the assistant button is just the orb: no blue disc around it, a soft shadow so it floats */
+#asstfab { width: 52px; height: 52px; background: none !important; box-shadow: 0 8px 22px -6px rgba(0,0,0,.6) !important; overflow: hidden; }
+#asstfab .norb { width: 52px !important; height: 52px !important; }

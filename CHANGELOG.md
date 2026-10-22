@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.9.3-alpha (server, Nova web, app and watch)
+- **The assistant knows a lot more about your server:** Nova's version, the system and kernel, uptime, CPU, memory and swap — and, when you ask about them, the Linux processes using the most memory and CPU, each container's memory and CPU, your drives, network addresses, scheduled restarts and backups. It answers from those real numbers (“what are the top 10 processes by RAM?”) instead of opening a page, and says when it can't see something rather than guessing.
+- **Faster, longer answers:** the brain keeps its instructions and examples ready between questions, has room for twice as much, and can write longer lists.
+- **Assistant settings** has its own page (app and web): the brain, voice, the assistant button, and forgetting the conversation.
+- **“Hide the assistant button”** (or “disable the orb”) works — it used to turn off the status light.
+- **The orb** (app and web) is a sphere of dots in your accent color over a dark sphere, so the dots stand out on any page; the app shows **Thinking…** and the step it's on, like the web.
+- **Tidier chat:** bubble corners stay the same however many lines they have; the text box is centered and grows as you type; on phones the keyboard pushes the page up so you can see what you're typing (app and web).
+- The app now loads the same shared conversation as Nova web.
+
 ## 0.9.2-alpha (server, Nova web, app and watch)
 - **One ongoing conversation** (assistant): kept on your server and shared by every phone and browser. After a few quiet hours it starts afresh, but Nova remembers what it did (for a month), so “how much RAM did we free yesterday?” still works. **Forget the conversation** is in the assistant's settings.
 - **Just talk to it:** with its brain, Nova chats and answers general questions too (“yo, what's up?”, “give me a dinner idea”), friendlier all round. Without a brain, greetings get a friendly answer instead of “I didn't understand”.

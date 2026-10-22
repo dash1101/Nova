@@ -102,7 +102,7 @@ data class TopAction(val icon: ImageVector, val label: String, val onClick: () -
       // the blur source includes the background glow, so the frosted buttons pick up its color
       Box(Modifier.fillMaxSize().hazeSource(haze)) {
         GlowLayer()
-        Column(Modifier.fillMaxSize().verticalScroll(scroll)) {
+        Column(Modifier.fillMaxSize().imePadding().verticalScroll(scroll)) {       // the keyboard pushes the page up, not over it
             val compact = LocalCompactHeight.current
             Row(Modifier.fillMaxWidth().statusBarsPadding()
                 .padding(start = 68.dp, end = 12.dp + 52.dp * actions.size, top = if (compact) 8.dp else 18.dp, bottom = if (compact) 4.dp else 10.dp)

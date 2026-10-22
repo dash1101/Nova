@@ -41,7 +41,7 @@ try:                       # optional module: fan/case lighting (modules/fan-gig
 except ImportError:
     nova_rgb = None
 
-API_VERSION = "0.9.2-alpha"
+API_VERSION = "0.9.3-alpha"
 # The API contract (docs/API.md). API_LEVEL only ever goes up: each new level adds endpoints or fields, never removes or
 # changes one. MIN_LEVEL is the oldest level this server still answers in full (old apps keep working back to it).
 # MIN_CLIENT: the oldest app builds still served, per platform — 0 = all of them. Raising it is the last resort, after
@@ -650,31 +650,84 @@ def shell_account():
     except Exception: return "your account"
 
 _facts = {"t": 0, "v": ""}
-def brain_facts():
-    """What the assistant's brain knows about the server right now (it answers questions from this; nothing private).
-    Kept for 30 seconds: reading the containers and the store takes a moment."""
-    if time.time() - _facts["t"] < 30: return _facts["v"]
-    _facts.update(t=time.time(), v=_brain_facts()); return _facts["v"]
+def brain_facts(text=""):
+    """What the assistant's brain knows about the server right now (it answers questions from this; nothing private):
+    the basics every time (kept 30 seconds), plus the details the request is about — processes, containers, drives,
+    the network, schedules, backups — read fresh."""
+    if time.time() - _facts["t"] > 30: _facts.update(t=time.time(), v=_brain_facts())
+    return _facts["v"] + _brain_extra(text)
+
+def _run(cmd, timeout=8):
+    try: return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout).stdout
+    except Exception: return ""
 
 def _brain_facts():
     try:
         m = open("/proc/meminfo").read(); kb = lambda k: int(re.search(rf"^{k}:\s+(\d+)", m, re.M).group(1))
-        mem = f"Memory {(kb('MemTotal') - kb('MemAvailable')) / 1048576:.1f} of {kb('MemTotal') / 1048576:.1f} GB used"
+        mem = f"memory {(kb('MemTotal') - kb('MemAvailable')) / 1048576:.1f} of {kb('MemTotal') / 1048576:.1f} GB used"
+        if kb("SwapTotal"): mem += f", swap {(kb('SwapTotal') - kb('SwapFree')) / 1048576:.1f} of {kb('SwapTotal') / 1048576:.1f} GB"
     except Exception: mem = ""
-    import shutil as _sh
-    du = _sh.disk_usage("/"); la = os.getloadavg()[0]
+    import shutil as _sh, platform
+    du = _sh.disk_usage("/"); la = os.getloadavg()
+    try: up = float(open("/proc/uptime").read().split()[0]); upt = f"{int(up // 86400)} days {int(up % 86400 // 3600)} hours"
+    except Exception: upt = "?"
+    try: osn = re.search(r'^PRETTY_NAME="?([^"\n]+)', open("/etc/os-release").read(), re.M).group(1)
+    except Exception: osn = "Linux"
+    try: cpu = re.search(r"^model name\s*:\s*(.+)$", open("/proc/cpuinfo").read(), re.M).group(1).strip()
+    except Exception: cpu = ""
     st = load_json(STATUS, {}); met = st.get("metrics") or {}
     temp = next((f"{v}°C" for k, v in met.items() if "cpu" in k and "temp" in k and isinstance(v, (int, float))), "")
     alerts = [a.get("title", "") for a in (st.get("active") or []) if a.get("level") in ("warning", "critical")][:6]
     try: cs = helper("containers", timeout=20)[1].get("containers", [])
     except Exception: cs = []
     run = [c.get("name") for c in cs if c.get("state") == "running"]; off = [c.get("name") for c in cs if c.get("state") != "running"]
-    try: store = [f"{x['id']} ({x.get('description', '')[:40]})" for x in helper("store-list", timeout=30)[1].get("items", []) if not x.get("installed")][:40]
-    except Exception: store = []
-    return ("Server facts: " + "; ".join(x for x in [f"CPU load {la:.1f} on {os.cpu_count()} cores" + (f", {temp}" if temp else ""), mem,
+    return ("Server facts:\n" + "\n".join("- " + x for x in [
+            f"Nova (this app and server software) version {API_VERSION}", f"server name {socket.gethostname()}, {osn}, Linux kernel {platform.release()}, up {upt}",
+            f"CPU {cpu} ({os.cpu_count()} threads), load {la[0]:.1f} / {la[1]:.1f} / {la[2]:.1f} (1/5/15 min)" + (f", {temp}" if temp else ""), mem,
             f"system drive {du.free / 1e9:.0f} GB free of {du.total / 1e9:.0f} GB", "alerts: " + (", ".join(alerts) if alerts else "none"),
-            "containers running: " + ", ".join(run[:40]), "stopped: " + (", ".join(off[:20]) or "none")] if x)
-            + ".\nApp store (not installed yet): " + ", ".join(store[:60]) + ".")
+            f"containers running ({len(run)}): " + ", ".join(run[:40]), "containers stopped: " + (", ".join(off[:20]) or "none")] if x))
+
+def _brain_extra(text):
+    t = text.lower(); out = []
+    has = lambda rx: re.search(rx, t)
+    if has(r"process|task|program|\bram\b|memory|\bcpu\b|using|hog|slow|heavy|\btop\b|load|busy|htop|\bps\b"):
+        mem = _run(["ps", "-eo", "pid,user:12,rss,%mem,%cpu,comm", "--sort=-rss", "--no-headers"]).splitlines()[:12]
+        cpu = _run(["ps", "-eo", "pid,user:12,%cpu,rss,comm", "--sort=-%cpu", "--no-headers"]).splitlines()[:8]
+        def fm(l):
+            f = l.split(None, 5)
+            return f"{f[5]} (pid {f[0]}, {f[1]}): {int(f[2]) / 1024:.0f} MB RAM ({f[3]}%), CPU {f[4]}%" if len(f) == 6 else l.strip()
+        def fc(l):
+            f = l.split(None, 4)
+            return f"{f[4]} (pid {f[0]}, {f[1]}): CPU {f[2]}%, {int(f[3]) / 1024:.0f} MB RAM" if len(f) == 5 else l.strip()
+        out.append("Linux processes (programs running on the server) by memory, biggest first:\n" + "\n".join("  " + fm(l) for l in mem))
+        out.append("Linux processes by CPU right now, busiest first:\n" + "\n".join("  " + fc(l) for l in cpu))
+    if has(r"container|docker|\bapps?\b|service|immich|jellyfin|home ?assistant"):
+        if time.time() - _cstats["t"] > 10:
+            rc, res = helper("containers-stats", timeout=40)
+            if rc == 0: _cstats.update(t=time.time(), v=res)
+        stt = (_cstats["v"] or {}).get("stats", {})
+        def mib(v):
+            m = re.match(r"([\d.]+)\s*([KMGT]?i?B)", str(v.get("mem", "")))
+            return float(m.group(1)) * {"B": 1 / 1048576, "KiB": 1 / 1024, "kB": 1 / 1024, "MiB": 1, "MB": 1, "GiB": 1024, "GB": 1024}.get(m.group(2), 1) if m else 0
+        if stt: out.append("Docker containers by memory, biggest first (these are containers, not Linux processes):\n" + "\n".join(f"  {k}: {mib(v):.0f} MB memory, CPU {v.get('cpu', '?')}" for k, v in sorted(stt.items(), key=lambda kv: -mib(kv[1]))[:30]))
+    if has(r"disk|drive|storage|space|mount|full|\bgb\b|\btb\b|partition"):
+        df = _run(["df", "-h", "-x", "tmpfs", "-x", "devtmpfs", "-x", "overlay", "-x", "squashfs", "--output=target,size,used,avail,pcent"]).splitlines()[1:16]
+        if df: out.append("Mounted drives (mount, size, used, free, use%):\n" + "\n".join("  " + " ".join(l.split()) for l in df))
+    if has(r"\bip\b|network|address|interface|internet|wifi|ethernet|lan\b|tailscale"):
+        ipa = _run(["ip", "-brief", "address"]).splitlines()[:10]
+        if ipa: out.append("Network interfaces:\n" + "\n".join("  " + " ".join(l.split()) for l in ipa if not l.startswith(("lo ", "veth", "br-", "docker"))))
+    if has(r"schedul|reboot|restart|shut ?down|power"):
+        rc, res = helper("power-schedule-list")
+        js = res.get("schedules") or [] if rc == 0 else []
+        out.append("Scheduled restarts/shutdowns: " + (", ".join(f"{x.get('action')} at {time.strftime('%a %b %-d %H:%M', time.localtime(x.get('at', 0)))}" for x in js) or "none"))
+    if has(r"backup"):
+        rc, res = helper("backup-status")
+        if rc == 0: out.append("Backups: " + json.dumps(res)[:600])
+    if has(r"install|\bapp\b|apps|set ?up|get me|i need|store|recommend"):
+        try: store = [f"{x['id']} ({x.get('description', '')[:40]})" for x in helper("store-list", timeout=30)[1].get("items", []) if not x.get("installed")][:40]
+        except Exception: store = []
+        if store: out.append("App store (not installed yet): " + ", ".join(store))
+    return ("\n" + "\n".join(out)) if out else ""
 
 # ── the assistant's conversation: one ongoing conversation for the whole server (every admin phone and browser) ──
 # After six quiet hours it starts afresh, but what was done (freed 4.9 GB, restarted Jellyfin…) is kept as memory for a month.
@@ -2535,7 +2588,7 @@ class Handler(BaseHTTPRequestHandler):
             with convo_lock: c = convo_load()
             hist = convo_history(c)
             env["history"] = hist["turns"]
-            if brain.status().get("model"): env["brain"] = lambda t: brain.ask(t, brain_facts(), hist["turns"], hist["memory"])
+            if brain.status().get("model"): env["brain"] = lambda t: brain.ask(t, brain_facts(t), hist["turns"], hist["memory"])
             p = assistant.plan(text, env)
             with convo_lock:                      # this turn joins the conversation (what its steps did comes back from the device)
                 c = convo_load(); tid = secrets.token_hex(6)

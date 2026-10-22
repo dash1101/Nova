@@ -39,13 +39,14 @@ export function drawOrb(ctx, size, t, state, col, dark) {
   }
   out.sort((a, b) => a[2] - b[2]);
   ctx.clearRect(0, 0, size, size);
-  // a soft glow behind it
-  const g = ctx.createRadialGradient(c, c, 0, c, c, size / 2);
-  g.addColorStop(0, `rgba(${col[0]},${col[1]},${col[2]},${dark ? .22 : .14})`); g.addColorStop(1, "rgba(0,0,0,0)");
-  ctx.fillStyle = g; ctx.fillRect(0, 0, size, size);
-  const lift = dark ? 255 : 0;                            // near dots go toward white on dark pages, toward deep color on light ones
+  // a dark sphere behind the dots (so the light dots stand out on any page), with a faint glow of the accent
+  const g = ctx.createRadialGradient(c, c * .9, 0, c, c, size / 2);
+  g.addColorStop(0, `rgba(${col[0] * .12 | 0},${col[1] * .12 | 0},${col[2] * .16 + 10 | 0},.96)`); g.addColorStop(.72, `rgba(${col[0] * .08 | 0},${col[1] * .08 | 0},${col[2] * .1 + 6 | 0},.92)`);
+  g.addColorStop(.94, `rgba(${col[0] * .1 | 0},${col[1] * .1 | 0},${col[2] * .12 + 8 | 0},.9)`); g.addColorStop(.985, `rgba(${col[0]},${col[1]},${col[2]},.35)`); g.addColorStop(1, "rgba(0,0,0,0)");
+  ctx.fillStyle = g; ctx.beginPath(); ctx.arc(c, c, size / 2, 0, 6.2832); ctx.fill();
+  const lift = 255;                                       // near dots go toward white
   for (const [px, py, , r, a, w] of out) {
-    const m = dark ? w : w * .5;
+    const m = w;
     ctx.fillStyle = `rgba(${Math.round(col[0] + (lift - col[0]) * m)},${Math.round(col[1] + (lift - col[1]) * m)},${Math.round(col[2] + (lift - col[2]) * m)},${Math.min(1, a)})`;
     ctx.beginPath(); ctx.arc(px, py, r, 0, 6.2832); ctx.fill();
   }

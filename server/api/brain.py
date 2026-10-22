@@ -22,7 +22,7 @@ RUNTIME = {      # llama.cpp b11463 (2026-10-07)
                 "95e17be13037fafbed43c7afd75230ce04defb941d066062d0aff4bb3d52caf4", 13724995),
 }
 MODELS = {
-    "smart": {"name": "Smart", "about": "Qwen3 4B — understands more and answers questions well. About 3–8 seconds a request.",
+    "smart": {"name": "Smart", "about": "Qwen3 4B — understands more and answers questions well. Usually 5–40 seconds an answer on a home server.",
               "file": "Qwen3-4B-Instruct-2507-Q4_K_M.gguf", "size": 2497281120, "ram_gb": 4,
               "url": "https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF/resolve/main/Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
               "sha256": "3605803b982cb64aead44f6c1b2ae36e3acdb41d8e46c8a94c6533bc4c67e597"},
@@ -190,16 +190,27 @@ IPAddressDeny=any
 IPAddressAllow=localhost
 CPUWeight=20
 Nice=10
-MemoryMax=6G
+MemoryMax=8G
 
 [Install]
 WantedBy=multi-user.target
 """
 
+CTX = 8192                                           # room for the server facts, the conversation and a long answer
+
+def refresh_unit():
+    """After an update: rewrite the brain's service if this version runs it differently (more context…), and restart it."""
+    m = status().get("model")
+    if not m or not os.path.exists(UNIT): return False
+    old = open(UNIT).read(); write_unit(MODELS[m]["file"])
+    if open(UNIT).read() != old:
+        subprocess.run(["systemctl", "daemon-reload"], capture_output=True); subprocess.run(["systemctl", "restart", "nova-brain.service"], capture_output=True); return True
+    return False
+
 def write_unit(model_file):
     threads = max(2, min(8, (os.cpu_count() or 4) // 2))
     open(UNIT, "w").write(UNIT_TEXT.format(desc="Nova assistant's brain (a local language model, on 127.0.0.1 only)", lib=f"{ROOT}/runtime",
-        cmd=f"{ROOT}/runtime/llama-server -m {ROOT}/models/{model_file} --host 127.0.0.1 --port {PORT} -c 4096 -t {threads} -np 1 --no-webui"))
+        cmd=f"{ROOT}/runtime/llama-server -m {ROOT}/models/{model_file} --host 127.0.0.1 --port {PORT} -c {CTX} -t {threads} -np 1 --no-webui"))
 
 def remove():
     subprocess.run(["systemctl", "disable", "--now", "nova-brain.service"], capture_output=True)
@@ -237,12 +248,14 @@ Commands (use these shapes exactly; fill in the CAPS parts with real values, nev
 - set the living wallpaper to SCENE | turn off the living wallpaper   (SCENE: nebula harmony bloom flow liquid shapes aurora)
 - set window roundness to N% | set corner roundness to N%
 - show the frame rate meter | hide the frame rate meter
+- hide the assistant button | show the assistant button   (the assistant's orb in the corner of every page)
 - turn on reduce transparency | turn off reduce transparency
 - open SCREEN   (SCREEN: home status containers store inbox lighting storage backups updates settings appearance security devices files terminal)
 How to answer:
 - Small talk ("yo, what's up?", "thanks", "how are you?"): be friendly and natural, no commands. You can mention how the server is doing.
 - General questions (facts, explanations, advice, ideas, writing, math): answer them well from what you know, no commands. Be concise — a few sentences — unless asked for more.
-- Questions about the server: answer from the server facts, the conversation and what you remember (numbers included).
+- Questions about the server (what's running, what uses memory or CPU, versions, drives, network, schedules…): answer them yourself from the server facts, the conversation and what you remember — with the real names and numbers, as a short list when there are several. Don't open a screen instead of answering; only use "open SCREEN" when they ask to open or go to it.
+- The server facts are everything you know about the server right now. If what they ask isn't in them, say you can't see that yet rather than guessing.
 - Requests: give the commands. "reply" then says what you're about to do ("Freeing up memory now!") — never claim it's done or give results you don't have yet. Numbers under "What happened" are real; use them when asked.
 - Never invent containers or apps, and never make up server numbers. If you can't do something on the server, say so kindly and suggest what you can do."""
 SCHEMA = {"type": "object", "properties": {"commands": {"type": "array", "items": {"type": "string", "maxLength": 120}, "maxItems": 10},
@@ -277,15 +290,15 @@ def convo(history, memory=None):
     now = ("This conversation so far (use it for follow-ups like “how much did that free?” or “actually make it 6pm”):\n" + "\n".join(out)) if out else ""
     return "\n\n".join(x for x in (mem, now) if x)
 
-def ask(text, facts, history=None, memory=None, timeout=45):
+def ask(text, facts, history=None, memory=None, timeout=120):
     """{"commands": [...], "reply": "..."} from the model, or None if it isn't installed or running."""
-    # the fixed instructions first (the model keeps them processed between requests), then the closest examples, and the
-    # server's facts last with the request — they change every time
+    # the fixed part first — the instructions and every worked example, always in the same order, so the model keeps it
+    # processed between requests (only the new part is read each time) — then the server's facts and the request
     msgs = [{"role": "system", "content": SYS}]
-    for u, c, r in pick(text): msgs += [{"role": "user", "content": u}, {"role": "assistant", "content": json.dumps({"commands": c, "reply": r})}]
+    for u, c, r in examples(): msgs += [{"role": "user", "content": u}, {"role": "assistant", "content": json.dumps({"commands": c, "reply": r})}]
     c = convo(history, memory)
     msgs.append({"role": "user", "content": time.strftime("It's %A, %B %-d %Y, %H:%M. ") + facts + ("\n\n" + c if c else "") + "\n\nThe user says: " + text[:500]})
-    body = {"messages": msgs, "temperature": 0.3, "max_tokens": 520, "cache_prompt": True, "response_format": {"type": "json_schema", "json_schema": {"schema": SCHEMA}}}
+    body = {"messages": msgs, "temperature": 0.3, "max_tokens": 800, "cache_prompt": True, "response_format": {"type": "json_schema", "json_schema": {"schema": SCHEMA}}}
     try:
         req = urllib.request.Request(f"http://127.0.0.1:{PORT}/v1/chat/completions", json.dumps(body).encode(), {"Content-Type": "application/json"})
         with urllib.request.urlopen(req, timeout=timeout) as r: j = json.loads(r.read(200_000))

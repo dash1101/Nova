@@ -21,6 +21,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.animation.core.spring
 import androidx.compose.ui.graphics.Color
 import dev.chrisbanes.haze.hazeSource
@@ -59,7 +60,7 @@ sealed class Route {
     data object QuickPanel : Route(); data object EditQuick : Route(); data object Status : Route()
     data object Ssh : Route(); data object SshTerm : Route()
     data object Servers : Route(); data object ServerSettings : Route(); data object Dashboard : Route(); data object Approvals : Route()
-    data object Appearance : Route(); data object Icons : Route(); data object Assistant : Route(); data object SetupGuide : Route(); data object EditShortcuts : Route(); data object EditHome : Route(); data object EditTabs : Route(); data object Archive : Route()
+    data object Appearance : Route(); data object Icons : Route(); data object Assistant : Route(); data object AssistantSettings : Route(); data object SetupGuide : Route(); data object EditShortcuts : Route(); data object EditHome : Route(); data object EditTabs : Route(); data object Archive : Route()
     data object Settings : Route(); data object Devices : Route(); data object About : Route(); data object Faq : Route(); data object FreeUp : Route()
     data class StorageWizard(val goal: String? = null, val drives: List<String> = emptyList(), val pool: String? = null) : Route()
     data class Pool(val id: String) : Route(); data class Task(val id: String, val then: String? = null) : Route()
@@ -434,9 +435,9 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {   // FragmentAct
                 // the assistant's orb, on every page but its own (Appearance → Assistant button)
                 androidx.compose.animation.AnimatedVisibility(Assistant.on == true && AppPrefs.asstButton && app.top != Route.Assistant && app.top !is Route.AppFrame && DialogStack.depth == 0,
                     Modifier.align(Alignment.BottomEnd).navigationBarsPadding().padding(end = 14.dp, bottom = if (wide) 20.dp else 92.dp), enter = fadeIn() + androidx.compose.animation.scaleIn(initialScale = .6f), exit = fadeOut() + androidx.compose.animation.scaleOut(targetScale = .6f)) {
-                    Box(Modifier.size(56.dp).clip(androidx.compose.foundation.shape.CircleShape).background(N.card.copy(alpha = .85f))
-                        .border(1.dp, N.divider, androidx.compose.foundation.shape.CircleShape).clickable(onClickLabel = "Ask Nova") { Sounds.feel("tap"); app.go(Route.Assistant) }, contentAlignment = Alignment.Center) {
-                        AssistantOrb(false, 46.dp) }
+                    Box(Modifier.size(52.dp).shadow(10.dp, androidx.compose.foundation.shape.CircleShape).clip(androidx.compose.foundation.shape.CircleShape)
+                        .clickable(onClickLabel = "Ask Nova") { Sounds.feel("tap"); app.go(Route.Assistant) }, contentAlignment = Alignment.Center) {
+                        AssistantOrb("idle", 52.dp) }
                 }
                 LivingTicker(); AmbienceTicker()
                 if (DialogStack.depth == 0) OneToastHost(app.snack, Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = if (wide) 24.dp else 96.dp))
@@ -646,6 +647,7 @@ private fun Modifier.paneTouch(app: AppState, left: Boolean) = pointerInput(left
         Route.Appearance -> AppearanceScreen(app)
         Route.Icons -> IconsScreen(app)
         Route.Assistant -> AssistantScreen(app)
+        Route.AssistantSettings -> AssistantSettingsScreen(app)
         Route.SetupGuide -> Page("Setup guide", app::back) { SetupGuideBody() }
         Route.Settings -> SettingsScreen(app)
         Route.Devices -> DevicesScreen(app)
