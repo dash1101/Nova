@@ -112,12 +112,12 @@ EFFECT_WORDS = {"solid": "static", "steady": "static", "flame": "fire", "flames"
 COLORS = {"red": "#ff2a1a", "orange": "#ff7a00", "yellow": "#ffd000", "green": "#22d36a", "blue": "#2f7dff", "purple": "#8a3cff", "violet": "#8a3cff",
           "pink": "#ff3c9a", "white": "#ffffff", "warm white": "#ffd9a0", "cyan": "#00d8e8", "teal": "#00c7be", "magenta": "#ff2bd6"}
 STYLES = {"default": "default", "material": "material", "material you": "material", "glass": "liquid", "liquid glass": "liquid", "mica": "fluent",
-          "fluent": "fluent", "breeze": "breeze", "aero": "aero", "windows 7": "aero", "lumen": "lumen"}
-STYLE_NAMES = {"default": "Default", "material": "Material You", "liquid": "Glass", "fluent": "Mica", "breeze": "Breeze", "aero": "Aero", "lumen": "Lumen"}
+          "fluent": "fluent", "breeze": "breeze", "aero": "aero", "windows 7": "aero"}
+STYLE_NAMES = {"default": "Default", "material": "Material You", "liquid": "Glass", "fluent": "Mica", "breeze": "Breeze", "aero": "Aero"}
 # the living wallpaper's scenes (named after the look they come from, or by their own names)
 SCENES = {"nebula": "default", "default": "default", "harmony": "aero", "aero": "aero", "bloom": "fluent", "mica": "fluent", "fluent": "fluent",
-          "flow": "breeze", "breeze": "breeze", "liquid": "liquid", "glass": "liquid", "shapes": "material", "material": "material", "aurora": "lumen", "lumen": "lumen"}
-SCENE_NAMES = {"default": "Nebula", "aero": "Harmony (Aero)", "fluent": "Bloom (Mica)", "breeze": "Flow (Breeze)", "liquid": "Liquid (Glass)", "material": "Shapes (Material)", "lumen": "Aurora (Lumen)"}
+          "flow": "breeze", "breeze": "breeze", "liquid": "liquid", "glass": "liquid", "shapes": "material", "material": "material"}
+SCENE_NAMES = {"default": "Nebula", "aero": "Harmony (Aero)", "fluent": "Bloom (Mica)", "breeze": "Flow (Breeze)", "liquid": "Liquid (Glass)", "material": "Shapes (Material)"}
 SCREENS = {"home": "home", "status": "status", "containers": "containers", "store": "store", "app store": "store", "inbox": "inbox", "alerts": "inbox",
            "lighting": "lighting", "lights": "lighting", "storage": "hardware", "drives": "hardware", "backups": "backups", "updates": "updates",
            "settings": "settings", "appearance": "appearance", "security": "security", "devices": "devices", "files": "files", "terminal": "terminal",

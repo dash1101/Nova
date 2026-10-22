@@ -2,6 +2,7 @@ package app.novalabs.nova
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -286,6 +287,8 @@ private fun uptime(s: Long) = "${s / 86400}d ${s % 86400 / 3600}h ${s % 3600 / 6
         val coreN = now?.optJSONArray("cpus")?.length() ?: 0
         val cpuSplit = splitPref && live && coreN > 1
         val coreSeries = (0 until coreN).map { i -> pts.map { it.optJSONArray("cpus")?.optDouble(i, 0.0)?.toFloat()?.takeIf { v -> !v.isNaN() } ?: 0f } }
+        if (live && coreN > 1) Text(if (cpuSplit) "Show one CPU graph" else "Show each core ($coreN)", color = N.link, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.padding(start = Space.gutter + 6.dp, bottom = 6.dp).clip(RoundedCornerShape(10.dp)).clickable { setSplit(!cpuSplit) }.padding(horizontal = 8.dp, vertical = 6.dp))
         Column(Modifier.padding(horizontal = Space.gutter), verticalArrangement = Arrangement.spacedBy(Space.gap)) {
             if (cpuSplit) CpuSplitCard(now!!, coreSeries, tick, window, ls.added) { setSplit(false) }
             Row(horizontalArrangement = Arrangement.spacedBy(Space.gap)) {

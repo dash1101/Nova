@@ -60,7 +60,8 @@ def status():
             "voice": {"installed": ear, "running": ear_on, "size": EAR_MODEL["size"] + EAR_RUNTIME.get(platform.machine(), ("", "", 0))[2]},
             "arch_ok": platform.machine() in RUNTIME, "memory_gb": round(_mem_gb(), 1),
             "choices": {k: {kk: v[kk] for kk in ("name", "about", "size", "ram_gb")} for k, v in MODELS.items()},
-            "recommended": "smart" if _mem_gb() >= 7 else "light"}
+            "recommended": "smart" if _mem_gb() >= 7 else "light",
+            "downloaded": [k for k, v in MODELS.items() if os.path.exists(f"{ROOT}/models/{v['file']}")]}
 
 def _download(url, dest, sha, size, log, progress, lo, hi):
     """Into dest.part, checked against its SHA-256 before it's moved into place. Resumes a part file."""
@@ -73,13 +74,16 @@ def _download(url, dest, sha, size, log, progress, lo, hi):
     with urllib.request.urlopen(req, timeout=60) as r:
         if got and r.status != 206: got = 0; h = hashlib.sha256(); open(part, "wb").close()
         with open(part, "ab" if got else "wb") as f:
-            last = 0
+            last = time.time(); was = got
             while True:
                 b = r.read(1 << 20)
                 if not b: break
                 f.write(b); h.update(b); got += len(b)
                 if got > size + (1 << 20): raise RuntimeError("the download is bigger than it should be — stopped")
-                if time.time() - last > 1: last = time.time(); progress(lo + int((hi - lo) * got / size), f"{got / 1e9:.2f} of {size / 1e9:.2f} GB")
+                if time.time() - last > 1:
+                    sp = (got - was) / (time.time() - last); last = time.time(); was = got
+                    left = (size - got) / sp if sp > 0 else 0
+                    progress(lo + int((hi - lo) * got / size), f"{got / 1e9:.2f} of {size / 1e9:.2f} GB · {sp / 1e6:.1f} MB/s" + (f" · about {int(left // 60)} min {int(left % 60)} s left" if left >= 60 else f" · about {int(left)} s left" if left > 1 else ""))
     if h.hexdigest() != sha:
         os.remove(part); raise RuntimeError(f"{os.path.basename(dest)} didn't match its checksum — it was removed (try again)")
     os.replace(part, dest); log(f"Checked {os.path.basename(dest)} ✓")
@@ -91,7 +95,8 @@ def install(spec, log=print, progress=lambda p, n="": None):
     if arch not in RUNTIME: raise ValueError(f"the assistant's brain isn't available for {arch} servers yet")
     m = MODELS[key]
     free = shutil.disk_usage("/var/lib").free
-    if free < m["size"] + 400e6: raise ValueError(f"needs {(m['size'] + 400e6) / 1e9:.1f} GB free on the system drive — Free up can help")
+    have = os.path.exists(f"{ROOT}/models/{m['file']}")
+    if not have and free < m["size"] + 400e6: raise ValueError(f"needs {(m['size'] + 400e6) / 1e9:.1f} GB free on the system drive — Free up can help")
     os.makedirs(f"{ROOT}/models", exist_ok=True); os.chmod(ROOT, 0o755)
     url, sha, size = RUNTIME[arch]
     tgz = f"{ROOT}/runtime.tar.gz"
@@ -102,8 +107,10 @@ def install(spec, log=print, progress=lambda p, n="": None):
     dest = f"{ROOT}/models/{m['file']}"
     if not os.path.exists(dest):
         log(f"Downloading the {m['name']} model ({m['size'] / 1e9:.1f} GB)…"); _download(m["url"], dest, m["sha256"], m["size"], log, progress, 8, 95)
-    for f in os.listdir(f"{ROOT}/models"):                   # one model at a time
-        if f != m["file"]: os.remove(f"{ROOT}/models/{f}")
+    # the other model stays downloaded, so switching back is instant (remove it from the assistant's settings to free the space)
+    for f in os.listdir(f"{ROOT}/models"):
+        if f.endswith(".part") and f != m["file"] + ".part": os.remove(f"{ROOT}/models/{f}")
+    if have: log(f"The {m['name']} model is already downloaded — switching to it")
     json.dump({"model": key, "since": int(time.time())}, open(f"{ROOT}/brain.json", "w"))
     write_unit(m["file"]); progress(97, "Starting it")
     subprocess.run(["systemctl", "daemon-reload"], check=True); subprocess.run(["systemctl", "enable", "--now", "nova-brain.service"], check=True)
@@ -212,6 +219,14 @@ def write_unit(model_file):
     open(UNIT, "w").write(UNIT_TEXT.format(desc="Nova assistant's brain (a local language model, on 127.0.0.1 only)", lib=f"{ROOT}/runtime",
         cmd=f"{ROOT}/runtime/llama-server -m {ROOT}/models/{model_file} --host 127.0.0.1 --port {PORT} -c {CTX} -t {threads} -np 1 --no-webui"))
 
+def remove_model(key):
+    """Delete one downloaded model that isn't the one in use."""
+    if key not in MODELS: raise ValueError("no such model")
+    if status().get("model") == key: raise ValueError("that's the brain in use — switch to the other one first, or remove the brain")
+    p = f"{ROOT}/models/{MODELS[key]['file']}"
+    if os.path.exists(p): os.remove(p)
+    return {"ok": True}
+
 def remove():
     subprocess.run(["systemctl", "disable", "--now", "nova-brain.service"], capture_output=True)
     try: os.remove(UNIT)
@@ -243,9 +258,9 @@ Commands (use these shapes exactly; fill in the CAPS parts with real values, nev
 - check for updates
 - schedule a reboot WHEN | schedule a shutdown WHEN   (WHEN like: at 5pm tomorrow, on friday at noon, in 2 hours)
 - reboot the server
-- switch to dark mode | switch to light mode | apply the STYLE theme   (STYLE: default material glass mica breeze aero lumen)
+- switch to dark mode | switch to light mode | apply the STYLE theme   (STYLE: default material glass mica breeze aero)
 - set the accent color to COLOR | reset the accent color
-- set the living wallpaper to SCENE | turn off the living wallpaper   (SCENE: nebula harmony bloom flow liquid shapes aurora)
+- set the living wallpaper to SCENE | turn off the living wallpaper   (SCENE: nebula harmony bloom flow liquid shapes)
 - set window roundness to N% | set corner roundness to N%
 - show the frame rate meter | hide the frame rate meter
 - hide the assistant button | show the assistant button   (the assistant's orb in the corner of every page)

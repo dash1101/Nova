@@ -1,8 +1,11 @@
 package app.novalabs.nova
 
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.detectDragGestures
 import android.Manifest
 import android.app.Activity
 import android.content.pm.PackageManager
@@ -60,8 +63,8 @@ sealed class Route {
     data object QuickPanel : Route(); data object EditQuick : Route(); data object Status : Route()
     data object Ssh : Route(); data object SshTerm : Route()
     data object Servers : Route(); data object ServerSettings : Route(); data object Dashboard : Route(); data object Approvals : Route()
-    data object Appearance : Route(); data object Icons : Route(); data object Assistant : Route(); data object AssistantSettings : Route(); data object SetupGuide : Route(); data object EditShortcuts : Route(); data object EditHome : Route(); data object EditTabs : Route(); data object Archive : Route()
-    data object Settings : Route(); data object Devices : Route(); data object About : Route(); data object Faq : Route(); data object FreeUp : Route()
+    data object Appearance : Route(); data object Icons : Route(); data object Assistant : Route(); data object AssistantSettings : Route(); data object AssistantArchive : Route(); data object SetupGuide : Route(); data object EditShortcuts : Route(); data object EditHome : Route(); data object EditTabs : Route(); data object Archive : Route()
+    data object Settings : Route(); data object Devices : Route(); data object About : Route(); data object Faq : Route(); data object FreeUp : Route(); data object TaskManager : Route()
     data class StorageWizard(val goal: String? = null, val drives: List<String> = emptyList(), val pool: String? = null) : Route()
     data class Pool(val id: String) : Route(); data class Task(val id: String, val then: String? = null) : Route()
     data object Backups : Route(); data object BackupScript : Route(); data class Backup(val id: String) : Route()
@@ -263,11 +266,13 @@ class AppState(val activity: Activity, val pairing: Pairing, val scope: Coroutin
 }
 
 var openApprovals by mutableStateOf(false)
+var openAssistant by mutableStateOf(false)
 var openUpdate by mutableStateOf(false)
 
 class MainActivity : androidx.fragment.app.FragmentActivity() {   // FragmentActivity: the fingerprint prompt on Android 7–8
     override fun onNewIntent(intent: android.content.Intent) {
         super.onNewIntent(intent); if (intent.getStringExtra("open") == "approvals") openApprovals = true
+        if (intent.getStringExtra("open") == "assistant") openAssistant = true
         if (intent.getStringExtra("open") == "update") openUpdate = true
     }
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -280,6 +285,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {   // FragmentAct
         val fresh = savedInstanceState == null
         val openInbox = fresh && intent?.getStringExtra("open") == "inbox"
         openApprovals = fresh && intent?.getStringExtra("open") == "approvals"
+        openAssistant = fresh && intent?.getStringExtra("open") == "assistant"
         openUpdate = fresh && intent?.getStringExtra("open") == "update"
         intent?.removeExtra("open")
         Alerts.start(this)
@@ -366,6 +372,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {   // FragmentAct
     ShakeListener(app)
     app.dockMenu?.let { id -> DockAppMenu(app, id) { app.dockMenu = null } }
     LaunchedEffect(openApprovals) { if (openApprovals) { openApprovals = false; app.go(Route.Approvals) } }
+    LaunchedEffect(openAssistant) { if (openAssistant) { openAssistant = false; if (app.top != Route.Assistant) app.go(Route.Assistant) } }
     LaunchedEffect(openUpdate) { if (openUpdate) { openUpdate = false; app.go(Route.Settings) } }
     LaunchedEffect(app.top == Route.Labs, app.notAuthorized) { Assistant.refresh(app) }          // on start, and after Labs (the assistant may have been switched)
 
@@ -428,14 +435,35 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {   // FragmentAct
                     FloatingNav(tabIndex, tabs.map { it.icon }, tabs.map { it.label }, { i -> app.tab(tabs[i].route) },
                         Modifier, onLongClick = { app.go(Route.EditTabs) },
                         apps = AppSessions.dock(), selectedApp = openApp, onApp = { id -> dockTap(app, id) }, onAppHold = { id -> app.dockMenu = id }) }
-                } else WideLayout(app, maxWidth, { backP.value }, { backExit.value })
+                } else { WideLayout(app, maxWidth, { backP.value }, { backExit.value }); AppWindowLayer(app) }
             }
             CompositionLocalProvider(LocalRootHaze provides rootHaze) {        // so the toast is real frosted glass
                 AlertBanner(app, Modifier.align(Alignment.TopCenter))
-                // the assistant's orb, on every page but its own (Appearance → Assistant button)
-                androidx.compose.animation.AnimatedVisibility(Assistant.on == true && AppPrefs.asstButton && app.top != Route.Assistant && app.top !is Route.AppFrame && DialogStack.depth == 0,
-                    Modifier.align(Alignment.BottomEnd).navigationBarsPadding().padding(end = 14.dp, bottom = if (wide) 20.dp else 92.dp), enter = fadeIn() + androidx.compose.animation.scaleIn(initialScale = .6f), exit = fadeOut() + androidx.compose.animation.scaleOut(targetScale = .6f)) {
-                    Box(Modifier.size(52.dp).shadow(10.dp, androidx.compose.foundation.shape.CircleShape).clip(androidx.compose.foundation.shape.CircleShape)
+                // the assistant's orb, on every page but its own (Appearance → Assistant button). Drag it anywhere; drop it on
+                // the navigation pill and it becomes a tab there instead (take it out again in the pill's editor).
+                val docked = navTabs(app).any { it.id == "assistant" }
+                androidx.compose.animation.AnimatedVisibility(Assistant.on == true && AppPrefs.asstButton && !docked && app.top != Route.Assistant && app.top != Route.AssistantSettings && app.top != Route.AssistantArchive && app.top !is Route.AppFrame && DialogStack.depth == 0,
+                    Modifier.align(Alignment.BottomEnd).navigationBarsPadding().padding(end = 14.dp, bottom = if (wide) 20.dp else 92.dp)
+                        .offset { androidx.compose.ui.unit.IntOffset(AppPrefs.orbDx.toInt(), AppPrefs.orbDy.toInt()) },
+                    enter = fadeIn() + androidx.compose.animation.scaleIn(initialScale = .6f), exit = fadeOut() + androidx.compose.animation.scaleOut(targetScale = .6f)) {
+                    val win = androidx.compose.ui.platform.LocalWindowInfo.current.containerSize
+                    val dens = androidx.compose.ui.platform.LocalDensity.current
+                    var at by remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }; var dragging by remember { mutableStateOf(false) }
+                    var finger by remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }       // where your finger is, on screen
+                    fun overDockNow() = dragging && with(dens) { if (wide) finger.x < 170.dp.toPx() else finger.y > win.height - 150.dp.toPx() && kotlin.math.abs(finger.x - win.width / 2f) < win.width * .36f }
+                    Box(Modifier.size(52.dp).graphicsLayer { val k = if (dragging) 1.12f else 1f; scaleX = k; scaleY = k; alpha = if (overDockNow()) .7f else 1f }
+                        .onGloballyPositioned { val b = it.boundsInWindow(); at = b.center }
+                        .pointerInput(wide) { detectDragGestures(
+                            onDragStart = { p -> dragging = true; finger = at + p - androidx.compose.ui.geometry.Offset(size.width / 2f, size.height / 2f); Sounds.feel("tap") },
+                            onDragEnd = { val dock = overDockNow(); dragging = false
+                                if (dock && AppPrefs.navTabs.size < MAX_TABS) { AppPrefs.set("nav_tabs", (AppPrefs.navTabs.filter { it != "assistant" } + "assistant").joinToString(",")); AppPrefs.setOrb(0f, 0f); app.toast("The assistant is in the navigation pill now") }
+                                else AppPrefs.setOrb(AppPrefs.orbDx, AppPrefs.orbDy) },
+                            onDragCancel = { dragging = false }) { c, d -> c.consume(); finger += d
+                                // keep it on screen
+                                val nx = AppPrefs.orbDx + d.x; val ny = AppPrefs.orbDy + d.y
+                                val okX = at.x + d.x in 30f..(win.width - 30f); val okY = at.y + d.y in 60f..(win.height - 30f)
+                                AppPrefs.moveOrb(if (okX) nx else AppPrefs.orbDx, if (okY) ny else AppPrefs.orbDy) } }
+                        .shadow(10.dp, androidx.compose.foundation.shape.CircleShape).clip(androidx.compose.foundation.shape.CircleShape)
                         .clickable(onClickLabel = "Ask Nova") { Sounds.feel("tap"); app.go(Route.Assistant) }, contentAlignment = Alignment.Center) {
                         AssistantOrb("idle", 52.dp) }
                 }
@@ -534,7 +562,9 @@ private fun Modifier.paneTouch(app: AppState, left: Boolean) = pointerInput(left
                 androidx.compose.animation.AnimatedVisibility(split,
                     // the list slides in and out over a fixed layout (squeezing both panes every frame made it choppy)
                     enter = if (reduceMotion()) fadeIn() else androidx.compose.animation.slideInHorizontally(androidx.compose.animation.core.tween(300, easing = androidx.compose.animation.core.FastOutSlowInEasing)) { -it / 3 } + fadeIn(androidx.compose.animation.core.tween(220)),
-                    exit = if (reduceMotion()) fadeOut() else androidx.compose.animation.slideOutHorizontally(androidx.compose.animation.core.tween(260)) { -it / 3 } + fadeOut(androidx.compose.animation.core.tween(180))) {
+                    // on the way out its space closes up with it, so the page glides back left instead of waiting and then jumping
+                    exit = if (reduceMotion()) fadeOut() + androidx.compose.animation.shrinkHorizontally(androidx.compose.animation.core.tween(0), shrinkTowards = Alignment.Start)
+                        else androidx.compose.animation.shrinkHorizontally(androidx.compose.animation.core.tween(260, easing = androidx.compose.animation.core.FastOutSlowInEasing), shrinkTowards = Alignment.Start) + fadeOut(androidx.compose.animation.core.tween(160))) {
                     Row {
                         Box(Modifier.width(400.dp).fillMaxHeight().paneTouch(app, true)) {
                             CompositionLocalProvider(LocalWide provides false, LocalListPane provides true) { lastParent?.let { Screen(app, it) } }   // the list pane is phone-width
@@ -542,7 +572,8 @@ private fun Modifier.paneTouch(app: AppState, left: Boolean) = pointerInput(left
                         Box(Modifier.width(1.dp).fillMaxHeight().background(N.divider))
                     }
                 }
-                val full = !split && (app.top == Route.Home || app.top == Route.Dashboard || app.top == Route.Status)
+                // apps (web apps, Files, Terminal) take the whole width too — capped like a page they looked like a portrait phone
+                val full = !split && (app.top == Route.Home || app.top == Route.Dashboard || app.top == Route.Status || app.top is Route.AppFrame || Builtins.current(app.top) != null)
                 Box(Modifier.weight(1f).fillMaxHeight().paneTouch(app, false), contentAlignment = Alignment.TopCenter) {
                     Box((if (full || split) Modifier.fillMaxSize() else Modifier.widthIn(max = 760.dp).fillMaxHeight())) {
                         // predictive back: the page underneath shows while you drag (as on a phone), and the page follows your thumb
@@ -648,12 +679,14 @@ private fun Modifier.paneTouch(app: AppState, left: Boolean) = pointerInput(left
         Route.Icons -> IconsScreen(app)
         Route.Assistant -> AssistantScreen(app)
         Route.AssistantSettings -> AssistantSettingsScreen(app)
+        Route.AssistantArchive -> AssistantArchiveScreen(app)
         Route.SetupGuide -> Page("Setup guide", app::back) { SetupGuideBody() }
         Route.Settings -> SettingsScreen(app)
         Route.Devices -> DevicesScreen(app)
         Route.About -> AboutScreen(app)
         Route.Faq -> FaqScreen(app)
         Route.FreeUp -> FreeUpScreen(app)
+        Route.TaskManager -> TaskManagerScreen(app)
     }
 }
 

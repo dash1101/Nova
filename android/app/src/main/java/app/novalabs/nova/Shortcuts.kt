@@ -172,12 +172,13 @@ val NAV_TABS = listOf(
     Shortcut("start", Icons.Rounded.TravelExplore, "Start", Route.Start),
     Shortcut("search", Icons.Rounded.Search, "Search", Route.Search),
     Shortcut("favorites", Icons.Rounded.Star, "Favorites", Route.Favorites),
+    Shortcut("assistant", Icons.Rounded.AutoAwesome, "Assistant", Route.Assistant),       // (only while the assistant is on, in Labs)
 ) + SHORTCUTS.filter { it.id in listOf("apps", "status", "containers", "storage", "inbox", "quick", "lighting", "terminal") }
 val DEFAULT_TABS = listOf("inbox", "home", "menu")
 const val MAX_TABS = 12
 
 fun navTabs(app: AppState): List<Shortcut> =
-    AppPrefs.navTabs.mapNotNull { id -> NAV_TABS.firstOrNull { it.id == id } }.filter { it.feature == null || app.has(it.feature) }
+    AppPrefs.navTabs.mapNotNull { id -> NAV_TABS.firstOrNull { it.id == id } }.filter { (it.feature == null || app.has(it.feature)) && (it.id != "assistant" || Assistant.on == true) }
         .let { if (it.none { t -> t.id == "home" }) listOf(NAV_TABS[0]) + it else it }
 
 /** Settings → Appearance → Navigation pill (or hold it). */
@@ -204,7 +205,7 @@ fun navTabs(app: AppState): List<Shortcut> =
                 }
             }
         }
-        val more = NAV_TABS.filter { it.id !in ids && (it.feature == null || app.has(it.feature)) }
+        val more = NAV_TABS.filter { it.id !in ids && (it.feature == null || app.has(it.feature)) && (it.id != "assistant" || Assistant.on == true) }
         SectionLabel(if (ids.size >= MAX_TABS) "Add · the bar is full ($MAX_TABS max)" else "Add")
         Group {
             more.forEachIndexed { i, s -> if (i > 0) RowDivider()

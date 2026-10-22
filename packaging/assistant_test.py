@@ -122,7 +122,7 @@ check("look: nothing left over", p["unknown"] == [], p["unknown"])
 got = [(x.get("pref"), x.get("value")) for x in p["steps"] if x["kind"] == "ui"]
 check("look: living wallpaper, style, accent, window roundness, fps meter", got == [("living", "aero"), ("style", "liquid"), ("accent", "#ff7a00"), ("win_round", 20), ("fps", True)], got)
 check("look: the lights still go to the lights", any((x.get("call") or {}).get("body") == {"on": True, "effect": "fire", "rainbow": True} for x in p["steps"]), p["steps"])
-check("look: lumen", P("apply the lumen theme")["steps"][0]["value"] == "lumen")
+check("look: mica", P("apply the mica theme")["steps"][0]["value"] == "fluent")
 check("look: living wallpaper off", P("turn off the living wallpaper")["steps"][0]["value"] == "off")
 check("look: corner roundness clamped", P("set corner roundness to 900%")["steps"][0]["value"] == 200)
 check("look: the lights' color isn't the accent", P("make the lights orange")["steps"][0]["kind"] == "call")

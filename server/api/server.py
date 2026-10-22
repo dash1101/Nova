@@ -41,7 +41,7 @@ try:                       # optional module: fan/case lighting (modules/fan-gig
 except ImportError:
     nova_rgb = None
 
-API_VERSION = "0.9.3-alpha"
+API_VERSION = "0.9.4-alpha"
 # The API contract (docs/API.md). API_LEVEL only ever goes up: each new level adds endpoints or fields, never removes or
 # changes one. MIN_LEVEL is the oldest level this server still answers in full (old apps keep working back to it).
 # MIN_CLIENT: the oldest app builds still served, per platform — 0 = all of them. Raising it is the last resort, after
@@ -691,16 +691,10 @@ def _brain_extra(text):
     t = text.lower(); out = []
     has = lambda rx: re.search(rx, t)
     if has(r"process|task|program|\bram\b|memory|\bcpu\b|using|hog|slow|heavy|\btop\b|load|busy|htop|\bps\b"):
-        mem = _run(["ps", "-eo", "pid,user:12,rss,%mem,%cpu,comm", "--sort=-rss", "--no-headers"]).splitlines()[:12]
-        cpu = _run(["ps", "-eo", "pid,user:12,%cpu,rss,comm", "--sort=-%cpu", "--no-headers"]).splitlines()[:8]
-        def fm(l):
-            f = l.split(None, 5)
-            return f"{f[5]} (pid {f[0]}, {f[1]}): {int(f[2]) / 1024:.0f} MB RAM ({f[3]}%), CPU {f[4]}%" if len(f) == 6 else l.strip()
-        def fc(l):
-            f = l.split(None, 4)
-            return f"{f[4]} (pid {f[0]}, {f[1]}): CPU {f[2]}%, {int(f[3]) / 1024:.0f} MB RAM" if len(f) == 5 else l.strip()
-        out.append("Linux processes (programs running on the server) by memory, biggest first:\n" + "\n".join("  " + fm(l) for l in mem))
-        out.append("Linux processes by CPU right now, busiest first:\n" + "\n".join("  " + fc(l) for l in cpu))
+        pl = [p for p in process_list()["processes"] if not p["kernel"]]
+        fm = lambda p: f"{p['name']} (pid {p['pid']}, {p['user']}): {p['mem'] / 1048576:.0f} MB RAM, CPU {p['cpu']:.1f}%"
+        out.append("Linux processes (programs running on the server) by memory, biggest first:\n" + "\n".join("  " + fm(p) for p in sorted(pl, key=lambda p: -p["mem"])[:12]))
+        out.append("Linux processes by CPU, busiest first:\n" + "\n".join("  " + fm(p) for p in sorted(pl, key=lambda p: -p["cpu"])[:8]))
     if has(r"container|docker|\bapps?\b|service|immich|jellyfin|home ?assistant"):
         if time.time() - _cstats["t"] > 10:
             rc, res = helper("containers-stats", timeout=40)
@@ -737,22 +731,35 @@ convo_lock = threading.Lock()
 
 def convo_load():
     c = load_json(CONVO, {}); turns = [t for t in c.get("turns", []) if isinstance(t, dict)]; mem = [m for m in c.get("memory", []) if isinstance(m, dict)]
+    arch = [t for t in c.get("archive", []) if isinstance(t, dict)]
     now = time.time()
     if turns and now - max(t.get("t", 0) for t in turns) > CONVO_IDLE:
+        arch += turns                                   # the Archive (Assistant → Earlier conversations) keeps the words for 90 days
         for t in turns:
             d = [str(x) for x in (t.get("done") or []) if x and "canceled" not in str(x).lower()]
             if d: mem.append({"t": t.get("t", now), "text": f"“{str(t.get('q', ''))[:120]}” → " + "; ".join(d)[:300]})
         turns = []
     mem = [m for m in mem if now - m.get("t", 0) < CONVO_KEEP][-24:]
-    return {"turns": turns[-30:], "memory": mem}
+    arch = [t for t in arch if now - t.get("t", 0) < 90 * 86400][-300:]
+    return {"turns": turns[-30:], "memory": mem, "archive": arch}
 
-def convo_save(c): save_json(CONVO, {"turns": c["turns"][-30:], "memory": c["memory"][-24:]})
+def convo_save(c): save_json(CONVO, {"turns": c["turns"][-30:], "memory": c["memory"][-24:], "archive": c.get("archive", [])[-300:]})
 
 def convo_history(c):
     """What the brain reads: what it remembers from before, then this conversation's last turns."""
     when = lambda t: time.strftime("%b %-d %H:%M", time.localtime(t))
     return {"memory": [f"{when(m['t'])}: {m['text']}" for m in c["memory"][-12:]],
             "turns": [{"q": t.get("q", ""), "reply": t.get("reply", ""), "done": t.get("done") or []} for t in c["turns"][-6:]]}
+
+def process_list():
+    """Every process, like top: who runs it, its CPU (now) and memory, and how long it's been running."""
+    rc, res = helper("proc-list", timeout=20)                # through the helper: this service only sees its own processes
+    procs = res.get("processes", []) if rc == 0 else []
+    try:
+        m = open("/proc/meminfo").read(); kb = lambda k: int(re.search(rf"^{k}:\s+(\d+)", m, re.M).group(1)) * 1024
+        mem = {"total": kb("MemTotal"), "used": kb("MemTotal") - kb("MemAvailable")}
+    except Exception: mem = {}
+    return {"processes": procs, "count": len(procs), "cpus": os.cpu_count(), "load": list(os.getloadavg()), "memory": mem, "self": os.getpid()}
 
 def hub_search(text):
     """Docker Hub's image search, the well-known ones first (the store's search and the assistant)."""
@@ -798,6 +805,8 @@ def describe_action(a):
     if p[:1] == ["store"]: return f"{p[2].title()} {p[1]} from the app store"
     if p[:1] == ["programs"]: return f"{p[2].title()} the program {p[1]}"
     if p[:1] == ["drives"]: return f"{p[2].title()} a drive"
+    if len(p) == 3 and p[0] == "processes" and p[2] == "signal":
+        return f"{'Force stop' if a.get('data', {}).get('sig') == 'kill' else 'End'} process {p[1]} on the server{(' (' + str(a.get('data', {}).get('name'))[:40] + ')') if a.get('data', {}).get('name') else ''}"
     if p == ["assistant", "voice"]: return "Download voice for the assistant (0.2 GB) and run it on this server — what you say stays on the server"
     if p == ["assistant", "brain"]:
         k = (a.get("data", {}) or {}).get("model")
@@ -896,6 +905,7 @@ def browser_needs_phone(method, parts):
 
 # Actions that need the fingerprint-bound step-up key (second signature).
 def needs_stepup(method, parts):
+    if method == "POST" and len(parts) == 3 and parts[0] == "processes" and parts[2] == "signal": return True   # Task manager: end a process
     if method == "DELETE" and parts[:1] == ["devices"]: return True
     if method == "POST" and parts == ["devices", "remove-all"]: return True
     if method == "POST" and parts == ["devices", "watch"]: return True
@@ -2601,18 +2611,28 @@ class Handler(BaseHTTPRequestHandler):
             if role_of(dev) != "admin": return 403, {"error": "admins only"}
             with convo_lock:
                 c = convo_load()
-                if method == "GET": convo_save(c); return 200, {"turns": [{k: t.get(k) for k in ("id", "q", "reply", "done", "t")} for t in c["turns"][-20:]], "memory": len(c["memory"]), "idle_hours": CONVO_IDLE // 3600}
+                pick = lambda ts: [{k: t.get(k) for k in ("id", "q", "reply", "done", "t")} for t in ts]
+                if method == "GET": convo_save(c); return 200, {"turns": pick(c["turns"][-20:]), "memory": len(c["memory"]), "idle_hours": CONVO_IDLE // 3600,
+                                                               **({"archive": pick(c["archive"] + c["turns"])} if q.get("all") else {})}
                 if method == "POST":                # what a turn's steps did (the device ran them)
                     tid = str(data.get("turn", ""))
                     t = next((x for x in c["turns"] if x.get("id") == tid), None)
                     if not t: return 404, {"error": "no such turn"}
                     t["done"] = ["".join(ch for ch in str(x) if ch.isprintable())[:200] for x in (data.get("done") or [])][:12]
                     convo_save(c); return 200, {"ok": True}
-                if method == "DELETE": save_json(CONVO, {"turns": [], "memory": []}); return 200, {"ok": True}
+                if method == "DELETE": save_json(CONVO, {"turns": [], "memory": [], "archive": []}); return 200, {"ok": True}
         if parts == ["assistant", "voice"] and method in ("POST", "DELETE"):
             if role_of(dev) != "admin": return 403, {"error": "admins only"}
             if method == "POST": rc, res = helper("task-start", "voice-install", "{}"); return (202 if rc == 0 else 400), ({"task": res.get("id"), **res} if rc == 0 else res)
             rc, res = helper("voice-remove", timeout=60); return (200 if rc == 0 else 400), res
+        # ── Task manager: the server's processes (read by any admin), and ending one (fingerprint; the helper checks it) ──
+        if parts == ["processes"] and method == "GET":
+            if role_of(dev) != "admin": return 403, {"error": "admins only"}
+            return 200, process_list()
+        if len(parts) == 3 and parts[0] == "processes" and parts[2] == "signal" and method == "POST":
+            if role_of(dev) != "admin": return 403, {"error": "admins only"}
+            if not parts[1].isdigit() or data.get("sig") not in ("term", "kill"): raise ValueError("pick a process and End or Force stop")
+            rc, res = helper("proc-signal", parts[1], data["sig"], timeout=20); return (200 if rc == 0 else 400), res
         # ── the assistant's brain: a small model on this server (download, status, remove) ──
         if parts == ["assistant", "brain"]:
             import brain
@@ -2622,6 +2642,9 @@ class Handler(BaseHTTPRequestHandler):
                 if data.get("model") not in brain.MODELS: raise ValueError("pick Smart or Light")
                 rc, res = helper("task-start", "brain-install", json.dumps({"model": data["model"]})); return (202 if rc == 0 else 400), ({"task": res.get("id"), **res} if rc == 0 else res)
             if method == "DELETE":
+                if q.get("model"):                            # just one downloaded model, not the one in use
+                    if q["model"] not in brain.MODELS: raise ValueError("no such model")
+                    rc, res = helper("brain-remove-model", q["model"], timeout=60); return (200 if rc == 0 else 400), res
                 rc, res = helper("brain-remove", timeout=60); return (200 if rc == 0 else 400), res
         if method == "POST" and len(parts) == 2 and parts[0] == "power" and parts[1] in ("reboot", "poweroff", "nova-restart", "nova-stop"):
             rc, res = helper("power", parts[1]); return (200 if rc == 0 else 500), res

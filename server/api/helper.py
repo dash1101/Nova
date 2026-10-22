@@ -815,6 +815,12 @@ if verb == "brain-remove" and not args:
     sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
     import brain
     brain.remove(); changelog("Assistant's brain removed from the Nova app"); out({"ok": True})
+if verb == "brain-remove-model" and len(args) == 1 and args[0] in ("smart", "light"):
+    sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+    import brain
+    try: brain.remove_model(args[0])
+    except ValueError as e: fail(str(e))
+    changelog(f"Assistant's {args[0]} model removed (to free space) from the Nova app"); out({"ok": True})
 
 if verb == "voice-remove" and not args:
     sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
@@ -843,6 +849,57 @@ if verb == "power-schedule" and len(args) == 2 and args[0] in ("reboot", "powero
         run(["systemctl", "daemon-reload"]); fail("couldn't set the timer: " + se.strip()[:200])
     changelog(f"Server {'restart' if args[0] == 'reboot' else 'shutdown'} scheduled for {when} from the Nova app")
     out({"ok": True, "id": sid, "at": at, "action": args[0]})
+if verb == "proc-list" and not args:
+    # Task manager and the assistant: every process with its CPU right now (two looks, half a second apart — ps only
+    # knows each one's average since it started). Nova's own service is sandboxed and only sees itself, hence here.
+    import pwd as _pwd
+    tck = os.sysconf("SC_CLK_TCK"); pg = os.sysconf("SC_PAGE_SIZE"); me = {os.getpid(), os.getppid()}
+    def ticks():
+        t = {}
+        for d in os.listdir("/proc"):
+            if not d.isdigit(): continue
+            try: st = open(f"/proc/{d}/stat").read()
+            except OSError: continue
+            r = st.rfind(")"); f = st[r + 2:].split()
+            t[int(d)] = (st[st.find("(") + 1:r], f, int(f[11]) + int(f[12]))
+        return t
+    a = ticks(); t0 = time.time(); time.sleep(.5); b = ticks(); dt = time.time() - t0
+    up = float(open("/proc/uptime").read().split()[0]); users = {}
+    procs = []
+    for pid, (comm, f, tk) in b.items():
+        if pid in me: continue
+        try: uid = int(next(l.split()[1] for l in open(f"/proc/{pid}/status") if l.startswith("Uid:")))
+        except (OSError, StopIteration, ValueError): uid = -1
+        if uid not in users:
+            try: users[uid] = _pwd.getpwuid(uid).pw_name
+            except KeyError: users[uid] = str(uid)
+        try: cmd = open(f"/proc/{pid}/cmdline", "rb").read().replace(b"\0", b" ").decode("utf-8", "replace").strip()
+        except OSError: cmd = ""
+        prev = a.get(pid, (0, 0, tk))[2]
+        procs.append({"pid": pid, "ppid": int(f[1]), "user": users[uid], "cpu": round(max(0, tk - prev) / tck / dt * 100, 1), "mem": int(f[21]) * pg,
+                      "threads": int(f[17]), "up_s": int(max(0, up - int(f[19]) / tck)), "state": f[0], "name": comm[:60], "cmd": cmd[:400], "kernel": not cmd})
+    out({"processes": procs})
+if verb == "proc-signal" and len(args) == 2 and args[0].isdigit() and args[1] in ("term", "kill"):
+    # Task manager: end (SIGTERM) or force stop (SIGKILL) one process — never the system's own core, Nova, or SSH
+    import signal as _sig
+    pid = int(args[0])
+    try:
+        comm = open(f"/proc/{pid}/comm").read().strip(); cmd = open(f"/proc/{pid}/cmdline", "rb").read()
+        st = os.stat(f"/proc/{pid}")
+    except OSError: fail("that process isn't running anymore")
+    me = {os.getpid(), os.getppid()}
+    if pid <= 2 or pid in me: fail("that one keeps the system running — it can't be stopped from here")
+    if not cmd: fail("that's part of the Linux kernel — it can't be stopped")
+    if comm in ("systemd", "init", "sshd", "nova-api", "dbus-daemon", "systemd-journal", "systemd-logind", "systemd-udevd", "dockerd", "containerd", "agetty", "login"):
+        fail(f"{comm} keeps the server (or your way in) working — stop it from the terminal if you're sure")
+    try:
+        if any(b"/usr/lib/nova-api/" in x for x in cmd.split(b"\0")): fail("that's part of Nova — use Power → Restart Nova instead")
+    except Exception: pass
+    try: os.kill(pid, _sig.SIGKILL if args[1] == "kill" else _sig.SIGTERM)
+    except ProcessLookupError: fail("that process isn't running anymore")
+    except PermissionError: fail("not allowed to stop that process")
+    changelog(f"Process {pid} ({comm}) {'force-stopped' if args[1] == 'kill' else 'ended'} from the Nova app (Task manager)")
+    out({"ok": True, "pid": pid, "name": comm})
 if verb == "power-unschedule" and len(args) == 1 and re.fullmatch(r"[0-9a-f]{8}", args[0]):
     unit = f"nova-sched-{args[0]}"
     if not os.path.exists(f"{SCHED_DIR}/{unit}.timer"): fail("no such schedule")

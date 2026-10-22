@@ -33,7 +33,7 @@ import androidx.compose.ui.unit.sp
         exit = if (reduceMotion()) androidx.compose.animation.fadeOut() else androidx.compose.animation.slideOutVertically { -it } + androidx.compose.animation.fadeOut()) {
         val b = shown ?: return@AnimatedVisibility
         val shape = androidx.compose.foundation.shape.RoundedCornerShape(if (N.material) 20.dp else if (N.preset == "aero") cardRadius(6.dp) else 24.dp)
-        Row(Modifier.fillMaxWidth().then(if (N.preset == "aero") Modifier.popupFrost(LocalRootHaze.current, shape) else Modifier.glassCard(shape))
+        Row(Modifier.fillMaxWidth().then(if (N.preset == "aero" || (N.preset.isEmpty() && !N.material)) Modifier.popupFrost(LocalRootHaze.current, shape) else Modifier.glassCard(shape))
             .clickable { app.banner = null; app.go(Route.Inbox) }
             .pointerInput(Unit) { detectVerticalDragGestures { _, dy -> if (dy < -8) app.banner = null } }
             .padding(horizontal = 16.dp, vertical = 14.dp), verticalAlignment = Alignment.Top) {

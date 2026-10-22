@@ -26,9 +26,10 @@ export const SHORTCUTS = [
 ].map(([id, icon, label, route, feature, short]) => ({ id, icon, label, route, feature, short: short || label }));
 const sc = id => SHORTCUTS.find(s => s.id === id);
 export const NAV_TABS = [{ id: "home", icon: "home", label: "Home", route: "home" }, { id: "store", icon: "store", label: "Store", route: "store", feature: "store" },
-  { id: "menu", icon: "list", label: "Menu", route: "menu" }, ...["start", "apps", "files", "servers", "search", "status", "containers", "storage", "inbox", "quick", "lighting"].map(sc)];
+  { id: "menu", icon: "list", label: "Menu", route: "menu" }, ...["start", "apps", "files", "servers", "search", "status", "containers", "storage", "inbox", "quick", "lighting"].map(sc),
+  { id: "assistant", icon: "star", label: "Assistant", route: "assistant", labs: "assistant" }];
 export const navTabs = () => {
-  const t = prefs.navTabs.map(id => NAV_TABS.find(x => x.id === id)).filter(x => x && (!x.feature || has(x.feature)));
+  const t = prefs.navTabs.map(id => NAV_TABS.find(x => x.id === id)).filter(x => x && (!x.feature || has(x.feature)) && (!x.labs || S.cache["/api/v1/labs"]?.labs?.[x.labs]));
   return t.some(x => x.id === "home") ? t : [NAV_TABS[0], ...t];
 };
 const homeChips = () => prefs.homeChips.map(sc).filter(s => s && (!s.feature || has(s.feature)));
@@ -356,11 +357,11 @@ export async function menu(ctx) {
       <div class="mtiles">${tile("box", "var(--blue)", "Containers", cs ? `${cs.running}/${cs.total} up` : "—", "go:containers")}${tile("disk", "#3ecf6e", "Storage", disk ? `${disk.name} ${Math.round(disk.pct)}%` : "—", "go:hardware")}
         ${has("lighting") ? tile("bulb", "#ffb020", "Lighting", f ? (f.on !== false ? `${cap(f.effect)} · ${f.brightness}%` : "Off") : "—", "go:lighting") : tile("status", "#3ecf6e", "Status", "Live graphs", "go:status")}
         ${tile("bell", "#ff5a5a", "Inbox", S.unread ? `${S.unread} new` : "All caught up", "go:inbox")}${favoriteTiles(tile)}</div>${favoritesLink()}
-      ${sec("Apps")}<div class="mapps">${isAdmin() && has("files") ? cell("Files", glyph("folder", "#3e91ff"), "go:files") : ""}${isAdmin() && has("terminal") ? cell("Terminal", glyph("term", "#3ecf6e"), "go:term") : ""}
-        ${apps.map(a => { const h = ST.appHref(a); return a.kind === "command" ? cell(a.name, glyph("term", "#8e8e93"), "go:apps") : cell(a.name, `<span class="appic" data-ic="${esc(a.id)}">${esc((a.name || "?")[0])}</span>`, "go:apps", h, a.id); }).join("")}
-        ${cell("All apps", glyph("apps", "var(--sub)"), "go:apps")}</div>
+      ${sec("Apps")}<div class="mapps">${cell("All apps", glyph("apps", "var(--sub)"), "go:apps")}${isAdmin() && has("files") ? cell("Files", glyph("folder", "#3e91ff"), "go:files") : ""}${isAdmin() && has("terminal") ? cell("Terminal", glyph("term", "#3ecf6e"), "go:term") : ""}
+        ${apps.map(a => { const h = ST.appHref(a); return a.kind === "command" ? cell(a.name, glyph("term", "#8e8e93"), "go:apps") : cell(a.name, `<span class="appic" data-ic="${esc(a.id)}">${esc((a.name || "?")[0])}</span>`, "go:apps", h, a.id); }).join("")}</div>
       <div class="installrow">${group(row("Install Nova", { sub: "Its own window and icon, like an app — no app store needed", blue: true, icon: "computer", click: "install" }))}</div>
       ${sec("Server")}${group(row("Status", { sub: "Live graphs, storage, backups", blue: true, icon: "status", tint: "#3ecf6e", click: "go:status" })
+        + (isAdmin() ? row("Task manager", { sub: "What's running on the server, by CPU and memory", blue: true, icon: "cpu", tint: "#64d2ff", click: "go:processes" }) : "")
         + row("Storage & hardware", { sub: "Drives, pools, set up drives", blue: true, icon: "disk", tint: "#3ecf6e", click: "go:hardware" })
         + (isAdmin() ? row("Free up", { sub: "Old images, logs, caches, trash — and memory", blue: true, icon: "del", tint: "var(--amber)", click: "go:freeup" }) : "")
         + row("Backups", { sub: "What's backed up, restore files", blue: true, icon: "backup", click: "go:backups" })
@@ -418,7 +419,7 @@ export async function status(ctx) {
       ${attentionHtml()}
       ${sec(hour ? "Last hour" : "Live · last 2 minutes")}
       ${segmented(["Live", "Last hour"], hour ? 1 : 0, "range")}
-      <div style="height:6px"></div>
+      ${live() && (n?.cpus?.length || 0) > 1 ? `<button class="alink" data-act="cpusplit" style="margin:2px calc(var(--gutter) + 8px) 6px;font-size:14px;font-weight:600">${split() ? "Show one CPU graph" : `Show each core (${n.cpus.length})`}</button>` : `<div style="height:6px"></div>`}
       <div class="grid four">
         ${cpuCard(n)}
         ${gcard("Memory", "c2", n ? Math.round(n.mem) + "%" : "—", n ? `${n.mem_used_gb} of ${n.mem_total_gb} GB` : "")}
@@ -469,6 +470,7 @@ export async function status(ctx) {
       const gb = await choose("Set up swap", [["2", "2 GB"], ["4", "4 GB", "A good size for most servers"], ["8", "8 GB"], ["16", "16 GB"]], "4");
       if (gb) ST.startTask(ctx, "/api/v1/storage/task/swap-setup", { spec: { gb: +gb } });
     },
+    cpusplit: () => { prefs.cpuSplit = !prefs.cpuSplit; draw(); },
     cpuclick: () => {
       // one click enlarges the graph; a second within a moment means double-click: split into cores (or join them)
       if (clickT) { clearTimeout(clickT); clickT = 0; if ((L.now?.cpus?.length || 0) > 1) { prefs.cpuSplit = !prefs.cpuSplit; draw(); } return; }
@@ -1748,7 +1750,7 @@ const ICON_THEMES = [["style", "Matches the style", "Each style's own icons"], [
   ["glossy", "Glossy", "White symbols on shiny glossy tiles"]];
 /** One icon drawn the way an icon style draws it, for the picker — shown beside each choice, all the time. */
 function iconSample(theme, icon, tint) {
-  const look = theme !== "style" ? theme : ({ liquid: "tiles", fluent: "glyph", breeze: "glyph", aero: "glossy", lumen: "glyph" })[prefs.style] || "tonal";
+  const look = theme !== "style" ? theme : ({ liquid: "tiles", fluent: "glyph", breeze: "glyph", aero: "glossy" })[prefs.style] || "tonal";
   const base = "display:inline-grid;place-items:center;flex:none;";
   const st = { tonal: `width:30px;height:30px;border-radius:50%;color:${tint};background:color-mix(in srgb, ${tint} 16%, transparent)`,
     tiles: `width:28px;height:28px;border-radius:8px;color:#fff;background:${tint}`, circles: `width:28px;height:28px;border-radius:50%;color:#fff;background:${tint}`,
@@ -1784,8 +1786,7 @@ const STYLES = [["auto", "Automatic", ""], ["default", "Default", "Nova's own lo
   ["liquid", "Glass", "Clear glass that bends the light behind it at its edges"],
   ["fluent", "Mica", "A soft, tinted base with frosted menus and crisp, small corners"],
   ["breeze", "Breeze", "Flat and tidy: a thin frame, gentle corners, the accent as the focus color"],
-  ["aero", "Aero", "Tinted frosted glass frames with a glossy shine and glowing buttons"],
-  ["lumen", "Lumen · Beta", "Light on dark glass: beams along the edges, liquid-metal buttons, gooey switches and a slow aurora"]];
+  ["aero", "Aero", "Tinted frosted glass frames with a glossy shine and glowing buttons"]];
 const autoMaterialUA = () => /Android/i.test(navigator.userAgent) && !/SamsungBrowser|SM-[A-Z0-9]|Xiaomi|Redmi|POCO|HUAWEI|HONOR|vivo|OPPO|realme/i.test(navigator.userAgent);
 /** A phone that can buzz: the Vibration API exists on desktop browsers too, where nothing would happen. */
 export const canVibrate = () => "vibrate" in navigator && matchMedia("(pointer: coarse)").matches && /Android/i.test(navigator.userAgent);
@@ -1797,17 +1798,17 @@ const READ = [["auto", "Automatic", "Stronger text only where the glass or the b
 export async function appearance(ctx) {
   const draw = () => {
     const st = prefs.style || "auto", mat = document.documentElement.classList.contains("material");
-    const preset = ["liquid", "fluent", "breeze", "aero", "lumen"].includes(st) ? st : "";
-    const look = mat ? "Material You" : ({ liquid: "Glass", fluent: "Mica", breeze: "Breeze", aero: "Aero", lumen: "Lumen" })[preset] || "Default";
+    const preset = ["liquid", "fluent", "breeze", "aero"].includes(st) ? st : "";
+    const look = mat ? "Material You" : ({ liquid: "Glass", fluent: "Mica", breeze: "Breeze", aero: "Aero" })[preset] || "Default";
     const stl = STYLES.find(s => s[0] === st) || STYLES[0];
     const rk = "round_" + (preset || "default"), rnow = Math.max(25, Math.min(200, prefs[rk] ?? prefs.round ?? 100));
     // the sliders for the look: its own (glass, light splitting, see-through, frost), then corners and windows for every look
     const tune = (preset === "liquid" ? rng("prism", "Light splitting", 0, 100, 50, "%") : "")
-      + (preset && !["breeze", "lumen"].includes(preset) ? rng("glass", "Glass clarity", 0, 100, 60, "%") : "")
+      + (preset && preset !== "breeze" ? rng("glass", "Glass clarity", 0, 100, 60, "%") : "")
       + (!preset && !mat ? rng("dTrans", "Transparency", 0, 85, 0, "%") + rng("dFrost", "Frost", 0, 40, 26, "px") : "")
       + `<div class="range-row"><div class="h"><span>Corner roundness</span><span id="roundl">${rnow}%</span></div><input type="range" min="25" max="200" value="${rnow}" data-range="${rk}" style="--p:${(rnow - 25) / 175 * 100}%" aria-label="Corner roundness"></div>`
       + rng("winRound", "Window roundness", 0, 300, 100, "%", 5);
-    const tuneSub = [preset === "liquid" && `Splitting ${prefs.prism ?? 50}%`, preset && !["breeze", "lumen"].includes(preset) && `Clarity ${prefs.glass ?? 60}%`,
+    const tuneSub = [preset === "liquid" && `Splitting ${prefs.prism ?? 50}%`, preset && preset !== "breeze" && `Clarity ${prefs.glass ?? 60}%`,
       !preset && !mat && `See-through ${prefs.dTrans ?? 0}%`, `Corners ${rnow}%`, `Windows ${prefs.winRound ?? 100}%`].filter(Boolean).join(" · ");
     const liveSub = (prefs.livingScene || "auto") === "auto" ? `Match the look (${LV.SCENES[LV.sceneId()]})` : prefs.livingScene === "media" ? "Your own GIF or video" : LV.SCENES[prefs.livingScene];
     const iconSub = [(WEB_ICONS || []).find(w => w[0] === (prefs.webIcon || "default"))?.[1] || "Default", SHAPES[prefs.iconShape || "rounded"],
@@ -1860,7 +1861,8 @@ export async function appearance(ctx) {
       ${sec("Home")}${group(row("Home layout", { sub: homeOrder().filter(id => prefs[HOME_SECTIONS.find(s => s[0] === id)[3]]).map(id => HOME_SECTIONS.find(s => s[0] === id)[1]).join(" · ") || "Just the header", blue: true, icon: "dash", click: "go:edit-home" })
         + row("Choose shortcuts", { sub: homeChips().map(s => s.label).join(", ") || "None", blue: true, icon: "tune", click: "go:edit-shortcuts" })
         + row("Start page", { sub: `Search, stats, apps and bookmarks · Nova opens on ${({ home: "Home", start: "the start page", status: "Status", apps: "Apps", inbox: "the Inbox", dashboard: "the dashboard" })[prefs.startRoute || "home"]}`, blue: true, icon: "home", click: "go:start-edit" })
-        + row("Navigation pill", { sub: navTabs().map(s => s.label).join(", ") + " · along the bottom, or down the left on wide screens", blue: true, icon: "viewday", click: "go:edit-tabs" }))}
+        + row("Navigation pill", { sub: navTabs().map(s => s.label).join(", ") + " · along the bottom, or down the left on wide screens", blue: true, icon: "viewday", click: "go:edit-tabs" })
+        + switchRow("Side by side on wide screens", "Pages opened from the Menu show next to it, like on a tablet", !!prefs.splitView, "splitview", { blue: false }))}
       ${note("These choices are saved in this browser. Each server also has its own name and accent color (Settings → Server). Nova's own words are translated by machine, so some may read oddly — tell us on GitHub.")}`, { title: "Appearance" });
     if (!WEB_ICONS) webIcons().then(l => { WEB_ICONS = l; if (ctx.alive()) draw(); }).catch(() => {});
     wireCommon(ctx.root, { onSeg: (k, i) => {
@@ -1930,6 +1932,7 @@ export async function appearance(ctx) {
       const v = await choose("Controller button hints", [["auto", "Match the controller"], ["xbox", "Xbox", "A B X Y"], ["ps", "PlayStation", "✕ ○ □ △"], ["generic", "Plain", "1 2 3 4"], ["off", "Don't show them"]], prefs.padHints === false ? "off" : prefs.padGlyphs || "auto");
       if (!v) return; if (v === "off") prefs.padHints = false; else { prefs.padHints = true; prefs.padGlyphs = v; } draw();
     },
+    splitview: () => { prefs.splitView = !prefs.splitView; draw(); },
     livewall: () => { prefs.livingWall = !prefs.livingWall; ctx.applyTheme(); draw(); },
     scrims: () => { prefs.scrims = prefs.scrims === false; ctx.applyTheme(); draw(); },
     scrimcolor: async () => {       // straight to the picker — with your recent colors, and the page's own color as the first choice
@@ -2061,7 +2064,7 @@ export const editShortcuts = ctx => editList(ctx, { title: "Home shortcuts", lab
   preview: () => { const l = homeChips(); return `<div style="padding:4px 0 6px">${l.length ? `<div class="pillbar glass${l.length >= 5 ? " five" : ""}">${l.map(s => `<button>${I(s.icon)}<span class="l">${esc(l.length >= 5 ? s.short : s.label)}</span></button>`).join("")}</div>` : note("No shortcuts — add some below.")}</div>`; } });
 export const editTabs = ctx => {
   if (!prefs.navTabs.includes("home")) prefs.navTabs = ["home", ...prefs.navTabs];
-  editList(ctx, { title: "Navigation pill", label: "Tabs · hold and drag to reorder", all: NAV_TABS, key: "navTabs", max: 12, fixed: "home", resetLabel: "Reset the navigation pill",
+  editList(ctx, { title: "Navigation pill", label: "Tabs · hold and drag to reorder", all: NAV_TABS.filter(x => !x.labs || S.cache["/api/v1/labs"]?.labs?.[x.labs]), key: "navTabs", max: 12, fixed: "home", resetLabel: "Reset the navigation pill",
     preview: () => { const t = navTabs(), i = t.findIndex(x => x.id === "home"); return `<div style="display:flex;justify-content:center;padding:4px 0 6px"><div class="nav glass" style="position:static;transform:none"><div class="items"><span class="bead" style="transform:translateX(${i * 80}px)"></span>${t.map(x => `<button aria-label="${esc(x.label)}">${I(x.icon)}</button>`).join("")}</div></div></div>${note("On a wide screen or in landscape the same pill stands down the left edge. Back from any tab goes to Home. If you remove Menu, it's still in Home ⋮.")}`; } });
 };
 export async function about(ctx) {

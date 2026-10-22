@@ -11,6 +11,7 @@ import * as SR from "./start.js";
 import * as SV from "./servers.js";
 import * as FM from "./files.js";
 import * as PT from "./parts.js";
+import * as TM from "./taskmgr.js";
 import { orbHtml, runOrbs } from "./orb.js";
 import * as AS from "./assistant.js";
 import * as SEC from "./sec.js";
@@ -50,10 +51,12 @@ function applyTheme() {
   const dark = t === "dark" || (t === "system" && !matchMedia("(prefers-color-scheme: light)").matches);
   // Style: Material You on Android phones that aren't Samsung (or another One UI/iOS-like maker); the Default look elsewhere
   const autoMaterial = /Android/i.test(navigator.userAgent) && !/SamsungBrowser|SM-[A-Z0-9]|Xiaomi|Redmi|POCO|HUAWEI|HONOR|vivo|OPPO|realme/i.test(navigator.userAgent);
-  const preset = ["liquid", "fluent", "breeze", "aero", "lumen"].includes(prefs.style) ? prefs.style : "";
+  if (prefs.style === "lumen") prefs.style = "default";            // Lumen was retired in 0.9.4: its users get the Default look
+  if (prefs.livingScene === "lumen") prefs.livingScene = "auto";
+  const preset = ["liquid", "fluent", "breeze", "aero"].includes(prefs.style) ? prefs.style : "";
   const material = !preset && (prefs.style === "material" || (prefs.style !== "default" && autoMaterial));
   root.classList.toggle("material", material); root.classList.toggle("m-dark", material && dark); root.classList.toggle("m-light", material && !dark);
-  for (const p of ["liquid", "fluent", "breeze", "aero", "lumen"]) root.classList.toggle(p, preset === p);
+  for (const p of ["liquid", "fluent", "breeze", "aero"]) root.classList.toggle(p, preset === p);
   root.classList.toggle("l-light", !dark);
   // Background (Appearance → Wallpaper): the look's own, the Default look's glow on any look, or plain
   for (const k of ["glow", "vivid", "soft", "aero", "plain"]) root.classList.toggle("bg-" + k, prefs.lookBg === k);
@@ -143,7 +146,7 @@ matchMedia("(prefers-color-scheme: light)").addEventListener?.("change", applyTh
 const ROUTES = {
   home: V.home, menu: V.menu, status: V.status, containers: V.containers, store: V.store, inbox: V.inbox, notify: V.notify,
   quick: V.quick, "edit-quick": V.editQuick, lighting: V.lighting, lights: V.lights, schedules: V.schedules, schedule: V.schedule, hardware: V.hardware,
-  partitions: PT.partitions, disks: PT.disks, recommended: V.recommended, security: SEC.security, devices: V.devices, settings: V.settings, server: V.serverSettings, assistant: AS.assistant, "assistant-settings": AS.assistantSettings, appearance: V.appearance, "appearance-icons": V.appearanceIcons, "edit-home": V.editHome,
+  partitions: PT.partitions, disks: PT.disks, recommended: V.recommended, security: SEC.security, devices: V.devices, settings: V.settings, server: V.serverSettings, assistant: AS.assistant, "assistant-settings": AS.assistantSettings, "assistant-archive": AS.assistantArchive, processes: TM.processes, appearance: V.appearance, "appearance-icons": V.appearanceIcons, "edit-home": V.editHome,
   "edit-shortcuts": V.editShortcuts, "edit-tabs": V.editTabs, about: V.about, guide: V.guide, faq: V.faq, terminal: V.terminal,
   dashboard: V.dashboard, "edit-dash": V.editDash, archive: V.archive,
   apps: ST.apps, updates: ST.updates, search: SR.search, start: SR.start, "start-edit": SR.startEdit, favorites: SR.favorites, servers: SV.servers, "container-new": ST.containerNew, term: V.hostTerminal, files: FM.files, cmdapp: ST.cmdApp, labs: ST.labs, freeup: ST.freeup, automation: ST.automation, features: ST.features, plugins: ST.plugins, "labs-images": ST.labsImages, wol: ST.wol, openrgb: ST.openrgb, access: ST.access, cloudflare: ST.cloudflare, setup: ST.setup, pool: ST.pool, task: ST.task, backups: ST.backups, backup: ST.backup, "backup-edit": ST.backupEdit, dev: V.dev, "ha-light": V.haLight, "backup-script": ST.backupScript, restore: ST.restore, diag: ST.diag,
@@ -292,11 +295,41 @@ let lastRendered = null;
 // the assistant button (Labs → Nova assistant; Assistant → Assistant button): an orb in the corner, on every page but its own
 function drawFab(r) {
   let b = document.getElementById("asstfab");
-  const on = S.cache["/api/v1/labs"]?.labs?.assistant && prefs.asstButton !== false && S.overview && r !== "assistant" && r !== "assistant-settings" && !WM.EMBED && !S.target;
+  const docked = (prefs.navTabs || []).includes("assistant");          // dropped on the navigation pill: it's a tab there instead
+  const on = S.cache["/api/v1/labs"]?.labs?.assistant && prefs.asstButton !== false && !docked && S.overview && !String(r || "").startsWith("assistant") && !WM.EMBED && !S.target;
   if (!on) { if (b) b.hidden = true; return; }
-  if (!b) { b = document.createElement("button"); b.id = "asstfab"; b.className = "press"; b.setAttribute("aria-label", "Ask Nova");
-    b.innerHTML = orbHtml("idle", 52); b.onclick = () => AS.ask(""); document.body.append(b); }
+  if (!b) { b = document.createElement("button"); b.id = "asstfab"; b.className = "press"; b.setAttribute("aria-label", "Ask Nova — drag to move, drop on the navigation pill to dock it");
+    b.innerHTML = orbHtml("idle", 52); document.body.append(b); dragFab(b); }
+  const p = prefs.orbPos; b.style.translate = p ? `${p[0]}px ${p[1]}px` : "";
   b.hidden = false; runOrbs();
+}
+/** The orb can be dragged anywhere (it stays there); let go over the navigation pill and it becomes a tab in it. */
+function dragFab(b) {
+  let start = null, moved = false;
+  b.addEventListener("pointerdown", e => { start = { x: e.clientX, y: e.clientY, p: prefs.orbPos || [0, 0] }; moved = false; b.setPointerCapture(e.pointerId); });
+  b.addEventListener("pointermove", e => {
+    if (!start) return; const dx = e.clientX - start.x, dy = e.clientY - start.y;
+    if (!moved && Math.hypot(dx, dy) < 6) return; moved = true; b.classList.add("dragging");
+    const r = b.getBoundingClientRect(), x = start.p[0] + dx, y = start.p[1] + dy;
+    b.style.translate = `${x}px ${y}px`; b._p = [x, y];
+    const n = $("#nav"), nr = n && !n.hidden ? n.getBoundingClientRect() : null;
+    b.classList.toggle("overdock", !!nr && e.clientX > nr.left - 20 && e.clientX < nr.right + 20 && e.clientY > nr.top - 20 && e.clientY < nr.bottom + 20);
+  });
+  const up = e => {
+    if (!start) return; start = null; b.classList.remove("dragging");
+    if (!moved) { AS.ask(""); return; }
+    if (b.classList.contains("overdock")) {
+      b.classList.remove("overdock"); prefs.orbPos = null;
+      prefs.navTabs = [...(prefs.navTabs || []).filter(x => x !== "assistant"), "assistant"].slice(0, 12);
+      toast("The assistant is in the navigation pill now"); $("#nav") && ($("#nav").dataset.ids = ""); drawNav(parse()[0]); drawFab(parse()[0]); return;
+    }
+    const r = b.getBoundingClientRect(), [x, y] = b._p || [0, 0];           // keep it on screen
+    const cx = Math.min(Math.max(x, x - (r.left - 8)), x + (innerWidth - 8 - r.right)), cy = Math.min(Math.max(y, y - (r.top - 8)), y + (innerHeight - 8 - r.bottom));
+    prefs.orbPos = [Math.round(cx), Math.round(cy)]; b.style.translate = `${prefs.orbPos[0]}px ${prefs.orbPos[1]}px`;
+  };
+  b.addEventListener("pointerup", up); b.addEventListener("pointercancel", () => { start = null; b.classList.remove("dragging"); });
+  b.addEventListener("click", e => e.preventDefault());
+  b.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); AS.ask(""); } });
 }
 let labsAsked = false;
 function render(dir = 0) {
@@ -306,6 +339,7 @@ function render(dir = 0) {
   drawFab(r);
   current?.leave(); closeSheet();
   if (V.navTabs().some(t => t.route === r) && depth === 0) rootRoute = r;
+  drawSide(r);
   let shown, firstShow = new Promise(res => shown = res), t0 = performance.now(), held = 0;
   const leaveFns = [], timers = [];
   let handlers = {};
@@ -372,6 +406,29 @@ function render(dir = 0) {
     [t.ready, t.finished, t.updateCallbackDone].forEach(p => p?.catch?.(() => {}));    // a newer navigation may cut it short
   } else run();
 }
+
+// Side by side (Appearance, wide screens): a page opened from the Menu keeps the Menu beside it, like the tablet app.
+// Picking something else in it swaps the page on the right instead of piling up pages to go back through.
+let sideSeq = 0;
+function drawSide(r) {
+  const on = !!prefs.splitView && innerWidth >= 1100 && depth > 0 && rootRoute === "menu" && r !== "menu" && r !== "dashboard" && !WM.EMBED && !S.target;
+  document.body.classList.toggle("split", on);
+  let side = $("#side");
+  if (!on) { side?.remove(); return; }
+  if (!side) { ensureShell(); side = document.createElement("aside"); side.id = "side"; $("#shell").prepend(side); }
+  side.querySelectorAll("[data-act^='go:']").forEach(b => b.classList.toggle("here", b.dataset.act === "go:" + r));
+  if (side.dataset.ready) return;
+  side.dataset.ready = "1"; const my = ++sideSeq;
+  const sctx = { args: [], dir: 0, alive: () => my === sideSeq && !!$("#side"), go, tab, back, run() {}, handlers() {}, onLeave() {}, applyTheme, refreshNav() {}, every() {}, raw() {},
+    show(html, o = {}) { if (!sctx.alive()) return; side.innerHTML = `<div class="page narrow"><div class="col">${o.title ? `<div class="ph"><h1>${esc(o.title)}</h1></div>` : ""}${html}</div></div>`; sctx.root = side;
+      side.querySelectorAll("[data-act^='go:']").forEach(b => b.classList.toggle("here", b.dataset.act === "go:" + parse()[0])); } };
+  Promise.resolve().then(() => V.menu(sctx)).catch(() => {});
+}
+addEventListener("resize", () => { const on = document.body.classList.contains("split"); if (on !== (!!prefs.splitView && innerWidth >= 1100 && depth > 0 && rootRoute === "menu")) drawSide(parse()[0]); });
+document.addEventListener("click", e => {
+  const el = e.target.closest("#side [data-act^='go:']"); if (!el) return;
+  e.stopPropagation(); saveScroll(); history.replaceState({ k: newKey(), d: depth }, "", "#/" + el.dataset.act.slice(3)); render(0);
+}, true);
 
 // one click handler for everything: data-act="name" or "name:arg:arg"
 document.addEventListener("click", e => {           // a folded note: open or close it
@@ -629,14 +686,14 @@ addEventListener("pointerdown", e => {
   addEventListener("pointermove", move); addEventListener("pointerup", up); addEventListener("pointercancel", up);
 }, true);
 
-// Lumen: the navigation pill's buttons lean toward the pointer (magnetic), and spring back when it leaves
-addEventListener("pointermove", e => {
-  if (!document.documentElement.classList.contains("lumen") || document.documentElement.classList.contains("reduce") || e.pointerType !== "mouse") return;
-  const nav = document.getElementById("nav"); if (!nav || nav.hidden) return;
-  const r = nav.getBoundingClientRect(), near = e.clientX > r.left - 40 && e.clientX < r.right + 40 && e.clientY > r.top - 40 && e.clientY < r.bottom + 40;
-  for (const b of nav.querySelectorAll("button")) {
-    if (!near) { b.style.transform = ""; continue; }
-    const q = b.getBoundingClientRect(), dx = e.clientX - (q.left + q.width / 2), dy = e.clientY - (q.top + q.height / 2), d = Math.hypot(dx, dy);
-    b.style.transform = d < 70 ? `translate(${(dx * .18).toFixed(1)}px, ${(dy * .18).toFixed(1)}px)` : "";
+// spinners stay in phase across redraws: a page that redraws while something loads makes a new spinner each time, which
+// would start its turn from the top again (a jump); starting each one at the shared clock's angle hides that
+new MutationObserver(ms => {
+  for (const m of ms) for (const n of m.addedNodes) {
+    if (n.nodeType !== 1) continue;
+    for (const s of n.classList?.contains("spinner") ? [n] : n.querySelectorAll?.(".spinner") || []) {
+      const d = parseFloat(getComputedStyle(s).animationDuration) * 1000 || 900;
+      s.style.animationDelay = `-${(performance.now() % d).toFixed(0)}ms`;
+    }
   }
-}, { passive: true });
+}).observe(document.documentElement, { childList: true, subtree: true });

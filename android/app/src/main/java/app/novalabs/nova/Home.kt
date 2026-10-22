@@ -212,10 +212,10 @@ import org.json.JSONObject
                     icon(); Text(label, color = N.text, fontSize = 12.sp, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.padding(top = 6.dp)) }
             @Composable fun Glyph(i: androidx.compose.ui.graphics.vector.ImageVector, c: androidx.compose.ui.graphics.Color) =
                 Box(Modifier.size(52.dp).clip(androidx.compose.foundation.shape.RoundedCornerShape(15.dp)).background(c.copy(alpha = 0.18f)), contentAlignment = Alignment.Center) { Icon(i, null, tint = c) }
+            Cell("All apps", { app.go(Route.Apps) }) { Glyph(Icons.Rounded.Apps, N.sub) }              // first: every app, one tap away
             if (app.isAdmin && app.has("files")) Cell("Files", { openBuiltin(app, "nova-files") }, { builtinMenu = "nova-files" }) { Glyph(Icons.Rounded.Folder, N.blue) }
             Cell("Terminal", { openBuiltin(app, "nova-term") }, { builtinMenu = "nova-term" }) { Glyph(Icons.Rounded.Terminal, N.green) }
             apps.take(10).forEach { a -> Cell(a.optString("name"), { dockTap(app, a.optString("id")) }) { AppIcon(app, a, 52.dp) } }
-            Cell("All apps", { app.go(Route.Apps) }) { Glyph(Icons.Rounded.Apps, N.sub) }
             if (app.isAdmin) Cell("Add", { app.go(Route.Apps) }) { Glyph(Icons.Rounded.Add, N.blue) }
         }
         Text(if (AppPrefs.favorites.isEmpty()) "☆  Add favorites — any screen, as a tile here" else "Edit favorites", color = N.link, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
@@ -228,6 +228,7 @@ import org.json.JSONObject
             Row1("Storage & hardware", "Drives, pools, set up drives", true, Icons.Rounded.Storage, androidx.compose.ui.graphics.Color(0xFF3ECF6E), onClick = { app.go(Route.Hardware) })
             RowDivider()
             if (app.isAdmin) { Row1("Free up", "Old images, logs, caches, trash — and memory", true, Icons.Rounded.CleaningServices, N.amber, onClick = { app.go(Route.FreeUp) }); RowDivider() }
+            if (app.isAdmin) { Row1("Task manager", "What's running on the server, by CPU and memory", true, Icons.Rounded.Memory, N.blue, onClick = { app.go(Route.TaskManager) }); RowDivider() }
             Row1("Backups", "What's backed up, restore files", true, Icons.Rounded.Backup, onClick = { app.go(Route.Backups) })
             RowDivider()
             Row1("Updates", "Packages, containers and Nova", true, Icons.Rounded.Update, androidx.compose.ui.graphics.Color(0xFF3ECF6E), onClick = { app.go(Route.Updates) })

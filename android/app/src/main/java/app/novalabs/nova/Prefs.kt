@@ -94,6 +94,14 @@ object AppPrefs {
     /** The assistant: its orb button on every page, and whether replies are read aloud. */
     var asstButton by mutableStateOf(true); private set
     fun chooseAsstButton(v: Boolean) { asstButton = v; sp.edit().putBoolean("asstButton", v).apply() }
+    /** Tablets: apps open in windows over Nova (drag, resize, maximize), like on the web. */
+    var appWindows by mutableStateOf(true); private set
+    fun chooseAppWindows(v: Boolean) { appWindows = v; sp.edit().putBoolean("appWindows", v).apply() }
+    /** Where you dragged the assistant's orb (from its corner), and saving it once you let go. */
+    var orbDx by mutableFloatStateOf(0f); private set
+    var orbDy by mutableFloatStateOf(0f); private set
+    fun moveOrb(x: Float, y: Float) { orbDx = x; orbDy = y }
+    fun setOrb(x: Float, y: Float) { orbDx = x; orbDy = y; sp.edit().putFloat("orbDx", x).putFloat("orbDy", y).apply() }
     var asstSpeak by mutableStateOf(false); private set
     fun chooseAsstSpeak(v: Boolean) { asstSpeak = v; sp.edit().putBoolean("asstSpeak", v).apply() }
     /** The colors picked last (newest first), shown on top of every color picker. */
@@ -120,10 +128,11 @@ object AppPrefs {
         wallV = sp.getString("wall_v", "0")!!.toLongOrNull() ?: 0L; wallBlur = sp.getString("wall_blur", "16")!!.toIntOrNull() ?: 16; wallDim = sp.getString("wall_dim", "35")!!.toIntOrNull() ?: 35
         lang = sp.getString("lang", "auto")!!; I18n.load(ctx, lang)
         winRound = sp.getInt("winRound", 100); readability = sp.getString("readability", "auto")!!; iconAccent = sp.getBoolean("iconAccent", false)
-        asstButton = sp.getBoolean("asstButton", true); asstSpeak = sp.getBoolean("asstSpeak", false)
+        asstButton = sp.getBoolean("asstButton", true); orbDx = sp.getFloat("orbDx", 0f); orbDy = sp.getFloat("orbDy", 0f); appWindows = sp.getBoolean("appWindows", true); asstSpeak = sp.getBoolean("asstSpeak", false)
         recentColors = sp.getString("recentColors", "")!!.split(",").filter { Regex("#[0-9a-fA-F]{6}").matches(it) }
         prism = sp.getInt("prism", 50); dTrans = sp.getInt("dTrans", 0); lookBg = sp.getString("lookBg", "")!!; scrims = sp.getBoolean("scrims", true); scrimColor = sp.getString("scrimColor", "")!!; dFrost = sp.getInt("dFrost", 26); solid = sp.getBoolean("solid", false); glass = sp.getString("glass", "60")!!.toIntOrNull() ?: 60; round = sp.getString("round", "100")!!.toIntOrNull() ?: 100
-        theme = sp.getString("theme", "system")!!; style = sp.getString("style", "auto")!!; reduceMotion = sp.getBoolean("reduce_motion", false); animSpeed = (sp.getString("anim_speed", "100")!!.toIntOrNull() ?: 100).coerceIn(25, 300)
+        theme = sp.getString("theme", "system")!!; style = sp.getString("style", "auto")!!.let { if (it == "lumen") "default" else it };   // Lumen was retired in 0.9.4
+        reduceMotion = sp.getBoolean("reduce_motion", false); animSpeed = (sp.getString("anim_speed", "100")!!.toIntOrNull() ?: 100).coerceIn(25, 300)
         appLock = sp.getBoolean("app_lock", false); hideInRecents = sp.getBoolean("hide_recents", false)
         homeHero = sp.getBoolean("home_hero", true); homeShortcuts = sp.getBoolean("home_shortcuts", true); homeStats = sp.getBoolean("home_stats", true); homeRecs = sp.getBoolean("home_recs", true)
         homeOrder = sp.getString("home_order", null)?.split(",")?.filter { it in HOME_SECTIONS }?.let { it + (HOME_SECTIONS - it.toSet()) } ?: HOME_SECTIONS
@@ -169,9 +178,9 @@ object AppPrefs {
  *  Nothing, Sony, OnePlus…) gets Material You Expressive, so Nova matches the rest of the phone. */
 private val DEFAULT_LOOK_MAKERS = setOf("samsung", "xiaomi", "redmi", "poco", "huawei", "honor", "vivo", "iqoo", "oppo", "realme", "meizu")
 fun autoMaterial(): Boolean = android.os.Build.MANUFACTURER.lowercase() !in DEFAULT_LOOK_MAKERS && android.os.Build.BRAND.lowercase() !in DEFAULT_LOOK_MAKERS
-fun materialStyle(): Boolean = when (AppPrefs.style) { "material" -> true; "default", "liquid", "fluent", "breeze", "aero", "lumen" -> false; else -> autoMaterial() }
+fun materialStyle(): Boolean = when (AppPrefs.style) { "material" -> true; "default", "liquid", "fluent", "breeze", "aero" -> false; else -> autoMaterial() }
 /** Glass, Mica or Breeze (Appearance → Style; internally liquid / fluent / breeze), "" for Default / Material You. */
-fun presetStyle(): String = AppPrefs.style.takeIf { it in setOf("liquid", "fluent", "breeze", "aero", "lumen") } ?: ""
+fun presetStyle(): String = AppPrefs.style.takeIf { it in setOf("liquid", "fluent", "breeze", "aero") } ?: ""
 /** Reduce transparency (Appearance): solid surfaces everywhere, no blur or bending. */
 fun solidGlass(): Boolean = AppPrefs.solid
 
@@ -219,7 +228,7 @@ object AppLock {
     }
 }
 
-private val STYLE_CHOICES = listOf("auto" to "Automatic", "default" to "Default", "material" to "Material You", "liquid" to "Glass", "fluent" to "Mica", "breeze" to "Breeze", "aero" to "Aero", "lumen" to "Lumen · Beta")
+private val STYLE_CHOICES = listOf("auto" to "Automatic", "default" to "Default", "material" to "Material You", "liquid" to "Glass", "fluent" to "Mica", "breeze" to "Breeze", "aero" to "Aero")
 private fun styleDesc(k: String): String = when (k) {
     "auto" -> "${if (autoMaterial()) "Material You" else "Default"} — picked to suit this ${DeviceForm.noun}"
     "default" -> "Nova's own look: frosted glass and a soft glow"
@@ -227,7 +236,6 @@ private fun styleDesc(k: String): String = when (k) {
     "liquid" -> "Clear glass that bends the light behind it at its edges" + if (android.os.Build.VERSION.SDK_INT < 33) " (the bending needs Android 13)" else ""
     "fluent" -> "A soft, tinted base with frosted menus and crisp, small corners"
     "breeze" -> "Flat and tidy: a thin frame, gentle corners, the accent as the focus color"
-    "lumen" -> "Light on dark glass: beams along the edges, liquid-metal buttons, gooey switches and a slow aurora"
     else -> "Tinted frosted glass frames with a glossy shine and glowing buttons"
 }
 private val READ_CHOICES = listOf("auto" to ("Automatic" to "Stronger text only where the glass or the background makes it hard to read"),
@@ -253,15 +261,18 @@ private fun hasVibrator(ctx: Context): Boolean = runCatching {
             Segmented(listOf("Automatic", "Light", "Dark"), listOf("system", "light", "dark").indexOf(AppPrefs.theme).coerceAtLeast(0)) { AppPrefs.set("theme", listOf("system", "light", "dark")[it]) }
             RowDivider()
             val rs = ps
-            val sum = listOfNotNull(if (ps == "liquid") "Splitting ${AppPrefs.prism}%" else null, if (ps.isNotEmpty() && ps !in setOf("breeze", "lumen")) "Clarity ${AppPrefs.glass}%" else null,
+            val sum = listOfNotNull(if (ps == "liquid") "Splitting ${AppPrefs.prism}%" else null, if (ps.isNotEmpty() && ps !in setOf("breeze")) "Clarity ${AppPrefs.glass}%" else null,
                 if (ps.isEmpty() && !mat) "See-through ${AppPrefs.dTrans}%" else null, "Corners ${AppPrefs.roundFor(rs)}%", "Windows ${AppPrefs.winRound}%").joinToString(" · ")
             ExpandRow("Shape and glass", sum, icon = Icons.Rounded.Tune) {
                 Column(Modifier.padding(start = 0.dp)) {
                     if (ps == "liquid") TuneSlider("Light splitting", AppPrefs.prism, 0f..100f, "%") { AppPrefs.choosePrism(it) }
-                    if (ps.isNotEmpty() && ps !in setOf("breeze", "lumen")) TuneSlider("Glass clarity", AppPrefs.glass, 0f..100f, "%") { AppPrefs.set("glass", it) }
+                    if (ps.isNotEmpty() && ps !in setOf("breeze")) TuneSlider("Glass clarity", AppPrefs.glass, 0f..100f, "%") { AppPrefs.set("glass", it) }
                     if (ps.isEmpty() && !mat) {
                         TuneSlider("Transparency", AppPrefs.dTrans, 0f..85f, "%") { AppPrefs.chooseDefaultGlass(trans = it) }
                         TuneSlider("Frost", AppPrefs.dFrost, 0f..40f, " dp") { AppPrefs.chooseDefaultGlass(frost = it) }
+                        if (AppPrefs.dTrans == 0 || AppPrefs.wallV == 0L) Text(if (AppPrefs.dTrans == 0) "Frost shows once cards are see-through (Transparency above 0%)."
+                            else "Frost blurs your wallpaper picture behind the cards — pick a picture under Background to see it (the glow is soft already).",
+                            color = N.sub, fontSize = 13.sp, modifier = Modifier.padding(start = 4.dp, top = 2.dp, bottom = 6.dp))
                     }
                     TuneSlider("Corner roundness", AppPrefs.roundFor(rs), 25f..200f, "%") { AppPrefs.setRound(rs, it) }
                     TuneSlider("Window roundness", AppPrefs.winRound, 0f..300f, "%") { AppPrefs.chooseWinRound(it) }
@@ -309,6 +320,7 @@ private fun hasVibrator(ctx: Context): Boolean = runCatching {
             Row1("Navigation pill", navTabs(app).joinToString(", ") { it.label } + " · bottom, or left in landscape", true,
                 Icons.Rounded.ViewDay, onClick = { app.go(Route.EditTabs) })
             RowDivider()
+            if (app.wide) { SwitchRow("Apps open in windows", "On a tablet, apps float over Nova — drag, resize or maximize them, like on the web", AppPrefs.appWindows) { AppPrefs.chooseAppWindows(it) }; RowDivider() }
             Row1("Start page", "Search, server stats, apps and bookmarks", true, Icons.Rounded.TravelExplore, onClick = { app.go(Route.Start) })
             RowDivider()
             Row1("Open Nova on", START_ROUTES.firstOrNull { it.first == AppPrefs.startRoute }?.second?.first ?: "Home", true, Icons.Rounded.Home, onClick = { pickOpen = true })
@@ -410,10 +422,11 @@ private val BGS = listOf("" to "This look's own", "glow" to "Default's glow", "v
             Row1("Wallpaper color", if (Living.accent.isEmpty()) "Same as the accent color" else "Its own color", Living.accent.isNotEmpty(), Icons.Rounded.Palette, onClick = { pickingLive = true }) {
                 Box(Modifier.size(28.dp).clip(androidx.compose.foundation.shape.CircleShape).background(Living.accent.takeIf { it.length == 7 }?.let { hexColor(it) } ?: N.blue)) }
             RowDivider()
-            ExpandRow("Motion and tint", "Speed ${Living.speed}% · Tint ${Living.tint}%", icon = Icons.Rounded.Tune) {
+            ExpandRow("Motion and tint", "Speed ${Living.speed}% · Tint ${Living.tint}% · ${Living.fps} fps", icon = Icons.Rounded.Tune) {
                 Column {
                     TuneSlider("Speed", Living.speed, 10f..300f, "%") { Living.chooseSpeed(it) }
                     TuneSlider("Tint", Living.tint, 0f..80f, "%") { Living.chooseTint(it) }
+                    TuneSlider("Frame rate limit", Living.fps, 10f..120f, " fps") { Living.chooseFps(it) }
                 }
             }
         }

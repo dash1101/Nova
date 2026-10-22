@@ -24,7 +24,7 @@ object Dev {
     var fps by mutableStateOf(false); private set
     var bounds by mutableStateOf(false); private set
     var noLens by mutableStateOf(false); private set
-    /** Glass quality, percent: 90%+ is the full lens with its prism fringe; below that the fringe is left out and the
+    /** Glass quality, percent: 65%+ keeps the prism fringe (Light splitting); below that the fringe is left out and the
      *  bending rim narrows (the default, 70%, looks nearly the same for much less GPU work); below 50% there's no lens. */
     var glassQ by mutableIntStateOf(70); private set
     /** Frame rate cap (0 = as fast as the screen goes). */
@@ -104,7 +104,7 @@ object DevLog {
             RowDivider()
             Column(Modifier.padding(horizontal = 22.dp, vertical = 12.dp)) {
                 Row { Text("Glass quality", color = N.text, fontSize = 17.sp, modifier = Modifier.weight(1f)); Text("${Dev.glassQ}%", color = N.sub, fontSize = 15.sp) }
-                Text("How much of Glass's lens is drawn. 90% and up adds the prism fringe at the edges; lower narrows the bending rim; under 50% the lens is off. Lower is lighter on the GPU and battery.", color = N.sub, fontSize = 13.sp)
+                Text("How much of Glass's lens is drawn. 65% and up keeps the light splitting at the edges; lower narrows the bending rim and drops it; under 50% the lens is off. Lower is lighter on the GPU and battery.", color = N.sub, fontSize = 13.sp)
                 OneSlider(Dev.glassQ.toFloat(), { Dev.setInt(ctx, "glass_q", (it / 5).toInt() * 5) }, 30f..100f)
             }
         }

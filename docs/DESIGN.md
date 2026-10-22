@@ -21,7 +21,7 @@ feature, not the rule (or argue for changing the rule here first).
 
 ## Feel
 
-- Every look (Default, Material You, Glass, Mica, Breeze, Aero, Lumen) is faithful in every element: cards, pills, dialogs,
+- Every look (Default, Material You, Glass, Mica, Breeze, Aero) is faithful in every element: cards, pills, dialogs,
   switches, sliders, toasts, windows. A new element gets every look's treatment, not just the default one.
 - Motion is quick and springy, respects Reduce motion and Animation speed, and never blocks a tap.
 - Sound and touch feedback: one sound and one buzz per press, from the look's own pack; each kind can be turned off.

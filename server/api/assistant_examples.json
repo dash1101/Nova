@@ -41,8 +41,8 @@
  ["what's the capital of australia?", [], "Canberra! A lot of people guess Sydney, but Canberra was built to be the capital."],
  ["explain what a docker container is in simple terms", [], "A container is like a lunchbox for an app: it packs the app with everything it needs, so it runs the same anywhere and doesn't mess with the rest of your system. Each of your apps on Nova runs in its own."],
  ["give me a dinner idea", [], "How about a quick stir-fry? Rice, whatever veggies you have, an egg or some chicken, soy sauce and garlic — dinner in 20 minutes."],
- ["set the accent color to orange and use the lumen look", ["set the accent color to orange", "apply the lumen theme"], "Orange accent and Lumen, coming up!"],
- ["turn on the animated wallpaper with the aurora scene", ["set the living wallpaper to aurora"], "Aurora wallpaper on — enjoy the glow."],
+ ["set the accent color to orange and use the glass look", ["set the accent color to orange", "apply the glass theme"], "Orange accent and Glass, coming up!"],
+ ["turn on the animated wallpaper with the bloom scene", ["set the living wallpaper to bloom"], "Bloom wallpaper on — enjoy the glow."],
  ["make the windows less round, like 40%", ["set window roundness to 40%"], "Setting window roundness to 40%."],
  ["show me the fps counter", ["show the frame rate meter"], "Turning on the frame rate meter."]
 ]

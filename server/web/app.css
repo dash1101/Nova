@@ -1436,107 +1436,6 @@ html.reduce .aorb i, html.reduce .aorb b, html.reduce .abox::before { animation:
 .areply { margin: 10px 0 2px; max-width: 46ch; padding: 12px 16px; border-radius: calc(18px * var(--rk, 1)); border-top-left-radius: 6px; text-align: left; font-size: 16px; line-height: 1.45;
   background: color-mix(in srgb, var(--blue) 12%, var(--card)); color: var(--text); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--blue) 25%, transparent); }
 
-/* ── Lumen (beta): light on dark glass — beams of light along the edges, liquid-metal buttons, gooey switches, a
-   magnetic navigation pill and a slow aurora behind it all. Inspired by libraries.dev's border beam, liquid metal,
-   gooey and magnetic UI; all drawn here (no third-party code). ── */
-@property --lb { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
-html.lumen { font-family: "Inter", "SF Pro Display", system-ui, -apple-system, "Segoe UI", sans-serif; letter-spacing: -.005em;
-  --bg: #05060a; --card: rgba(255,255,255,.035); --card-top: rgba(255,255,255,.05); --pill: rgba(255,255,255,.06); --nav: rgba(14,15,22,.72);
-  --navSel: rgba(255,255,255,.08); --divider: rgba(255,255,255,.07); --text: #f3f4f8; --sub: rgba(232,234,245,.58); --frost: rgba(12,13,20,.82); --frost-solid: #0d0e15;
-  --lm-edge: rgba(255,255,255,.09); --lm-edge2: rgba(255,255,255,.02); --lm-metal: linear-gradient(180deg, #fbfcff 0%, #c9ccd6 38%, #8d919e 52%, #d8dbe3 70%, #ffffff 100%);
-  --lm-beam: color-mix(in srgb, var(--blue) 70%, #fff); --lm-glow: color-mix(in srgb, var(--blue) 55%, transparent);
-  --rL: calc(20px * var(--rk, 1)); --rM: calc(12px * var(--rk, 1)); --wrb: 20px; }
-html.lumen.l-light { --bg: #eef0f5; --card: rgba(255,255,255,.62); --card-top: rgba(255,255,255,.75); --pill: rgba(255,255,255,.7); --nav: rgba(250,251,255,.72);
-  --navSel: rgba(10,12,24,.06); --divider: rgba(10,12,24,.07); --text: #0b0c12; --sub: rgba(16,18,32,.58); --frost: rgba(250,251,255,.86); --frost-solid: #fafbff;
-  --lm-edge: rgba(10,12,24,.09); --lm-edge2: rgba(255,255,255,.9); --lm-metal: linear-gradient(180deg, #ffffff 0%, #e3e5ec 40%, #b8bcc8 52%, #eceef3 72%, #ffffff 100%); }
-/* the aurora: two slow ribbons of the accent and a violet, very dark */
-html.lumen body::before { display: block; opacity: 1; filter: blur(60px) saturate(1.3);
-  background: radial-gradient(60vw 40vh at 20% 8%, color-mix(in srgb, var(--blue) 38%, transparent), transparent 70%),
-              radial-gradient(55vw 45vh at 85% 30%, color-mix(in srgb, #8a3cff 30%, transparent), transparent 70%),
-              radial-gradient(70vw 40vh at 50% 105%, color-mix(in srgb, var(--blue) 22%, #00d8e8 10%), transparent 70%);
-  animation: lm-aurora 28s ease-in-out infinite alternate; }
-html.lumen.l-light body::before { opacity: .55; }
-@keyframes lm-aurora { to { transform: translate3d(0, -3vh, 0) scale(1.08) rotate(3deg); } }
-/* cards: hairline glass; the edge lights up with a running beam under the pointer or keyboard focus */
-html.lumen .glass, html.lumen .frost { background: linear-gradient(180deg, var(--card-top), var(--card)); border: 1px solid var(--lm-edge);
-  box-shadow: inset 0 1px 0 var(--lm-edge2), 0 10px 30px -18px rgba(0,0,0,.8); -webkit-backdrop-filter: blur(18px) saturate(1.4); backdrop-filter: blur(18px) saturate(1.4); }
-html.lumen.lite .glass, html.lumen.lite .frost { -webkit-backdrop-filter: none; backdrop-filter: none; }
-html.lumen .glass::after, html.lumen .frost::after, html.lumen #sheet .box::after { display: block; inset: -1px; padding: 1px; border-radius: inherit; opacity: 0; transition: opacity .35s;
-  background: conic-gradient(from var(--lb), transparent 0 64%, color-mix(in srgb, var(--lm-beam) 40%, transparent) 76%, var(--lm-beam) 86%, #fff 88%, transparent 94%);
-  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; animation: lm-beam 4s linear infinite; }
-@media (hover: hover) { html.lumen .group:hover::after { opacity: .9; } }
-html.lumen .group:focus-within::after, html.lumen #sheet .box::after, html.lumen .nav::after, html.lumen .alertcard::after { opacity: 1; }
-@keyframes lm-beam { to { --lb: 360deg; } }
-html.lumen .group, html.lumen .card { border-radius: var(--rL); }
-html.lumen .sec { text-transform: uppercase; letter-spacing: .12em; font-size: 11.5px; font-weight: 600; color: var(--sub); }
-html.lumen .row.click:hover { background: rgba(255,255,255,.035); } html.lumen.l-light .row.click:hover { background: rgba(10,12,24,.035); }
-html.lumen .row + .row::before { border-color: var(--divider); }
-/* icons: the symbol glows in its color */
-html.lumen:not([data-icons]) .row .ri { width: 34px; height: 34px; border-radius: 11px; background: color-mix(in srgb, currentColor 12%, transparent) !important;
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, currentColor 28%, transparent), 0 0 18px -6px currentColor; }
-html.lumen:not([data-icons]) .row .ri svg { width: 19px; height: 19px; filter: drop-shadow(0 0 6px currentColor); }
-/* buttons: liquid metal — chrome that a light sweeps across */
-html.lumen .btn { position: relative; overflow: hidden; border-radius: 999px; color: #0b0c12; background: var(--lm-metal);
-  box-shadow: inset 0 1px 0 #fff, inset 0 -1px 0 rgba(0,0,0,.25), 0 6px 22px -8px var(--lm-glow), 0 0 0 1px rgba(255,255,255,.25); font-weight: 650; }
-html.lumen .btn::after { content: ""; position: absolute; inset: 0; background: linear-gradient(105deg, transparent 35%, rgba(255,255,255,.85) 50%, transparent 65%);
-  transform: translateX(-120%); animation: lm-sheen 3.6s ease-in-out infinite; mix-blend-mode: overlay; pointer-events: none; }
-@keyframes lm-sheen { 55%, 100% { transform: translateX(120%); } }
-html.lumen .btn:active { transform: scale(.97); } html.lumen .btn[disabled] { filter: grayscale(1) opacity(.5); }
-html.lumen .btn.ghost { background: var(--pill); color: var(--text); box-shadow: inset 0 0 0 1px var(--lm-edge); } html.lumen .btn.ghost::after { display: none; }
-html.lumen .pillbtn { border-radius: 999px; background: var(--pill); box-shadow: inset 0 0 0 1px var(--lm-edge); }
-html.lumen .pillbtn:hover { box-shadow: inset 0 0 0 1px var(--lm-beam), 0 0 16px -6px var(--lm-glow); }
-/* switches: gooey — the thumb stretches as it moves, and glows when on */
-html.lumen .sw { width: 48px; height: 26px; border-radius: 13px; background: rgba(255,255,255,.1); box-shadow: inset 0 0 0 1px var(--lm-edge); transition: background .3s, box-shadow .3s; }
-html.lumen.l-light .sw { background: rgba(10,12,24,.1); }
-html.lumen .sw::after { top: 3px; left: 3px; width: 20px; height: 20px; background: var(--lm-metal); box-shadow: 0 1px 4px rgba(0,0,0,.5);
-  transition: transform .45s cubic-bezier(.5, 1.6, .4, 1), width .25s ease; }
-html.lumen .sw.on { background: color-mix(in srgb, var(--blue) 70%, #000); box-shadow: inset 0 0 0 1px var(--lm-beam), 0 0 18px -4px var(--lm-glow); }
-html.lumen .sw.on::after { transform: translateX(22px); background: #fff; }
-html.lumen .row:active .sw::after { width: 26px; } html.lumen .row:active .sw.on::after { transform: translateX(16px); }
-/* the selector: a metal bead in a dark track */
-html.lumen .seg { border-radius: 999px; background: rgba(255,255,255,.05); box-shadow: inset 0 0 0 1px var(--lm-edge); }
-html.lumen .seg .bead { border-radius: 999px; background: var(--lm-metal); box-shadow: 0 0 18px -6px var(--lm-glow); }
-html.lumen .seg button.on { color: #0b0c12; font-weight: 650; }
-/* sliders: a glowing track */
-html.lumen input[type=range] { height: 6px; border-radius: 3px; background: linear-gradient(90deg, var(--blue) 0 var(--p, 0%), rgba(255,255,255,.1) var(--p, 0%)); box-shadow: 0 0 14px -4px var(--lm-glow); }
-html.lumen input[type=range]::-webkit-slider-thumb { width: 20px; height: 20px; background: var(--lm-metal); box-shadow: 0 0 0 4px color-mix(in srgb, var(--blue) 25%, transparent), 0 2px 6px rgba(0,0,0,.5); }
-html.lumen input[type=range]::-moz-range-thumb { width: 20px; height: 20px; background: #e6e8ee; border: 0; box-shadow: 0 0 0 4px color-mix(in srgb, var(--blue) 25%, transparent); }
-html.lumen .bar { height: 6px; border-radius: 3px; background: rgba(255,255,255,.08); } html.lumen .bar > i { border-radius: 3px; background: var(--c, var(--blue)) !important; box-shadow: 0 0 12px var(--c, var(--blue)); }
-/* fields: dark wells that light up when you type */
-html.lumen .field, html.lumen .searchbox { border-radius: var(--rM); background: rgba(0,0,0,.28); box-shadow: inset 0 0 0 1px var(--lm-edge); }
-html.lumen.l-light .field, html.lumen.l-light .searchbox { background: rgba(255,255,255,.7); }
-html.lumen .field:focus, html.lumen .searchbox:focus-within { box-shadow: inset 0 0 0 1px var(--lm-beam), 0 0 22px -8px var(--lm-glow); outline: none; }
-html.lumen .radio.on { border-color: var(--blue); box-shadow: 0 0 12px -2px var(--lm-glow); }
-html.lumen .chip, html.lumen .achip { border-radius: 999px; }
-/* the navigation pill: dark glass with a beam running round it, a glowing bead and buttons that lean toward the pointer */
-html.lumen .nav { border-radius: 999px; background: var(--nav); border: 1px solid var(--lm-edge); box-shadow: 0 18px 40px -16px rgba(0,0,0,.9), inset 0 1px 0 var(--lm-edge2); }
-html.lumen .nav::after { content: ""; position: absolute; inset: -1px; padding: 1px; border-radius: inherit; pointer-events: none; opacity: .9;
-  width: auto; height: auto; border: 0; transform: none;
-  background: conic-gradient(from var(--lb), transparent 0 70%, var(--lm-beam) 86%, transparent 96%);
-  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; animation: lm-beam 6s linear infinite; }
-html.lumen .nav .bead { border-radius: 999px; background: radial-gradient(120% 100% at 50% 0%, color-mix(in srgb, var(--blue) 45%, transparent), color-mix(in srgb, var(--blue) 14%, transparent));
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--blue) 55%, transparent), 0 0 24px -6px var(--lm-glow); }
-html.lumen .nav button { transition: transform .35s cubic-bezier(.3, 1.5, .5, 1); }
-/* dialogs and toasts */
-html.lumen #sheet { background: rgba(2,3,8,.6); align-items: center; padding: 24px; -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
-html.lumen #sheet .box { background: var(--frost); border: 1px solid var(--lm-edge); border-radius: calc(var(--wrb) * var(--rk, 1) * var(--wrk, 1)) !important;
-  box-shadow: 0 30px 80px -20px rgba(0,0,0,.9), 0 0 60px -30px var(--lm-glow); -webkit-backdrop-filter: blur(24px) saturate(1.4); backdrop-filter: blur(24px) saturate(1.4); }
-html.lumen #sheet .acts { gap: 10px; padding: 8px 18px 14px; } html.lumen #sheet .acts i { display: none; }
-html.lumen #sheet .acts button { flex: 1; height: 44px; border-radius: 999px; background: var(--pill); box-shadow: inset 0 0 0 1px var(--lm-edge); font-weight: 600; }
-html.lumen #sheet .acts button[data-role=primary] { background: var(--lm-metal); color: #0b0c12 !important; box-shadow: 0 0 20px -6px var(--lm-glow); }
-html.lumen #sheet .acts button[data-role=destructive] { color: #fff !important; background: color-mix(in srgb, var(--red) 70%, #000); }
-html.lumen #sheet .choice { border-radius: var(--rM); } html.lumen #sheet .choice:hover { background: rgba(255,255,255,.05); }
-html.lumen #toast { border-radius: 999px; background: var(--frost); border: 1px solid var(--lm-edge); box-shadow: 0 0 30px -10px var(--lm-glow); }
-html.lumen :focus-visible { outline: 2px solid var(--lm-beam); outline-offset: 2px; }
-/* the rest: tiles, stats, alerts, windows */
-html.lumen :is(.links, .banner, .stat, .tile, .slidetile, .term, .selbar, .srv, .taskbar, .editor, .mtile, .alertcard, .nudge, .stile, .sugg, .fsel, .vtbox, .hint, .upnote, .srvchip, .statusline) { border-radius: var(--rL); }
-html.lumen :is(.appicon, .appcell, .appic, .eng, .pinbox, .cmdcopy, .help, .cftok, .crumb, .pillbar button) { border-radius: var(--rM); }
-html.lumen .pillbar.glass { border-radius: var(--rL); }
-html.lumen .tile.on { box-shadow: inset 0 0 0 1px var(--lm-beam), 0 0 26px -10px var(--lm-glow); }
-html.lumen .win { --wr: 18px; border: 1px solid var(--lm-edge); box-shadow: 0 30px 80px -20px rgba(0,0,0,.9); }
-html.lumen .ph h1 { font-weight: 700; letter-spacing: -.02em; }
-html.lumen .aorb { filter: saturate(1.4) drop-shadow(0 0 30px var(--lm-glow)); }
-html.reduce.lumen body::before, html.reduce.lumen .glass::after, html.reduce.lumen .nav::after, html.reduce.lumen .btn::after, html.reduce.lumen #sheet .box::after { animation: none; }
 /* the conversation */
 .aturn { display: flex; flex-direction: column; gap: 6px; margin: 10px var(--gutter); }
 .aturn .aq { align-self: flex-end; max-width: 82%; padding: 10px 14px; border-radius: 18px 18px 6px 18px; background: var(--blue); color: var(--onBlue, #fff); font-size: 15px; line-height: 1.4; overflow-wrap: anywhere; }
@@ -1578,3 +1477,34 @@ html .abox textarea:is(:focus, :focus-visible) { outline: none !important; box-s
 /* the assistant button is just the orb: no blue disc around it, a soft shadow so it floats */
 #asstfab { width: 52px; height: 52px; background: none !important; box-shadow: 0 8px 22px -6px rgba(0,0,0,.6) !important; overflow: hidden; }
 #asstfab .norb { width: 52px !important; height: 52px !important; }
+/* a note with a readability backing lines up with the cards around it (same side margins, a calmer corner) */
+html.rd-bg .note:not(:is(.glass, .frost, #sheet) .note) { margin-left: var(--gutter); margin-right: var(--gutter); padding: 12px 18px; border-radius: min(calc(16px * var(--rk, 1)), 20px); }
+/* Default look's Transparency and Frost reach the toast and the alert banner too */
+html.dtune:not(.lite):not(.solid) :is(#toast, .alertcard) { background: color-mix(in srgb, var(--frost) calc(100% - var(--dtr) * 1%), transparent);
+  backdrop-filter: blur(var(--dfr)) saturate(1.5); -webkit-backdrop-filter: blur(var(--dfr)) saturate(1.5); }
+/* a hidden toast takes no part in page transitions (its blur was captured as a frosted square at the bottom) */
+#toast:not(.on) { view-transition-name: none; visibility: hidden; transition: opacity .25s, transform .35s var(--spring), visibility 0s linear .3s; }
+#alertbar:not(.on) { view-transition-name: none; visibility: hidden; transition: opacity .25s, transform .3s, visibility 0s linear .35s; }
+/* Task manager */
+.tmhead { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 8px var(--gutter); }
+.tmhead > div { padding: 14px 16px; border-radius: calc(18px * var(--rk, 1)); background: var(--card); }
+.tmhead b { display: block; font-size: 24px; font-variant-numeric: tabular-nums; } .tmhead small { color: var(--sub); font-size: 12.5px; }
+.tmrow { display: grid; grid-template-columns: 1fr 72px 86px; gap: 8px; align-items: center; width: 100%; padding: 10px 18px; border: 0; background: none; color: var(--text); font: inherit; text-align: left; cursor: pointer; }
+.tmrow + .tmrow { border-top: 1px solid var(--divider); }
+.tmrow.tmh { cursor: default; color: var(--sub); font-size: 12.5px; text-transform: uppercase; letter-spacing: .04em; padding-top: 12px; padding-bottom: 8px; }
+.tmrow .tmn { min-width: 0; } .tmrow .tmn b { display: block; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .tmrow .tmn small { color: var(--sub); font-size: 12.5px; }
+.tmrow .tmv, .tmrow.tmh span:not(:first-child) { text-align: right; font-variant-numeric: tabular-nums; } .tmrow .tmv.hot { color: var(--amber); font-weight: 600; }
+.tmrow:not(.tmh):hover { background: color-mix(in srgb, var(--text) 4%, transparent); }
+@media (max-width: 420px) { .tmrow { grid-template-columns: 1fr 58px 74px; padding: 10px 14px; } .tmhead b { font-size: 20px; } }
+dl.kv { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; margin: 4px 0; font-size: 15px; } dl.kv dt { color: var(--sub); } dl.kv dd { margin: 0; font-variant-numeric: tabular-nums; }
+.sheetbtns { display: flex; gap: 10px; padding: 8px 26px 4px; } .sheetbtns .btn { flex: 1; margin: 0; }
+/* Side by side (Appearance, wide screens): the Menu stays in a column on the left, the page opens on the right */
+#side { position: fixed; top: 0; bottom: 0; left: 0; width: 380px; overflow-y: auto; overscroll-behavior: contain; z-index: 3;
+  padding-top: env(safe-area-inset-top); border-right: 1px solid var(--divider); background: color-mix(in srgb, var(--bg) 55%, transparent); scrollbar-width: thin; }
+body.side #side { left: calc(108px + env(safe-area-inset-left)); }
+#side .page { padding-bottom: 40px; } #side .ph h1 { font-size: 26px; }
+#side .here { background: color-mix(in srgb, var(--blue) 14%, transparent); }
+body.split .main { margin-left: 380px; } body.split.side .main { margin-left: calc(108px + 380px + env(safe-area-inset-left)); }
+body.split .topbar { left: 380px; } body.split.side .topbar { left: calc(100px + 380px + env(safe-area-inset-left)); }
+@media (max-width: 1099px) { #side { display: none; } body.split .main { margin-left: 0; } body.split.side .main { margin-left: calc(108px + env(safe-area-inset-left)); } }
+#asstfab { touch-action: none; transition: scale .15s, opacity .15s; } #asstfab.dragging { scale: 1.1; cursor: grabbing; } #asstfab.overdock { opacity: .6; scale: .9; }

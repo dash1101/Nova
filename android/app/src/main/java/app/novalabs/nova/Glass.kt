@@ -43,7 +43,6 @@ object Space {
         blurRadius = 8.dp, noiseFactor = 0f)
     "fluent" -> HazeStyle(backgroundColor = N.bg, tints = listOf(HazeTint(N.nav.copy(alpha = .78f))), blurRadius = 30.dp, noiseFactor = 0.08f)
     "aero" -> HazeStyle(backgroundColor = N.bg, tints = listOf(HazeTint(aeroFrame(N))), blurRadius = 22.dp, noiseFactor = 0f)
-    "lumen" -> HazeStyle(backgroundColor = N.bg, tints = listOf(HazeTint(N.nav.copy(alpha = if (N.dark) .72f else .7f))), blurRadius = 24.dp, noiseFactor = 0f)
     else -> HazeStyle(backgroundColor = N.bg,
         tints = listOf(HazeTint((if (N.dark) Color(0xFF26262B) else Color.White).copy(alpha = (if (N.dark) 0.45f else 0.55f) * if (N.material) 1f else 1f - AppPrefs.dTrans / 100f))),
         blurRadius = if (N.material) 26.dp else AppPrefs.dFrost.dp, noiseFactor = 0.05f)
@@ -64,7 +63,6 @@ object Space {
     val glass = if (state != null && !light) base.hazeEffect(state, glassStyle()) { this.alpha = alpha }
                 else base.background((if (N.dark) Color(0xFF26262B) else Color.White).copy(alpha = 0.86f * alpha))
     return if (alpha <= 0.01f) glass else if (N.preset == "liquid") glass.liquidRim(shape) else if (N.preset == "aero") glass.aeroGloss(shape, N.dark) else if (N.preset == "fluent") glass.border(1.dp, if (N.dark) Color(0x14FFFFFF) else Color(0x0F000000), shape)
-        else if (N.preset == "lumen") glass.border(1.dp, if (N.dark) Color(0x1FFFFFFF) else Color(0x1A0A0C18), shape)
         else glass.border(0.8.dp, edge(), shape)
 }
 
@@ -84,7 +82,6 @@ object Space {
     if (N.material) this.clip(shape).background(N.card)
     else if (N.preset == "liquid") { val r = cardRadius(26.dp); this.liquidCard(androidx.compose.foundation.shape.RoundedCornerShape(r), r, elevation) }
     else if (N.preset == "aero") this.aeroCard(if (exact) shape else androidx.compose.foundation.shape.RoundedCornerShape(cardRadius(6.dp)), elevation)
-    else if (N.preset == "lumen") this.lumenCard(if (exact) shape else androidx.compose.foundation.shape.RoundedCornerShape(cardRadius(20.dp)), elevation)
     else if (N.preset.isNotEmpty()) this.presetCard(if (exact) shape else androidx.compose.foundation.shape.RoundedCornerShape(cardRadius(8.dp)))
     else if (AppPrefs.dTrans > 0 && !solidGlass() && !lite()) this.defaultGlassCard(shape, elevation, defaultFill()).border(0.8.dp, edge(), shape)
     else this.shadow(if (lite()) 0.dp else elevation, shape, ambientColor = Color.Black.copy(alpha = 0.25f), spotColor = Color.Black.copy(alpha = 0.3f))

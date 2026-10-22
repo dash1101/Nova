@@ -17,6 +17,7 @@ import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.translate
+import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionOnScreen
@@ -38,7 +39,6 @@ import androidx.compose.ui.unit.dp
 
 // ── tokens ──────────────────────────────────────────────────────────────────────────────
 fun presetTokens(preset: String, dark: Boolean, seed: Color?): NovaColors? = when (preset) {
-    "lumen" -> lumenTokens(dark, seed)
     "liquid" -> (if (dark) DarkTokens else LightTokens).copy(preset = "liquid",
         card = if (dark) Color(0xFF16161C) else Color(0xFFFAFAFC), divider = if (dark) Color(0x22FFFFFF) else Color(0x14000000))
     "fluent" -> {
@@ -87,7 +87,7 @@ fun winK(): Float = AppPrefs.winRound.coerceIn(0, 300) / 100f
 /** Corner radius for a card in the current style (Corner roundness scales the presets). */
 @Composable fun cardRadius(default: Dp): Dp {
     val k = roundK()
-    return when (N.preset) { "liquid" -> 28.dp * k; "fluent" -> 8.dp * k; "breeze" -> 7.dp * k; "aero" -> 6.dp * k; "lumen" -> 20.dp * k; else -> default }
+    return when (N.preset) { "liquid" -> 28.dp * k; "fluent" -> 8.dp * k; "breeze" -> 7.dp * k; "aero" -> 6.dp * k; else -> default }
 }
 
 // ── soft, smooth small copies ───────────────────────────────────────────────────────────
@@ -170,14 +170,24 @@ fun wallScrim(t: NovaColors): Float {
 }
 
 /** What's behind everything at this spot: the wallpaper (cover-fit to the window) or the glow, dimmed as set. */
-fun DrawScope.drawBackdrop(t: NovaColors, origin: Offset, win: IntSize, wall: ImageBitmap?) {
-    val W = if (win.width > 0) win.width.toFloat() else size.width; val H = if (win.height > 0) win.height.toFloat() else size.height
-    drawRect(t.bg)
+/** How much the card is scaled on screen right now (the page shrinks while you drag back): the background copy behind it
+ *  is drawn at screen scale, or it would fall short and leave the card's far side black. */
+fun screenScale(c: androidx.compose.ui.layout.LayoutCoordinates): Float {
+    val a = c.localToWindow(Offset.Zero); val b = c.localToWindow(Offset(100f, 0f))
+    return ((b.x - a.x) / 100f).takeIf { it > .05f && it.isFinite() } ?: 1f
+}
+fun DrawScope.drawBackdrop(t: NovaColors, origin: Offset, win: IntSize, wall: ImageBitmap?, s: Float = 1f) {
+    if (kotlin.math.abs(s - 1f) > .005f) { scale(1f / s, 1f / s, pivot = Offset.Zero) { backdropAt(t, origin, win, wall, size * s) }; return }
+    backdropAt(t, origin, win, wall, size)
+}
+private fun DrawScope.backdropAt(t: NovaColors, origin: Offset, win: IntSize, wall: ImageBitmap?, sz: androidx.compose.ui.geometry.Size) {
+    val W = if (win.width > 0) win.width.toFloat() else sz.width; val H = if (win.height > 0) win.height.toFloat() else sz.height
+    drawRect(t.bg, size = sz)
     if (wall != null) {
         val k = maxOf(W / wall.width, H / wall.height); val dw = wall.width * k; val dh = wall.height * k
         drawImage(wall, dstOffset = IntOffset(((W - dw) / 2 - origin.x).toInt(), ((H - dh) / 2 - origin.y).toInt()),
             dstSize = IntSize(dw.toInt(), dh.toInt()), filterQuality = FilterQuality.Medium)
-        drawRect(t.bg.copy(alpha = wallScrim(t)))
+        drawRect(t.bg.copy(alpha = wallScrim(t)), size = sz)
     } else if (Living.showing) drawLivingShared(t, origin, W, H)                    // Glass bends the living scene too
     else if (wallKind(t) != "plain") drawWall(t, wallKind(t), origin, W, H)    // the same background the page shows (Appearance → Background)
 }
@@ -246,7 +256,7 @@ half4 main(float2 p0) {
 }
 """
 
-/** [q]: Glass quality (Developer options) — under 90% the prism fringe is left out and the bending rim gets narrower,
+/** [q]: Glass quality (Developer options) — under 65% the prism fringe (Light splitting) is left out and the bending rim gets narrower,
  *  which is where the lens spends its time (the flat middle is one plain sample either way). */
 private fun lensEffect(w: Float, h: Float, radius: Float, blurPx: Float, offY: Float = 0f, bend: Float = 1f, q: Float = 1f): RenderEffect? {
     if (!Compat.S) return null
@@ -256,7 +266,7 @@ private fun lensEffect(w: Float, h: Float, radius: Float, blurPx: Float, offY: F
         setFloatUniform("size", w, h); setFloatUniform("radius", radius.coerceAtMost(minOf(w, h) / 2))
         val rim = (0.4f + 0.6f * q).coerceIn(0.4f, 1f)
         setFloatUniform("bevel", minOf(maxOf(radius * 1.1f, 40f), 100f, w / 3, h / 3) * rim); setFloatUniform("strength", minOf(140f, maxOf(50f, minOf(w, h) * .3f)) * bend)
-        setFloatUniform("off", 0f, offY); setFloatUniform("fringe", if (q >= 0.9f && AppPrefs.prism > 0) 1f else 0f); setFloatUniform("prism", AppPrefs.prism / 50f)
+        setFloatUniform("off", 0f, offY); setFloatUniform("fringe", if (q >= 0.65f && AppPrefs.prism > 0) 1f else 0f); setFloatUniform("prism", AppPrefs.prism / 50f)
     } ?: return blur?.asComposeRenderEffect()
     val lens = android.graphics.RenderEffect.createRuntimeShaderEffect(sh, "content")
     return (if (blur != null) android.graphics.RenderEffect.createChainEffect(blur, lens) else lens).asComposeRenderEffect()   // bend first, then blur
@@ -270,7 +280,7 @@ fun glassBody(clear: Float): Float { val x = (1f - clear) / .9f; return x * x }
     val t = N
     val ctx = androidx.compose.ui.platform.LocalContext.current
     val win = androidx.compose.ui.platform.LocalWindowInfo.current.containerSize
-    var origin by remember { mutableStateOf(Offset.Zero) }
+    var origin by remember { mutableStateOf(Offset.Zero) }; var scl by remember { androidx.compose.runtime.mutableFloatStateOf(1f) }
     val inDialog = LocalInDialog.current
     val clear = AppPrefs.glass.coerceIn(0, 100) / 100f
     // Glass clarity sets how liquid it looks. 10% is the old frosted Glass (0.7.3's 100%); from there up it clears steadily
@@ -285,7 +295,7 @@ fun glassBody(clear: Float): Float { val x = (1f - clear) / .9f; return x * x }
     val hi = Color.White
     if (solidGlass() || lite()) return this.shadow(if (lite()) 0.dp else elevation, shape).clip(shape).background(t.card)
     // on-screen position: the same in the app's window and in a dialog's own window, so dialogs line up with the wallpaper too
-    return this.onGloballyPositioned { origin = it.positionOnScreen() }
+    return this.onGloballyPositioned { origin = it.positionOnScreen(); scl = screenScale(it) }
         .shadow(elevation, shape, ambientColor = Color.Black.copy(alpha = .22f), spotColor = Color.Black.copy(alpha = .28f))
         .clip(shape)
         .drawWithCache {
@@ -320,7 +330,7 @@ fun glassBody(clear: Float): Float { val x = (1f - clear) / .9f; return x * x }
                         if (shot != null) {                      // the page behind this popup, as the popup window dims it
                             drawImage(shot, dstOffset = IntOffset(-origin.x.toInt(), -origin.y.toInt()), dstSize = Behind.shotSize, filterQuality = FilterQuality.Medium)
                             drawRect(t.bg.copy(alpha = .5f))             // calmer than the page itself, so the popup's text reads easily
-                        } else drawBackdrop(t, origin, win, wall)
+                        } else drawBackdrop(t, origin, win, wall, scl)
                     }
                 }
                 translate(0f, offY) { drawLayer(layer)
@@ -385,12 +395,12 @@ fun Modifier.aeroGloss(shape: Shape, dark: Boolean): Modifier = this.drawWithCac
     val t = N
     val ctx = androidx.compose.ui.platform.LocalContext.current
     val win = androidx.compose.ui.platform.LocalWindowInfo.current.containerSize
-    var origin by remember { mutableStateOf(Offset.Zero) }
+    var origin by remember { mutableStateOf(Offset.Zero) }; var scl by remember { androidx.compose.runtime.mutableFloatStateOf(1f) }
     val inDialog = LocalInDialog.current
     if (solidGlass() || lite()) return this.shadow(if (lite()) 0.dp else elevation, shape).clip(shape).background(t.card).aeroGloss(shape, t.dark)
     val wall = Backdrop.frosted(ctx)
     val frame = aeroFrame(t).let { if (inDialog) it.copy(alpha = maxOf(it.alpha, if (t.dark) .6f else .55f)) else it }
-    return this.onGloballyPositioned { origin = it.positionOnScreen() }
+    return this.onGloballyPositioned { origin = it.positionOnScreen(); scl = screenScale(it) }
         .shadow(elevation, shape, ambientColor = Color.Black.copy(alpha = .3f), spotColor = Color.Black.copy(alpha = .4f))
         .clip(shape)
         .drawBehind {
@@ -398,7 +408,7 @@ fun Modifier.aeroGloss(shape: Shape, dark: Boolean): Modifier = this.drawWithCac
             if (shot != null) {
                 drawImage(shot, dstOffset = IntOffset(-origin.x.toInt(), -origin.y.toInt()), dstSize = Behind.shotSize, filterQuality = FilterQuality.Medium)
                 drawRect(t.bg.copy(alpha = .45f))
-            } else drawBackdrop(t, origin, win, wall)
+            } else drawBackdrop(t, origin, win, wall, scl)
             drawRect(frame)
         }
         .aeroGloss(shape, t.dark)
@@ -431,19 +441,19 @@ fun aeroGlow(dark: Boolean): androidx.compose.ui.graphics.Shadow? = if (dark) nu
     val t = N
     val ctx = androidx.compose.ui.platform.LocalContext.current
     val win = androidx.compose.ui.platform.LocalWindowInfo.current.containerSize
-    var origin by remember { mutableStateOf(Offset.Zero) }
+    var origin by remember { mutableStateOf(Offset.Zero) }; var scl by remember { androidx.compose.runtime.mutableFloatStateOf(1f) }
     val inDialog = LocalInDialog.current
     val sharp = Backdrop.wallpaper(ctx); val soft = Backdrop.frosted(ctx)
     val frost = (AppPrefs.dFrost / 40f).coerceIn(0f, 1f); val alpha = 1f - AppPrefs.dTrans / 100f
-    return this.onGloballyPositioned { origin = it.positionOnScreen() }
+    return this.onGloballyPositioned { origin = it.positionOnScreen(); scl = screenScale(it) }
         .shadow(elevation, shape, ambientColor = Color.Black.copy(alpha = 0.25f), spotColor = Color.Black.copy(alpha = 0.3f))
         .clip(shape)
         .drawBehind {
             val shot = if (inDialog) Behind.shot else null
             if (shot != null) drawImage(shot, dstOffset = IntOffset(-origin.x.toInt(), -origin.y.toInt()), dstSize = Behind.shotSize, filterQuality = FilterQuality.Medium)
             else {
-                drawBackdrop(t, origin, win, sharp)
-                if (soft != null && frost > 0f) { val W = if (win.width > 0) win.width.toFloat() else size.width; val H = if (win.height > 0) win.height.toFloat() else size.height
+                drawBackdrop(t, origin, win, sharp, scl)
+                if (soft != null && frost > 0f) scale(1f / scl, 1f / scl, pivot = Offset.Zero) { val W = if (win.width > 0) win.width.toFloat() else size.width; val H = if (win.height > 0) win.height.toFloat() else size.height
                     val k = maxOf(W / soft.width, H / soft.height); val dw = soft.width * k; val dh = soft.height * k
                     drawImage(soft, dstOffset = IntOffset(((W - dw) / 2 - origin.x).toInt(), ((H - dh) / 2 - origin.y).toInt()),
                         dstSize = IntSize(dw.toInt(), dh.toInt()), alpha = frost, filterQuality = FilterQuality.Medium) }

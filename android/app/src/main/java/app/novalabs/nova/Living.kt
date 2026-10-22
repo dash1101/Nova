@@ -32,9 +32,11 @@ object Living {
     var accent by mutableStateOf(""); private set        // its own color, or "" for the accent
     var tint by mutableIntStateOf(0); private set        // a wash of the page color over it, 0–80 % (as on the web)
     fun chooseTint(v: Int) { tint = v; sp.edit().putInt("living_tint", v).apply() }
-    val SCENES = linkedMapOf("default" to "Nebula", "aero" to "Harmony (Aero)", "fluent" to "Bloom (Mica)", "breeze" to "Flow (Breeze)", "liquid" to "Liquid (Glass)", "material" to "Shapes (Material)", "lumen" to "Aurora (Lumen)")
+    var fps by mutableIntStateOf(30); private set        // frame rate limit, 10–120 (as on the web)
+    fun chooseFps(v: Int) { fps = v.coerceIn(10, 120); sp.edit().putInt("living_fps", fps).apply() }
+    val SCENES = linkedMapOf("default" to "Nebula", "aero" to "Harmony (Aero)", "fluent" to "Bloom (Mica)", "breeze" to "Flow (Breeze)", "liquid" to "Liquid (Glass)", "material" to "Shapes (Material)")
     fun init(ctx: Context) { sp = ctx.getSharedPreferences("nova_ui", Context.MODE_PRIVATE); on = sp.getBoolean("living_wall", false)
-        scene = sp.getString("living_scene", "auto")!!; speed = sp.getInt("living_speed", 100); accent = sp.getString("living_accent", "")!!; tint = sp.getInt("living_tint", 0) }
+        scene = sp.getString("living_scene", "auto")!!.let { if (it == "lumen") "auto" else it }; speed = sp.getInt("living_speed", 100); accent = sp.getString("living_accent", "")!!; tint = sp.getInt("living_tint", 0); fps = sp.getInt("living_fps", 30).coerceIn(10, 120) }
     fun set(v: Boolean) { on = v; sp.edit().putBoolean("living_wall", v).apply() }
     fun chooseScene(v: String) { scene = v; sp.edit().putString("living_scene", v).apply() }
     fun chooseSpeed(v: Int) { speed = v; sp.edit().putInt("living_speed", v).apply() }
@@ -52,8 +54,10 @@ object Living {
         var last = 0L; var t0 = 0L
         while (true) {
             withFrameNanos { now ->
-                if (t0 == 0L) t0 = now - (Living.time * 1e9f / speed()).toLong()
-                if (now - last >= (if (AppPrefs.lite == "on" || (AppPrefs.lite == "auto" && AppPrefs.slowDevice)) 66_000_000L else 33_000_000L)) { last = now; if (Living.paused) t0 += 33_000_000L else Living.time = (now - t0) / 1e9f * speed() }   // Lighter effects: 15 a second
+                if (t0 == 0L) { t0 = now - (Living.time * 1e9f / speed()).toLong(); last = now }
+                // its frame rate limit (Appearance → Living wallpaper); Lighter effects: 15 a second at most
+                val step = 1_000_000_000L / (if (AppPrefs.lite == "on" || (AppPrefs.lite == "auto" && AppPrefs.slowDevice)) minOf(15, Living.fps) else Living.fps) - 2_000_000L
+                if (now - last >= step) { if (Living.paused) t0 += now - last else Living.time = (now - t0) / 1e9f * speed(); last = now }
             }
         }
     }
@@ -146,19 +150,6 @@ fun DrawScope.drawLiving(t: NovaColors, origin: Offset, W: Float, H: Float, time
                         }
                     } }
                 }
-            }
-            sc == "lumen" -> {                   // curtains of aurora over near-black, and a few slow sparks
-                drawRect(if (d) hsl(h, s * .4f, 3f) else hsl(h, s * .25f, 95f), size = Size(W, H))
-                listOf(0f, 60f, -40f, 140f).forEachIndexed { k, dh ->
-                    val y0 = H * (.18f + k * .12f); val ph = time * (.07f + k * .02f) + k * 2
-                    val p = Path().apply { moveTo(0f, H); var x = 0f
-                        while (x <= W) { lineTo(x, y0 + sin(x / W * 5 + ph) * H * .06f + sin(x / W * 11 - ph * 1.3f) * H * .02f); x += W / 100 }
-                        lineTo(W, H); close() }
-                    drawPath(p, Brush.verticalGradient(listOf(hsl(h + dh, s, 60f, 0f), if (d) hsl(h + dh, s, 55f, .32f) else hsl(h + dh, s * .8f, 70f, .35f), hsl(h + dh, s, 60f, 0f)), y0 - H * .25f, y0 + H * .35f),
-                        blendMode = if (d) BlendMode.Plus else BlendMode.Multiply)
-                }
-                if (d) for (i in 0 until 18) { val a = (.2f + .3f * sin(time * .8f + i)).coerceAtLeast(0f)
-                    drawCircle(Color.White.copy(alpha = a), 1.6f, Offset((i * .618f % 1f) * W, ((i * .37f + time * .004f * (1 + i % 3)) % 1f) * H)) }
             }
             sc == "aero" -> {                    // ribbons of light, and bokeh drifting up
                 drawRect(Brush.linearGradient(listOf(if (d) hsl(h, s * .9f, 14f) else hsl(h, s * .8f, 62f), if (d) hsl(h + 10, s, 5f) else hsl(h + 10, s * .9f, 40f)), Offset.Zero, Offset(W, H)), size = Size(W, H))

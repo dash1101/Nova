@@ -12,6 +12,7 @@ import { stage as stagePartitions } from "./parts.js";
 import { orbHtml, runOrbs, setLevel } from "./orb.js";
 
 let pending = "";                                       // text handed over by Search ("Ask Nova: …") or the assistant button
+let draft = "";                                         // what you were typing, kept while you look at another page
 export const ask = text => { pending = text || ""; location.hash = "#/assistant"; };
 
 // The only calls a plan may make (the server makes plans, but this browser checks before signing anything)
@@ -21,7 +22,7 @@ const allowed = c => c && ALLOWED.some(([m, re]) => m === c.method && re.test(c.
 const ROUTES = { home: "home", status: "status", containers: "containers", store: "store", inbox: "inbox", lighting: "lighting", hardware: "hardware", backups: "backups",
   updates: "updates", settings: "settings", appearance: "appearance", security: "security", devices: "devices", files: "files", terminal: "term", dashboard: "dashboard",
   apps: "apps", freeup: "freeup", recommended: "recommended", power: "quick", "container-new": "container-new" };
-const LOOKS = ["liquid", "fluent", "breeze", "aero", "lumen"];
+const LOOKS = ["liquid", "fluent", "breeze", "aero"];
 const UI = { theme: v => { prefs.theme = v; }, style: v => { prefs.style = v; }, reduce_motion: v => { prefs.reduceMotion = !!v; },
   accent: v => { prefs.accentLocal = /^#[0-9a-f]{6}$/i.test(v) ? v : ""; }, win_round: v => { prefs.winRound = Math.max(0, Math.min(300, +v || 100)); },
   corner_round: v => { prefs["round_" + (LOOKS.includes(prefs.style) ? prefs.style : "default")] = Math.max(25, Math.min(200, +v || 100)); },
@@ -31,11 +32,19 @@ const UI = { theme: v => { prefs.theme = v; }, style: v => { prefs.style = v; },
 /** The orb: a sphere of dots in the accent (orb.js) — idle, think, listen or work. */
 export const orb = (state = "idle", size = 96) => orbHtml(state || "idle", size);
 
-// the conversation: the server's (one for everyone, GET /api/v1/assistant/convo), plus the full plan and results of the
-// turns asked from this tab: [{id, q, plan, results, choice, summary, done: [what happened]}]
+// what's on screen: this visit's turns only (each time you open the assistant it's a clean page). Nova itself still follows
+// the conversation on the server, and earlier ones are in Earlier conversations (the archive).
+// [{id, q, plan, results, choice, summary, done: [what happened]}]
 let turns = [];
-const local = (() => { try { return JSON.parse(sessionStorage.getItem("nova.asst") || "[]"); } catch { return []; } })();
-const save = () => { try { sessionStorage.setItem("nova.asst", JSON.stringify(turns.filter(t => t.plan?.steps?.length || t.results).slice(-6))); } catch {} };
+// what Nova is doing right now — kept outside the page, so leaving it doesn't stop anything: come back and it's still
+// there (or done), and if it finishes while you're elsewhere you get a note (and a notification if this tab is hidden)
+let busy = false, stop = false, cur = -1, unseen = false, redraw = () => {}, onPage = () => false;
+const finished = msg => {
+  if (onPage()) { redraw(); return; }
+  unseen = true; toast("Nova: " + msg);
+  try { if (document.hidden && "Notification" in window && Notification.permission === "granted") new Notification("Nova", { body: msg, icon: "/web/icon.svg" }); } catch {}
+};
+const save = () => {};
 const record = (t, done) => { if (t?.id) post("/api/v1/assistant/convo", { turn: t.id, done }).catch(() => {}); };
 
 // ── speaking: this browser's own voices ──
@@ -80,22 +89,39 @@ function wav(chunks, rate) {
   return new Uint8Array(buf);
 }
 
+/** Earlier conversations: everything asked from every device, newest first, by day (kept 90 days). */
+export async function assistantArchive(ctx) {
+  ctx.show(`<p class="muted pad">Loading…</p>`, { title: "Earlier conversations" });
+  let a = [];
+  try { a = (await get("/api/v1/assistant/convo?all=1")).archive || []; } catch (e) { ctx.show(note(esc(e.message)), { title: "Earlier conversations" }); return; }
+  if (!a.length) { ctx.show(note("Nothing yet — what you ask Nova shows up here."), { title: "Earlier conversations" }); return; }
+  const days = {};
+  for (const t of [...a].reverse()) (days[new Date(t.t * 1000).toDateString()] ||= []).push(t);
+  ctx.show(Object.entries(days).map(([d, ts]) => sec(new Date(d).toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" }))
+      + ts.map(t => `<div class="aturn"><div class="aq">${esc(t.q)}</div>${t.reply ? `<div class="areply">${esc(t.reply)}</div>` : ""}
+          ${(t.done || []).length ? `<div class="adone">${t.done.map(d => `<span>${I(/didn't work|failed/i.test(d) ? "err" : "check")}${esc(d)}</span>`).join("")}</div>` : ""}
+          <small class="muted" style="padding-left:6px">${new Date(t.t * 1000).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}</small></div>`).join("")).join(""),
+    { title: "Earlier conversations" });
+}
+
 /** Assistant settings (its own page): the brain, voice, the assistant button, forgetting the conversation. */
 export const assistantSettings = ctx => assistant(ctx, true);
 
 export async function assistant(ctx, only = false) {
-  let text = pending; pending = "";
+  let text = pending || draft; pending = "";
   const lab = S.cache["/api/v1/labs"] || await get("/api/v1/labs").catch(() => null);
   if (!lab?.labs?.assistant) {
     ctx.show(`<div class="ahead">${orb("idle")}<h2>The assistant is in Labs</h2><p class="muted">Turn on “Nova assistant” in Settings → Labs, then ask Nova in plain words — from here or from Search.</p></div>
       ${group(`<div class="row click" data-act="go:labs" role="button" tabindex="0"><span class="ri">${I("science")}</span><div class="t"><b>Open Labs</b></div></div>`)}`, { title: "Assistant" });
     return;
   }
-  let busy = false, stop = false, cur = -1, err = "", listening = false, hearing = false, level = 0;
-  // the conversation so far, from the server (this tab's own turns keep their full plans)
-  try { const c = await get("/api/v1/assistant/convo");
-    turns = (c.turns || []).map(x => local.find(l => l.id === x.id) || { id: x.id, q: x.q, plan: { reply: x.reply, steps: [] }, results: {}, choice: {}, summary: "", done: x.done || [], past: true });
-  } catch { turns = local; }
+  let err = "", listening = false, hearing = false, level = 0;
+  // a clean page each time (the server still has the conversation) — unless Nova is still working, or finished while you were away
+  if (!only) {
+    if (!busy && !unseen) turns = [];
+    unseen = false;
+    redraw = () => { if (ctx.alive()) draw(); }; onPage = () => ctx.alive();
+  }
   const now = () => turns[turns.length - 1];
   const risky = s => s.danger ? "danger" : /\/(power|store|freeup)\b|\/(stop|restart)$/.test(s.call?.path || "") ? "stepup" : "";
   const stepsOf = t => (t?.plan?.steps || []).map(s => s.kind === "ask" ? (t.choice?.[s.id] != null ? { ...s.options[t.choice[s.id]].step, id: s.id, asked: s } : s) : s);
@@ -134,17 +160,18 @@ export async function assistant(ctx, only = false) {
         <button class="abtn mic press${listening ? " on" : ""}" type="button" data-act="mic" aria-label="${listening ? "Stop listening" : "Speak"}" style="--lv:${level.toFixed(2)}" ${busy || hearing ? "disabled" : ""}>${I(listening ? "stop" : "mic")}</button>
         <button class="abtn press" id="ago" type="submit" aria-label="Send" ${busy ? "disabled" : ""}>${I("back")}</button></form>
       ${err ? `<p class="note" style="color:var(--red)">${esc(err)}</p>` : ""}
-      ${turns.length ? `<div class="alinks"><button class="alink" data-act="speak">${prefs.asstSpeak ? "Stop reading replies aloud" : "Read replies aloud"}</button><button class="alink" data-act="go:assistant-settings">Assistant settings</button></div>` : ""}
+      ${turns.length ? `<div class="alinks"><button class="alink" data-act="speak">${prefs.asstSpeak ? "Stop reading replies aloud" : "Read replies aloud"}</button><button class="alink" data-act="go:assistant-archive">Earlier conversations</button><button class="alink" data-act="go:assistant-settings">Assistant settings</button></div>` : ""}
       ${!turns.length ? note("Runs on your server — nothing is sent anywhere. Risky steps still need approval on your phone, and everything goes in the action log.")
-        + group(`<div class="row click" data-act="go:assistant-settings" role="button" tabindex="0"><span class="ri">${I("gear")}</span><div class="t"><b>Assistant settings</b><small>Its brain, voice, the assistant button and its memory</small></div></div>`) : ""}`, { title: "Assistant" });
+        + group(`<div class="row click" data-act="go:assistant-archive" role="button" tabindex="0"><span class="ri">${I("history")}</span><div class="t"><b>Earlier conversations</b><small>What you've asked Nova before</small></div></div>`
+          + `<div class="row click" data-act="go:assistant-settings" role="button" tabindex="0"><span class="ri">${I("gear")}</span><div class="t"><b>Assistant settings</b><small>Its brain, voice, the assistant button and its memory</small></div></div>`) : ""}`, { title: "Assistant" });
     const q = $("#aq"); if (!listening) q?.focus({ preventScroll: true });
     q && (q.onkeydown = e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); $("#aform").requestSubmit(); } });
     // the box grows with what you type (and its buttons drop to the bottom once it's more than one line)
     const grow = () => { if (!q) return; q.style.height = "auto"; q.style.height = q.scrollHeight + "px"; $("#aform")?.classList.toggle("tall", q.scrollHeight > 48); };
-    q && (q.oninput = grow); grow();
+    q && (q.oninput = () => { draft = q.value; grow(); }); grow();
     // phones: keep the box in view above the on-screen keyboard
-    q && (q.onfocus = () => setTimeout(() => $("#aform")?.scrollIntoView({ block: "end", behavior: "smooth" }), 300));
-    $("#aform").onsubmit = e => { e.preventDefault(); if (!busy) planIt($("#aq").value); };
+    q && matchMedia("(pointer: coarse)").matches && (q.onfocus = () => setTimeout(() => $("#aform")?.scrollIntoView({ block: "end", behavior: "smooth" }), 300));
+    $("#aform").onsubmit = e => { e.preventDefault(); if (!busy) { draft = ""; planIt($("#aq").value); } };
     if (turns.length) (document.querySelector(".aturn.now") || document.querySelector(".aturn:last-of-type"))?.scrollIntoView({ block: "start", behavior: "smooth" });
     runOrbs();
   };
@@ -153,9 +180,11 @@ export async function assistant(ctx, only = false) {
   const brainHtml = () => {
     if (!br) return "";
     const c = br.choices || {}, cur = br.model, v = br.voice || {};
-    if (brTask) return sec(brTask.what) + group(`<div class="pad"><div class="muted" style="font-size:14px;margin-bottom:8px">${esc(brTask.step || "Downloading…")}</div>${bar((brTask.pct || 0) / 100)}</div>`);
+    if (brTask) return sec(brTask.what) + group(`<div style="padding:16px 20px"><div class="muted" style="font-size:14px;margin-bottom:10px">${esc(brTask.step || "Downloading…")}</div>${bar((brTask.pct || 0) / 100)}</div>`);
     const brain = cur ? sec("Nova's brain") + group(`<div class="row"><span class="ri">${I("star")}</span><div class="t"><b>${esc(c[cur]?.name || cur)} · ${br.ready ? "ready" : br.running ? "starting…" : "stopped"}</b><small>${esc(c[cur]?.about || "")} On this server only.</small></div></div>`
-        + `<div class="row click" data-act="brainpick" role="button" tabindex="0"><div class="t"><b>Switch brain</b></div></div><div class="row click" data-act="brainrm" role="button" tabindex="0"><div class="t"><b style="color:var(--red)">Remove it</b><small>Frees ${(((c[cur]?.size) || 0) / 1e9).toFixed(1)} GB — the assistant keeps working with its rules</small></div></div>`)
+        + `<div class="row click" data-act="brainpick" role="button" tabindex="0"><div class="t"><b>Switch brain</b><small>${Object.keys(c).filter(k => k !== cur).map(k => `${esc(c[k].name)}: ${(br.downloaded || []).includes(k) ? "downloaded — switches instantly" : (c[k].size / 1e9).toFixed(1) + " GB download"}`).join(" · ")}</small></div></div>`
+        + (br.downloaded || []).filter(k => k !== cur).map(k => `<div class="row click" data-act="modelrm:${k}" role="button" tabindex="0"><div class="t"><b style="color:var(--red)">Remove the ${esc(c[k]?.name || k)} model</b><small>It's downloaded but not in use — frees ${((c[k]?.size || 0) / 1e9).toFixed(1)} GB</small></div></div>`).join("")
+        + `<div class="row click" data-act="brainrm" role="button" tabindex="0"><div class="t"><b style="color:var(--red)">Remove the brain</b><small>Frees ${(((br.downloaded || [cur]).reduce((a, k) => a + (c[k]?.size || 0), 0)) / 1e9).toFixed(1)} GB — the assistant keeps working with its rules</small></div></div>`)
       : sec("Make it smarter") + group(Object.entries(c).map(([k, x]) => `<div class="row click" data-act="brain:${k}" role="button" tabindex="0"><span class="ri">${I(k === "smart" ? "star" : "speed")}</span>
           <div class="t"><b>${esc(x.name)} brain${br.recommended === k ? " · recommended" : ""}</b><small>${esc(x.about)} ${(x.size / 1e9).toFixed(1)} GB download, needs about ${x.ram_gb} GB of memory.</small></div></div>`).join(""))
         + note("A small language model that runs on your server, so the assistant understands what its rules don't, answers questions and follows a conversation. It's downloaded once from its makers (checked against a fingerprint of the file), runs on its own without access to your files or the internet, and never sends anything anywhere.");
@@ -168,11 +197,14 @@ export async function assistant(ctx, only = false) {
   const planIt = async t => {
     t = t.trim(); if (!t) return;
     text = ""; err = ""; cur = -1; busy = true;
+    // so a long answer can tell you it's ready while you're in another tab (asked once, as you send something)
+    try { if ("Notification" in window && Notification.permission === "default") Notification.requestPermission(); } catch {}
     turns.push({ q: t, plan: null, results: {}, choice: {}, summary: "", done: [] }); draw();
     try { const p = await post("/api/v1/assistant/plan", { text: t }); now().plan = p; now().id = p.turn; }
     catch (e) { err = e.message; turns.pop(); }
-    busy = false; save(); if (ctx.alive()) draw();
+    busy = false; save();
     const p = now()?.plan; if (p?.reply) speak(p.reply);
+    if (onPage()) redraw(); else if (p) finished(p.steps?.length ? "the plan is ready — open the assistant to check it" : (p.reply || "answered"));
   };
   // one step, as this browser would do it by hand
   const runStep = async s => {
@@ -201,7 +233,9 @@ export async function assistant(ctx, only = false) {
   ctx.handlers({
     brain: k => getModel("/api/v1/assistant/brain", { model: k }, "The brain"),
     voice: () => getModel("/api/v1/assistant/voice", {}, "Voice"),
-    brainpick: async () => { const k = await choose("Brain", Object.entries(br?.choices || {}).map(([k, v]) => [k, v.name, v.about]), br?.model); if (k && k !== br?.model) getModel("/api/v1/assistant/brain", { model: k }, "The brain"); },
+    brainpick: async () => { const k = await choose("Brain", Object.entries(br?.choices || {}).map(([k, v]) => [k, v.name, v.about + ((br.downloaded || []).includes(k) ? " Downloaded." : ` ${(v.size / 1e9).toFixed(1)} GB download.`)]), br?.model); if (k && k !== br?.model) getModel("/api/v1/assistant/brain", { model: k }, "The brain"); },
+    modelrm: async k => { if (!(await confirm(`Remove the ${br?.choices?.[k]?.name || k} model?`, "It's deleted from the server; you can download it again any time.", "Remove"))) return;
+      try { await del("/api/v1/assistant/brain?model=" + encodeURIComponent(k)); toast("Removed"); } catch (e) { toast(e.message); } loadBrain(); },
     brainrm: async () => { if (!(await confirm("Remove the brain?", "Its model is deleted from the server. The assistant keeps working with its rules, and you can download it again any time.", "Remove"))) return;
       try { await del("/api/v1/assistant/brain"); toast("Removed"); } catch (e) { toast(e.message); } loadBrain(); },
     voicerm: async () => { if (!(await confirm("Remove voice?", "The speech model is deleted from the server. You can download it again any time.", "Remove"))) return;
@@ -236,7 +270,7 @@ export async function assistant(ctx, only = false) {
       let freed = 0, ram = 0, okN = 0, bad = 0, later = [];
       for (let i = 0; i < steps.length; i++) {
         if (stop) break;
-        cur = i; if (ctx.alive()) draw();
+        cur = i; redraw();
         const s = steps[i];
         let r; try { r = await runStep(s); } catch (e) { r = { ok: false, msg: e.message || "It didn't work" }; }
         t.results[s.id] = r; if (r.later) later.push(s);
@@ -248,7 +282,7 @@ export async function assistant(ctx, only = false) {
       const left = steps.length - Object.keys(t.results).length;
       t.summary = stop && left ? `Stopped — ${okN} done, ${left} not started.` : bad ? `${okN} done, ${bad} didn't work — see above.` : `All done!${extra ? ` I ${extra}.` : ""}`;
       record(t, [...t.done, t.summary]);
-      save(); if (ctx.alive()) draw(); else toast(t.summary);
+      save(); finished(t.summary);
       speak(t.summary);
       const go = later[later.length - 1];
       if (go && !stop) {

@@ -257,8 +257,6 @@ fun androidx.compose.ui.graphics.drawscope.DrawScope.drawWall(t: NovaColors, kin
 
 // ── Headers ───────────────────────────────────────────────────────────────────────
 @Composable fun SectionLabel(text: String) = when (N.preset) {
-    "lumen" -> Text(tr(text).uppercase(), color = N.sub, fontSize = 11.5.sp, letterSpacing = 1.4.sp, fontWeight = FontWeight.SemiBold,
-        modifier = Modifier.padding(start = Space.gutter + 18.dp, end = 30.dp, top = 22.dp, bottom = 8.dp))
     "liquid" -> Text(tr(text).uppercase(), color = N.sub, fontSize = 13.sp, letterSpacing = .3.sp, fontWeight = FontWeight.Medium,
         modifier = Modifier.padding(start = Space.gutter + 18.dp, end = 30.dp, top = 22.dp, bottom = 7.dp))
     "aero" -> Text(text, style = androidx.compose.ui.text.TextStyle(color = if (N.dark) Color(0xFFA9D3F5) else Color(0xFF1E395B), fontSize = 15.sp, shadow = aeroGlow(N.dark)),
@@ -309,7 +307,7 @@ fun androidx.compose.ui.graphics.drawscope.DrawScope.drawWall(t: NovaColors, kin
 @Composable fun RowIcon(icon: ImageVector, tint: Color, theme: String = AppPrefs.iconTheme) {
     val t = N
     val c = if (AppPrefs.iconAccent && tint != t.red) t.blue else tint        // Icons in your accent color (warnings stay red)
-    when (theme.takeIf { it != "style" } ?: when (t.preset) { "liquid" -> "tiles"; "aero" -> "glossy"; "fluent", "breeze" -> "glyph"; "lumen" -> "glow"; else -> "tonal" }) {
+    when (theme.takeIf { it != "style" } ?: when (t.preset) { "liquid" -> "tiles"; "aero" -> "glossy"; "fluent", "breeze" -> "glyph"; else -> "tonal" }) {
         "glow" -> Box(Modifier.size(34.dp).shadow(10.dp, RoundedCornerShape(11.dp), ambientColor = c, spotColor = c).clip(RoundedCornerShape(11.dp)).background(c.copy(alpha = .12f))
             .border(1.dp, c.copy(alpha = .3f), RoundedCornerShape(11.dp)), contentAlignment = Alignment.Center) { Icon(icon, null, tint = c, modifier = Modifier.size(19.dp)) }
         "tiles" -> Box(Modifier.size(30.dp).clip(RoundedCornerShape(cardRadius(8.dp))).background(c), contentAlignment = Alignment.Center) { Icon(icon, null, tint = Color.White, modifier = Modifier.size(19.dp)) }
@@ -520,7 +518,6 @@ val LocalWide = staticCompositionLocalOf { false }
     // the selection sits 6dp inside the pill: Mica, Breeze and Aero give it the pill's corners minus 6dp (concentric); the others are round
     val beadShape = if (N.preset in setOf("fluent", "breeze", "aero")) RoundedCornerShape((pillCorner(40.dp) - 6.dp).coerceIn(2.dp, 28.dp)) else RoundedCornerShape(50)
     Box(modifier.navigationBarsPadding().padding(bottom = 14.dp).frosted(LocalRootHaze.current, RoundedCornerShape(pillCorner(40.dp)), 18.dp)
-        .then(if (N.preset == "lumen") Modifier.lumenBeam(RoundedCornerShape(pillCorner(40.dp)), lerp(N.blue, Color.White, .3f), 6000) else Modifier)
         .pointerInput(onLongClick) { detectTapGestures(onLongPress = { onLongClick?.let { l -> haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress); l() } }) }
         .padding(6.dp)) {
         // on an app the bead narrows to a true circle around it (52 across, centered in the pill's height).
@@ -540,8 +537,7 @@ val LocalWide = staticCompositionLocalOf { false }
                 alpha = bead.shown.value * (1f - out).coerceIn(0f, 1f)
             }
             .frosted(LocalRootHaze.current, beadShape, 4.dp)
-            .background(if (N.preset == "lumen") Brush.verticalGradient(listOf(N.blue.copy(alpha = .45f), N.blue.copy(alpha = .14f))) else SolidColor(if (N.dark) Color.White.copy(alpha = 0.10f) else Color.Black.copy(alpha = 0.05f)))
-            .then(if (N.preset == "lumen") Modifier.border(1.dp, N.blue.copy(alpha = .55f), beadShape) else Modifier))
+            .background(if (N.dark) Color.White.copy(alpha = 0.10f) else Color.Black.copy(alpha = 0.05f)))
         Row(horizontalArrangement = Arrangement.spacedBy(gap), verticalAlignment = Alignment.CenterVertically) {
             Row(Modifier.width(tabsView).fadeEdges(tabScroll, true, 40.dp).horizontalScroll(tabScroll), horizontalArrangement = Arrangement.spacedBy(gap)) {
                 icons.forEachIndexed { i, ic ->
@@ -749,7 +745,7 @@ class PillBead(val x: androidx.compose.animation.core.Animatable<Float, androidx
         }
         return
     }
-    Box(modifier.frosted(LocalRootHaze.current, RoundedCornerShape(pillCorner(40.dp)), 18.dp).then(if (N.preset == "lumen") Modifier.lumenBeam(RoundedCornerShape(pillCorner(40.dp)), lerp(N.blue, Color.White, .3f), 6000) else Modifier).then(hold)) {
+    Box(modifier.frosted(LocalRootHaze.current, RoundedCornerShape(pillCorner(40.dp)), 18.dp).then(hold)) {
       Box(Modifier.heightIn(max = maxH).fadeEdges(vs, false, 40.dp).verticalScroll(vs).padding(6.dp)) {
         // read while laying out and drawing only, so a moving bead never recomposes the rail (that made it stutter)
         Box(Modifier
@@ -757,8 +753,7 @@ class PillBead(val x: androidx.compose.animation.core.Animatable<Float, androidx
                 layout(pl.width, h) { pl.place(0, bead.x.value.dp.roundToPx()) } }
             .graphicsLayer { alpha = bead.shown.value }
             .frosted(LocalRootHaze.current, beadShape, 4.dp)
-            .background(if (N.preset == "lumen") Brush.verticalGradient(listOf(N.blue.copy(alpha = .45f), N.blue.copy(alpha = .14f))) else SolidColor(if (N.dark) Color.White.copy(alpha = 0.10f) else Color.Black.copy(alpha = 0.05f)))
-            .then(if (N.preset == "lumen") Modifier.border(1.dp, N.blue.copy(alpha = .55f), beadShape) else Modifier))
+            .background(if (N.dark) Color.White.copy(alpha = 0.10f) else Color.Black.copy(alpha = 0.05f)))
         Column(verticalArrangement = Arrangement.spacedBy(gap), horizontalAlignment = Alignment.CenterHorizontally) {
             icons.forEachIndexed { i, ic ->
                 Box(Modifier.size(width = 64.dp, height = itemH).clip(beadShape)
@@ -795,9 +790,9 @@ class PillBead(val x: androidx.compose.animation.core.Animatable<Float, androidx
     val preset = N.preset
     val rk = roundK()
     // (never rounder than half its 50dp height, or the corners stop meeting the thumb's)
-    val track = when (preset) { "liquid", "lumen" -> RoundedCornerShape(50); "fluent" -> RoundedCornerShape((6.dp * rk).coerceAtMost(25.dp)); "breeze", "aero" -> RoundedCornerShape((5.dp * rk).coerceAtMost(25.dp)); else -> RoundedCornerShape(24.dp) }
+    val track = when (preset) { "liquid" -> RoundedCornerShape(50); "fluent" -> RoundedCornerShape((6.dp * rk).coerceAtMost(25.dp)); "breeze", "aero" -> RoundedCornerShape((5.dp * rk).coerceAtMost(25.dp)); else -> RoundedCornerShape(24.dp) }
     // the thumb sits 4dp inside the track: its corners are the track's minus 4dp, so the two stay concentric at any roundness
-    val thumb = when (preset) { "liquid", "lumen" -> RoundedCornerShape(50); "fluent" -> RoundedCornerShape((6.dp * rk - 4.dp).coerceIn(2.dp, 21.dp))
+    val thumb = when (preset) { "liquid" -> RoundedCornerShape(50); "fluent" -> RoundedCornerShape((6.dp * rk - 4.dp).coerceIn(2.dp, 21.dp))
         "breeze", "aero" -> RoundedCornerShape((5.dp * rk - 4.dp).coerceIn(2.dp, 21.dp)); else -> RoundedCornerShape(20.dp) }
     val outer = Modifier.padding(horizontal = Space.gutter, vertical = 6.dp).fillMaxWidth()
     BoxWithConstraints((if (preset == "liquid") outer.clip(track).background(Color(0x3D787880)) else outer.glassCard(track, 3.dp, exact = true)).padding(if (preset == "liquid") 3.dp else 4.dp)) {
@@ -805,13 +800,13 @@ class PillBead(val x: androidx.compose.animation.core.Animatable<Float, androidx
         Box(Modifier.offset(x = w * pos).width(w).height(if (preset == "liquid") 34.dp else 42.dp)
             .then(if (preset == "liquid") Modifier.shadow(3.dp, thumb) else Modifier)
             .then(if (preset == "aero") Modifier.aeroButton(true, thumb) else Modifier)
-            .clip(thumb).background(if (preset == "lumen") lumenMetal(N.dark) else SolidColor(when (preset) { "aero" -> Color.Transparent; "liquid" -> if (N.dark) Color(0xFF636366) else Color.White; "breeze" -> N.navSel; else -> N.navSel }))
+            .clip(thumb).background(when (preset) { "aero" -> Color.Transparent; "liquid" -> if (N.dark) Color(0xFF636366) else Color.White; "breeze" -> N.navSel; else -> N.navSel })
             .then(if (preset == "breeze") Modifier.border(1.dp, N.blue, thumb) else Modifier))
         if (preset == "fluent") Box(Modifier.offset(x = w * pos + w / 2 - 8.dp, y = 36.dp).size(16.dp, 3.dp).clip(RoundedCornerShape(2.dp)).background(N.blue))
         Row(Modifier.fillMaxWidth()) {
             options.forEachIndexed { i, o ->
                 Box(Modifier.weight(1f).height(if (preset == "liquid") 34.dp else 42.dp).clip(thumb).clickable { onSelect(i) }, contentAlignment = Alignment.Center) {
-                    Text(o, color = if (preset == "lumen" && i == selected) Color(0xFF0B0C12) else N.text, fontWeight = if (i == selected) FontWeight.Bold else FontWeight.Medium, fontSize = if (preset == "liquid") 14.sp else 15.sp, maxLines = 1)
+                    Text(o, color = N.text, fontWeight = if (i == selected) FontWeight.Bold else FontWeight.Medium, fontSize = if (preset == "liquid") 14.sp else 15.sp, maxLines = 1)
                 }
             }
         }
@@ -829,7 +824,6 @@ class PillBead(val x: androidx.compose.animation.core.Animatable<Float, androidx
 @Composable fun PrimaryButton(text: String, modifier: Modifier = Modifier, enabled: Boolean = true,
                               color: Color? = null, onClick: () -> Unit) {
     val bg = color ?: N.blue
-    if (N.preset == "lumen" && (color == null || color == N.blue)) { LumenButton(text, modifier, enabled, onClick); return }
     if (N.material) {                        // Expressive: taller pill whose corners tighten while pressed
         val src = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
         val pressed by src.collectIsPressedAsState()
@@ -854,7 +848,7 @@ class PillBead(val x: androidx.compose.animation.core.Animatable<Float, androidx
  *  tonal track. Same as Nova web. */
 @Composable fun LookBar(f: Float, color: Color) {
     val t = N
-    val h = when { t.material -> 10.dp; t.preset == "aero" -> 12.dp; t.preset == "fluent" -> 4.dp; t.preset == "breeze" || t.preset == "lumen" -> 6.dp; else -> 8.dp }
+    val h = when { t.material -> 10.dp; t.preset == "aero" -> 12.dp; t.preset == "fluent" -> 4.dp; t.preset == "breeze" -> 6.dp; else -> 8.dp }
     androidx.compose.foundation.Canvas(Modifier.fillMaxWidth().height(h)) {
         val w = size.width; val hh = size.height
         val r = when { t.preset == "aero" -> 3.dp.toPx(); else -> hh / 2 }
@@ -869,7 +863,6 @@ class PillBead(val x: androidx.compose.animation.core.Animatable<Float, androidx
         val inset = if (t.preset == "aero") 1.dp.toPx() else 0f
         val fs = androidx.compose.ui.geometry.Size((fw - 2 * inset).coerceAtLeast(0f), hh - 2 * inset); val fo = Offset(inset, inset)
         val fr = androidx.compose.ui.geometry.CornerRadius(if (t.preset == "aero") 2.dp.toPx() else fs.height / 2)
-        if (t.preset == "lumen") drawRoundRect(color.copy(alpha = .35f), Offset(fo.x - 2.dp.toPx(), fo.y - 2.dp.toPx()), androidx.compose.ui.geometry.Size(fs.width + 4.dp.toPx(), fs.height + 4.dp.toPx()), androidx.compose.ui.geometry.CornerRadius(fr.x + 2.dp.toPx()))
         drawRoundRect(color, fo, fs, fr)
         when (t.preset) {
             "aero" -> drawRoundRect(Brush.verticalGradient(0f to Color.White.copy(alpha = 0.75f), 0.45f to Color.White.copy(alpha = 0.25f), 0.5f to Color.Transparent, 1f to Color.White.copy(alpha = 0.18f), startY = fo.y, endY = fo.y + fs.height), fo, fs, fr)

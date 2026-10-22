@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.9.4-alpha (server, Nova web, app and watch)
+- **Task manager** (app and web; Menu, or search "task manager"): every process on the server with its CPU right now and its memory, like top — sort by CPU, memory or name, search, tap one for its details, and **End** or **Force stop** it with your fingerprint. The system's own core, kernel threads, Nova and SSH are refused.
+- **Lumen is gone.** Fewer looks means fewer things that break: if you were using it, Nova switches you to the Default look.
+- **Apps in windows on tablets:** apps open in windows over Nova, like on the web — drag them by the title bar, resize from the corner, maximize (double-tap the title bar) or close. Turn it off in Appearance → Home. Apps also use the whole width now instead of a phone-shaped column.
+- **Side by side on wide screens** (web, Appearance → Home): pages you open from the Menu show next to it, like on a tablet.
+- **The assistant:**
+  - keeps working when you leave its page; if it finishes while you're elsewhere you get a notification (and a browser notification when the tab is hidden). Each visit starts on a clean page; **Earlier conversations** has everything you've asked, by day.
+  - what you were typing is still there when you come back.
+  - drag the orb anywhere; drop it on the navigation pill and it becomes a tab there (add or remove it in the pill's editor too).
+  - switching between the Smart and Light brains is instant once both are downloaded, nothing is downloaded twice, and you can remove one you don't use. Downloads show their speed and time left.
+- **Fixes:**
+  - the cards' far side no longer goes black while you drag back (Glass, Aero and the see-through Default look).
+  - Glass's light splitting works at the default Glass quality (it needed 90%).
+  - the tablet's side list now slides away without leaving its space behind for a moment.
+  - "Show each core" sits right under the CPU graph (app and web) — it used to be a hidden double-tap.
+  - the Default look's frost and transparency reach the alert banner and toasts; the app explains when Frost has nothing to blur (no picture, or Transparency at 0%).
+  - Icon style shows the current style beside its arrow; All apps is first in the Home apps row; the living wallpaper has a frame-rate limit in the app too.
+  - web: spinners turn smoothly (they restarted with every refresh); no more frosted square at the bottom when switching pages; clicking into the assistant's box with a mouse no longer jumps the page; notes line up with the cards around them; the download progress isn't cropped.
+
 ## 0.9.3-alpha (server, Nova web, app and watch)
 - **The assistant knows a lot more about your server:** Nova's version, the system and kernel, uptime, CPU, memory and swap — and, when you ask about them, the Linux processes using the most memory and CPU, each container's memory and CPU, your drives, network addresses, scheduled restarts and backups. It answers from those real numbers (“what are the top 10 processes by RAM?”) instead of opening a page, and says when it can't see something rather than guessing.
 - **Faster, longer answers:** the brain keeps its instructions and examples ready between questions, has room for twice as much, and can write longer lists.

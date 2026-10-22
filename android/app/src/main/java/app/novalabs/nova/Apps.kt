@@ -8,6 +8,13 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.border
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.draw.shadow
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
@@ -124,10 +131,10 @@ fun openBuiltin(app: AppState, id: String) { val b = Builtins.of(id) ?: return; 
 /** Tap on an app in the dock: switch to it, or open it if it's only pinned. */
 fun dockTap(app: AppState, id: String) {
     if (Builtins.of(id) != null) { if (Builtins.current(app.top) != id) openBuiltin(app, id); return }
-    if (AppSessions.get(id) != null) { app.tab(Route.AppFrame(id)); return }
+    if (AppSessions.get(id) != null) { if (AppWindows.on(app)) AppWindows.open(id) else app.tab(Route.AppFrame(id)); return }
     val a = Cache["/api/v1/apps"]?.optJSONArray("apps").objs().firstOrNull { it.optString("id") == id } ?: return
     if (appUrl(app, a) == null) { app.toast("Away from home this app needs its own link — hold it in Apps → Open it from anywhere"); return }
-    AppSessions.open(a); app.tab(Route.AppFrame(id))
+    AppSessions.open(a); if (AppWindows.on(app)) AppWindows.open(id) else app.tab(Route.AppFrame(id))
 }
 
 /** Where to open an app from here: your own link, or the server's address on this route + the app's port. */
@@ -437,9 +444,46 @@ object WebFull {
 /** The file picker a web app's upload button opens, and where its answer goes. */
 object WebPick { var launch: ((android.content.Intent) -> Unit)? = null; var cb: android.webkit.ValueCallback<Array<android.net.Uri>>? = null }
 
-@Composable fun AppFrameScreen(app: AppState, id: String) {
+/** Apps in windows (tablets, Appearance → Apps open in windows): each one floats over Nova, like on the web — drag it by
+ *  its title bar, resize it from the corner, maximize or close it. The newest (or last touched) is on top. */
+object AppWindows {
+    class Win(val id: String, x: Float, y: Float, w: Float, h: Float) {
+        var x by mutableFloatStateOf(x); var y by mutableFloatStateOf(y); var w by mutableFloatStateOf(w); var h by mutableFloatStateOf(h); var max by mutableStateOf(false) }
+    val list = mutableStateListOf<Win>()
+    var maxY = 2000f                                       // the lowest a title bar may go (so it can always be grabbed again)
+    fun get(id: String) = list.firstOrNull { it.id == id }
+    fun open(id: String) { val w = get(id); if (w != null) { front(id); return }
+        list.add(Win(id, -1f, -1f, 0f, 0f)) }                       // placed and sized for the screen when it's first drawn
+    fun front(id: String) { val w = get(id) ?: return; if (list.lastOrNull() != w) { list.remove(w); list.add(w) } }
+    fun close(id: String) { list.removeAll { it.id == id } }
+    fun on(app: AppState) = app.wide && AppPrefs.appWindows
+}
+
+/** The windows, over everything else on a tablet. */
+@Composable fun AppWindowLayer(app: AppState) {
+    if (!AppWindows.on(app) || AppWindows.list.isEmpty()) return
+    val d = androidx.compose.ui.platform.LocalDensity.current
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val W = with(d) { maxWidth.toPx() }; val H = with(d) { maxHeight.toPx() }; AppWindows.maxY = H - with(d) { 90.dp.toPx() }
+        AppWindows.list.toList().forEachIndexed { i, win -> key(win.id) {
+            if (win.w == 0f) { win.w = W * .62f; win.h = H * .78f; win.x = (W * .14f + i * 48f).coerceAtMost(W - win.w); win.y = (H * .08f + i * 48f).coerceAtMost(H - win.h) }
+            val shape = RoundedCornerShape(20.dp * winK())
+            val mod = if (win.max) Modifier.fillMaxSize().statusBarsPadding().padding(start = 96.dp, end = 12.dp, bottom = 12.dp)
+                else Modifier.offset { androidx.compose.ui.unit.IntOffset(win.x.toInt(), win.y.toInt()) }.size(with(d) { win.w.toDp() }, with(d) { win.h.toDp() })
+            Box(mod.shadow(24.dp, shape).clip(shape).background(N.bg).border(1.dp, N.divider, shape)
+                .pointerInput(win.id) { awaitEachGesture { awaitFirstDown(requireUnconsumed = false, pass = androidx.compose.ui.input.pointer.PointerEventPass.Initial); AppWindows.front(win.id) } }) {
+                AppFrameScreen(app, win.id, win)
+                if (!win.max) Box(Modifier.align(Alignment.BottomEnd).size(28.dp).pointerInput(win.id) {     // resize from the corner
+                    detectDragGestures { c, dd -> c.consume(); win.w = (win.w + dd.x).coerceIn(420f, W - win.x); win.h = (win.h + dd.y).coerceIn(320f, H - win.y) } }) {
+                    Icon(Icons.Rounded.OpenInFull, "Resize", tint = N.sub.copy(alpha = .6f), modifier = Modifier.align(Alignment.Center).size(14.dp).rotate(90f)) }
+            }
+        } }
+    }
+}
+
+@Composable fun AppFrameScreen(app: AppState, id: String, win: AppWindows.Win? = null) {
     val s = AppSessions.get(id)
-    if (s == null) { LaunchedEffect(Unit) { app.back() }; return }
+    if (s == null) { LaunchedEffect(Unit) { if (win != null) AppWindows.close(id) else app.back() }; return }
     val url = remember(id) { appUrl(app, s.app) }
     var progress by remember { mutableIntStateOf(0) }
     var canBack by remember { mutableStateOf(false) }
@@ -456,9 +500,14 @@ object WebPick { var launch: ((android.content.Intent) -> Unit)? = null; var cb:
         WebPick.cb = null
     }
     SideEffect { WebPick.launch = { picker.launch(it) } }
-    Column(Modifier.fillMaxSize().statusBarsPadding().padding(bottom = if (LocalWide.current) 12.dp else 96.dp)) {
-        Row(Modifier.fillMaxWidth().padding(start = 10.dp, end = 10.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            CircleButton(Icons.AutoMirrored.Rounded.ArrowBack, "Back", 1f, { if (s.web?.canGoBack() == true) s.web?.goBack() else app.back() })
+    val d = androidx.compose.ui.platform.LocalDensity.current
+    Column(if (win != null) Modifier.fillMaxSize().padding(bottom = 10.dp) else Modifier.fillMaxSize().statusBarsPadding().padding(bottom = if (LocalWide.current) 12.dp else 96.dp)) {
+        // in a window, the header is its title bar: drag it to move the window, double-tap to maximize
+        Row(Modifier.fillMaxWidth().then(if (win != null) Modifier.pointerInput(win) {
+                detectDragGestures { c, dd -> c.consume(); if (!win.max) { win.x = (win.x + dd.x).coerceAtLeast(-win.w + 200f); win.y = (win.y + dd.y).coerceIn(0f, AppWindows.maxY) } } }
+                .pointerInput(win) { detectTapGestures(onDoubleTap = { win.max = !win.max }) } else Modifier)
+            .padding(start = 10.dp, end = 10.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            CircleButton(Icons.AutoMirrored.Rounded.ArrowBack, "Back", 1f, { if (s.web?.canGoBack() == true) s.web?.goBack() else if (win == null) app.back() })
             Spacer(Modifier.width(8.dp))
             AppIcon(app, s.app, 30.dp); Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
@@ -484,7 +533,8 @@ object WebPick { var launch: ((android.content.Intent) -> Unit)? = null; var cb:
                 ))
             }
             Spacer(Modifier.width(6.dp))
-            CircleButton(Icons.Rounded.Close, "Close", 1f, { AppSessions.close(id); app.back() })
+            if (win != null) { CircleButton(if (win.max) Icons.Rounded.CloseFullscreen else Icons.Rounded.OpenInFull, if (win.max) "Restore" else "Maximize", 1f, { win.max = !win.max }); Spacer(Modifier.width(6.dp)) }
+            CircleButton(Icons.Rounded.Close, "Close", 1f, { AppSessions.close(id); if (win != null) AppWindows.close(id) else app.back() })
         }
         if (progress in 1..99) ProgressBar(progress / 100f)
         Box(Modifier.fillMaxSize().padding(horizontal = 10.dp).clip(RoundedCornerShape(24.dp)).background(N.card)) {
@@ -548,7 +598,7 @@ object WebPick { var launch: ((android.content.Intent) -> Unit)? = null; var cb:
             } }
         }
     }
-    androidx.activity.compose.BackHandler(enabled = canBack) { s.web?.goBack() }
+    androidx.activity.compose.BackHandler(enabled = canBack && (win == null || AppWindows.list.lastOrNull() == win)) { s.web?.goBack() }
     androidx.activity.compose.BackHandler(enabled = WebFull.showing) { WebFull.hide(app.activity) }
     sslAsk?.let { h ->
         OneDialog({ h.cancel(); sslAsk = null }, "Open with the server's own certificate?",

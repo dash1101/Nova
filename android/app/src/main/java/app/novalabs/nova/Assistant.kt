@@ -41,6 +41,7 @@ import org.json.JSONObject
 object Assistant {
     var on by mutableStateOf<Boolean?>(null)                // Labs → Nova assistant (null: not known yet)
     var pending by mutableStateOf("")                        // a request handed over by Search
+    var draft = ""                                           // what you were typing, kept while you look at another page
     var voice by mutableStateOf(false)                       // the server has its own speech model
     suspend fun refresh(app: AppState) { on = runCatching { app.api.get("/api/v1/labs").optJSONObject("labs")?.optBoolean("assistant") == true }.getOrNull() ?: on
         if (on == true) runCatching { voice = app.api.get("/api/v1/assistant/brain").optJSONObject("voice")?.optBoolean("installed") == true } }
@@ -104,38 +105,51 @@ private fun orbSphere(n: Int) = ORB_PTS.getOrPut(n) { val g = Math.PI * (3 - Mat
 /** The box you type into, with a beam of light running round its edge. */
 @Composable private fun BeamBox(content: @Composable () -> Unit) {
     val shape = RoundedCornerShape(22.dp * roundK())
-    Box(Modifier.padding(horizontal = Space.gutter, vertical = 8.dp).fillMaxWidth().clip(shape).background(N.card).border(1.dp, N.divider, shape)
-        .lumenBeam(shape, lerp(N.blue, Color.White, .3f), 3500, 2.dp)) { content() }
+    Box(Modifier.padding(horizontal = Space.gutter, vertical = 8.dp).fillMaxWidth().clip(shape).background(N.card).border(1.dp, N.divider, shape)) { content() }
 }
 
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+/** What the assistant is doing right now. It lives outside the screen and runs in the app's own scope, so leaving the
+ *  page doesn't stop a plan or its steps; if one finishes while you're elsewhere, you get a notification. */
+object AssistantRun {
+    var plan by mutableStateOf<JSONObject?>(null); var turnId by mutableStateOf(""); var busy by mutableStateOf(false); var stop by mutableStateOf(false)
+    var cur by mutableIntStateOf(-1); var summary by mutableStateOf(""); var err by mutableStateOf("")
+    val results = mutableStateMapOf<String, Pair<Boolean, String>>(); val choice = mutableStateMapOf<String, Int>()
+    var onScreen = false; var unseen = false
+    fun finished(app: AppState, msg: String) {
+        if (onScreen) return
+        unseen = true; app.toast("Nova: $msg")
+        Notifier.post(app.activity, 7711, "info", "Nova assistant", msg, open = "assistant")
+    }
+}
+
 @Composable fun AssistantScreen(app: AppState) {
     val scope = rememberCoroutineScope()
-    var text by remember { mutableStateOf(Assistant.pending.also { Assistant.pending = "" }) }
-    var plan by remember { mutableStateOf<JSONObject?>(null) }
-    var turnId by remember { mutableStateOf("") }
-    var busy by remember { mutableStateOf(false) }; var stop by remember { mutableStateOf(false) }
-    var cur by remember { mutableIntStateOf(-1) }; var summary by remember { mutableStateOf("") }; var err by remember { mutableStateOf("") }
-    val results = remember { mutableStateMapOf<String, Pair<Boolean, String>>() }
-    val choice = remember { mutableStateMapOf<String, Int>() }
-    LaunchedEffect(Unit) {
-        Assistant.refresh(app)
-        // the conversation is the server's — one for every phone and browser
-        if (plan == null && !busy) runCatching { app.api.get("/api/v1/assistant/convo") }.getOrNull()?.optJSONArray("turns")?.let { a ->
-            Assistant.turns.clear(); Assistant.turns.addAll(a.objs().map { Assistant.Turn(it.optString("q"), it.optString("reply"), it.optJSONArray("done")?.let { d -> (0 until d.length()).map { d.getString(it) } } ?: emptyList()) })
-        }
+    var text by remember { mutableStateOf(Assistant.pending.ifEmpty { Assistant.draft }.also { Assistant.pending = "" }) }
+    LaunchedEffect(text) { Assistant.draft = text }
+    var plan by AssistantRun::plan; var turnId by AssistantRun::turnId; var busy by AssistantRun::busy; var stop by AssistantRun::stop
+    var cur by AssistantRun::cur; var summary by AssistantRun::summary; var err by AssistantRun::err
+    val results = AssistantRun.results; val choice = AssistantRun.choice
+    DisposableEffect(Unit) { AssistantRun.onScreen = true; onDispose { AssistantRun.onScreen = false } }
+    remember {
+        // a clean page each time you open it (Nova still follows the conversation on the server; earlier ones are in the archive) —
+        // unless it's still working, or finished something while you were away
+        if (!busy && !AssistantRun.unseen) { Assistant.turns.clear(); plan = null; summary = ""; results.clear(); choice.clear(); err = "" }
+        AssistantRun.unseen = false; true
     }
+    LaunchedEffect(Unit) { Assistant.refresh(app) }
     fun steps(): List<JSONObject> = plan?.optJSONArray("steps").objs().map { s ->
         if (s.optString("kind") == "ask" && choice[s.optString("id")] != null) JSONObject(s.optJSONArray("options")!!.getJSONObject(choice[s.optString("id")]!!).getJSONObject("step").toString())
             .put("id", s.optString("id")).put("asked", true) else s }
     fun planIt(t: String) { val q = t.trim(); if (q.isEmpty() || busy) return
         text = q; busy = true; plan = null; results.clear(); choice.clear(); summary = ""; err = ""; cur = -1
-        scope.launch { try { val r = app.api.post("/api/v1/assistant/plan", JSONObject().put("text", q).put("history", Assistant.history()))
-                plan = r; turnId = r.optString("turn"); Assistant.turns.add(Assistant.Turn(q, r.optString("reply"))); text = ""
+        app.scope.launch { try { val r = app.api.post("/api/v1/assistant/plan", JSONObject().put("text", q).put("history", Assistant.history()))
+                plan = r; turnId = r.optString("turn"); Assistant.turns.add(Assistant.Turn(q, r.optString("reply"))); text = ""; Assistant.draft = ""
                 if (AppPrefs.asstSpeak) Voice.speak(app.activity, r.optString("reply"))
+                AssistantRun.finished(app, if ((r.optJSONArray("steps")?.length() ?: 0) > 0) "the plan is ready — open the assistant to check it" else r.optString("reply").ifEmpty { "answered" })
             } catch (e: Exception) { err = e.message ?: "That didn't work" }; busy = false } }
     fun noteDone(done: List<String>) { val i = Assistant.turns.lastIndex; if (i >= 0) Assistant.turns[i] = Assistant.turns[i].copy(done = done.take(8))
-        val id = turnId; if (id.isNotEmpty()) scope.launch { runCatching { app.api.post("/api/v1/assistant/convo", JSONObject().put("turn", id).put("done", JSONArray(done.take(12)))) } } }
+        val id = turnId; if (id.isNotEmpty()) app.scope.launch { runCatching { app.api.post("/api/v1/assistant/convo", JSONObject().put("turn", id).put("done", JSONArray(done.take(12)))) } } }
     // the mic: the server's speech model when it has one, the phone's recognizer when it doesn't
     var listening by remember { mutableStateOf(false) }; var hearing by remember { mutableStateOf(false) }; var level by remember { mutableFloatStateOf(0f) }
     val lang = (if (AppPrefs.lang != "auto") AppPrefs.lang else java.util.Locale.getDefault().language).take(2)
@@ -186,7 +200,7 @@ private fun orbSphere(n: Int) = ORB_PTS.getOrPut(n) { val g = Math.PI * (3 - Mat
         val mb = r.optLong("freed_mb", -1)
         return Done(true, done.replace("{freed_mb}", if (mb >= 0) "$mb" else "some"), ramMb = mb.coerceAtLeast(0))
     }
-    fun run() = scope.launch {
+    fun run() = app.scope.launch {
         val list = steps(); if (list.any { it.optString("kind") == "ask" }) return@launch
         busy = true; stop = false
         var freed = 0L; var ram = 0L; var ok = 0; var bad = 0; var last: JSONObject? = null
@@ -204,8 +218,9 @@ private fun orbSphere(n: Int) = ORB_PTS.getOrPut(n) { val g = Math.PI * (3 - Mat
         val sum = if (stop && left > 0) "Stopped — $ok done, $left not started." else if (bad > 0) "$ok done, $bad didn't work — see below." else "All done!" + if (extra.isNotEmpty()) " I $extra." else ""
         summary = sum; noteDone(list.mapNotNull { results[it.optString("id")]?.let { (ok, m) -> (if (ok) "" else "Failed: ") + "${it.optString("say")} — $m" } } + sum)
         if (AppPrefs.asstSpeak) Voice.speak(app.activity, sum)
+        AssistantRun.finished(app, sum)
         val go = last
-        if (go != null && !stop) when (go.optString("kind")) {
+        if (go != null && !stop && AssistantRun.onScreen) when (go.optString("kind")) {
             "partition" -> { PartitionStage.set(go); app.go(Route.Partitions(go.optString("serial"))) }
             else -> when (go.optString("route")) {
                 "container-new" -> { ContainerHint.image = go.optString("arg"); app.go(Route.NewContainer) }
@@ -272,13 +287,15 @@ private fun orbSphere(n: Int) = ORB_PTS.getOrPut(n) { val g = Math.PI * (3 - Mat
         }
         if (err.isNotEmpty()) Note(err, 14.sp, 4.dp, N.red)
         if (Assistant.turns.isNotEmpty() && !busy) Row(Modifier.fillMaxWidth().padding(horizontal = Space.gutter), horizontalArrangement = Arrangement.spacedBy(18.dp, Alignment.CenterHorizontally)) {
-            Text("Assistant settings", color = N.link, fontSize = 14.sp, modifier = Modifier.clickable { app.go(Route.AssistantSettings) }.padding(vertical = 8.dp))
+            Text("Earlier conversations", color = N.link, fontSize = 14.sp, modifier = Modifier.clickable { app.go(Route.AssistantArchive) }.padding(vertical = 8.dp))
+            Text("Settings", color = N.link, fontSize = 14.sp, modifier = Modifier.clickable { app.go(Route.AssistantSettings) }.padding(vertical = 8.dp))
             Text(if (AppPrefs.asstSpeak) "Don't read replies aloud" else "Read replies aloud", color = N.link, fontSize = 14.sp, modifier = Modifier.clickable { AppPrefs.chooseAsstSpeak(!AppPrefs.asstSpeak); if (!AppPrefs.asstSpeak) Voice.hush() }.padding(vertical = 8.dp))
         }
         val p = plan
         if (p == null && Assistant.turns.isNotEmpty()) return@Page
         if (p == null) { Note("Runs on your server — nothing is sent anywhere. Risky steps still need your fingerprint, and everything goes in the action log.", 13.sp, 6.dp)
-            Group { Row1("Assistant settings", "Its brain, voice, the assistant button and its memory", true, Icons.Rounded.Settings, onClick = { app.go(Route.AssistantSettings) }) }; return@Page }
+            Group { Row1("Earlier conversations", "What you've asked Nova before", true, Icons.Rounded.History, onClick = { app.go(Route.AssistantArchive) })
+                RowDivider(); Row1("Assistant settings", "Its brain, voice, the assistant button and its memory", true, Icons.Rounded.Settings, onClick = { app.go(Route.AssistantSettings) }) }; return@Page }
         if (list.isEmpty() && p.optString("reply").isNotEmpty()) return@Page
         SectionLabel("Plan · ${list.size} step${if (list.size == 1) "" else "s"}")
         Group {
@@ -345,6 +362,26 @@ object PartitionStage {
 private fun fmtBytes(b: Long): String { if (b <= 0) return "0 B"; val u = listOf("B", "KB", "MB", "GB", "TB"); var v = b.toDouble(); var i = 0
     while (v >= 1000 && i < u.size - 1) { v /= 1000; i++ }; return (if (v >= 100 || i == 0) "%.0f" else "%.1f").format(v) + " " + u[i] }
 
+/** Earlier conversations: everything asked from every device, newest first, by day (kept 90 days on the server). */
+@Composable fun AssistantArchiveScreen(app: AppState) {
+    var a by remember { mutableStateOf<List<JSONObject>?>(null) }
+    LaunchedEffect(Unit) { a = runCatching { app.api.get("/api/v1/assistant/convo?all=1").optJSONArray("archive").objs().reversed() }.getOrElse { emptyList() } }
+    Page("Earlier conversations", app::back) {
+        val list = a ?: run { Note("Loading…", 14.sp, 8.dp); return@Page }
+        if (list.isEmpty()) { Note("Nothing yet — what you ask Nova shows up here.", 14.sp, 8.dp); return@Page }
+        val day = java.text.SimpleDateFormat("EEEE, MMMM d", java.util.Locale.getDefault()); val hm = java.text.DateFormat.getTimeInstance(java.text.DateFormat.SHORT)
+        list.groupBy { day.format(java.util.Date(it.optLong("t") * 1000)) }.forEach { (d, ts) ->
+            SectionLabel(d)
+            ts.forEach { t -> Column(Modifier.fillMaxWidth().padding(horizontal = Space.gutter, vertical = 5.dp)) {
+                Box(Modifier.fillMaxWidth()) { Text(t.optString("q"), color = N.onBlue, fontSize = 15.sp, modifier = Modifier.align(Alignment.CenterEnd).widthIn(max = 320.dp).clip(RoundedCornerShape(16.dp, 5.dp, 16.dp, 16.dp)).background(N.blue).padding(horizontal = 14.dp, vertical = 9.dp)) }
+                if (t.optString("reply").isNotEmpty()) Text(t.optString("reply"), color = N.text, fontSize = 15.sp, lineHeight = 21.sp, modifier = Modifier.padding(top = 6.dp).widthIn(max = 340.dp).clip(RoundedCornerShape(5.dp, 16.dp, 16.dp, 16.dp)).background(lerp(N.card, N.blue, .08f)).padding(horizontal = 14.dp, vertical = 9.dp))
+                t.optJSONArray("done")?.let { dn -> for (k in 0 until dn.length()) Text("✓ " + dn.getString(k), color = N.sub, fontSize = 13.sp, modifier = Modifier.padding(start = 6.dp, top = 2.dp)) }
+                Text(hm.format(java.util.Date(t.optLong("t") * 1000)), color = N.sub, fontSize = 12.sp, modifier = Modifier.padding(start = 6.dp, top = 2.dp))
+            } }
+        }
+    }
+}
+
 /** Assistant settings: its brain, its voice, the button, and forgetting the conversation. */
 @Composable fun AssistantSettingsScreen(app: AppState) {
     var forget by remember { mutableStateOf(false) }; val scope = rememberCoroutineScope()
@@ -383,8 +420,11 @@ private fun fmtBytes(b: Long): String { if (b <= 0) return "0 B"; val u = listOf
         SectionLabel("Nova's brain")
         Group {
             Row1("${c?.optString("name") ?: cur} · ${if (b.optBoolean("ready")) "ready" else if (b.optBoolean("running")) "starting…" else "stopped"}", (c?.optString("about") ?: "") + " On this server only.", false, Icons.Rounded.AutoAwesome)
-            RowDivider(); Row1("Switch brain", null, onClick = { pick = true })
-            RowDivider(); Row1("Remove it", "Frees %.1f GB — the assistant keeps working with its rules".format((c?.optLong("size") ?: 0L) / 1e9), false, Icons.Rounded.Delete, N.red, onClick = { rm = true })
+            val dl = b.optJSONArray("downloaded")?.let { d -> (0 until d.length()).map { d.getString(it) } } ?: listOf(cur)
+            RowDivider(); Row1("Switch brain", choices.keys().asSequence().filter { it != cur }.joinToString(" · ") { k -> choices.getJSONObject(k).optString("name") + ": " + if (k in dl) "downloaded — switches instantly" else "%.1f GB download".format(choices.getJSONObject(k).optLong("size") / 1e9) }, onClick = { pick = true })
+            dl.filter { it != cur }.forEach { k -> RowDivider(); Row1("Remove the ${choices.optJSONObject(k)?.optString("name") ?: k} model", "Downloaded but not in use — frees %.1f GB".format((choices.optJSONObject(k)?.optLong("size") ?: 0L) / 1e9), false, Icons.Rounded.Delete, N.red,
+                onClick = { scope.launch { runCatching { app.api.delete("/api/v1/assistant/brain?model=$k") }.onFailure { app.toast(it.message ?: "That didn't work") }; load() } }) }
+            RowDivider(); Row1("Remove the brain", "Frees %.1f GB — the assistant keeps working with its rules".format(dl.sumOf { choices.optJSONObject(it)?.optLong("size") ?: 0L } / 1e9), false, Icons.Rounded.Delete, N.red, onClick = { rm = true })
         }
     } else {
         SectionLabel("Make it smarter")
@@ -410,7 +450,8 @@ private fun fmtBytes(b: Long): String { if (b <= 0) return "0 B"; val u = listOf
     }
     if (rmVoice) OneDialog({ rmVoice = false }, "Remove voice?", "The speech model is deleted from the server. You can download it again any time.",
         listOf(DialogButton("Cancel") { rmVoice = false }, DialogButton("Remove", N.red) { rmVoice = false; scope.launch { runCatching { app.api.delete("/api/v1/assistant/voice") }; load() } }))
-    if (pick) OneDialog({ pick = false }, "Brain") { choices.keys().forEach { k -> val v = choices.getJSONObject(k); DialogChoice(v.optString("name"), v.optString("about"), cur == k) { pick = false; if (k != cur) get(k) } } }
+    val dl2 = b.optJSONArray("downloaded")?.let { d -> (0 until d.length()).map { d.getString(it) } } ?: emptyList()
+    if (pick) OneDialog({ pick = false }, "Brain") { choices.keys().forEach { k -> val v = choices.getJSONObject(k); DialogChoice(v.optString("name"), v.optString("about") + if (k in dl2) " Downloaded." else " %.1f GB download.".format(v.optLong("size") / 1e9), cur == k) { pick = false; if (k != cur) get(k) } } }
     if (rm) OneDialog({ rm = false }, "Remove the brain?", "Its model is deleted from the server. The assistant keeps working with its rules, and you can download it again any time.",
         listOf(DialogButton("Cancel") { rm = false }, DialogButton("Remove", N.red) { rm = false; scope.launch { runCatching { app.api.delete("/api/v1/assistant/brain") }; load() } }))
 }

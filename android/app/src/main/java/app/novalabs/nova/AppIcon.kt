@@ -12,6 +12,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.Apps
+import androidx.compose.material.icons.rounded.MonitorHeart
+import androidx.compose.material.icons.rounded.Backup
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.*
@@ -107,7 +109,9 @@ object AppIcon {
         SectionLabel("Icons inside Nova")
         Group {
             val th = ICON_THEMES.firstOrNull { it.first == AppPrefs.iconTheme } ?: ICON_THEMES[0]
-            ExpandRow("Icon style", th.second) { IconThemeList() }
+            ExpandRow("Icon style", th.second, preview = {
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    RowIcon(Icons.Rounded.MonitorHeart, N.green, th.first); RowIcon(Icons.Rounded.Backup, N.blue, th.first) } }) { IconThemeList() }
             RowDivider()
             SwitchRow("Icons in your accent color", "Every icon takes on the accent color instead of its own — warnings stay red", AppPrefs.iconAccent) { AppPrefs.chooseIconAccent(it) }
         }
