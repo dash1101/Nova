@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.9.6-alpha (app)
+- **Swiping back works properly again:** opening Home or a tab page from search, a shortcut or the assistant switched to it instead of stacking it on the page you were on, so back showed the wrong page underneath (a second Home, or the page you'd come from) instead of leaving the app or going where you expected.
+
 ## 0.9.5-alpha (server, Nova web, app and watch)
 - **The assistant on phones:** the text box stays at the bottom of the screen (above the keyboard) while the conversation scrolls, bubbles use the width of the screen, and Read aloud, Earlier conversations and Settings are buttons at the top instead of links under the box (app and web).
 - **When the assistant finishes in the background** you get a notification with a short line, not a pop-up with everything it said.

@@ -117,6 +117,11 @@ class AppState(val activity: Activity, val pairing: Pairing, val scope: Coroutin
     /** Which way the last navigation went, so transitions slide the right way. */
     var navDir by mutableIntStateOf(0)          // 1 forward, -1 back, 0 tab switch / instant
     fun go(r: Route) { if (top == r) return                      // already here (a second shake, a double tap): don't stack a copy
+        // Home and the pill's tabs are roots: opening one from search, a shortcut or the assistant switches to it instead of
+        // stacking it on the page you were on (back then showed that page — or a second Home — underneath)
+        if (r == Route.Home || navTabs(this).any { it.route == r }) { tab(r); return }
+        // a page already further down the stack: go back to it rather than stack a copy
+        val i = stack.indexOf(r); if (i >= 0) { navDir = -1; Sounds.feel("back"); while (stack.size > i + 1) pop(); return }
         navDir = 1; Sounds.feel("nav"); if (wide && leftPane && stack.size >= 2) pop(); stack.add(r) }
     fun tab(r: Route) {
         // Only real tabs (in your navigation pill) reset the stack; anything else opens as a page with a back button
@@ -134,7 +139,7 @@ class AppState(val activity: Activity, val pairing: Pairing, val scope: Coroutin
         }
     }
     /** Where back goes from here (null: back leaves the app). */
-    val backTarget: Route? get() = stack.getOrNull(stack.size - 2) ?: if (top != Route.Home) Route.Home else null
+    val backTarget: Route? get() = stack.getOrNull(stack.size - 2)?.takeIf { it != top } ?: if (top != Route.Home) Route.Home else null
     private fun pop() { scrolls.keys.removeAll { it.first >= stack.lastIndex }; stack.removeAt(stack.lastIndex) }
     /** Scroll position of every page in the back stack, so going back lands where you left off. */
     private val scrolls = mutableMapOf<Pair<Int, Route>, androidx.compose.foundation.ScrollState>()
