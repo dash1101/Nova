@@ -297,7 +297,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {   // FragmentAct
         } } }
     }
     override fun onStart() { super.onStart(); AppLock.onStart() }
-    override fun onStop() { super.onStop(); AppLock.onStop()
+    override fun onStop() { super.onStop(); AppLock.onStop(); Voice.hush()       // leaving the app stops Nova reading aloud
     }
 }
 

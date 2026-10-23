@@ -41,7 +41,8 @@ let turns = [];
 let busy = false, stop = false, cur = -1, unseen = false, redraw = () => {}, onPage = () => false;
 const finished = msg => {
   if (onPage()) { redraw(); return; }
-  unseen = true; toast("Nova: " + msg);
+  // a short note (the whole reply is waiting in the assistant), and a notification if this tab is hidden
+  unseen = true; const short = msg.replace(/\s+/g, " ").trim(); toast(short.length > 90 ? "Nova is done — open the assistant to see it" : "Nova: " + short);
   try { if (document.hidden && "Notification" in window && Notification.permission === "granted") new Notification("Nova", { body: msg, icon: "/web/icon.svg" }); } catch {}
 };
 const save = () => {};
@@ -156,21 +157,21 @@ export async function assistant(ctx, only = false) {
         <p class="muted">Say it or type it — several things at once is fine. Ask about your server, or just chat${br?.model ? "" : " (with my brain, below)"}.</p>`}
         ${listening || hearing ? `<h2>${listening ? "Listening…" : "Hearing you…"}</h2>` : ""}</div>
       ${earlier.map(pastHtml).join("")}${t ? (t.past ? pastHtml(t).replace('class="aturn"', 'class="aturn now"') : currentHtml(t)) : ""}
-      <form class="abox" id="aform" autocomplete="off"><textarea id="aq" rows="1" maxlength="500" placeholder="${t ? "Reply, or ask something else…" : "e.g. Set the lights to fire, free up some space and restart Jellyfin"}" aria-label="Ask Nova">${esc(text)}</textarea>
-        <button class="abtn mic press${listening ? " on" : ""}" type="button" data-act="mic" aria-label="${listening ? "Stop listening" : "Speak"}" style="--lv:${level.toFixed(2)}" ${busy || hearing ? "disabled" : ""}>${I(listening ? "stop" : "mic")}</button>
-        <button class="abtn press" id="ago" type="submit" aria-label="Send" ${busy ? "disabled" : ""}>${I("back")}</button></form>
       ${err ? `<p class="note" style="color:var(--red)">${esc(err)}</p>` : ""}
       ${turns.length ? `<div class="alinks"><button class="alink" data-act="speak">${prefs.asstSpeak ? "Stop reading replies aloud" : "Read replies aloud"}</button><button class="alink" data-act="go:assistant-archive">Earlier conversations</button><button class="alink" data-act="go:assistant-settings">Assistant settings</button></div>` : ""}
       ${!turns.length ? note("Runs on your server — nothing is sent anywhere. Risky steps still need approval on your phone, and everything goes in the action log.")
         + group(`<div class="row click" data-act="go:assistant-archive" role="button" tabindex="0"><span class="ri">${I("history")}</span><div class="t"><b>Earlier conversations</b><small>What you've asked Nova before</small></div></div>`
-          + `<div class="row click" data-act="go:assistant-settings" role="button" tabindex="0"><span class="ri">${I("gear")}</span><div class="t"><b>Assistant settings</b><small>Its brain, voice, the assistant button and its memory</small></div></div>`) : ""}`, { title: "Assistant" });
+          + `<div class="row click" data-act="go:assistant-settings" role="button" tabindex="0"><span class="ri">${I("gear")}</span><div class="t"><b>Assistant settings</b><small>Its brain, voice, the assistant button and its memory</small></div></div>`) : ""}
+      <form class="abox" id="aform" autocomplete="off"><textarea id="aq" rows="1" maxlength="500" placeholder="${t ? "Reply, or ask something else…" : "e.g. Set the lights to fire, free up some space and restart Jellyfin"}" aria-label="Ask Nova">${esc(text)}</textarea>
+        <button class="abtn mic press${listening ? " on" : ""}" type="button" data-act="mic" aria-label="${listening ? "Stop listening" : "Speak"}" style="--lv:${level.toFixed(2)}" ${busy || hearing ? "disabled" : ""}>${I(listening ? "stop" : "mic")}</button>
+        <button class="abtn press" id="ago" type="submit" aria-label="Send" ${busy ? "disabled" : ""}>${I("back")}</button></form>`, { title: "Assistant" });
     const q = $("#aq"); if (!listening) q?.focus({ preventScroll: true });
     q && (q.onkeydown = e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); $("#aform").requestSubmit(); } });
     // the box grows with what you type (and its buttons drop to the bottom once it's more than one line)
     const grow = () => { if (!q) return; q.style.height = "auto"; q.style.height = q.scrollHeight + "px"; $("#aform")?.classList.toggle("tall", q.scrollHeight > 48); };
     q && (q.oninput = () => { draft = q.value; grow(); }); grow();
     // phones: keep the box in view above the on-screen keyboard
-    q && matchMedia("(pointer: coarse)").matches && (q.onfocus = () => setTimeout(() => $("#aform")?.scrollIntoView({ block: "end", behavior: "smooth" }), 300));
+    q && matchMedia("(pointer: coarse)").matches && (q.onfocus = () => setTimeout(() => window.scrollTo({ top: document.documentElement.scrollHeight, behavior: "smooth" }), 300));
     $("#aform").onsubmit = e => { e.preventDefault(); if (!busy) { draft = ""; planIt($("#aq").value); } };
     if (turns.length) (document.querySelector(".aturn.now") || document.querySelector(".aturn:last-of-type"))?.scrollIntoView({ block: "start", behavior: "smooth" });
     runOrbs();

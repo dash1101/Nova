@@ -1508,3 +1508,7 @@ body.split .main { margin-left: 380px; } body.split.side .main { margin-left: ca
 body.split .topbar { left: 380px; } body.split.side .topbar { left: calc(100px + 380px + env(safe-area-inset-left)); }
 @media (max-width: 1099px) { #side { display: none; } body.split .main { margin-left: 0; } body.split.side .main { margin-left: calc(108px + env(safe-area-inset-left)); } }
 #asstfab { touch-action: none; transition: scale .15s, opacity .15s; } #asstfab.dragging { scale: 1.1; cursor: grabbing; } #asstfab.overdock { opacity: .6; scale: .9; }
+
+/* the assistant's question box stays at the bottom of the screen (above the dock) while the conversation scrolls */
+.abox { position: sticky; z-index: 5; bottom: calc(14px + env(safe-area-inset-bottom)); margin-top: 18px; box-shadow: inset 0 0 0 1px var(--divider), var(--shadow); }
+body:has(#nav:not([hidden])):not(.side) .abox { bottom: calc(92px + env(safe-area-inset-bottom)); }

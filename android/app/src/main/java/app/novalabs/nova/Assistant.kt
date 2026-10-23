@@ -105,7 +105,7 @@ private fun orbSphere(n: Int) = ORB_PTS.getOrPut(n) { val g = Math.PI * (3 - Mat
 /** The box you type into, with a beam of light running round its edge. */
 @Composable private fun BeamBox(content: @Composable () -> Unit) {
     val shape = RoundedCornerShape(22.dp * roundK())
-    Box(Modifier.padding(horizontal = Space.gutter, vertical = 8.dp).fillMaxWidth().clip(shape).background(N.card).border(1.dp, N.divider, shape)) { content() }
+    Box(Modifier.padding(horizontal = Space.gutter, vertical = 8.dp).fillMaxWidth().glassCard(shape, 8.dp, exact = true)) { content() }
 }
 
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
@@ -118,8 +118,10 @@ object AssistantRun {
     var onScreen = false; var unseen = false
     fun finished(app: AppState, msg: String) {
         if (onScreen) return
-        unseen = true; app.toast("Nova: $msg")
-        Notifier.post(app.activity, 7711, "info", "Nova assistant", msg, open = "assistant")
+        // just a notification (tap it to open the assistant) — no pop-up over whatever page you're on
+        unseen = true
+        val short = msg.replace(Regex("\\s+"), " ").trim().let { if (it.length > 120) it.take(117).trimEnd() + "…" else it }
+        Notifier.post(app.activity, 7711, "info", "Nova assistant", short, open = "assistant")
     }
 }
 
@@ -235,7 +237,32 @@ object AssistantRun {
     val sc = rememberScrollState()
     // the latest message stays in view: on opening, and as the conversation goes on
     LaunchedEffect(Assistant.turns.size, plan, busy, summary, cur) { kotlinx.coroutines.delay(60); sc.animateScrollTo(sc.maxValue) }
-    Page("Assistant", app::back, scroll = sc) {
+    // phones: speech bubbles take most of the width instead of a fixed size
+    val bubble = (androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp * .82f).dp.coerceIn(240.dp, 560.dp)
+    val acts = if (Assistant.on == false) emptyList() else listOf(
+        TopAction(if (AppPrefs.asstSpeak) Icons.Rounded.VolumeUp else Icons.Rounded.VolumeOff, if (AppPrefs.asstSpeak) "Don't read replies aloud" else "Read replies aloud") {
+            AppPrefs.chooseAsstSpeak(!AppPrefs.asstSpeak); if (!AppPrefs.asstSpeak) Voice.hush(); app.toast(if (AppPrefs.asstSpeak) "Replies are read aloud" else "Replies aren't read aloud") },
+        TopAction(Icons.Rounded.History, "Earlier conversations") { app.go(Route.AssistantArchive) },
+        TopAction(Icons.Rounded.Settings, "Assistant settings") { app.go(Route.AssistantSettings) })
+    // the text box stays at the bottom of the screen (above the keyboard) while the conversation scrolls behind it
+    val bar: (@Composable () -> Unit)? = if (Assistant.on == false) null else { {
+        BeamBox {
+            Row(Modifier.padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.weight(1f)) {
+                    if (text.isEmpty()) Text(if (Assistant.turns.isNotEmpty()) "Reply, or ask something else…" else "e.g. Set the lights to fire, free up some space and restart Jellyfin", color = N.sub, fontSize = 16.sp, maxLines = 2)
+                    BasicTextField(text, { v -> if (v.endsWith("\n") && v.length > text.length) planIt(v.trim()) else text = v.take(500) }, Modifier.fillMaxWidth(), textStyle = TextStyle(color = N.text, fontSize = 16.sp), cursorBrush = SolidColor(N.blue),
+                        maxLines = 5, keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send), keyboardActions = KeyboardActions(onSend = { planIt(text) }))
+                }
+                Box(Modifier.size(44.dp).clip(CircleShape).background(if (listening) N.red.copy(alpha = .2f + .5f * level) else N.pill)
+                    .clickable(enabled = !busy && !hearing, onClickLabel = if (listening) "Stop listening" else "Speak") { mic() }, contentAlignment = Alignment.Center) {
+                    Icon(if (listening) Icons.Rounded.Stop else Icons.Rounded.Mic, if (listening) "Stop listening" else "Speak", tint = if (listening) N.red else N.text) }
+                Spacer(Modifier.width(6.dp))
+                Box(Modifier.size(44.dp).clip(CircleShape).background(if (busy) N.sub else N.blue).clickable(enabled = !busy, onClickLabel = "Plan it") { planIt(text) }, contentAlignment = Alignment.Center) {
+                    Icon(Icons.Rounded.ArrowUpward, "Plan it", tint = N.onBlue) }
+            }
+        }
+    } }
+    Page("Assistant", app::back, acts, scroll = sc, bottom = 16.dp, footer = bar) {
         if (Assistant.on == false) {
             Column(Modifier.fillMaxWidth().padding(vertical = 10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 AssistantOrb("idle"); Spacer(Modifier.height(10.dp))
@@ -248,11 +275,11 @@ object AssistantRun {
         val list = steps(); val waiting = list.any { it.optString("kind") == "ask" }
         val earlier = Assistant.turns.let { if (plan != null) it.dropLast(1) else it }.takeLast(5)
         @Composable fun Mine(q: String) = Box(Modifier.fillMaxWidth().padding(horizontal = Space.gutter, vertical = 4.dp)) {
-            Text(q, color = N.onBlue, fontSize = 15.sp, modifier = Modifier.align(Alignment.CenterEnd).widthIn(max = 300.dp).clip(RoundedCornerShape(18.dp, 6.dp, 18.dp, 18.dp)).background(N.blue).padding(horizontal = 14.dp, vertical = 9.dp)) }
+            Text(q, color = N.onBlue, fontSize = 15.sp, modifier = Modifier.align(Alignment.CenterEnd).widthIn(max = bubble).clip(RoundedCornerShape(18.dp, 6.dp, 18.dp, 18.dp)).background(N.blue).padding(horizontal = 14.dp, vertical = 9.dp)) }
         earlier.forEach { t -> Column(Modifier.fillMaxWidth().padding(horizontal = Space.gutter, vertical = 4.dp)) {
-            Text(t.q, color = N.onBlue, fontSize = 15.sp, modifier = Modifier.align(Alignment.End).widthIn(max = 300.dp).clip(RoundedCornerShape(18.dp, 6.dp, 18.dp, 18.dp)).background(N.blue).padding(horizontal = 14.dp, vertical = 9.dp))
+            Text(t.q, color = N.onBlue, fontSize = 15.sp, modifier = Modifier.align(Alignment.End).widthIn(max = bubble).clip(RoundedCornerShape(18.dp, 6.dp, 18.dp, 18.dp)).background(N.blue).padding(horizontal = 14.dp, vertical = 9.dp))
             val said = listOfNotNull(t.reply.ifEmpty { null }, t.done.lastOrNull()).distinct().joinToString("\n")
-            if (said.isNotEmpty()) Text(said, color = N.text, fontSize = 15.sp, lineHeight = 21.sp, modifier = Modifier.padding(top = 6.dp).widthIn(max = 320.dp).clip(RoundedCornerShape(6.dp, 18.dp, 18.dp, 18.dp)).background(lerp(N.card, N.blue, .08f)).padding(horizontal = 14.dp, vertical = 9.dp))
+            if (said.isNotEmpty()) Text(said, color = N.text, fontSize = 15.sp, lineHeight = 21.sp, modifier = Modifier.padding(top = 6.dp).widthIn(max = bubble).clip(RoundedCornerShape(6.dp, 18.dp, 18.dp, 18.dp)).background(lerp(N.card, N.blue, .08f)).padding(horizontal = 14.dp, vertical = 9.dp))
         } }
         if (plan != null || busy) Assistant.turns.lastOrNull()?.takeIf { plan != null }?.let { Mine(it.q) } ?: run { if (busy && text.isNotBlank()) Mine(text) }
         if (busy && plan == null) Row(Modifier.padding(horizontal = Space.gutter, vertical = 4.dp).clip(RoundedCornerShape(5.dp, 16.dp, 16.dp, 16.dp)).background(lerp(N.card, N.blue, .08f))
@@ -270,32 +297,11 @@ object AssistantRun {
             Text(summary.ifEmpty { if (plan != null) (if (plan?.optJSONArray("steps")?.length() ?: 0 > 0) "Check it, answer anything I asked, then tap Do it. Nothing has changed yet." else "") else if (earlier.isNotEmpty()) "" else "Say it in plain words — several things at once is fine. Ask about your server, or just chat." },
                 color = N.sub, fontSize = 15.sp, textAlign = TextAlign.Center, modifier = Modifier.padding(horizontal = 30.dp, vertical = 4.dp))
         }
-        BeamBox {
-            Row(Modifier.padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.weight(1f)) {
-                    if (text.isEmpty()) Text(if (Assistant.turns.isNotEmpty()) "Reply, or ask something else…" else "e.g. Set the lights to fire, free up some space and restart Jellyfin", color = N.sub, fontSize = 16.sp, maxLines = 2)
-                    BasicTextField(text, { v -> if (v.endsWith("\n") && v.length > text.length) planIt(v.trim()) else text = v.take(500) }, Modifier.fillMaxWidth(), textStyle = TextStyle(color = N.text, fontSize = 16.sp), cursorBrush = SolidColor(N.blue),
-                        maxLines = 5, keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send), keyboardActions = KeyboardActions(onSend = { planIt(text) }))
-                }
-                Box(Modifier.size(44.dp).clip(CircleShape).background(if (listening) N.red.copy(alpha = .2f + .5f * level) else N.pill)
-                    .clickable(enabled = !busy && !hearing, onClickLabel = if (listening) "Stop listening" else "Speak") { mic() }, contentAlignment = Alignment.Center) {
-                    Icon(if (listening) Icons.Rounded.Stop else Icons.Rounded.Mic, if (listening) "Stop listening" else "Speak", tint = if (listening) N.red else N.text) }
-                Spacer(Modifier.width(6.dp))
-                Box(Modifier.size(44.dp).clip(CircleShape).background(if (busy) N.sub else N.blue).clickable(enabled = !busy, onClickLabel = "Plan it") { planIt(text) }, contentAlignment = Alignment.Center) {
-                    Icon(Icons.Rounded.ArrowUpward, "Plan it", tint = N.onBlue) }
-            }
-        }
         if (err.isNotEmpty()) Note(err, 14.sp, 4.dp, N.red)
-        if (Assistant.turns.isNotEmpty() && !busy) Row(Modifier.fillMaxWidth().padding(horizontal = Space.gutter), horizontalArrangement = Arrangement.spacedBy(18.dp, Alignment.CenterHorizontally)) {
-            Text("Earlier conversations", color = N.link, fontSize = 14.sp, modifier = Modifier.clickable { app.go(Route.AssistantArchive) }.padding(vertical = 8.dp))
-            Text("Settings", color = N.link, fontSize = 14.sp, modifier = Modifier.clickable { app.go(Route.AssistantSettings) }.padding(vertical = 8.dp))
-            Text(if (AppPrefs.asstSpeak) "Don't read replies aloud" else "Read replies aloud", color = N.link, fontSize = 14.sp, modifier = Modifier.clickable { AppPrefs.chooseAsstSpeak(!AppPrefs.asstSpeak); if (!AppPrefs.asstSpeak) Voice.hush() }.padding(vertical = 8.dp))
-        }
         val p = plan
         if (p == null && Assistant.turns.isNotEmpty()) return@Page
         if (p == null) { Note("Runs on your server — nothing is sent anywhere. Risky steps still need your fingerprint, and everything goes in the action log.", 13.sp, 6.dp)
-            Group { Row1("Earlier conversations", "What you've asked Nova before", true, Icons.Rounded.History, onClick = { app.go(Route.AssistantArchive) })
-                RowDivider(); Row1("Assistant settings", "Its brain, voice, the assistant button and its memory", true, Icons.Rounded.Settings, onClick = { app.go(Route.AssistantSettings) }) }; return@Page }
+            return@Page }
         if (list.isEmpty() && p.optString("reply").isNotEmpty()) return@Page
         SectionLabel("Plan · ${list.size} step${if (list.size == 1) "" else "s"}")
         Group {
@@ -373,7 +379,7 @@ private fun fmtBytes(b: Long): String { if (b <= 0) return "0 B"; val u = listOf
         list.groupBy { day.format(java.util.Date(it.optLong("t") * 1000)) }.forEach { (d, ts) ->
             SectionLabel(d)
             ts.forEach { t -> Column(Modifier.fillMaxWidth().padding(horizontal = Space.gutter, vertical = 5.dp)) {
-                Box(Modifier.fillMaxWidth()) { Text(t.optString("q"), color = N.onBlue, fontSize = 15.sp, modifier = Modifier.align(Alignment.CenterEnd).widthIn(max = 320.dp).clip(RoundedCornerShape(16.dp, 5.dp, 16.dp, 16.dp)).background(N.blue).padding(horizontal = 14.dp, vertical = 9.dp)) }
+                Box(Modifier.fillMaxWidth()) { Text(t.optString("q"), color = N.onBlue, fontSize = 15.sp, modifier = Modifier.align(Alignment.CenterEnd).widthIn(max = 300.dp).clip(RoundedCornerShape(16.dp, 5.dp, 16.dp, 16.dp)).background(N.blue).padding(horizontal = 14.dp, vertical = 9.dp)) }
                 if (t.optString("reply").isNotEmpty()) Text(t.optString("reply"), color = N.text, fontSize = 15.sp, lineHeight = 21.sp, modifier = Modifier.padding(top = 6.dp).widthIn(max = 340.dp).clip(RoundedCornerShape(5.dp, 16.dp, 16.dp, 16.dp)).background(lerp(N.card, N.blue, .08f)).padding(horizontal = 14.dp, vertical = 9.dp))
                 t.optJSONArray("done")?.let { dn -> for (k in 0 until dn.length()) Text("✓ " + dn.getString(k), color = N.sub, fontSize = 13.sp, modifier = Modifier.padding(start = 6.dp, top = 2.dp)) }
                 Text(hm.format(java.util.Date(t.optLong("t") * 1000)), color = N.sub, fontSize = 12.sp, modifier = Modifier.padding(start = 6.dp, top = 2.dp))

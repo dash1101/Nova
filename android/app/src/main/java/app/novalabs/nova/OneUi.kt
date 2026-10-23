@@ -17,6 +17,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
 import androidx.compose.foundation.layout.*
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
@@ -96,7 +97,9 @@ data class TopAction(val icon: ImageVector, val label: String, val onClick: () -
  */
 @Composable fun Page(title: String, onBack: () -> Unit, actions: List<TopAction> = emptyList(),
                      scroll: ScrollState = routeScroll(), bottom: Dp = 40.dp,
+                     footer: (@Composable () -> Unit)? = null,
                      content: @Composable ColumnScope.() -> Unit) {
+    var footH by remember { mutableIntStateOf(0) }; val dens = LocalDensity.current
     val haze = remember { dev.chrisbanes.haze.HazeState() }
     Box(Modifier.fillMaxSize()) {
       // the blur source includes the background glow, so the frosted buttons pick up its color
@@ -112,9 +115,12 @@ data class TopAction(val icon: ImageVector, val label: String, val onClick: () -
                 else Text(title, fontSize = 24.sp, fontWeight = FontWeight.Bold, color = N.text, maxLines = 2, overflow = TextOverflow.Ellipsis)
             }
             content()
-            Spacer(Modifier.height(bottom + LocalNavPad.current))
+            Spacer(Modifier.height(bottom + LocalNavPad.current + with(dens) { footH.toDp() }))
         }
       }
+        // [footer] stays at the bottom over the page (above the keyboard), like a chat's text box
+        if (footer != null) Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().imePadding().navigationBarsPadding()
+            .padding(bottom = LocalNavPad.current).onSizeChanged { footH = it.height }) { footer() }
         val px = with(LocalDensity.current) { 36.dp.toPx() }
         CompositionLocalProvider(LocalPageHaze provides haze) { StickyBar(onBack, actions, (scroll.value / px).coerceIn(0f, 1f)) }
     }
@@ -264,7 +270,7 @@ data class DialogButton(val label: String, val color: Color? = null, val enabled
         SideEffect { (view.parent as? DialogWindowProvider)?.window?.setGravity(Gravity.BOTTOM) }
         Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.BottomCenter) {
         Column(Modifier.padding(start = 12.dp, end = 12.dp, bottom = 28.dp).widthIn(max = 600.dp).fillMaxWidth()
-            .clip(RoundedCornerShape(20.dp * winK())).background(N.card).padding(top = 24.dp, bottom = 6.dp)) {
+            .glassCard(RoundedCornerShape(20.dp * winK()), 10.dp, exact = true).padding(top = 24.dp, bottom = 6.dp)) {     // see-through and frosted like the cards
             DialogToasts()
             if (title != null) Text(title, color = N.text, fontSize = 20.sp, fontWeight = FontWeight.Bold,
                 modifier = Modifier.padding(horizontal = 26.dp))

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.9.5-alpha (server, Nova web, app and watch)
+- **The assistant on phones:** the text box stays at the bottom of the screen (above the keyboard) while the conversation scrolls, bubbles use the width of the screen, and Read aloud, Earlier conversations and Settings are buttons at the top instead of links under the box (app and web).
+- **When the assistant finishes in the background** you get a notification with a short line, not a pop-up with everything it said.
+- **Leaving the app stops Nova reading aloud** — it used to keep talking after you'd backed out.
+- **Frost works on the Default look's cards and pop-ups:** they now really blur what's behind them (wallpaper, glow or living wallpaper) by the Frost amount on Android 12 and newer, and dialogs and the assistant's box are see-through and frosted like the cards.
+
 ## 0.9.4-alpha (server, Nova web, app and watch)
 - **Task manager** (app and web; Menu, or search "task manager"): every process on the server with its CPU right now and its memory, like top — sort by CPU, memory or name, search, tap one for its details, and **End** or **Force stop** it with your fingerprint. The system's own core, kernel threads, Nova and SSH are refused.
 - **Lumen is gone.** Fewer looks means fewer things that break: if you were using it, Nova switches you to the Default look.

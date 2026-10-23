@@ -435,8 +435,10 @@ fun aeroGlow(dark: Boolean): androidx.compose.ui.graphics.Shadow? = if (dark) nu
 
 
 // ── the Default look, see-through ───────────────────────────────────────────────────────
-/** Default cards with Transparency above 0 (Appearance): the page's own backdrop drawn behind the card (as Aero does),
- *  frosted as much as Frost says — a sharp copy faded into the pre-blurred one — then the usual lit fill, thinner. */
+/** Default cards with Transparency above 0 (Appearance): what's behind the card — the page's backdrop (wallpaper, glow or
+ *  living scene), or in a pop-up the picture of the page under it — blurred as much as Frost says, then the usual lit
+ *  fill, thinner. Android 12+ blurs it for real (on the GPU, only when it changes); older phones fade in the pre-blurred
+ *  wallpaper instead. */
 @Composable fun Modifier.defaultGlassCard(shape: Shape, elevation: Dp, fill: Brush): Modifier {
     val t = N
     val ctx = androidx.compose.ui.platform.LocalContext.current
@@ -444,16 +446,26 @@ fun aeroGlow(dark: Boolean): androidx.compose.ui.graphics.Shadow? = if (dark) nu
     var origin by remember { mutableStateOf(Offset.Zero) }; var scl by remember { androidx.compose.runtime.mutableFloatStateOf(1f) }
     val inDialog = LocalInDialog.current
     val sharp = Backdrop.wallpaper(ctx); val soft = Backdrop.frosted(ctx)
-    val frost = (AppPrefs.dFrost / 40f).coerceIn(0f, 1f); val alpha = 1f - AppPrefs.dTrans / 100f
+    val frostDp = AppPrefs.dFrost; val frost = (frostDp / 40f).coerceIn(0f, 1f); val alpha = 1f - AppPrefs.dTrans / 100f
+    val real = android.os.Build.VERSION.SDK_INT >= 31
+    val layer = androidx.compose.ui.graphics.rememberGraphicsLayer()
     return this.onGloballyPositioned { origin = it.positionOnScreen(); scl = screenScale(it) }
         .shadow(elevation, shape, ambientColor = Color.Black.copy(alpha = 0.25f), spotColor = Color.Black.copy(alpha = 0.3f))
         .clip(shape)
         .drawBehind {
             val shot = if (inDialog) Behind.shot else null
-            if (shot != null) drawImage(shot, dstOffset = IntOffset(-origin.x.toInt(), -origin.y.toInt()), dstSize = Behind.shotSize, filterQuality = FilterQuality.Medium)
-            else {
-                drawBackdrop(t, origin, win, sharp, scl)
-                if (soft != null && frost > 0f) scale(1f / scl, 1f / scl, pivot = Offset.Zero) { val W = if (win.width > 0) win.width.toFloat() else size.width; val H = if (win.height > 0) win.height.toFloat() else size.height
+            fun DrawScope.behind() {
+                if (shot != null) drawImage(shot, dstOffset = IntOffset(-origin.x.toInt(), -origin.y.toInt()), dstSize = Behind.shotSize, filterQuality = FilterQuality.Medium)
+                else drawBackdrop(t, origin, win, sharp, scl)
+            }
+            if (real && frostDp > 0) {
+                val r = frostDp.dp.toPx()
+                layer.renderEffect = BlurEffect(r, r, TileMode.Clamp)
+                layer.record { behind() }
+                drawLayer(layer)
+            } else {
+                behind()
+                if (shot == null && soft != null && frost > 0f) scale(1f / scl, 1f / scl, pivot = Offset.Zero) { val W = if (win.width > 0) win.width.toFloat() else size.width; val H = if (win.height > 0) win.height.toFloat() else size.height
                     val k = maxOf(W / soft.width, H / soft.height); val dw = soft.width * k; val dh = soft.height * k
                     drawImage(soft, dstOffset = IntOffset(((W - dw) / 2 - origin.x).toInt(), ((H - dh) / 2 - origin.y).toInt()),
                         dstSize = IntSize(dw.toInt(), dh.toInt()), alpha = frost, filterQuality = FilterQuality.Medium) }
