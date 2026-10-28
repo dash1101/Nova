@@ -17,7 +17,7 @@ import json, os, subprocess, sys
 
 HELPER = os.path.join(os.path.dirname(os.path.realpath(__file__)), "helper")      # installed next to this file
 STREAMING = {"shell", "host-shell", "files-get"}
-WITH_INPUT = {"files-data"}          # the rest of the connection is the helper's stdin (≤ 6 MB)
+WITH_INPUT = {"files-data", "cf-code-new"}          # the rest of the connection is the helper's stdin (≤ 6 MB)
 
 def read_line(limit=16384):
     buf = b""

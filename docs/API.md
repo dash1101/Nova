@@ -125,6 +125,8 @@ Grouped by area; each is `GET` unless marked. Fields are documented by the apps 
   `freeup` (GET/POST, step-up)
 - **Lights:** `fan` (GET/POST) · `lights` · `lights/<id>` · `lights/ha` (GET/POST step-up/DELETE) · `lights/ha/lights` (POST)
 - **Remote access:** `cloudflare` · `cloudflare/<plan|publish|protect|access|remove|token|…>` (POST, step-up) · `remote-config`
+  · `cloudflare/access` takes `mode` = `me` · `guests` · `public` · `code` (capability `access-codes`: an address behind Nova's access-code gate)
+  · `cloudflare/codes?host=` (GET) lists an address's codes without secrets · `cloudflare/codes/new` (POST, step-up: `host`, `kind` `random`|`password`, `password`, `label`, `expires` `1h|1d|7d|30d|never`; a random code is returned once) · `cloudflare/codes/revoke` (POST: `host`, `id` or `all`)
 - **Other servers:** `nodes` (GET/POST, step-up) · `nodes/probe`
 - **Tasks and diagnostics:** `tasks` · `tasks/<id>` · `tasks/<id>/stop` (POST) · `diag/*` · `updates`, `updates/check`,
   `updates/packages`, `updates/containers` (POST, step-up)

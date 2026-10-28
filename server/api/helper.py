@@ -688,8 +688,17 @@ if verb.startswith("cf-") and len(args) <= 1:
             r = cfsync.protect(a.get("host", ""), a.get("mode", "me"), a.get("guests"), a.get("session")); changelog(f"Cloudflare: put the existing {r['host']} behind a login ({r['mode']}) (from the Nova app)"); out(r)
         if verb == "cf-access" and args:
             a = json.loads(args[0])
-            r = cfsync.set_access(a.get("host", ""), a.get("mode", ""), a.get("guests"), a.get("session") or None, bool(a.get("allow_public")))
+            r = cfsync.set_access(a.get("host", ""), a.get("mode", ""), a.get("guests"), a.get("session") or None, bool(a.get("allow_public")), str(a.get("name") or "")[:60])
             changelog(f"Cloudflare: {r['host']} — who can open it: {r['mode']}" + (f" ({len(r['guests'])} guests)" if r["mode"] == "guests" else "") + " (from the Nova app)"); out(r)
+        if verb == "cf-codes" and args:                                  # an address set to "anyone with a code": its codes (never the secrets)
+            out(cfsync.codes(json.loads(args[0]).get("host", "")))
+        if verb == "cf-code-new" and not args:                           # the request comes on stdin: a password you choose never goes on a command line
+            a = json.loads(sys.stdin.read(8192) or "{}")
+            r = cfsync.new_code(a.get("host", ""), a.get("kind", "random"), a.get("password"), a.get("label", ""), a.get("expires", "1d"), a.get("by", ""))
+            changelog(f"Cloudflare: made an access code ({r['kind']}, {a.get('expires', '1d')}{', ' + r['label'] if r['label'] else ''}) for {a.get('host', '')[:253]} (from the Nova app)"); out(r)
+        if verb == "cf-code-revoke" and args:
+            a = json.loads(args[0]); r = cfsync.revoke_code(a.get("host", ""), a.get("id", ""))
+            changelog(f"Cloudflare: ended {'every access code' if a.get('id') == 'all' else 'an access code'} for {a.get('host', '')[:253]} (from the Nova app)"); out(r)
         if verb == "cf-app-key" and args:                                # a key for the app's own phone app (the secret is shown once, never logged)
             a = json.loads(args[0])
             r = cfsync.app_key(a.get("host", ""))

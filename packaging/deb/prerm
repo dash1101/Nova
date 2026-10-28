@@ -5,8 +5,10 @@ if [ "$1" = remove ]; then
     if [ -s /etc/nova-api/cloudflare-added.json ] && [ "$(cat /etc/nova-api/cloudflare-added.json)" != "{}" ]; then
         echo "Note: Nova put apps on your Cloudflare tunnel. They stay there after Nova is removed."
         echo "      To take them off first:  sudo nova cloudflare undo   (it lists them and asks)"
+        echo "      Addresses set to 'Anyone with a code' go through Nova's gate: switch them back first (Who can open it),"
+        echo "      or they stop answering once Nova is gone."
     fi
-    systemctl disable --now nova-api.service nova-helper.socket nova-rgb-anim.service nova-rgb-tick.timer nova-alerts.timer nova-alerts.path nova-backups.timer nova-labs.timer nova-brain.service nova-ear.service >/dev/null 2>&1 || true
+    systemctl disable --now nova-api.service nova-gate.service nova-helper.socket nova-rgb-anim.service nova-rgb-tick.timer nova-alerts.timer nova-alerts.path nova-backups.timer nova-labs.timer nova-brain.service nova-ear.service >/dev/null 2>&1 || true
     # restarts or shutdowns still scheduled from Nova: they'd call a helper that's about to be gone
     for t in /etc/systemd/system/nova-sched-*.timer; do [ -e "$t" ] || continue; systemctl disable --now "$(basename "$t")" >/dev/null 2>&1 || true; rm -f "$t" "${t%.timer}.service"; done
 fi

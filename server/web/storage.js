@@ -1002,14 +1002,32 @@ export async function openrgb(ctx) {
 const SESSIONS = [["1h", "1 hour"], ["24h", "1 day"], ["168h", "1 week"], ["720h", "30 days"]];
 export async function access(ctx) {
   const host = decodeURIComponent(ctx.args[0] || ""), appId = decodeURIComponent(ctx.args[1] || "");
-  let st = null, err = null, share = null, fix = null, guests = [], session = "24h", loaded = "", busy = "";
+  const appName = (S.cache["/api/v1/apps"]?.apps || []).find(a => a.id === appId)?.name || "";
+  let st = null, err = null, share = null, fix = null, guests = [], session = "24h", loaded = "", busy = "", codes = null;
   const load = async () => {
     try { st = await get("/api/v1/cloudflare"); err = null; } catch (e) { err = e.message; }
     if (appId) { try { share = await get(`/api/v1/apps/${encodeURIComponent(appId)}/sharing?host=${encodeURIComponent(host)}`); } catch { share = null; } }
     if (appId && isAdmin()) { try { fix = await get(`/api/v1/apps/${encodeURIComponent(appId)}/public-fix?host=${encodeURIComponent(host)}`); } catch { fix = null; } }
     const rec = st?.nova?.[host];
     if (rec && JSON.stringify(rec) !== loaded) { loaded = JSON.stringify(rec); guests = [...(rec.guests || [])]; session = rec.session || "24h"; }
+    codes = null;
+    if (rec?.mode === "code" && isAdmin()) { try { codes = await get(`/api/v1/cloudflare/codes?host=${encodeURIComponent(host)}`); } catch { codes = null; } }
     if (ctx.alive()) draw();
+  };
+  const when = t => t ? new Date(t * 1000).toLocaleString([], { dateStyle: "medium", timeStyle: "short" }) : "";
+  const codesHtml = () => {
+    if (!isAdmin()) return note("Anyone with an access code can open this. Only an admin can make or end codes.");
+    const list = codes?.codes || [];
+    return sec("Access codes") + (codes ? group((list.map(c => row(c.label || (c.kind === "password" ? "A password" : "A random code"), {
+        sub: `${c.kind === "password" ? "Password" : "Random code"} · ${c.expired ? "ran out " + when(c.expires) : c.expires ? "ends " + when(c.expires) : "until you end it"} · ${c.logins ? `used ${c.logins}×${c.last_used ? ", last " + when(c.last_used) : ""}` : "not used yet"}`,
+        icon: c.kind === "password" ? "key" : "phone", tint: c.expired ? "var(--sub)" : "var(--blue)",
+        end: `<button class="rmbtn press" data-act="revoke:${c.id}" aria-label="End this code">${I("del")}</button>` })).join("") || row("No codes yet", { sub: "Make one below and send it to whoever should get in" }))
+        + row("Make a random code", { sub: "Nova picks a long one like K7QM-2XDF-9TPA-HW3R, and shows it once", blue: true, icon: "add", click: busy ? "" : "newcode:random" })
+        + row("Make a password", { sub: "You choose it (at least 8 characters). Nova keeps only a scrambled copy.", blue: true, icon: "key", click: busy ? "" : "newcode:password" })
+        + (list.length ? row("End every code", { sub: "Everyone signed in with a code is signed out right away", icon: "del", tint: "var(--red)", click: busy ? "" : "revoke:all" }) : "")
+        + row("Copy the address", { sub: esc(host), icon: "copy", click: "copyurl" }))
+      : group(row("Loading codes…", { icon: "refresh" })))
+      + note("A visitor opens the address, types the code, and gets into this app only — never Nova. Codes can't be seen again after they're made, and too many wrong guesses lock a visitor out for a while.");
   };
   const draw = () => {
     if (err) return ctx.show(note(err), { title: "Who can open it" });
@@ -1040,7 +1058,10 @@ export async function access(ctx) {
       ${!outside && (rec || onTunnel) ? sec("Who can open it") + (busy ? group(`<div class="row"><span class="spin" aria-hidden="true"></span><div class="t"><b>${esc(busy)}</b><small>This can take up to a minute — no need to click again.</small></div></div>`) : "") + group(isShare ? choice("public", "Anyone with a link", "No Cloudflare login — the app's own password and expiry protect each link", "cloud")
             + choice("guests", "Only people you add", "They sign in with a one-time code sent to their email, then open the link", "group") + choice("me", "Only you", "Your Cloudflare login (handy for checking links before you send them)", "shield")
           : choice("me", "Only you", "Your Cloudflare login, the same as Nova", "shield")
-          + choice("guests", "You and guests", "People you add by email sign in with a one-time code sent to them", "group") + choice("public", "Anyone", "No login — anyone with the address can open it", "cloud")) : ""}
+          + choice("guests", "You and guests", "People you add by email sign in with a one-time code sent to them", "group")
+          + choice("code", "Anyone with a code", "A page asks for an access code you give out — a random one, or a password you choose — and it can run out or be ended any time", "key")
+          + choice("public", "Anyone", "No login — anyone with the address can open it", "cloud")) : ""}
+      ${mode === "code" ? codesHtml() : ""}
       ${mode === "guests" ? sec("Guests") + group((guests.map(g => row(g, { icon: "phone", end: isAdmin() ? `<button class="rmbtn press" data-act="rmg:${esc(g)}" aria-label="Remove">${I("del")}</button>` : "" })).join("") || row("No guests yet", { sub: "Add someone by their email address" }))
           + (isAdmin() ? row("Add a guest", { icon: "add", blue: true, click: "addg" }) : ""))
         + note("Stays signed in for") + segmented(SESSIONS.map(x => x[1]), Math.max(0, SESSIONS.findIndex(x => x[0] === session)), "sess")
@@ -1060,20 +1081,46 @@ export async function access(ctx) {
   };
   const change = async (mode, gs, pub) => {
     if (busy) return;                                          // one change at a time
-    busy = { me: "Switching to only you…", guests: "Saving who can open it…", public: "Opening it to anyone…" }[mode]; draw();
-    try { await post("/api/v1/cloudflare/access", { host, mode, guests: gs, session, allow_public: !!pub }); toast("Saved"); loaded = ""; } catch (e) { toast(e.message); }
+    busy = { me: "Switching to only you…", guests: "Saving who can open it…", public: "Opening it to anyone…", code: "Putting the code page in front of it…" }[mode]; draw();
+    try { await post("/api/v1/cloudflare/access", { host, mode, guests: gs, session, allow_public: !!pub, name: appName }); toast("Saved"); loaded = ""; } catch (e) { toast(e.message); }
     busy = ""; load();
   };
   ctx.handlers({
     mode: async k => {
-      const t = { me: "Only you?", guests: "You and guests?", public: `Open ${host} to anyone?` }[k];
+      const t = { me: "Only you?", guests: "You and guests?", code: "Anyone with a code?", public: `Open ${host} to anyone?` }[k];
       const d = { me: `Anyone opening ${host} signs in with your Cloudflare login first.`, guests: "You, plus people you add by email. You can add them next — until then it's just you.",
+                  code: `Cloudflare's login comes off ${host}. Instead, a page asks visitors for an access code that you make here, and only a working code opens the app. Until you make one, nobody can get in.`,
                   public: "There will be no login at all: anyone who finds the address can open the app. Only do this if the app has its own login you trust." }[k];
       const cur = st.nova?.[host]?.mode || ((st.protected || []).includes(host) ? "me" : "public");
       const warn = k !== "public" && (cur === "public" || cur === "offline") ? " Heads-up: an app's own phone app (Immich, Jellyfin, Home Assistant…) can't get past a web login by itself — use “Let its phone app in” below to give it a key. Links you've already shared at this address stop working for others; for Immich, set up Share links first." : "";
       if (!(await confirm(t, d + warn, k === "public" ? "Make it public" : "Change"))) return;
       change(k, k === "guests" ? guests : [], k === "public");
     },
+    newcode: async kind => {
+      let label = "", pw = "", exp = "1d";
+      const opts = [["1h", "1 hour"], ["1d", "1 day"], ["7d", "7 days"], ["30d", "30 days"], ["never", "Until I end it"]];
+      const p = dialog(kind === "password" ? "Make a password" : "Make a random code", kind === "password" ? "Whoever you give it to types it to open the app. You'll be asked to approve this on your phone." : "Nova makes the code and shows it to you once. You'll be asked to approve this on your phone.",
+        [{ label: "Cancel", value: null }, { label: "Make it", color: "var(--blue)", value: "go" }],
+        `<div class="pad"><input class="field" id="cl" placeholder="Who is it for? (optional)" maxlength="40" autocomplete="off">
+          ${kind === "password" ? `<input class="field" id="cp" type="text" placeholder="The password (8+ characters)" maxlength="100" autocomplete="off" spellcheck="false" style="margin-top:8px">` : ""}
+          <p class="muted" style="margin:12px 0 4px">How long it works</p><select class="field" id="cx" style="width:100%">${opts.map(o => `<option value="${o[0]}"${o[0] === exp ? " selected" : ""}>${o[1]}</option>`).join("")}</select></div>`);
+      $("#cl").oninput = e => label = e.target.value; $("#cx").onchange = e => exp = e.target.value; if (kind === "password") $("#cp").oninput = e => pw = e.target.value; $("#cl").focus();
+      if ((await p) !== "go") return;
+      if (kind === "password" && pw.length < 8) return toast("A password needs at least 8 characters");
+      busy = "Making it…"; draw(); let r;
+      try { r = await post("/api/v1/cloudflare/codes/new", { host, kind, password: kind === "password" ? pw : undefined, label, expires: exp }); } catch (e) { toast(e.message); }
+      busy = ""; load();
+      if (!r) return;
+      if (r.code) dialog("Your access code", "", [{ label: "Done", color: "var(--blue)", value: true }],
+        `<div class="pad"><p style="margin-top:0">Send this to the person (it's shown only now):</p>${copyCmd(r.code)}<p class="muted">They open <b>https://${esc(host)}</b>, type it in, and they're in${exp === "never" ? "" : " until it runs out"}. You can end it any time from this page.</p></div>`);
+      else toast("Password saved — give it to them");
+    },
+    revoke: async id => {
+      if (!(await confirm(id === "all" ? "End every code?" : "End this code?", id === "all" ? "Everyone who got in with a code is signed out right away, and none of the codes work again." : "Anyone using it is signed out right away, and it won't work again.", "End it"))) return;
+      try { await post("/api/v1/cloudflare/codes/revoke", { host, id }); toast("Ended"); } catch (e) { toast(e.message); }
+      load();
+    },
+    copyurl: async () => { try { await navigator.clipboard.writeText(`https://${host}`); toast("Copied"); } catch { toast(`https://${host}`); } },
     addg: async () => { let v = "";
       const p = dialog("Add a guest", "Their email address. They'll get a one-time code there each time they sign in.", [{ label: "Cancel", value: null }, { label: "Add", color: "var(--blue)", value: "add" }], `<div class="pad"><input class="field" id="gm" type="email" placeholder="name@example.com" autocomplete="off"></div>`);
       $("#gm").oninput = e => v = e.target.value.trim().toLowerCase(); $("#gm").focus();

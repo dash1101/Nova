@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.9.7-alpha (server, Nova web, app and watch)
+- **Access codes.** A new choice under **Who can open it** (an address you've put on your Cloudflare tunnel): **Anyone with a code**. Cloudflare's login comes off that address and a page asks for a code instead — a **random one** Nova makes (like K7QM-2XDF-9TPA-HW3R, shown once), or a **password you choose**. Each code is for one address, runs out after 1 hour, 1 day, 7 days, 30 days or when you end it, can be ended any time (everyone who used it is signed out right away), and shows how often it was used. Nothing else on your server is reachable through it, and too many wrong guesses lock a visitor out.
+  - It works through a small new service, `nova-gate`, locked in about as tightly as a service can be. Switching an address to or from codes never leaves it open for a moment, and if a step fails everything goes back as it was. Making a code asks for your fingerprint; a password you choose never goes on a command line or in a log.
+  - Any app with a public address can use it (Apps → hold an app → Who can open it) — web and app.
+- **Security fix:** the action log (audit log) kept whatever you sent along with a request, so an API token or webhook entered in the app could end up readable there. Fields like tokens, passwords, webhooks and codes are now written as `<hidden>`. If you ever saved a Cloudflare token or Discord webhook through the app on an older version, make a new one and revoke the old (Cloudflare → My Profile → API Tokens).
+- **Fixes:** `nova cloudflare undo` and taking an address off now put an address that went through the gate straight back to its app first.
+
 ## 0.9.6-alpha (app)
 - **Swiping back works properly again:** opening Home or a tab page from search, a shortcut or the assistant switched to it instead of stacking it on the page you were on, so back showed the wrong page underneath (a second Home, or the page you'd come from) instead of leaving the app or going where you expected.
 

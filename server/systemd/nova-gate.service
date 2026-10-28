@@ -1,0 +1,49 @@
+[Unit]
+Description=Nova — access-code gate (asks for a code in front of one website, then passes everything to the app)
+After=network.target
+
+[Service]
+User=nova-gate
+Group=nova-gate
+# Nova's helper writes the codes (as hashes) into /var/lib/nova-gate; this service can read them but never change them.
+ExecStartPre=+/usr/bin/install -d -o root -g nova-gate -m 750 /var/lib/nova-gate
+ExecStartPre=+/usr/bin/install -d -o nova-gate -g nova-gate -m 750 /var/lib/nova-gate/run
+ExecStartPre=+/usr/bin/python3 /usr/local/lib/nova-api/gate.py --init --dir /var/lib/nova-gate
+ExecStart=/usr/bin/python3 /usr/local/lib/nova-api/gate.py --dir /var/lib/nova-gate --port 8099
+Restart=on-failure
+RestartSec=2
+# It faces the internet (through Cloudflare), so it is locked in about as tightly as a service can be: it listens on this
+# machine only, may write one small usage file, and can open connections only to this machine and the private network.
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectSystem=strict
+ReadWritePaths=/var/lib/nova-gate/run
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectControlGroups=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+ProcSubset=pid
+RestrictAddressFamilies=AF_INET AF_INET6
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+IPAddressDeny=any
+IPAddressAllow=localhost 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 100.64.0.0/10 fc00::/7 fe80::/10
+UMask=0077
+TasksMax=512
+MemoryMax=512M
+
+[Install]
+WantedBy=multi-user.target

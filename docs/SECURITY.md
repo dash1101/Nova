@@ -110,6 +110,27 @@ need your fingerprint. `sudo nova cloudflare list` shows the record, `sudo nova 
 it all back (it lists everything and asks first); uninstalling Nova leaves your Cloudflare account
 as it is and tells you about that command.
 
+**Access codes ("Anyone with a code") put a small gate of Nova's own in front of one address.** Cloudflare Access can
+only let people in by email, so for "give Sam a code for tonight" the address's route on your tunnel points at
+`nova-gate` (127.0.0.1:8099) instead of straight at the app, and Cloudflare's login is taken off that one address —
+the code is the lock. The gate shows a code page; a good code gets a signed cookie, and from then on everything is
+passed to that one app and nothing else. Switching an address on or off goes in the safe order (the gate is put in
+front *before* the login comes off; a login goes on *before* the gate comes off), the app's own route is remembered and
+put back exactly, and a failure at any step rolls back — `packaging/cfsync_code_test.py` fails every Cloudflare change in
+turn and checks the address is never reachable without the login or the gate. The gate runs as its own user
+(`nova-gate`) with no write access to anything but a usage file, may only connect to this machine and the private
+network, and can only ever forward to the upstream recorded for the address — never one a visitor names. Codes are
+stored as hashes: random ones are 79 bits (guessing is hopeless); a password you choose is scrypt-hashed and must be
+8+ characters and not a common one. Guessing is slowed hard because the address is public: 5 wrong tries lock a
+visitor out for 15 minutes (doubling each time), and 30 wrong tries from anyone pause new sign-ins on that address for
+5. Ending or expiring a code ends every session made with it at the very next request. Making a code needs your
+fingerprint, a chosen password travels to the root helper on stdin (never a command line), and neither a code nor a
+password is ever written to the audit log or the change log. `packaging/gate_test.py` tries to get past the gate
+(forged and borrowed cookies, smuggled requests, redirect tricks, WebSockets, guessing floods).
+
+**The audit log never holds secrets.** Request fields named like a token, password, webhook, secret or code are written
+as `<hidden>`.
+
 **A watch** can see the glance, approve requests and switch the lights on or off — the server refuses
 anything else from it (even other light settings).
 

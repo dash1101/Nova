@@ -6,7 +6,13 @@ if [ "$1" = configure ]; then
     install -d -m 750 -g nova-api /etc/nova-api
     install -d -m 755 /etc/nova/plugins
     rm -f /etc/sudoers.d/nova-api           # very old source installs used a sudo rule
+    # the access-code gate (Who can open it → Anyone with a code): its own locked-down user; idle until an address uses it
+    getent passwd nova-gate >/dev/null || useradd --system --home-dir /var/lib/nova-gate --shell /usr/sbin/nologin nova-gate
+    install -d -o root -g nova-gate -m 750 /var/lib/nova-gate
+    install -d -o nova-gate -g nova-gate -m 750 /var/lib/nova-gate/run
     systemctl daemon-reload || true
+    systemctl enable nova-gate.service >/dev/null 2>&1 || true
+    systemctl restart nova-gate.service >/dev/null 2>&1 || true
     systemctl enable --now nova-helper.socket >/dev/null 2>&1 || true
     systemctl enable --now nova-update-check.timer >/dev/null 2>&1 || true
     # Monitoring + alerts (Status page, Inbox, phone and Discord alerts). Works out mounts and

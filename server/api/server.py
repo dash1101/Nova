@@ -41,7 +41,7 @@ try:                       # optional module: fan/case lighting (modules/fan-gig
 except ImportError:
     nova_rgb = None
 
-API_VERSION = "0.9.6-alpha"
+API_VERSION = "0.9.7-alpha"
 # The API contract (docs/API.md). API_LEVEL only ever goes up: each new level adds endpoints or fields, never removes or
 # changes one. MIN_LEVEL is the oldest level this server still answers in full (old apps keep working back to it).
 # MIN_CLIENT: the oldest app builds still served, per platform — 0 = all of them. Raising it is the last resort, after
@@ -314,6 +314,10 @@ def security_activity(n=60):
             if len(out) >= n: break
     return out
 
+# request fields that never go in the audit log: whatever they hold (an API token, a webhook, a password you chose, a one-time code)
+# is a secret, and the log can be read in the action log and kept in backups
+SECRET_FIELD = re.compile(r"(token|passw|secret|webhook|credential|authorization)|^(code|totp|pin|pem|signature)$", re.I)
+
 def audit(**kw):
     kw["t"] = time.strftime("%Y-%m-%d %H:%M:%S")
     try:
@@ -565,7 +569,7 @@ def der_sig(raw):
 # Every capability an app can ask for (GET /api/v1/capabilities), with the API level it arrived in. A client checks for
 # the name instead of guessing from version numbers; a server that doesn't list one doesn't have it.
 CAPABILITIES = {"devices": 1, "approvals": 1, "containers": 1, "apps": 1, "store": 1, "storage": 1, "storage-wizard": 1, "backups": 1, "lights": 1,
-                "cloudflare": 1, "nodes": 1, "tasks": 1, "events": 1, "stats": 1, "terminal": 1, "files": 1, "updates": 1, "freeup": 1, "diag": 1,
+                "cloudflare": 1, "access-codes": 1, "nodes": 1, "tasks": 1, "events": 1, "stats": 1, "terminal": 1, "files": 1, "updates": 1, "freeup": 1, "diag": 1,
                 "assistant": 1, "power-schedule": 1, "totp": 2, "passkeys": 2, "partitions": 2, "mount-points": 2, "swap-setup": 2, "recommendations": 2, "security-activity": 2, "capabilities": 2,
                 "force-unmount": 2, "nova-power": 2}
 REC_CACHE = {}             # recommended actions, worked out at most once a minute
@@ -782,7 +786,10 @@ def describe_action(a):
     if p == ["cloudflare", "access"]:
         d = a.get("data", {}); m = d.get("mode")
         return {"me": f"Only you can open {d.get('host', '?')}", "guests": f"You and {len(d.get('guests') or [])} guest(s) can open {d.get('host', '?')}",
-                "public": f"Make {d.get('host', '?')} open to anyone"}.get(m, f"Change who can open {d.get('host', '?')}")
+                "public": f"Make {d.get('host', '?')} open to anyone",
+                "code": f"Let anyone with an access code open {d.get('host', '?')} (Cloudflare's login comes off it; the code is the lock)"}.get(m, f"Change who can open {d.get('host', '?')}")
+    if p == ["cloudflare", "codes", "new"]:
+        d = a.get("data", {}); return f"Make {'a password you chose' if d.get('kind') == 'password' else 'a random access code'} that opens {d.get('host', '?')}" + (f" for {d.get('label')}" if d.get("label") else "") + f", {({'1h': 'for 1 hour', '1d': 'for 1 day', '7d': 'for 7 days', '30d': 'for 30 days', 'never': 'until you end it'}).get(str(d.get('expires')), '')}"
     if len(p) == 3 and p[0] == "apps" and p[2] == "sharing": return f"Turn on public share links at {a.get('data', {}).get('share_host', '?')}"
     if len(p) == 3 and p[0] == "apps" and p[2] == "public-fix": return f"Change one setting in {p[1]} so it works at its public address (a backup is kept; it restarts)"
     if p == ["cloudflare", "token"]: return "Save a Cloudflare API token on the server"
@@ -934,7 +941,7 @@ def needs_stepup(method, parts):
     if parts == ["terminal"]: return True                                   # server terminal: fingerprint
     if parts == ["apps", "command"]: return True                           # what a command app runs: fingerprint
     if parts in (["cloudflare", "token"], ["cloudflare", "publish"], ["cloudflare", "remove"], ["cloudflare", "protect"], ["cloudflare", "access"],
-                 ["cloudflare", "app-key"], ["cloudflare", "app-key", "remove"], ["cloudflare", "token", "show"]): return True
+                 ["cloudflare", "app-key"], ["cloudflare", "app-key", "remove"], ["cloudflare", "token", "show"], ["cloudflare", "codes", "new"]): return True
     if method == "POST" and len(parts) == 3 and parts[0] == "apps" and parts[2] == "sharing": return True     # changes your Cloudflare account
     if method == "POST" and len(parts) == 3 and parts[0] == "apps" and parts[2] == "public-fix": return True  # edits one of your app's settings
     if method == "POST" and parts == ["freeup"]: return True                                                  # removes things for good
@@ -1334,7 +1341,7 @@ class Handler(BaseHTTPRequestHandler):
                 audit(device=dev["name"], via=dev["via"], ip=dev["ip"], method="RELAY", path=path, node=path.split("/")[4],
                       inner=f"{str(data.get('method', ''))[:8]} {str(data.get('path', ''))[:200]}", result=code, node_result=res.get("status") if isinstance(res, dict) else None)
         elif (method != "GET" or code >= 400) and not path.startswith("/api/v1/shell/"):
-            logged = {k: (str(v)[:200] if k != "report" else f"<{len(str(v))} bytes>") for k, v in data.items()}
+            logged = {k: ("<hidden>" if SECRET_FIELD.search(str(k)) else str(v)[:200] if k != "report" else f"<{len(str(v))} bytes>") for k, v in data.items()}
             audit(device=dev["name"], via=dev["via"], ip=dev["ip"], method=method, path=path,
                   data=logged, result=code, stepup=dev.get("stepup_ok", False))
         elif path.startswith("/api/v1/shell/") and method == "POST":
@@ -2178,8 +2185,17 @@ class Handler(BaseHTTPRequestHandler):
                     else: cfg.setdefault("overrides", {}).setdefault(aid, {}).update(remote_url=res["url"], remote_off=False)
                     save_json(APPS, cfg)
                 return (200 if rc == 0 else 400), res
-            if method == "POST" and parts == ["cloudflare", "access"]:      # who can open an address: only you · you + guests · anyone
-                spec = {"host": str(data.get("host", ""))[:253], "mode": str(data.get("mode", "")), "allow_public": data.get("allow_public") is True,
+            if method == "GET" and parts == ["cloudflare", "codes"]:        # an address set to "anyone with a code": its codes (never the secrets themselves)
+                rc, res = helper("cf-codes", json.dumps({"host": str(q.get("host", ""))[:253]}), timeout=30); return (200 if rc == 0 else 400), res
+            if method == "POST" and parts == ["cloudflare", "codes", "new"]:   # make one (fingerprint first): a random code is shown once; a password is never shown
+                kind = "password" if data.get("kind") == "password" else "random"
+                spec = {"host": str(data.get("host", ""))[:253], "kind": kind, "password": str(data.get("password") or "")[:100] if kind == "password" else None,
+                        "label": str(data.get("label") or "")[:40], "expires": str(data.get("expires") or "1d")[:8], "by": dev.get("name", "")}
+                rc, res = helper("cf-code-new", timeout=60, data=json.dumps(spec).encode()); return (200 if rc == 0 else 400), res
+            if method == "POST" and parts == ["cloudflare", "codes", "revoke"]:
+                rc, res = helper("cf-code-revoke", json.dumps({"host": str(data.get("host", ""))[:253], "id": str(data.get("id", ""))[:12]}), timeout=30); return (200 if rc == 0 else 400), res
+            if method == "POST" and parts == ["cloudflare", "access"]:      # who can open an address: only you · you + guests · anyone · anyone with a code
+                spec = {"host": str(data.get("host", ""))[:253], "mode": str(data.get("mode", "")), "allow_public": data.get("allow_public") is True, "name": str(data.get("name") or "")[:60],
                         "guests": [str(g)[:254] for g in (data.get("guests") or [])][:60], "session": str(data.get("session") or "")[:8]}
                 rc, res = helper("cf-access", json.dumps(spec), timeout=180); return (200 if rc == 0 else 400), res
             if method == "POST" and parts == ["cloudflare", "app-key"]:     # the app's own phone app (Immich…): a key it sends as two headers

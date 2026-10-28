@@ -19,7 +19,8 @@ record (by its id), the tunnel route. Taking an app off, or `sudo nova cloudflar
 e.g. before uninstalling), removes those parts and nothing else. Your own routes, records and Access
 settings are left alone, and a setup that fails halfway is rolled back.
 """
-import base64, json, os, re, urllib.error, urllib.request
+import base64, json, os, re, subprocess, time, urllib.error, urllib.request
+import gate                                      # the access-code gate: the half that Nova's root helper manages
 
 TOKEN_FILE = "/etc/nova-api/cloudflare.json"
 TUNNEL_TOKEN = "/etc/cloudflared/tunnel-token"
@@ -168,7 +169,7 @@ def status():
         out["nova"] = {h: {"kind": r.get("kind") or ("protected" if r.get("protected_existing") else "existing" if r.get("existing") else "added"),
                            "mode": r.get("mode") or ("me" if r.get("access") else "public"), "guests": r.get("guests", []), "session": r.get("session"),
                            "for_host": r.get("for_host"), "service": r.get("service"), "existing": bool(r.get("existing")),
-                           "app_key": bool(r.get("app_token")), "app_key_made": (r.get("app_token") or {}).get("made")} for h, r in led.items()}
+                           "app_key": bool(r.get("app_token")), "app_key_made": (r.get("app_token") or {}).get("made"), "gated": bool(r.get("gated"))} for h, r in led.items()}
     except ValueError as e: out["error"] = str(e)
     return out
 
@@ -267,7 +268,8 @@ def _with_rule(ingress, rule):
     if ingress and not ingress[-1].get("hostname") and not ingress[-1].get("path"): return ingress[:-1] + [rule, ingress[-1]]
     return ingress + [rule, {"service": "http_status:404"}]
 
-MODES = ("me", "guests", "public")       # who can open an address: your login · your login + guests · anyone
+MODES = ("me", "guests", "public", "code")  # who can open an address: your login · your login + guests · anyone · anyone with an access code
+GATE_SERVICE = f"http://localhost:{gate.PORT}"      # where a "code" address goes on the tunnel (nova-gate, which passes it on to the app)
 # (a record can also say "offline": a change failed halfway, so its route is parked off the tunnel until the next try)
 SESSIONS = ("1h", "24h", "168h", "720h")
 EMAIL_RE = r"[^@\s<>\"']{1,64}@[A-Za-z0-9.-]{1,190}\.[A-Za-z]{2,24}"
@@ -338,7 +340,7 @@ def _unprotect(acct, host, rec):
         rec["access"] = False
 
 def apply(host, service, no_tls_verify=False, mode="me", guests=None, session="24h", allow_public=False, kind=None, for_host=None):
-    if mode not in MODES: raise ValueError("who can open it: me, guests or public")
+    if mode not in MODES[:3]: raise ValueError("who can open it: me, guests or public")
     if mode == "public" and not allow_public: raise ValueError("making an address public needs your confirmation")
     guests = _guests(guests)
     p = plan(host, service, no_tls_verify); host = p["host"]
@@ -389,7 +391,81 @@ def _existing_open(host, acct, tun):
     return {"service": route.get("service"), "zone": zid, "added": int(__import__("time").time()), "access": False, "dns_id": None,
             "route": False, "protected_existing": True, "mode": "public"}
 
-def set_access(host, mode, guests=None, session=None, allow_public=False):
+
+# ── access codes: the address goes to Nova's gate, which asks for the code and then passes everything on to the app ──
+def _gate_up():
+    """The gate answers on this machine (it's started if it's installed but stopped)."""
+    def ping():
+        try: return b'"ok"' in urllib.request.urlopen(f"http://127.0.0.1:{gate.PORT}/__nova_gate/health", timeout=3).read()
+        except Exception: return False
+    if ping(): return
+    try: subprocess.run(["systemctl", "start", "nova-gate"], capture_output=True, timeout=30)
+    except Exception: pass
+    for _ in range(12):
+        time.sleep(0.5)
+        if ping(): return
+    raise ValueError("Nova's code gate isn't running — start it with: sudo systemctl start nova-gate")
+
+def _route_rule(acct, tun, host):
+    cur = (call("GET", f"/accounts/{acct}/cfd_tunnel/{tun}/configurations") or {}).get("config") or {}
+    return next((r for r in cur.get("ingress") or [] if r.get("hostname") == host), None)
+
+def _gate_on(acct, tun, host, rec, name):
+    """Send the address to the gate (the app's own place is remembered, so it can be put back exactly)."""
+    if rec.get("gated"):
+        gate.register(host, name or host, rec["upstream"], rec.get("upstream_no_tls")); return
+    parked = rec.get("parked_route")
+    rule = parked or _route_rule(acct, tun, host)
+    if not rule: raise ValueError(f"{host} isn't on your tunnel")
+    svc = str(rule.get("service") or "").rstrip("/")
+    if not re.fullmatch(r"https?://(localhost|127\.0\.0\.1|[0-9.]+|\[[0-9a-f:]+\]):[0-9]{1,5}", svc):
+        raise ValueError("an access code goes in front of a normal web address (like http://localhost:8096) — this one is sent somewhere else")
+    if svc == GATE_SERVICE: raise ValueError(f"{host} already goes to the code gate — Nova's record and the tunnel are out of step; take it off in Nova and add it again")
+    no_tls = bool((rule.get("originRequest") or {}).get("noTLSVerify"))
+    _gate_up()
+    gate.register(host, name or host, svc, no_tls)                       # the gate knows the address before anyone is sent to it
+    new = {k: v for k, v in rule.items() if k not in ("service", "originRequest")}
+    new["service"] = GATE_SERVICE
+    orq = {k: v for k, v in (rule.get("originRequest") or {}).items() if k != "noTLSVerify"}
+    if orq: new["originRequest"] = orq
+    if parked: _route_on(acct, tun, new); rec.pop("parked_route", None)
+    else: _edit_ingress(acct, tun, lambda ing: [new if r.get("hostname") == host else r for r in ing],
+                        lambda ing: any(r.get("hostname") == host and r.get("service") == GATE_SERVICE for r in ing))
+    rec.update(gated=True, upstream=svc, upstream_no_tls=no_tls, upstream_rule=rule)
+
+def _gate_off(acct, tun, host, rec):
+    """Send the address straight to the app again, exactly as it was."""
+    if not rec.get("gated"): return
+    rule = rec.get("upstream_rule") or {"hostname": host, "service": rec["upstream"], **({"originRequest": {"noTLSVerify": True}} if rec.get("upstream_no_tls") else {})}
+    live = _route_rule(acct, tun, host)
+    if live and live.get("service") == GATE_SERVICE:
+        _edit_ingress(acct, tun, lambda ing: [rule if r.get("hostname") == host else r for r in ing],
+                      lambda ing: any(r.get("hostname") == host and r.get("service") == rule.get("service") for r in ing))
+    gate.deactivate(host)                                                # (its codes are kept, in case you turn it back on)
+    for k in ("gated", "upstream", "upstream_no_tls", "upstream_rule"): rec.pop(k, None)
+
+def _enter_code(acct, tun, host, rec, name):
+    """To "anyone with a code": the address goes to the gate FIRST (still behind whatever login it had), and only then does
+    Cloudflare's login come off. If that fails, the address goes straight back, as it was."""
+    old = rec.get("mode") or ("me" if rec.get("access") else "public")
+    _gate_on(acct, tun, host, rec, name)
+    try:
+        if old in ("me", "guests"): _unprotect(acct, host, rec)
+    except ValueError:
+        try: _gate_off(acct, tun, host, rec)
+        except ValueError: pass                                          # still on the gate AND behind its login: nothing open
+        raise
+    if rec.get("app_token"): _drop_key(acct, rec.pop("app_token"))        # the app's phone-app key needed that login
+    rec["mode"] = "code"; rec.pop("guests", None)
+
+def _leave_code(acct, tun, host, rec, mode, guests, session):
+    """Away from codes: a login goes on FIRST (the address still goes to the gate, so nothing is open), then it goes to the app."""
+    if mode in ("me", "guests"): _protect(acct, host, rec, mode, guests, session)
+    _gate_off(acct, tun, host, rec)
+    rec["mode"] = mode
+    if mode != "guests": rec.pop("guests", None)
+
+def set_access(host, mode, guests=None, session=None, allow_public=False, name=""):
     """Change who can open an address Nova manages (or your own open one): only you, you + guests, or anyone.
     Moving between two kinds of login takes the address off the tunnel for the few seconds it takes,
     so it's never reachable without a login in between; if anything fails it stays off (safe) and says so."""
@@ -403,6 +479,15 @@ def set_access(host, mode, guests=None, session=None, allow_public=False):
     guests = _guests(guests if guests is not None else rec.get("guests"))
     session = session if session in SESSIONS else rec.get("session") or "24h"
     if mode == "public" and old != "public" and not allow_public: raise ValueError(f"anyone could open {host} — confirm to make it public")
+    if mode == "code" or old == "code":                                  # to or from an access code: the gate steps above
+        try:
+            if mode == "code":
+                if old == "code": gate.register(host, name or host, rec["upstream"], rec.get("upstream_no_tls")) if rec.get("gated") else _enter_code(acct, tun, host, rec, name)
+                else: _enter_code(acct, tun, host, rec, name)
+            else: _leave_code(acct, tun, host, rec, mode, guests, session)
+        finally:
+            if host in led or rec.get("gated"): led[host] = rec; _save_ledger(led)         # whatever happened, remember what's there now
+        return {"ok": True, "host": host, "mode": rec["mode"], "guests": rec.get("guests", []), "session": rec.get("session")}
     if mode == old == "guests":                                          # just the list or the session length
         rec["app_id"], rec["policy_id"] = _own_app(acct, host, guests, session, rec.get("app_id"), rec.get("policy_id"))
         rec["guests"], rec["session"] = guests, session
@@ -424,6 +509,22 @@ def set_access(host, mode, guests=None, session=None, allow_public=False):
     if mode != "guests": rec.pop("guests", None)
     led[host] = rec; _save_ledger(led)
     return {"ok": True, "host": host, "mode": mode, "guests": rec.get("guests", []), "session": rec.get("session")}
+
+def codes(host):
+    """The access codes of an address that's behind the gate (no secrets), and the gate's own address for sharing."""
+    host = str(host).strip().lower(); rec = ledger().get(host)
+    if not rec or rec.get("mode") != "code" or not rec.get("gated"): raise ValueError(f"{host} isn't set to 'Anyone with a code'")
+    return {**gate.listing(host), "url": f"https://{host}", "upstream": rec.get("upstream")}
+
+def new_code(host, kind="random", password=None, label="", expires="1d", by=""):
+    host = str(host).strip().lower(); rec = ledger().get(host)
+    if not rec or rec.get("mode") != "code" or not rec.get("gated"): raise ValueError(f"{host} isn't set to 'Anyone with a code'")
+    return {**gate.create_code(host, kind, password, label, expires, by), "url": f"https://{host}"}
+
+def revoke_code(host, cid):
+    host = str(host).strip().lower(); rec = ledger().get(host)
+    if not rec or rec.get("mode") != "code": raise ValueError(f"{host} isn't set to 'Anyone with a code'")
+    return gate.revoke(host, str(cid))
 
 def share(share_host, service, for_host):
     """The public address for an app's share links (e.g. Immich's share proxy). Uses your own existing route
@@ -533,6 +634,7 @@ def remove(host, allow_public=False):
     if rec.get("protected_existing") and rec.get("mode", "me") not in ("public",) and not allow_public:
         raise ValueError(f"{host} was yours before Nova protected it: taking Nova off only removes the login, so it would be open to anyone again. Confirm to do that")
     if rec.get("app_token"): _drop_key(acct, rec.pop("app_token"))      # the app key goes with the address
+    if rec.get("gated"): _gate_off(acct, tun, host, rec); gate.deactivate(host, forget=True)     # straight to the app again; its codes are deleted
     if rec.get("existing"): _unprotect(acct, host, rec)               # a share address that was already yours: only Nova's login comes off
     else: _undo(host, rec, acct, tun)
     if rec.get("protected_existing") and rec.get("parked_route"): _route_on(acct, tun, rec["parked_route"])   # yours, as it was
@@ -544,7 +646,8 @@ def undo_all(allow_public=False):
     protected them keep their login unless allow_public (taking it off would make them public again)."""
     out = {}
     for host, rec in list(ledger().items()):
-        if rec.get("protected_existing") and not allow_public: out[host] = "kept behind the login (it was yours before Nova)"; continue
+        if rec.get("protected_existing") and not allow_public:
+            out[host] = "kept behind the login (it was yours before Nova)" + (" — it still goes through Nova's code gate: switch it back to the app in Nova first" if rec.get("gated") else ""); continue
         try: remove(host, allow_public); out[host] = "removed"
         except ValueError as e: out[host] = f"failed: {e}"
     return out

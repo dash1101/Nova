@@ -53,15 +53,19 @@ private val SESSIONS = listOf("1h" to "1 hour", "24h" to "1 day", "168h" to "1 w
     var ask by remember { mutableStateOf<String?>(null) }          // the mode being switched to (confirm first)
     var addGuest by remember { mutableStateOf(false) }
     var remove by remember { mutableStateOf(false) }
+    var appName by remember { mutableStateOf("") }                    // what the code page calls the site
+    LaunchedEffect(appId) { if (appId.isNotEmpty()) appName = runCatching { app.api.get("/api/v1/apps").optJSONArray("apps").objs().firstOrNull { it.optString("id") == appId }?.optString("name") ?: "" }.getOrDefault("") }
 
     val working = AccessBusy.work[host]
     fun change(to: String, gs: List<String> = guests, publicOk: Boolean = false) {
         if (AccessBusy.work.containsKey(host)) return                       // one change at a time
         app.act {
-            val what = when (to) { "me" -> "Only you can open $host"; "guests" -> "You and ${gs.size} guest${if (gs.size == 1) "" else "s"} can open $host"; else -> "Make $host open to anyone" }
-            AccessBusy.work[host] = when (to) { "me" -> "Switching to only you…"; "guests" -> if (to == mode) "Saving the guest list…" else "Switching to you and guests…"; else -> "Opening it to anyone…" }
+            val what = when (to) { "me" -> "Only you can open $host"; "guests" -> "You and ${gs.size} guest${if (gs.size == 1) "" else "s"} can open $host"
+                "code" -> "Let anyone with an access code open $host (Cloudflare's login comes off it; the code is the lock)"; else -> "Make $host open to anyone" }
+            AccessBusy.work[host] = when (to) { "me" -> "Switching to only you…"; "guests" -> if (to == mode) "Saving the guest list…" else "Switching to you and guests…"
+                "code" -> "Putting the code page in front of it…"; else -> "Opening it to anyone…" }
             try {
-                app.stepUp(what, "POST", "/api/v1/cloudflare/access", JSONObject().put("host", host).put("mode", to).put("guests", JSONArray(gs)).put("session", session).put("allow_public", publicOk))
+                app.stepUp(what, "POST", "/api/v1/cloudflare/access", JSONObject().put("host", host).put("mode", to).put("guests", JSONArray(gs)).put("session", session).put("allow_public", publicOk).put("name", appName))
                 app.toast("Saved"); round++
             } finally { AccessBusy.work.remove(host) }
         }
@@ -96,6 +100,7 @@ private val SESSIONS = listOf("1h" to "1 hour", "24h" to "1 day", "168h" to "1 w
                 } else {
                 Choice("me", "Only you", "Your Cloudflare login, the same as Nova", Icons.Rounded.Lock); RowDivider()
                 Choice("guests", "You and guests", "People you add by email sign in with a one-time code sent to them", Icons.Rounded.Group); RowDivider()
+                Choice("code", "Anyone with a code", "A page asks for an access code you give out — a random one, or a password you choose — and it can run out or be ended any time", Icons.Rounded.Key); RowDivider()
                 Choice("public", "Anyone", "No login — anyone with the address can open it", Icons.Rounded.Public)
                 }
             }
@@ -116,6 +121,7 @@ private val SESSIONS = listOf("1h" to "1 hour", "24h" to "1 day", "168h" to "1 w
             }
             Note("Guests open the address, type their email, and Cloudflare sends them a code. They can only open this app — not Nova.", 13.sp, 6.dp)
         }
+        if (mode == "code") { if (app.isAdmin) AccessCodes(app, host) else Note("Anyone with an access code can open this. Only an admin can make or end codes.", 14.sp, 8.dp) }
         if (appId.isNotEmpty() && app.isAdmin) PublicFix(app, appId, host)
         if (rec != null && !isShare && mode in listOf("me", "guests") && app.isAdmin) AppKey(app, host, rec) { round++ }
         if (appId.isNotEmpty() && !isShare) ShareLinks(app, appId, host)
@@ -132,11 +138,12 @@ private val SESSIONS = listOf("1h" to "1 hour", "24h" to "1 day", "168h" to "1 w
     }
 
     ask?.let { to ->
-        val t = when (to) { "me" -> "Only you?"; "guests" -> "You and guests?"; else -> "Open $host to anyone?" }
+        val t = when (to) { "me" -> "Only you?"; "guests" -> "You and guests?"; "code" -> "Anyone with a code?"; else -> "Open $host to anyone?" }
         val d = when (to) {
             "me" -> "Anyone opening $host signs in with your Cloudflare login first."
             "guests" -> "You, plus people you add by email. You can add them next — until then it's just you." +
                 if (mode == "me") " $host is offline for a few seconds while the login switches over." else ""
+            "code" -> "Cloudflare's login comes off $host. Instead, a page asks visitors for an access code that you make here, and only a working code opens the app. Until you make one, nobody can get in."
             else -> if (isShare) "No Cloudflare login: anyone with a share link can open what it shares (and only that) — set a password and expiry on the link in the app if you want one."
                     else "There will be no login at all: anyone who finds the address can open the app. Only do this if the app has its own login you trust."
         }
@@ -277,5 +284,81 @@ private val SESSIONS = listOf("1h" to "1 hour", "24h" to "1 day", "168h" to "1 w
                 Text("Tap one to copy it.", color = N.sub, fontSize = 12.sp)
             }
         }
+    }
+}
+
+
+/** Access codes for an address set to "Anyone with a code": a random one (shown once), or a password you choose — each for one
+ *  address, with an expiry, ended any time. The secrets are never stored in a form that can be read back. */
+@Composable private fun AccessCodes(app: AppState, host: String) {
+    val ctx = LocalContext.current
+    var data by remember { mutableStateOf<JSONObject?>(null) }
+    var round by remember { mutableIntStateOf(0) }
+    var make by remember { mutableStateOf<String?>(null) }           // "random" or "password": the dialog
+    var shown by remember { mutableStateOf<JSONObject?>(null) }       // the new code, once
+    var ending by remember { mutableStateOf<String?>(null) }          // a code id (or "all") to confirm ending
+    LaunchedEffect(round) { data = runCatching { app.api.get("/api/v1/cloudflare/codes?host=${android.net.Uri.encode(host)}") }.getOrNull() }
+    val list = data?.optJSONArray("codes").objs()
+    fun when_(t: Long) = java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.MEDIUM, java.text.DateFormat.SHORT).format(java.util.Date(t * 1000))
+    SectionLabel("Access codes")
+    Group {
+        if (data == null) Row1("Loading codes…", null)
+        else {
+            if (list.isEmpty()) { Row1("No codes yet", "Make one below and send it to whoever should get in"); RowDivider() }
+            list.forEach { c ->
+                val expires = c.optLong("expires"); val expired = c.optBoolean("expired"); val logins = c.optInt("logins")
+                val kind = if (c.optString("kind") == "password") "Password" else "Random code"
+                val sub = "$kind · " + (if (expired) "ran out ${when_(expires)}" else if (expires > 0) "ends ${when_(expires)}" else "until you end it") + " · " +
+                    (if (logins > 0) "used $logins×" + (c.optLong("last_used").takeIf { it > 0 }?.let { ", last ${when_(it)}" } ?: "") else "not used yet")
+                Row1(c.optString("label").ifEmpty { if (c.optString("kind") == "password") "A password" else "A random code" }, sub, false,
+                    if (c.optString("kind") == "password") Icons.Rounded.Key else Icons.Rounded.Smartphone, if (expired) N.sub else N.blue,
+                    trailing = { IconButton({ ending = c.optString("id") }) { Icon(Icons.Rounded.Close, "End this code", tint = N.sub) } })
+                RowDivider()
+            }
+            Row1("Make a random code", "Nova picks a long one like K7QM-2XDF-9TPA-HW3R, and shows it once", true, Icons.Rounded.Add, onClick = { make = "random" }); RowDivider()
+            Row1("Make a password", "You choose it (at least 8 characters). Nova keeps only a scrambled copy.", true, Icons.Rounded.Key, onClick = { make = "password" })
+            if (list.isNotEmpty()) { RowDivider(); Row1("End every code", "Everyone signed in with a code is signed out right away", false, Icons.Rounded.Delete, N.red, onClick = { ending = "all" }) }
+            RowDivider(); Row1("Copy the address", host, true, Icons.Rounded.ContentCopy, onClick = {
+                ctx.getSystemService(android.content.ClipboardManager::class.java)?.setPrimaryClip(android.content.ClipData.newPlainText("address", "https://$host")); app.toast("Copied") })
+        }
+    }
+    Note("A visitor opens the address, types the code, and gets into this app only — never Nova. Codes can't be seen again after they're made, and too many wrong guesses lock a visitor out for a while.", 13.sp, 6.dp)
+
+    make?.let { kind ->
+        var label by remember { mutableStateOf("") }; var pw by remember { mutableStateOf("") }; var exp by remember { mutableIntStateOf(1) }
+        val opts = listOf("1h" to "1 hour", "1d" to "1 day", "7d" to "7 days", "30d" to "30 days", "never" to "Until I end it")
+        OneDialog({ make = null }, if (kind == "password") "Make a password" else "Make a random code",
+            if (kind == "password") "Whoever you give it to types it to open the app. You'll confirm with your fingerprint." else "Nova makes the code and shows it to you once. You'll confirm with your fingerprint.",
+            listOf(DialogButton("Cancel") { make = null }, DialogButton("Make it", N.blue, enabled = kind != "password" || pw.length >= 8) {
+                make = null
+                app.act {
+                    val body = JSONObject().put("host", host).put("kind", kind).put("label", label.trim()).put("expires", opts[exp].first)
+                    if (kind == "password") body.put("password", pw)
+                    val r = app.stepUp(if (kind == "password") "Make a password that opens $host" else "Make a random access code that opens $host", "POST", "/api/v1/cloudflare/codes/new", body)
+                    round++
+                    if (r.optString("code").isNotEmpty()) shown = r else app.toast("Password saved — give it to them")
+                } })) {
+            Column(Modifier.padding(horizontal = 22.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                OneTextField(label, { label = it.take(40) }, "Who is it for? (optional)", Modifier.fillMaxWidth())
+                if (kind == "password") OneTextField(pw, { pw = it.take(100) }, "The password (8+ characters)", Modifier.fillMaxWidth())
+                Text("How long it works", color = N.sub, fontSize = 13.sp)
+                Segmented(opts.map { it.second }, exp) { exp = it }
+            }
+        }
+    }
+    shown?.let { r ->
+        OneDialog({ shown = null }, "Your access code", "Send this to the person — it's shown only now. They open https://$host, type it in, and they're in${if (r.optLong("expires") > 0) " until it runs out" else ""}. You can end it any time from this page.",
+            listOf(DialogButton("Done", N.blue) { shown = null })) {
+            Column(Modifier.padding(horizontal = 22.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Chip(r.optString("code"), mono = true) { ctx.getSystemService(android.content.ClipboardManager::class.java)?.setPrimaryClip(android.content.ClipData.newPlainText("access code", r.optString("code"))); app.toast("Copied") }
+                Text("Tap it to copy.", color = N.sub, fontSize = 12.sp)
+            }
+        }
+    }
+    ending?.let { id ->
+        OneDialog({ ending = null }, if (id == "all") "End every code?" else "End this code?",
+            if (id == "all") "Everyone who got in with a code is signed out right away, and none of the codes work again." else "Anyone using it is signed out right away, and it won't work again.",
+            listOf(DialogButton("Cancel") { ending = null }, DialogButton("End it", N.red) { ending = null
+                app.act { app.api.post("/api/v1/cloudflare/codes/revoke", JSONObject().put("host", host).put("id", id)); app.toast("Ended"); round++ } }))
     }
 }
