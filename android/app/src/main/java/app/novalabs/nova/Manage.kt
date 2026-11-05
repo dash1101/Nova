@@ -238,19 +238,28 @@ fun roleLabel(r: String) = if (r == "viewer") "View only" else "Admin"
     if (inviting) {
         var user by remember { mutableStateOf("") }
         var role by remember { mutableStateOf("viewer") }
+        var away by remember { mutableStateOf(false) }
         OneDialog({ inviting = false }, "Invite a phone", buttons = listOf(DialogButton("Cancel") { inviting = false }, DialogButton("Create code", N.blue) {
-            inviting = false; app.act { invite = app.stepUp("Invite a phone", "POST", "/api/v1/devices/invite", JSONObject().put("user", user).put("role", role)) } })) {
+            inviting = false; app.act { invite = app.stepUp(if (away) "Invite a phone that is away from home" else "Invite a phone", "POST", "/api/v1/devices/invite", JSONObject().put("user", user).put("role", role).put("remote", away)) } })) {
             OneTextField(user, { user = it.take(40) }, "Who is it for? (e.g. Alex)", Modifier.fillMaxWidth().padding(horizontal = 22.dp))
             Spacer(Modifier.height(6.dp))
             DialogChoice("View only", "Sees everything, changes nothing", role == "viewer") { role = "viewer" }
             DialogChoice("Admin", "Full control", role == "admin") { role = "admin" }
+            Spacer(Modifier.height(6.dp))
+            DialogChoice("On the home network", "Scan the code while on the server's Wi-Fi", !away) { away = false }
+            DialogChoice("Away from home", "Works over the internet; the code also holds the key to your Cloudflare door, so keep it private", away) { away = true }
         }
     }
     invite?.let { inv ->
-        OneDialog({ invite = null; app.act { load() } }, "Scan with the new phone",
-            "Open Nova on the other phone (on the server's network) and scan this. Single use, expires in 10 minutes.",
+        val ctxI = androidx.compose.ui.platform.LocalContext.current
+        OneDialog({ invite = null; app.act { load() } }, if (inv.optBoolean("remote")) "For a phone away from home" else "Scan with the new phone",
+            if (inv.optBoolean("remote")) "Scan this from anywhere — or send the setup code below. It works once, for 10 minutes, and carries the key to your Cloudflare door: keep it private."
+            else "Open Nova on the other phone (on the server's network) and scan this. Single use, expires in 10 minutes.",
             listOf(DialogButton("Done", N.blue) { invite = null; app.act { load() } })) {
             Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { QrImage(inv.optString("qr"), Modifier.size(240.dp)) }
+            if (inv.optBoolean("remote") && inv.optString("setup").isNotEmpty()) Box(Modifier.padding(horizontal = 22.dp, vertical = 6.dp)) { Chip("Copy the setup code (paste it in the app)") {
+                ctxI.getSystemService(android.content.ClipboardManager::class.java)?.setPrimaryClip(android.content.ClipData.newPlainText("Nova setup code", inv.optString("setup"))); app.toast("Copied") } }
+            if (inv.optBoolean("remote") && !inv.optBoolean("away_ready")) Text("This server has no way in from outside yet (Tailscale or a Cloudflare tunnel with an access key), so this code will only work at home.", color = N.amber, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 26.dp, vertical = 4.dp))
             Text("Or type: ${inv.optString("address")} · code ${inv.optString("code")}", color = N.sub, fontSize = 13.sp,
                 modifier = Modifier.padding(horizontal = 26.dp, vertical = 8.dp))
             Text("${roleLabel(inv.optString("role"))}${inv.optString("user").takeIf { it.isNotEmpty() }?.let { " · for $it" } ?: ""}",
@@ -304,10 +313,10 @@ fun roleLabel(r: String) = if (r == "viewer") "View only" else "Admin"
     var code by remember { mutableStateOf("") }
     var user by remember { mutableStateOf(app.pairing.user) }
     var role by remember { mutableStateOf("admin") }
-    OneDialog(onDone, "Approve a browser or watch", buttons = listOf(DialogButton("Cancel", onClick = onDone), DialogButton("Approve", N.blue, code.length == 6) {
+    OneDialog(onDone, "Approve a browser, watch or tablet", buttons = listOf(DialogButton("Cancel", onClick = onDone), DialogButton("Approve", N.blue, code.length == 6) {
         app.act("Added") { app.stepUp("Add a browser or watch", "POST", "/api/v1/browser/approve",
             JSONObject().put("code", code.uppercase()).put("user", user).put("role", role)); onDone() } })) {
-        Text("Open Nova in the browser (https://your-server:8495 at home, or your Cloudflare address), or the Nova app on your watch, and enter the 6-letter code it shows. A watch can only see status and approve things, as you.",
+        Text("Open Nova in the browser (https://your-server:8495 at home, or your Cloudflare address), the Nova app on your watch, or the Nova app on a phone or tablet that signed in through Cloudflare, and enter the 6-letter code it shows. A watch can only see status and approve things, as you.",
             color = N.sub, fontSize = 14.sp, modifier = Modifier.padding(horizontal = 26.dp))
         if (app.pairing.lanPin.isNotEmpty()) Text("A watch also shows the server's certificate: it should be ${app.pairing.lanPin.take(12).uppercase().chunked(4).joinToString(" ")}.",
             color = N.sub, fontSize = 13.sp, modifier = Modifier.padding(start = 26.dp, end = 26.dp, top = 6.dp))

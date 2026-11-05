@@ -311,27 +311,64 @@ class NovaApi(private val pairing: Pairing) {
             pin
         }
 
-        /** Pairing happens on the home LAN only, unsigned, with the one-time code. */
-        suspend fun pair(lan: String, code: String, name: String, publicKeyPem: String, pin: String = ""): JSONObject =
+        /** Pairing is unsigned, with the one-time code. At home it goes to the server's own encrypted address (the app pins its
+         *  certificate); away from home it can go to the server's Tailscale address (same pinned certificate) or its Cloudflare
+         *  address (an ordinary public certificate, with the access key the setup code carried). */
+        suspend fun pair(lan: String, code: String, name: String, publicKeyPem: String, pin: String = "",
+                         cfId: String = "", cfSecret: String = "", publicTls: Boolean = false, timeoutSec: Long = 4): JSONObject =
             withContext(Dispatchers.IO) {
                 val body = JSONObject().put("code", code).put("name", name).put("public_key", publicKeyPem).put("form", DeviceForm.kind)
-                val req = Request.Builder().url(lan.trimEnd('/') + "/api/v1/pair")
-                    .post(body.toString().toByteArray().toRequestBody("application/json".toMediaType())).build()
+                val rb = Request.Builder().url(lan.trimEnd('/') + "/api/v1/pair")
+                    .post(body.toString().toByteArray().toRequestBody("application/json".toMediaType()))
+                if (cfId.isNotEmpty()) rb.header("CF-Access-Client-Id", cfId).header("CF-Access-Client-Secret", cfSecret)
+                val req = rb.build()
                 try {
-                    if (lan.startsWith("https") && pin.isEmpty()) throw ApiException(0, "Missing the server's certificate — scan the QR code instead.")
-                    pinned(OkHttpClient.Builder().connectTimeout(4, TimeUnit.SECONDS), pin).build().newCall(req).execute().use { r ->
-                        val o = runCatching { JSONObject(r.body.string()) }.getOrDefault(JSONObject())
-                        if (!r.isSuccessful) throw ApiException(r.code, when (r.code) {
-                            401 -> "That code is wrong or expired. Run `sudo nova add` again."
-                            403 -> "Pairing only works on your home Wi-Fi."
+                    if (lan.startsWith("https") && pin.isEmpty() && !publicTls) throw ApiException(0, "Missing the server's certificate — scan the QR code instead.")
+                    val b = OkHttpClient.Builder().connectTimeout(timeoutSec, TimeUnit.SECONDS).readTimeout(maxOf(timeoutSec, 10), TimeUnit.SECONDS)
+                        .followRedirects(false).followSslRedirects(false)          // a Cloudflare login page is a refusal here, not an answer
+                    (if (publicTls) b else pinned(b, pin)).build().newCall(req).execute().use { r ->
+                        val text = r.body.string(); val o = runCatching { JSONObject(text) }.getOrDefault(JSONObject())
+                        if (!r.isSuccessful) throw ApiException(r.code, when {
+                            publicTls && (r.code in 301..303 || (r.code in 401..403 && !text.trimStart().startsWith("{"))) -> "Cloudflare turned this away at the door — the setup code may be out of date. Make a new one with  sudo nova add --remote."
+                            r.code == 401 -> "That code is wrong or expired. Run `sudo nova add` again."
+                            r.code == 403 && publicTls -> "That code only works on the home network — make one for away from home:  sudo nova add --remote"
+                            r.code == 403 -> o.optString("error").ifEmpty { "Pairing only works on your home Wi-Fi." }
+                            r.code == 429 -> "Too many wrong tries — wait a few minutes."
                             else -> o.optString("error", "Pairing failed (${r.code})")
                         })
                         o
                     }
                 } catch (e: IOException) {
-                    throw ApiException(0, "Can't reach the server at $lan — are you on home Wi-Fi?")
+                    throw ApiException(0, "Can't reach the server at $lan")
                 }
             }
+
+        private fun door(base: String, cookie: String, path: String) =
+            Request.Builder().url(base.trimEnd('/') + path).header("Cookie", "CF_Authorization=$cookie").header("User-Agent", "Nova app")
+
+        private suspend fun doorCall(rb: Request.Builder): JSONObject = withContext(Dispatchers.IO) {
+            try {
+                OkHttpClient.Builder().connectTimeout(15, TimeUnit.SECONDS).readTimeout(20, TimeUnit.SECONDS).followRedirects(false).followSslRedirects(false).build()
+                    .newCall(rb.build()).execute().use { r ->
+                        val text = r.body.string(); val o = runCatching { JSONObject(text) }.getOrNull()
+                        if (o == null || !r.isSuccessful) throw ApiException(r.code, when {
+                            r.code in 301..303 || r.code == 401 || r.code == 403 && o == null -> "Cloudflare didn't accept the sign-in — try signing in again."
+                            r.code == 429 -> "Too many tries — wait a few minutes."
+                            else -> o?.optString("error")?.ifEmpty { null } ?: "The server answered ${r.code}."
+                        })
+                        o
+                    }
+            } catch (e: IOException) { throw ApiException(0, "Can't reach the server — check this ${DeviceForm.noun}'s internet connection.") }
+        }
+
+        /** Asks the server to let this phone or tablet in, after signing in at Cloudflare (no code needed): the answer is a short code
+         *  to approve on an admin phone (or on the server with `sudo nova approve CODE`). */
+        suspend fun requestAccess(base: String, cookie: String, name: String, publicKeyPem: String): JSONObject =
+            doorCall(door(base, cookie, "/api/v1/browser/request").post(JSONObject().put("name", name).put("public_key", publicKeyPem).put("kind", "app").put("form", DeviceForm.kind)
+                .toString().toByteArray().toRequestBody("application/json".toMediaType())))
+
+        /** The request's state; once approved, the way in (handed over a single time). */
+        suspend fun accessState(base: String, cookie: String, id: String): JSONObject = doorCall(door(base, cookie, "/api/v1/browser/request/$id").get())
 
         /** Crash reports from before pairing go to the LAN address unsigned (server accepts LAN only). */
         fun sendAnonymousCrash(lan: String, report: String, version: String) = runCatching {

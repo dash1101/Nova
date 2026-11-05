@@ -309,6 +309,7 @@ private fun hasVibrator(ctx: Context): Boolean = runCatching {
         SoundSettings()
         SectionLabel("Shake")
         ShakeSettings()
+        if (app.paired) {          // (these belong to a server: not shown while this ${DeviceForm.noun} is signed out)
         SectionLabel("Home")
         Group {
             Row1("Home layout", AppPrefs.homeOrder.filter { sectionOn(it) }.joinToString(" · ") { sectionName(it) }.ifEmpty { "Just the header" }, true,
@@ -329,6 +330,7 @@ private fun hasVibrator(ctx: Context): Boolean = runCatching {
             modifier = Modifier.padding(horizontal = 30.dp, vertical = 4.dp))
         SectionLabel("Privacy")
         Group { Row1("Security & privacy", "App lock, hiding Nova in recent apps, approvals, authenticator codes, passkeys", true, Icons.Rounded.Shield, N.green, onClick = { app.go(Route.Security) }) }
+        }
     }
     if (pickStyle) OneDialog({ pickStyle = false }, "Style") {
         Column(Modifier.heightIn(max = 520.dp).verticalScroll(androidx.compose.foundation.rememberScrollState())) {

@@ -192,6 +192,11 @@ object Updater {
         val bytes = api.download("/api/v1/app/apk")
         val sha = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
         if (sha != meta.optString("sha256")) throw ApiException(0, "Update file didn't match its checksum — not installing.")
+        installBytes(ctx, bytes)
+    }
+
+    /** Hands an already-checked APK to the system installer (Android only accepts it if it's signed by the same key as this app). */
+    fun installBytes(ctx: Context, bytes: ByteArray) {
         val pi = ctx.packageManager.packageInstaller
         val params = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL)
             .apply { setAppPackageName(ctx.packageName) }

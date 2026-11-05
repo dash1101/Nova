@@ -1,6 +1,7 @@
 // Nova web — entry: router (with back stack, scroll memory and slide transitions), the app shell
 // (the frosted nav pill: along the bottom on phones, down the left on wide screens), pairing, start-up.
 import { S, $, $$, esc, sleep, kv, pemOf, get, post, prefs, has, refresh, onApproval, ApiError, webForm, levelColor, cleanTitle, switchServer, savedTarget, loadNodes, gpuInfo } from "./core.js";
+window.__novaUp = true;        // (compat.js tells people the browser is too old if the app never gets this far)
 let fpsEl = null;                 // Developer options → Show frame rate (the meter element)
 import { I, logo, toast, waitApproval, closeSheet, copyCmd } from "./ui.js";
 import * as V from "./views.js";

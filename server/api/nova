@@ -4,6 +4,7 @@
   Devices
     sudo nova add                  pair a phone or tablet (shows a QR code and a code to type)
          --viewer                  …as view-only     --user NAME   …for a person     --minutes N   (default 10)
+         --remote                  …for a phone that is away from home (works over Tailscale or Cloudflare; the QR also holds a setup code to paste)
     sudo nova approve CODE         approve a code shown in a browser: adding the browser, or an action it's waiting on
          --viewer  --user NAME     (when adding a browser)
     sudo nova approve              list what's waiting for approval
@@ -34,7 +35,7 @@
     sudo nova cloudflare list      what Nova changed in your Cloudflare account
     sudo nova cloudflare undo      take it all back (e.g. before uninstalling); asks first
 """
-import hashlib, json, os, re, secrets, shutil, subprocess, sys, time
+import base64, hashlib, json, os, re, secrets, shutil, subprocess, sys, time
 
 DATA = "/var/lib/nova-api"; DEVICES = f"{DATA}/devices.json"; PAIRING = f"{DATA}/pairing.json"
 SHELL_APPROVE = f"{DATA}/shell-approve.json"; PENDING = f"{DATA}/pending.json"
@@ -118,7 +119,8 @@ def add(args):
     user = (opt(args, "--user", "") or "")[:40]
     code = "".join(secrets.choice("ABCDEFGHJKLMNPQRSTUVWXYZ23456789") for _ in range(10))
     expires = time.time() + mins * 60
-    save(PAIRING, {"code_sha256": hashlib.sha256(code.encode()).hexdigest(), "expires": expires, "role": role, "user": user})
+    away = "--remote" in args                      # for a phone that isn't on the home network: also accepted from Tailscale / the Cloudflare address
+    save(PAIRING, {"code_sha256": hashlib.sha256(code.encode()).hexdigest(), "expires": expires, "role": role, "user": user, **({"remote": True} if away else {})})
     lan, pin = cfg.get("lan_url", ""), ""
     try:      # the encrypted home-network listener: the app pins this exact certificate
         from cryptography import x509
@@ -127,13 +129,24 @@ def add(args):
         pin = hashlib.sha256(der).hexdigest()
         lan = f"https://{cfg.get('lan_host') or '127.0.0.1'}:{cfg.get('tls_port', 8495)}"
     except Exception: pass
-    payload = json.dumps({"nova": 1, "lan": lan, "pin": pin, "remote": cfg.get("remote_url", ""), "code": code}, separators=(",", ":"))
+    info = {"nova": 1, "lan": lan, "pin": pin, "remote": cfg.get("remote_url", ""), "code": code}
+    if away:                        # the ways in from outside: Tailscale's address, and the key to the Cloudflare door
+        if cfg.get("tailnet_host"): info["tailnet"] = f"https://{cfg['tailnet_host']}:{cfg.get('tls_port', 8495)}"
+        if cfg.get("cf_client_id") and cfg.get("cf_client_secret"): info["cf"] = {"id": cfg["cf_client_id"], "secret": cfg["cf_client_secret"]}
+        if not (info.get("tailnet") or info.get("cf")): sys.exit("This server has no way in from outside yet (Tailscale or a Cloudflare tunnel) — see: nova help remote")
+    payload = json.dumps(info, separators=(",", ":"))
+    setup = "nova1:" + base64.urlsafe_b64encode(payload.encode()).decode().rstrip("=")
     if "--json" in args:          # for the GUI setup: the same code and QR, as data (it shows them itself)
         svg = subprocess.run(["qrencode", "-t", "SVG", "-m", "2", "-o", "-", payload], capture_output=True, text=True).stdout
-        print(json.dumps({"code": code, "host": cfg.get("lan_host", ""), "pin": " ".join(pin[i:i + 4].upper() for i in (0, 4, 8)), "expires": expires, "svg": svg, "role": role}))
+        print(json.dumps({"code": code, "host": cfg.get("lan_host", ""), "pin": " ".join(pin[i:i + 4].upper() for i in (0, 4, 8)), "expires": expires, "svg": svg, "role": role, "remote": away, "setup": setup if away else ""}))
         return
     subprocess.run(["qrencode", "-t", "ANSIUTF8", "-m", "2", payload])
-    print(f"\nScan this with the Nova app on your {B}home Wi-Fi{X}, or type it in:")
+    if away:
+        print(f"\nScan this with the Nova app {B}from anywhere{X} (or paste the setup code below into the app's “Away from home” box):")
+        print(f"  {B}{setup}{X}")
+        print(f"  {Y}Keep it private{X}: it works once, for the next {mins} minutes, and carries the key to your Cloudflare door — anyone who gets it in that time can pair.")
+    else:
+        print(f"\nScan this with the Nova app on your {B}home Wi-Fi{X}, or type it in:")
     print(f"  Server address  {B}{cfg.get('lan_host', '')}{X}      Code  {B}{code}{X}      Certificate  {pin[:4].upper()} {pin[4:8].upper()} {pin[8:12].upper()}")
     print(f"  It will be {'an Admin (full control)' if role == 'admin' else 'View only'}" + (f", for {user}" if user else "") + ". Single use.\n")
     before = set(load(DEVICES, {}))

@@ -41,7 +41,7 @@ try:                       # optional module: fan/case lighting (modules/fan-gig
 except ImportError:
     nova_rgb = None
 
-API_VERSION = "0.9.7-alpha"
+API_VERSION = "0.9.8-alpha"
 # The API contract (docs/API.md). API_LEVEL only ever goes up: each new level adds endpoints or fields, never removes or
 # changes one. MIN_LEVEL is the oldest level this server still answers in full (old apps keep working back to it).
 # MIN_CLIENT: the oldest app builds still served, per platform — 0 = all of them. Raising it is the last resort, after
@@ -987,6 +987,12 @@ def access_jwt_ok(token):
         return False
 
 
+def access_email(token):
+    """Who signed in at Cloudflare (the email in the Access token that was just verified), for showing next to an approval. '' if unknown."""
+    try: return "".join(c for c in str(json.loads(_b64u(token.split(".")[1])).get("email", "")) if c.isprintable())[:80]
+    except Exception: return ""
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "nova"
     sys_version = ""
@@ -1400,15 +1406,15 @@ class Handler(BaseHTTPRequestHandler):
             except Exception: return self.send(400, {"error": "need a P-256 public_key"})
             rid = secrets.token_urlsafe(18)
             code = "".join(secrets.choice("ABCDEFGHJKLMNPQRSTUVWXYZ23456789") for _ in range(6))
-            kind = "wear" if d.get("kind") == "wear" else "browser"        # a Wear OS watch pairs the same way, then gets a watch's narrow access
+            kind = "wear" if d.get("kind") == "wear" else "app" if d.get("kind") == "app" else "browser"   # a Wear OS watch pairs the same way, then gets a watch's narrow access; so does the Android app, signed in through Cloudflare (a phone or tablet away from home)
             if d.get("kind") == "head":
                 # another Nova server asking to show this one (read-only, see nodes.py) — from home or the tailnet only
                 if where not in ("lan", "tailnet") or self.relayed: return self.send(403, {"error": "another server can only link from your home network or tailnet"})
                 kind = "head"
-            browser_requests[rid] = {"pem": pem, "name": name or {"wear": "Watch", "head": "Nova server"}.get(kind, "Browser"), "code": code, "expires": now + 600, "state": "pending",
-                                     "from": ip, "via": where, "kind": kind}
+            browser_requests[rid] = {"pem": pem, "name": name or {"wear": "Watch", "head": "Nova server", "app": "Android"}.get(kind, "Browser"), "code": code, "expires": now + 600, "state": "pending",
+                                     "from": ip, "via": where, "kind": kind, "form": d.get("form") if d.get("form") in FORMS else "phone", "who": access_email(self.headers.get("Cf-Access-Jwt-Assertion")) if where == "remote" else ""}
             write_pending()
-            return self.send(200, {"id": rid, "code": code, "expires_in": 600})
+            return self.send(200, {"id": rid, "code": code, "expires_in": 600, **({"who": browser_requests[rid]["who"]} if kind == "app" else {})})
         if method == "POST" and re.fullmatch(r"/api/v1/browser/request/[A-Za-z0-9_-]{10,40}/totp", path):
             # no phone and no SSH at hand: an admin's authenticator app approves this browser instead
             rq = browser_requests.get(path.split("/")[-2])
@@ -1476,7 +1482,8 @@ class Handler(BaseHTTPRequestHandler):
                 if rq.get("kind") == "head": role = "viewer"         # another server: always the read-only window, nothing more
                 with lock:
                     devs = load_json(DEVICES, {})
-                    devs[dev_id] = {"name": rq["name"][:40], "public_key": rq["pem"], "type": "head" if rq.get("kind") == "head" else "browser",
+                    devs[dev_id] = {"name": rq["name"][:40], "public_key": rq["pem"], **({} if rq.get("kind") == "app" else {"type": "head" if rq.get("kind") == "head" else "browser"}),
+                                    **({"form": rq.get("form", "phone"), "paired_via": rq["via"], "paired_at": time.time()} if rq.get("kind") == "app" else {}),
                                     "created": time.strftime("%Y-%m-%d %H:%M"), "paired_from": rq["from"], "role": role, "approved_by": "shell",
                                     "user": "".join(c for c in str(ap.get("user", "")) if c.isprintable()).strip()[:40]}
                     save_json(DEVICES, devs)
@@ -1489,6 +1496,12 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(200, {"state": rq["state"], "device_id": rq.get("device_id"), "kind": "head",
                                        "name": load_json(SETTINGS, {}).get("display_name") or os.uname().nodename,
                                        **({"lan_url": tls.get("url") or CFG.get("lan_url", ""), "remote_url": CFG.get("remote_url", "")} if rq["state"] == "approved" else {})})
+            if rq.get("kind") == "app" and rq["state"] == "approved":
+                if rq.get("delivered"): return self.send(200, {"state": "done", "kind": "app"})
+                rq["delivered"] = True; tls = lan_tls()          # the way in is handed over once, to whoever holds this request's secret id
+                return self.send(200, {"state": "approved", "kind": "app", "device_id": rq.get("device_id"), "role": rq.get("role"),
+                                       "name": load_json(SETTINGS, {}).get("display_name") or os.uname().nodename, "lan_url": tls.get("url") or CFG.get("lan_url", ""), "lan_pin": tls.get("pin", ""),
+                                       "remote_url": CFG.get("remote_url", ""), "cf_client_id": CFG.get("cf_client_id", ""), "cf_client_secret": CFG.get("cf_client_secret", "")})
             return self.send(200, {"state": rq["state"], "device_id": rq.get("device_id"), "role": rq.get("role"), "kind": rq.get("kind", "browser"),
                                    "totp": bool(totp_state().get("secret")) and rq.get("kind") != "wear",
                                    "passkey": bool(passkey_rp(self.headers)) and passkeys.any_for(passkey_rp(self.headers)) and rq.get("kind") != "wear",
@@ -1597,7 +1610,11 @@ class Handler(BaseHTTPRequestHandler):
                 if devs.get(dev["id"], {}).get("form") != form: devs[dev["id"]]["form"] = form; save_json(DEVICES, devs)
             return 200, {"ok": True, "form": form}
         if method == "POST" and parts == ["device", "stepup-key"]:
-            if dev["via"] not in ("lan", "local"): return 403, {"error": "set this up on home Wi-Fi"}
+            # Home network only — except a phone that was just paired from away (it may never be on home Wi-Fi): then its first
+            # 30 minutes, and only while it has no key yet. (The key is made in its fingerprint-protected chip, so a copy of the
+            # signing key alone can't use it.)
+            fresh = dev.get("paired_via") in ("tailnet", "remote") and time.time() - float(dev.get("paired_at") or 0) < 1800
+            if dev["via"] not in ("lan", "local") and not fresh: return 403, {"error": "set this up on home Wi-Fi"}
             if dev.get("stepup_key"): return 409, {"error": "already set up (re-pair to replace it)"}
             pem = str(data.get("public_key", ""))
             pub = serialization.load_pem_public_key(pem.encode())
@@ -1660,13 +1677,18 @@ class Handler(BaseHTTPRequestHandler):
             role = data.get("role", "viewer")
             if role not in ROLES: raise ValueError("role must be admin or viewer")
             user = "".join(c for c in str(data.get("user", "")) if c.isprintable()).strip()[:40]
+            away = data.get("remote") is True                     # a code for a phone that isn't on the home network
             code = "".join(secrets.choice("ABCDEFGHJKLMNPQRSTUVWXYZ23456789") for _ in range(10))
             with lock: save_json(PAIRING, {"code_sha256": hashlib.sha256(code.encode()).hexdigest(),
-                                           "expires": time.time() + 600, "role": role, "user": user})
+                                           "expires": time.time() + 600, "role": role, "user": user, **({"remote": True} if away else {})})
             tls = lan_tls()
-            qr = json.dumps({"nova": 1, "lan": tls.get("url") or CFG.get("lan_url", ""), "pin": tls.get("pin", ""),
-                             "remote": CFG.get("remote_url", ""), "code": code}, separators=(",", ":"))
-            return 200, {"code": code, "qr": qr, "expires_in": 600, "role": role, "user": user,
+            info = {"nova": 1, "lan": tls.get("url") or CFG.get("lan_url", ""), "pin": tls.get("pin", ""), "remote": CFG.get("remote_url", ""), "code": code}
+            if away:       # …so it also carries the ways in from outside: the Tailscale address, and the key to the Cloudflare door
+                if TAILNET_HOST: info["tailnet"] = f"https://{TAILNET_HOST}:{TLS_PORT}"
+                if CFG.get("cf_client_id") and CFG.get("cf_client_secret"): info["cf"] = {"id": CFG["cf_client_id"], "secret": CFG["cf_client_secret"]}
+            qr = json.dumps(info, separators=(",", ":"))
+            return 200, {"code": code, "qr": qr, "setup": "nova1:" + base64.urlsafe_b64encode(qr.encode()).decode().rstrip("="), "expires_in": 600, "role": role, "user": user,
+                         "remote": away, "away_ready": bool(info.get("tailnet") or info.get("cf")),
                          "address": (tls.get("url") or "").split("//")[-1], "pin_short": tls.get("pin", "")[:12].upper()}
         if method == "POST" and len(parts) == 3 and parts[0] == "devices" and parts[2] == "rename":
             name = "".join(c for c in str(data.get("name", "")) if c.isprintable()).strip()[:40]
@@ -1712,6 +1734,11 @@ class Handler(BaseHTTPRequestHandler):
                     role = "viewer"
                     devs[dev_id] = {"name": str(rq["name"])[:40], "public_key": rq["pem"], "type": "head", "role": "viewer",
                                     "created": time.strftime("%Y-%m-%d %H:%M"), "paired_from": rq["from"], "approved_by": dev["name"][:40]}
+                elif rq.get("kind") == "app":
+                    # an Android phone or tablet signed in through Cloudflare: a full device, so only an admin phone (not a browser, watch or another server) may let it in
+                    if dev.get("type") in ("browser", "watch", "wear", "head") or role_of(dev) != "admin": raise ValueError("approve an app from an admin phone, or on the server with: sudo nova approve CODE")
+                    devs[dev_id] = {"name": str(data.get("name") or rq["name"])[:40], "public_key": rq["pem"], "form": rq.get("form", "phone"), "role": role, "paired_via": rq["via"], "paired_at": time.time(),
+                                    "user": "".join(c for c in str(data.get("user", "")) if c.isprintable()).strip()[:40], "created": time.strftime("%Y-%m-%d %H:%M"), "paired_from": rq["from"], "approved_by": dev["name"][:40]}
                 elif rq.get("kind") == "wear":
                     # A watch belongs to the admin phone that approved it, and can only do what a watch may (see the wear gate)
                     if dev.get("type") in ("browser", "watch", "wear", "head") or role_of(dev) != "admin": raise ValueError("approve a watch from an admin phone")
@@ -2688,8 +2715,15 @@ class Handler(BaseHTTPRequestHandler):
     # ── pairing (home LAN only, one-time code from `sudo nova add`) ──
     def pair(self, body):
         where, ip = self.origin()
-        if where not in ("lan", "local"): return self.fail(ip, 403, "pairing only works on the home network")
+        # The home network always works. From elsewhere (Tailscale, or the Cloudflare address) only a code made on purpose for it
+        # does — `sudo nova add --remote`, or "away from home" when inviting a phone — and the extra attempts are limited harder.
+        away = where in ("tailnet", "remote")
+        if away and not load_json(PAIRING, {}).get("remote"):
+            return self.fail(ip, 403, "this code only works on the home network — make one for use away from home with: sudo nova add --remote")
+        if where not in ("lan", "local") and not away: return self.fail(ip, 403, "pairing only works on the home network")
         if self.throttled(ip): return self.send(429, {"error": "too many failed attempts"})
+        if away and len([t for t in fails.get("away-pairing", []) if time.time() - t < 600]) >= 40:
+            return self.send(429, {"error": "too many failed attempts — wait a few minutes"})
         try:
             d = json.loads(body); code, name, pem = d["code"], str(d["name"])[:40], d["public_key"]
             pub = serialization.load_pem_public_key(pem.encode())
@@ -2702,18 +2736,19 @@ class Handler(BaseHTTPRequestHandler):
             ok = p and p.get("expires", 0) > time.time() and \
                 hmac.compare_digest(p.get("code_sha256", ""), hashlib.sha256(code.encode()).hexdigest())
             if not ok:
+                if away: fails.setdefault("away-pairing", []).append(time.time())
                 return self.fail(ip, 401, "bad or expired pairing code")
             os.remove(PAIRING)                                # one-time
             dev_id = secrets.token_urlsafe(12)
             devs = load_json(DEVICES, {})
             role = p.get("role") if p.get("role") in ROLES else "admin"
             head = d.get("kind") == "head"           # another Nova server's web, showing this one read-only
-            devs[dev_id] = {"name": name, "public_key": pem, "created": time.strftime("%Y-%m-%d %H:%M"),
+            devs[dev_id] = {"name": name, "public_key": pem, "created": time.strftime("%Y-%m-%d %H:%M"), "paired_at": time.time(), "paired_via": where,
                             "paired_from": ip, "role": "viewer" if head else role, "user": str(p.get("user", ""))[:40],
                             **({"type": "head"} if head else {}),
                             **({"form": d["form"]} if d.get("form") in FORMS and not head else {})}
             save_json(DEVICES, devs)
-        audit(ip=ip, path="/api/v1/pair", result=200, device=name)
+        audit(ip=ip, path="/api/v1/pair", result=200, device=name, via=where)
         helper("notify-paired", "".join(c for c in name if c.isalnum() or c in " -_")[:40] or "device")
         tls = lan_tls()
         if head:                                      # read-only window: no Cloudflare service token for it

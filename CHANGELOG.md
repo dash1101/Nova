@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.9.8-alpha (server, Nova web, app and watch)
+- **Settings when you're not connected to a server.** The pairing screen has a Settings button (top right): **update Nova** straight from its public releases (no server needed — handy when you're signed out and the app is out of date), plus Appearance, app lock, help and About.
+- **Pair from anywhere.** A new phone or tablet no longer has to be on your home network:
+  - **Sign in with Cloudflare** (pairing screen → Away from home): sign in with your usual Cloudflare login, and the app asks the server to let it in; you approve it on an admin phone (Users & devices → approve a browser, watch or tablet) or on the server with `sudo nova approve CODE`. No code to carry, and it works on any Android, including old tablets with no Tailscale.
+  - **Setup codes for away from home:** `sudo nova add --remote` (or Users & devices → Invite a phone → Away from home) makes a QR and a paste-able `nova1:…` code that also carries the server's Tailscale address and the key to your Cloudflare door. The app tries your home network, then Tailscale, then Cloudflare. Codes still work once, for 10 minutes, and the server only accepts them from outside when you made them for that.
+  - A phone paired from away can set up its fingerprint key right then (normally that only happens on home Wi-Fi).
+- **Android 7 and older:** the app icon showed the Android robot (those versions can't read the adaptive icon); it now has a proper icon fallback.
+- **Nova web on an old browser** says so, instead of showing a blank page.
+
 ## 0.9.7-alpha (server, Nova web, app and watch)
 - **Access codes.** A new choice under **Who can open it** (an address you've put on your Cloudflare tunnel): **Anyone with a code**. Cloudflare's login comes off that address and a page asks for a code instead — a **random one** Nova makes (like K7QM-2XDF-9TPA-HW3R, shown once), or a **password you choose**. Each code is for one address, runs out after 1 hour, 1 day, 7 days, 30 days or when you end it, can be ended any time (everyone who used it is signed out right away), and shows how often it was used. Nothing else on your server is reachable through it, and too many wrong guesses lock a visitor out.
   - It works through a small new service, `nova-gate`, locked in about as tightly as a service can be. Switching an address to or from codes never leaves it open for a moment, and if a step fails everything goes back as it was. Making a code asks for your fingerprint; a password you choose never goes on a command line or in a log.

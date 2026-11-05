@@ -60,7 +60,7 @@ object Discovery {
 }
 
 /** Address picked from "Found on this network", for the pairing screen to fill in. */
-object PairHint { var address: String? = null; var name: String? = null }
+object PairHint { var address: String? = null; var name: String? = null; var awayHost: String? = null }
 
 /** Servers already paired on this phone, matched by their home address. */
 fun pairedLanUrls(ctx: Context) = Servers.all(ctx).map { Pairing(ctx, it) }.filter { it.paired }.map { it.lanUrl.trimEnd('/') }.toSet()

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 7 and older can't read adaptive icons (they showed the Android robot): the same background and picture, framed like the adaptive icon shows them -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@drawable/ic_launcher_bg_tone_l340" />
+    <item android:drawable="@drawable/ic_launcher_fg_tone_l340" />
+</layer-list>
