@@ -18,6 +18,8 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.launch
+import androidx.compose.ui.text.font.FontWeight
 import org.json.JSONObject
 
 /** What to call the active server: the name set in the app, else its hostname, prettified. */
@@ -285,7 +287,7 @@ fun roleLabel(r: String) = if (r == "viewer") "View only" else "Admin"
 @Composable fun ApprovalsScreen(app: AppState) {
     val data = live(app, "/api/v1/approvals", 4_000)
     val list = data.value?.optJSONArray("approvals")?.let { a -> (0 until a.length()).map { a.getJSONObject(it) } } ?: emptyList()
-    val pending = list.filter { it.optString("state") == "pending" }
+    val pending = list.filter { it.optString("state") == "pending" && it.optString("device") != app.pairing.deviceId }
     Page("Approvals", app::back) {
         Note("When a browser you've paired as an admin wants to do something risky, it waits here for your fingerprint.", 14.sp, 6.dp)
         if (pending.isEmpty()) Group { Row1("Nothing waiting", "Requests show up here and as a notification", false, Icons.Rounded.CheckCircle, N.green) }
@@ -372,4 +374,26 @@ fun roleLabel(r: String) = if (r == "viewer") "View only" else "Admin"
     if (totpOff) OneDialog({ totpOff = false }, "Turn off authenticator codes?", "Codes from the app stop working. Browsers are approved here (or with sudo nova approve) again.",
         listOf(DialogButton("Cancel") { totpOff = false }, DialogButton("Turn off", N.red) { totpOff = false; app.act {
             app.stepUp("Turn off authenticator-app codes", "POST", "/api/v1/totp/remove", JSONObject()); totpLive.value = app.api.get("/api/v1/totp"); app.toast("Authenticator codes are off") } }))
+}
+
+
+/** Shown while a risky action waits for something else to approve it (this device has no fingerprint key). */
+@Composable fun ApprovalWaitDialog(app: AppState, ap: AppState.Approving) {
+    var totp by remember(ap.id) { mutableStateOf("") }; var err by remember(ap.id) { mutableStateOf("") }; var sending by remember(ap.id) { mutableStateOf(false) }
+    OneDialog({ ap.cancelled = true }, "Waiting for approval", "“${ap.what}” needs another device to say yes — this ${DeviceForm.noun} has no fingerprint set up.",
+        listOf(DialogButton("Cancel") { ap.cancelled = true })) {
+        Column(Modifier.padding(horizontal = 22.dp), verticalArrangement = Arrangement.spacedBy(8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(ap.code, color = N.text, fontSize = 36.sp, fontFamily = Mono, fontWeight = FontWeight.Bold)
+            Text("On another admin phone: Nova → Approvals (it shows up there and as a notification), then confirm with its fingerprint. Or on the server:  sudo nova approve ${ap.code}",
+                color = N.sub, fontSize = 13.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+            if (ap.totp) {
+                Text("Or type a code from your authenticator app:", color = N.sub, fontSize = 13.sp, modifier = Modifier.padding(top = 6.dp))
+                OneTextField(totp, { totp = it.filter { c -> c.isDigit() }.take(8); err = "" }, "6-digit code", Modifier.fillMaxWidth(), mono = true)
+                PillButton(if (sending) "Checking…" else "Approve with this code", enabled = totp.length >= 6 && !sending) {
+                    sending = true; app.scope.launch { try { app.api.post("/api/v1/approvals/${ap.id}/totp", JSONObject().put("code", totp)) } catch (e: Exception) { err = e.message ?: "That code didn't work" } finally { sending = false } } }
+                if (err.isNotEmpty()) Text(err, color = N.red, fontSize = 13.sp)
+            }
+            Spacer(Modifier.height(2.dp)); OneSpinner(22.dp)
+        }
+    }
 }

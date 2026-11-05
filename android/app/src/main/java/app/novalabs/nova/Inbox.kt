@@ -296,8 +296,8 @@ import java.util.*
                 Detail("Risky actions — opening a terminal, stopping or restarting things, installs, unmounting drives, restarting the server — need your fingerprint (or PIN).")
                 Detail("Behind the scenes that unlocks a second key in the secure chip, which signs the request as well. The server refuses risky actions without that second signature, so even a stolen, unlocked phone can't do them without you.")
                 Detail(if (app.pairing.stepUpRegistered) "Status: set up and registered with the server."
-                       else if (app.api.via == "home") "Status: not set up — this ${DeviceForm.noun} needs a screen lock (PIN or fingerprint) first. Add one in Android settings, then reopen Nova."
-                       else "Status: waiting — it's registered automatically the next time Nova opens on home Wi-Fi (registration is only accepted from home).",
+                       else if (app.api.via == "home") "Status: not set up — this ${DeviceForm.noun} needs a fingerprint or a screen lock first. Add one in Android settings, then reopen Nova. Until then, risky actions wait for another admin device (or the server) to approve them."
+                       else "Status: waiting — it's registered automatically the next time Nova opens on home Wi-Fi (registration is only accepted from home). Until then, risky actions wait for another admin device (or the server) to approve them.",
                     if (app.pairing.stepUpRegistered) N.green else N.amber)
             }
             RowDivider()

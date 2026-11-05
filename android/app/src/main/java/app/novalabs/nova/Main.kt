@@ -212,8 +212,32 @@ class AppState(val activity: Activity, val pairing: Pairing, val scope: Coroutin
     }
 
     /** Risky action: fingerprint, then the call. */
-    suspend fun stepUp(title: String, method: String, path: String, body: JSONObject? = null) =
-        api.stepUp(activity, title, method, path, body)
+    /** A risky action held for approval by something else (this device has no fingerprint key): what's being waited on. */
+    class Approving(val id: String, val code: String, val what: String, val totp: Boolean) { var cancelled by mutableStateOf(false) }
+    var approving by mutableStateOf<Approving?>(null)
+
+    suspend fun stepUp(title: String, method: String, path: String, body: JSONObject? = null): JSONObject {
+        val r = api.stepUp(activity, title, method, path, body)
+        if (!r.has("approval")) return r
+        // No fingerprint here: the server is holding the action until another admin device (fingerprint), the server shell
+        // (`sudo nova approve CODE`) or an authenticator code approves it. Show the code and wait for the answer.
+        val ap = Approving(r.getString("approval"), r.optString("code"), title, r.optBoolean("totp")); approving = ap
+        try {
+            val until = System.currentTimeMillis() + 10 * 60_000L
+            while (System.currentTimeMillis() < until) {
+                if (ap.cancelled) throw ApiException(0, "Cancelled")
+                delay(2000)
+                val st = runCatching { api.get("/api/v1/approvals/${ap.id}") }.getOrNull() ?: continue
+                when (st.optString("state")) {
+                    "done" -> return st.optJSONObject("result") ?: JSONObject()
+                    "failed" -> throw ApiException(st.optInt("status", 400), st.optJSONObject("result")?.optString("error")?.ifEmpty { null } ?: "It didn't work")
+                    "denied" -> throw ApiException(403, "That was declined.")
+                    "expired" -> throw ApiException(410, "Nobody approved it in time.")
+                }
+            }
+            throw ApiException(410, "Nobody approved it in time.")
+        } finally { approving = null }
+    }
 
     /** Background tasks (installs, updates, backups…): follow one until it ends. */
     suspend fun waitTask(id: String, onUpdate: (JSONObject) -> Unit = {}): JSONObject {
@@ -376,6 +400,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {   // FragmentAct
     }
     ShakeListener(app)
     app.dockMenu?.let { id -> DockAppMenu(app, id) { app.dockMenu = null } }
+    app.approving?.let { ApprovalWaitDialog(app, it) }
     LaunchedEffect(openApprovals) { if (openApprovals) { openApprovals = false; app.go(Route.Approvals) } }
     LaunchedEffect(openAssistant) { if (openAssistant) { openAssistant = false; if (app.top != Route.Assistant) app.go(Route.Assistant) } }
     LaunchedEffect(openUpdate) { if (openUpdate) { openUpdate = false; app.go(Route.Settings) } }

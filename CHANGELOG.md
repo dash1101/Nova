@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.9.9-alpha (server and app)
+- **Devices with no fingerprint can still do risky actions.** A phone or tablet with no fingerprint reader, no screen lock, or no fingerprint set up used to be stuck on anything that needs your fingerprint (stopping a container, a shell, inviting a phone…). It now shows a **Waiting for approval** box with a short code instead, and the action runs as soon as someone says yes, any of three ways:
+  - on **another admin phone**: Nova → Approvals (it also arrives as a notification), confirmed with that phone's fingerprint;
+  - on the server: `sudo nova approve CODE`;
+  - with a code from your **authenticator app**, typed straight into the box (if you've set one up).
+  The box finishes the action and shows its result, can be cancelled, and gives up after 10 minutes. A device can never approve its own request, and view-only devices still can't do risky actions at all. Browsers already worked this way.
+
 ## 0.9.8-alpha (server, Nova web, app and watch)
 - **Settings when you're not connected to a server.** The pairing screen has a Settings button (top right): **update Nova** straight from its public releases (no server needed — handy when you're signed out and the app is out of date), plus Appearance, app lock, help and About.
 - **Pair from anywhere.** A new phone or tablet no longer has to be on your home network:

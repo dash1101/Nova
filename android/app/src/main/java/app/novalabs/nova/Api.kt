@@ -116,8 +116,15 @@ class NovaApi(private val pairing: Pairing) {
     /** Risky action: fingerprint / PIN confirmation, then a second signature by the step-up key. */
     suspend fun stepUp(activity: Activity, title: String, method: String, path: String,
                        body: JSONObject? = null): JSONObject {
-        if (!pairing.keys.hasStepUp() || !pairing.stepUpRegistered)
-            throw ApiException(403, "Fingerprint confirmation isn't set up yet — open Settings → This ${DeviceForm.noun} on home Wi-Fi.")
+        if (!pairing.keys.hasStepUp() || !pairing.stepUpRegistered) {
+            // No fingerprint key on this device (no fingerprint reader, no screen lock, or not set up yet): ask anyway, unsigned. An admin
+            // device is told to wait — {"approval": …} — while another device, the server shell or an authenticator code approves it.
+            try { return call(method, path, body, null, prepare(method, path, body)) }
+            catch (e: ApiException) {
+                if (e.stepUpRequired) throw ApiException(403, "Confirming risky actions needs a fingerprint or screen lock on this ${DeviceForm.noun} (or an admin device to approve). Add one in Android settings, then open Nova on home Wi-Fi.")
+                throw e
+            }
+        }
         val pr = prepare(method, path, body)
         val sig = pairing.keys.stepUpSignature()
         val authed = suspendCancellableCoroutine { cont ->

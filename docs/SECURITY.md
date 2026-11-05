@@ -10,7 +10,7 @@ Nova controls a whole server, so it's designed so that losing any one piece is n
 | **Cloudflare Access** (remote only) | Requests from the internet must carry the Access service token; Cloudflare rejects everyone else before they reach the server. The server also verifies the `Cf-Access-Jwt-Assertion` (signature, audience, issuer). |
 | **Device signature** | Every request is signed with the phone's P-256 key: `METHOD\nPATH\nTIME_MS\nNONCE\nsha256(BODY)`. The key is generated in the Android Keystore (StrongBox when available) and can't be exported. Unknown or revoked keys get 401. |
 | **Replay protection** | Timestamps must be within ±60 s, and every nonce is accepted once. |
-| **Step-up (fingerprint)** | Shells, stop/restart, restart policy, installs/uninstalls, unmounting, power, and removing devices need a second signature from a key that only works right after a biometric/PIN prompt for that exact request. |
+| **Step-up (fingerprint)** | Shells, stop/restart, restart policy, installs/uninstalls, unmounting, power, and removing devices need a second signature from a key that only works right after a biometric/PIN prompt for that exact request. A phone or tablet with no fingerprint key (no reader, no screen lock) is treated like a browser: the request is held on the server and approved by another admin phone's fingerprint, `sudo nova approve`, or an authenticator code — never by the device that asked. |
 | **Throttling** | 20 failed attempts in 10 minutes block the source address. |
 
 ## Requests

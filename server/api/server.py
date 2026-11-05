@@ -41,7 +41,7 @@ try:                       # optional module: fan/case lighting (modules/fan-gig
 except ImportError:
     nova_rgb = None
 
-API_VERSION = "0.9.8-alpha"
+API_VERSION = "0.9.9-alpha"
 # The API contract (docs/API.md). API_LEVEL only ever goes up: each new level adds endpoints or fields, never removes or
 # changes one. MIN_LEVEL is the oldest level this server still answers in full (old apps keep working back to it).
 # MIN_CLIENT: the oldest app builds still served, per platform — 0 = all of them. Raising it is the last resort, after
@@ -1236,14 +1236,18 @@ class Handler(BaseHTTPRequestHandler):
                 devs = load_json(DEVICES, {}); devs.pop(dev["id"], None); save_json(DEVICES, devs)
             audit(device=dev["name"], path=path, result=200, why=f"{dev.get('type')} removed itself")
             return self.send(200, {"ok": True})
-        if (needs_stepup(method, parts) or browser_needs_phone(method, parts)) and not dev.get("stepup_ok") and dev.get("type") == "browser" and role_of(dev) == "admin":
+        # A browser, or a phone/tablet that has no fingerprint key (no fingerprint reader, or no screen lock to bind one to): its risky
+        # actions wait here until something else approves them — another admin phone's fingerprint, the server shell, or an authenticator code.
+        keyless = dev.get("type") in (None, "", "phone") and not dev.get("stepup_key")
+        held = needs_stepup(method, parts) or (dev.get("type") == "browser" and browser_needs_phone(method, parts))
+        if held and not dev.get("stepup_ok") and (dev.get("type") == "browser" or keyless) and role_of(dev) == "admin":
             try: data0 = json.loads(body) if body else {}
             except ValueError: data0 = {}
             a = new_approval(dev, method, path, data0)
-            audit(device=dev["name"], path=path, result=202, why="sent to a phone for approval")
+            audit(device=dev["name"], path=path, result=202, why="sent to a phone for approval" if dev.get("type") == "browser" else "no fingerprint key on this device: sent to another device for approval")
             return self.send(202, {"approval": a["id"], "code": a["code"], "totp": bool(totp_state().get("secret")),
                                    "passkey": bool(passkey_rp(self.headers)) and passkeys.any_for(passkey_rp(self.headers)),
-                                   "message": "Approve this on your phone (Nova app), or on the server: sudo nova approve " + a["code"]})
+                                   "message": "Approve this on another admin phone (Nova app), or on the server: sudo nova approve " + a["code"]})
         if needs_stepup(method, parts) and not dev.get("stepup_ok"):
             audit(device=dev["name"], path=path, result=403, why="step-up required")
             return self.send(403, {"error": "stepup_required",
@@ -1848,6 +1852,7 @@ class Handler(BaseHTTPRequestHandler):
             if not a or a["state"] != "pending": return 404, {"error": "nothing waiting with that id"}
             if time.time() - a["created"] > 600: a["state"] = "expired"; return 410, {"error": "that request expired"}
             if parts[2] == "deny": a["state"] = "denied"; write_pending(); return 200, {"ok": True}
+            if a["device"] == dev["id"]: return 403, {"error": "a device can't approve its own request"}
             code, res = self.run_approval(a, dev["name"], dev)
             return 200, {"ok": code < 400, "result": res}
         if parts[:2] == ["server", "update"]:
