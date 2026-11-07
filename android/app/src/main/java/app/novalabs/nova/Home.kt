@@ -221,7 +221,7 @@ import org.json.JSONObject
         Text(if (AppPrefs.favorites.isEmpty()) "☆  Add favorites — any screen, as a tile here" else "Edit favorites", color = N.link, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
             modifier = Modifier.padding(start = Space.gutter + 10.dp, top = 2.dp, bottom = 4.dp).clip(androidx.compose.foundation.shape.RoundedCornerShape(12.dp))
                 .clickable { app.go(Route.EditFavorites) }.padding(horizontal = 8.dp, vertical = 6.dp))
-        SectionLabel("Server")
+        Later(1) { SectionLabel("Server")
         Group {
             Row1("Status", "Live graphs, storage, backups", true, Icons.Rounded.MonitorHeart, androidx.compose.ui.graphics.Color(0xFF3ECF6E), onClick = { app.go(Route.Status) })
             RowDivider()
@@ -234,8 +234,8 @@ import org.json.JSONObject
             Row1("Updates", "Packages, containers and Nova", true, Icons.Rounded.Update, androidx.compose.ui.graphics.Color(0xFF3ECF6E), onClick = { app.go(Route.Updates) })
             RowDivider()
             Row1("Diagnostics", "Speed, stress and network tests", true, Icons.Rounded.Speed, androidx.compose.ui.graphics.Color(0xFF64D2FF), onClick = { app.go(Route.Diagnostics) })
-        }
-        SectionLabel("Apps & tools")
+        } }
+        Later(2) { SectionLabel("Apps & tools")
         Group {
             Row1("App store", "Containers and programs", true, Icons.Rounded.Storefront, androidx.compose.ui.graphics.Color(0xFFBF5AF2), onClick = { app.tab(Route.Store) })
             RowDivider()
@@ -246,8 +246,8 @@ import org.json.JSONObject
             Row1("Quick panel", "Your shortcuts — tap ✎ to customize", true, Icons.Rounded.Widgets, onClick = { app.go(Route.QuickPanel) })
             RowDivider()
             Row1("Dashboard mode", "Always-on screen for a tablet or spare phone", true, Icons.Rounded.Dashboard, androidx.compose.ui.graphics.Color(0xFF64D2FF), onClick = { app.go(Route.Dashboard) })
-        }
-        SectionLabel("Alerts")
+        } }
+        Later(3) { SectionLabel("Alerts")
         Group {
             Row1("Inbox", if (app.unread > 0) "${app.unread} new" else "Alerts, logins and server events", true, Icons.Rounded.Notifications, androidx.compose.ui.graphics.Color(0xFFFF5A5A), onClick = { app.go(Route.Inbox) })
             RowDivider()
@@ -265,7 +265,7 @@ import org.json.JSONObject
             Row1("Report a problem", "Or shake your ${DeviceForm.noun}", false, Icons.Rounded.BugReport, N.sub, onClick = { app.go(Route.Report) })
             RowDivider()
             Row1("About Nova", "Version $APP_VERSION", false, Icons.Rounded.Info, N.sub, onClick = { app.go(Route.About) })
-        }
+        } }
         Spacer(Modifier.height(130.dp))
     }
 }

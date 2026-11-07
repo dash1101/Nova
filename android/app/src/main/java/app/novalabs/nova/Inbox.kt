@@ -103,7 +103,11 @@ import java.util.*
         val selSlot by remember { derivedStateOf { picked.isNotEmpty() || selAnim.value > 0.01f } }      // changes twice per selection, not every frame
         // drawn in pages: the newest 60, then more on request (a long list costs every frame it animates)
         var limit by remember { mutableIntStateOf(if (lite()) 25 else 60) }                 // (a slow device builds every row at once when you open the page)
-        shown.take(limit).groupBy { dayLabel(it.optDouble("t")) }.forEach { (d, list) ->
+        // The rows are built a few at a time: the first screenful at once (so the page is there at once), the rest over the next few frames,
+        // instead of one long freeze while sixty rows are put together.
+        var built by remember { mutableIntStateOf(if (lite()) 7 else 14) }
+        LaunchedEffect(shown.size, limit) { while (built < minOf(limit, shown.size)) { androidx.compose.runtime.withFrameNanos { }; delay(40); built += 3 } }
+        shown.take(minOf(limit, built)).groupBy { dayLabel(it.optDouble("t")) }.forEach { (d, list) ->
             val dayTs = list.map { it.optDouble("t") }.toSet(); val allDay = picked.containsAll(dayTs)
             // the day's title: hold it (or tap "Select day" while selecting) to pick the whole day
             Row(Modifier.fillMaxWidth().combinedClickable(onClick = { if (selecting) picked = if (allDay) picked - dayTs else picked + dayTs },
@@ -117,10 +121,10 @@ import java.util.*
             Group {
                 list.forEachIndexed { i, e ->
                     val lvl = e.optString("level"); val t = e.optDouble("t"); val on = t in picked
-                    val bg by androidx.compose.animation.animateColorAsState(if (on) N.blue.copy(alpha = 0.14f) else androidx.compose.ui.graphics.Color.Transparent, label = "pick")
+                    val bgTarget = if (on) N.blue.copy(alpha = 0.14f) else androidx.compose.ui.graphics.Color.Transparent
+                    val bg = if (reduceMotion() || lite()) bgTarget else androidx.compose.animation.animateColorAsState(bgTarget, label = "pick").value        // (an animation per row costs a lot to build)
                     // archived rows fold away and the ones below slide up, instead of jumping
-                    key(t) { androidx.compose.animation.AnimatedVisibility(t !in leaving,
-                        exit = if (reduceMotion()) androidx.compose.animation.fadeOut() else androidx.compose.animation.shrinkVertically(androidx.compose.animation.core.tween(280)) + androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(180))) { Column {
+                    key(t) { LeaveAnimated(t in leaving) { Column {
                     if (i > 0) RowDivider()
                     SwipeRow(start = if (selecting) null else SwipeAction("Archive", Icons.Rounded.Inventory2, N.blue) { archive(listOf(t)) },
                              end = if (selecting) null else SwipeAction("Archive", Icons.Rounded.Inventory2, N.blue) { archive(listOf(t)) }) {
@@ -782,4 +786,14 @@ fun evRoute(e: JSONObject): Route? {
         c == "memory" || c == "service" || Rx.evStatus.containsMatchIn(t) -> Route.Status
         else -> null
     }
+}
+
+
+/** An Inbox row that's being archived folds away (and the ones below slide up); every other row is just its content — an animation host per
+ *  row is a lot to build when the page opens. */
+@Composable private fun LeaveAnimated(leaving: Boolean, content: @Composable () -> Unit) {
+    if (!leaving) { content(); return }
+    val st = remember { androidx.compose.animation.core.MutableTransitionState(true) }; st.targetState = false
+    androidx.compose.animation.AnimatedVisibility(st,
+        exit = if (reduceMotion()) androidx.compose.animation.fadeOut() else androidx.compose.animation.shrinkVertically(androidx.compose.animation.core.tween(280)) + androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(180))) { content() }
 }

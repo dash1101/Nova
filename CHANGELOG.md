@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.12-alpha (app)
+- **Heavy pages no longer freeze while they open.** The Inbox used to build all its rows (25 to 60) before showing anything; it now shows the first screenful at once and builds the rest over the next few frames. The Menu does the same with the sections below the screen. Each Inbox row is lighter to build too (no animation host or color animation per row unless it's actually leaving or you're using full animations). In testing, the heaviest frame when opening the Inbox fell from about 42 ms to about 24 ms, and the Menu's from about 24 ms to about 12 ms.
+- Still the heaviest moment: the first time each page is opened after an update, when Android has to run its code for the first time. Letting the tablet sit idle on its charger once after updating lets Android compile Nova ahead of time (Nova ships a profile for that), which is the real cure.
+
 ## 0.9.11-alpha (app)
 - **A frame meter that tells you where the time goes** (Developer options → Show frame rate). The old one asked for a new frame every refresh, so an idle screen always read 50–60 fps. It now listens to what Android timed for each frame Nova really drew: **"idle"** when nothing is moving, otherwise frames drawn per second, how long the app's own work took, how long the drawing took, and the slowest recent frame. **Copy a frame report** (right under it) puts the last few hundred frames, split into app and drawing time, on the clipboard for a bug report.
 - Pages no longer make an extra copy of themselves for the frosted-glass blur on devices that never show it (older or slow devices, Material, Breeze, Reduce transparency).
