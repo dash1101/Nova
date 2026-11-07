@@ -68,24 +68,62 @@ object DevLog {
     }
 }
 
-/** A small meter at the top: frames per second over the last half second, and the slowest frame in it. */
-@Composable fun FpsMeter(modifier: Modifier = Modifier) {
-    var fps by remember { mutableIntStateOf(0) }; var worst by remember { mutableIntStateOf(0) }
-    val hz = androidx.compose.ui.platform.LocalView.current.display?.refreshRate?.toInt() ?: 60
-    LaunchedEffect(Unit) {
-        var last = 0L; var n = 0; var t0 = 0L; var w = 0L
-        while (true) withFrameNanos { now ->
-            if (last != 0L) { n++; w = maxOf(w, now - last) }
-            if (t0 == 0L) t0 = now
-            if (now - t0 >= 500_000_000L) { fps = (n * 1_000_000_000L / (now - t0)).toInt(); worst = (w / 1_000_000).toInt(); n = 0; w = 0; t0 = now }
-            last = now
+/** What Android itself timed for each frame Nova drew (FrameMetrics): how long the app's thread took, how long drawing took after that, and the
+ *  total. It only hears about frames that were really drawn, so watching it never makes the screen redraw — an idle screen reads as idle. */
+object FrameStats {
+    private const val CAP = 600
+    private val ui = FloatArray(CAP); private val gpu = FloatArray(CAP); private val tot = FloatArray(CAP); private val at = LongArray(CAP); private var n = 0L
+    private var window: android.view.Window? = null; private var listener: android.view.Window.OnFrameMetricsAvailableListener? = null
+    private var thread: android.os.HandlerThread? = null
+    class Snap(val fps: Int, val frames: Int, val seconds: Float, val tot: FloatArray, val ui: FloatArray, val gpu: FloatArray)
+    fun start(w: android.view.Window) {
+        if (window === w) return; stop()
+        val t = android.os.HandlerThread("nova-frames").also { it.start() }; thread = t
+        val l = android.view.Window.OnFrameMetricsAvailableListener { _, fm, _ ->
+            fun ms(k: Int) = fm.getMetric(k) / 1e6f
+            val u = ms(android.view.FrameMetrics.INPUT_HANDLING_DURATION) + ms(android.view.FrameMetrics.ANIMATION_DURATION) + ms(android.view.FrameMetrics.LAYOUT_MEASURE_DURATION) + ms(android.view.FrameMetrics.DRAW_DURATION)
+            val g = ms(android.view.FrameMetrics.SYNC_DURATION) + ms(android.view.FrameMetrics.COMMAND_ISSUE_DURATION) + ms(android.view.FrameMetrics.SWAP_BUFFERS_DURATION)
+            synchronized(this) { val i = (n % CAP).toInt(); ui[i] = u; gpu[i] = g; tot[i] = ms(android.view.FrameMetrics.TOTAL_DURATION); at[i] = System.nanoTime(); n++ }
         }
+        listener = l; window = w; w.addOnFrameMetricsAvailableListener(l, android.os.Handler(t.looper))
     }
-    val c = when { fps >= hz * 0.9 -> Color(0xFF30D158); fps >= hz * 0.6 -> Color(0xFFFF9F0A); else -> Color(0xFFFF453A) }
+    fun stop() { listener?.let { window?.removeOnFrameMetricsAvailableListener(it) }; listener = null; window = null; thread?.quitSafely(); thread = null }
+    @Synchronized fun snapshot(): Snap {
+        val k = minOf(n, CAP.toLong()).toInt(); val now = System.nanoTime()
+        val idx = (0 until k).map { ((n - 1 - it) % CAP).toInt() }
+        val fps = idx.count { now - at[it] < 1_000_000_000L }
+        val span = if (k > 1) (at[idx.first()] - at[idx.last()]) / 1e9f else 0f
+        return Snap(fps, k, span, FloatArray(k) { tot[idx[it]] }, FloatArray(k) { ui[idx[it]] }, FloatArray(k) { gpu[idx[it]] })
+    }
+    private fun pct(a: FloatArray, p: Float): Float = if (a.isEmpty()) 0f else a.sortedArray()[((a.size - 1) * p).toInt()]
+    /** Plain text for a bug report: how the last few hundred frames went, split into the app's part and the drawing part. */
+    fun report(s: Snap = snapshot()): String {
+        fun row(name: String, a: FloatArray) = "%-22s p50 %5.1f   p90 %5.1f   p99 %5.1f   worst %5.1f ms".format(name, pct(a, .5f), pct(a, .9f), pct(a, .99f), a.maxOrNull() ?: 0f)
+        return "Nova $APP_VERSION · Android ${android.os.Build.VERSION.RELEASE} · ${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}\n" +
+            "${s.frames} frames drawn over ${"%.1f".format(s.seconds)} s (frames are only drawn when something changes)\n" +
+            row("whole frame", s.tot) + "\n" + row("app thread (UI)", s.ui) + "\n" + row("drawing (GPU side)", s.gpu)
+    }
+}
+
+/** A small meter at the top: frames actually drawn in the last second (0 when nothing is moving), and where the time goes. */
+@Composable fun FpsMeter(modifier: Modifier = Modifier) {
+    val view = androidx.compose.ui.platform.LocalView.current
+    var snap by remember { mutableStateOf(FrameStats.snapshot()) }
+    val hz = view.display?.refreshRate?.toInt() ?: 60
+    DisposableEffect(view) {
+        var c: android.content.Context = view.context
+        while (c is android.content.ContextWrapper && c !is android.app.Activity) c = c.baseContext
+        (c as? android.app.Activity)?.window?.let { FrameStats.start(it) }
+        onDispose { FrameStats.stop() }
+    }
+    LaunchedEffect(Unit) { while (true) { kotlinx.coroutines.delay(500); snap = FrameStats.snapshot() } }
+    val recent = snap.tot.take(30)
+    val c = when { snap.fps == 0 -> Color(0xFF8E8E93); recent.isNotEmpty() && recent.average() < 1000f / hz * 1.1 -> Color(0xFF30D158); recent.isNotEmpty() && recent.average() < 1000f / hz * 2 -> Color(0xFFFF9F0A); else -> Color(0xFFFF453A) }
+    fun avg(a: FloatArray) = a.take(30).let { if (it.isEmpty()) 0 else it.average().toInt() }
     Row(modifier.statusBarsPadding().padding(top = 4.dp).background(Color.Black.copy(alpha = .72f), RoundedCornerShape(10.dp)).padding(horizontal = 10.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically) {
-        Text("$fps fps", color = c, fontSize = 13.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
-        Text("  ·  worst ${worst} ms  ·  ${hz} Hz", color = Color.White.copy(alpha = .8f), fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+        Text(if (snap.fps == 0) "idle" else "${snap.fps} drawn/s", color = c, fontSize = 13.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+        Text("  ·  app ${avg(snap.ui)} ms  ·  drawing ${avg(snap.gpu)} ms  ·  worst ${(snap.tot.take(60).maxOrNull() ?: 0f).toInt()} ms", color = Color.White.copy(alpha = .8f), fontSize = 12.sp, fontFamily = FontFamily.Monospace)
     }
 }
 
@@ -96,7 +134,11 @@ object DevLog {
         Note("Tools for checking how Nova runs on this ${DeviceForm.noun}. They're only on this ${DeviceForm.noun}, and off unless you turn them on.", 13.sp, 4.dp)
         SectionLabel("Drawing")
         Group {
-            SwitchRow("Show frame rate", "A meter at the top: frames per second and the slowest frame", Dev.fps) { Dev.set(ctx, "fps", it) }
+            SwitchRow("Show frame rate", "A meter at the top: frames drawn per second (0 = idle), and how long the app and the drawing each take", Dev.fps) { Dev.set(ctx, "fps", it) }
+            if (Dev.fps) { RowDivider(); Row1("Copy a frame report", "How the last few hundred frames went — paste it into a bug report", false, Icons.Rounded.ContentCopy, onClick = {
+                val cm = ctx.getSystemService(android.content.ClipboardManager::class.java)
+                cm.setPrimaryClip(android.content.ClipData.newPlainText("Nova", FrameStats.report())); app.toast("Copied") }) }
+            RowDivider()
             RowDivider()
             SwitchRow("Show glass areas", "Outlines every Glass layer, to see what's being drawn", Dev.bounds) { Dev.set(ctx, "bounds", it) }
             RowDivider()

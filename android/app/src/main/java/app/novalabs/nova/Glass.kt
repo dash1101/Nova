@@ -52,6 +52,10 @@ object Space {
 @Composable private fun edge(): Brush = Brush.verticalGradient(
     listOf(Color.White.copy(alpha = if (N.dark) 0.14f else 0.85f), Color.White.copy(alpha = if (N.dark) 0.02f else 0.25f)))
 
+/** Whether anything reads a page's blur source: only the frosted glass does, and that is off on a slow device, in Material and Breeze, and with Reduce
+ *  transparency. When nothing reads it, copying the whole page into a layer for it on every frame is wasted work. */
+@Composable fun hazeNeeded(): Boolean = !lite() && !solidGlass() && !N.material && N.preset != "breeze"
+
 /** Real frosted glass (backdrop blur) for floating elements. Falls back to a translucent fill. */
 @Composable fun Modifier.frosted(state: HazeState?, shape: Shape, elevation: Dp = 14.dp, alpha: Float = 1f): Modifier {
     if (N.material || N.preset == "breeze" || solidGlass())    // Material You, Breeze, Reduce transparency: solid surfaces with a soft shadow, no glass

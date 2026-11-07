@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.11-alpha (app)
+- **A frame meter that tells you where the time goes** (Developer options → Show frame rate). The old one asked for a new frame every refresh, so an idle screen always read 50–60 fps. It now listens to what Android timed for each frame Nova really drew: **"idle"** when nothing is moving, otherwise frames drawn per second, how long the app's own work took, how long the drawing took, and the slowest recent frame. **Copy a frame report** (right under it) puts the last few hundred frames, split into app and drawing time, on the clipboard for a bug report.
+- Pages no longer make an extra copy of themselves for the frosted-glass blur on devices that never show it (older or slow devices, Material, Breeze, Reduce transparency).
+
 ## 0.9.10-alpha (server, Nova web and app)
 - **A lot less lag on older tablets** (found by measuring a tablet-sized Android 7 emulator, frame by frame):
   - **The assistant's orb was making the whole screen redraw about 50 times a second, on every page** — working out and sorting 190 dots each time. It now allocates nothing per frame, draws in eight depth layers instead of sorting, and moves on one shared heartbeat with the server picture. An idle page (Inbox, Menu…) now redraws about 8 times a second instead of about 50 — and not at all with the assistant button turned off; Home about 13 (the fan and lights move there) instead of about 46.

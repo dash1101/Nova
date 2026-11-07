@@ -103,7 +103,7 @@ data class TopAction(val icon: ImageVector, val label: String, val onClick: () -
     val haze = remember { dev.chrisbanes.haze.HazeState() }
     Box(Modifier.fillMaxSize()) {
       // the blur source includes the background glow, so the frosted buttons pick up its color
-      Box(Modifier.fillMaxSize().hazeSource(haze)) {
+      Box(Modifier.fillMaxSize().then(if (hazeNeeded()) Modifier.hazeSource(haze) else Modifier)) {
         GlowLayer()
         Column(Modifier.fillMaxSize().imePadding().verticalScroll(scroll)) {       // the keyboard pushes the page up, not over it
             val compact = LocalCompactHeight.current

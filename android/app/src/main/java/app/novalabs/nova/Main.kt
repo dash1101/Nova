@@ -427,7 +427,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {   // FragmentAct
                     // Pages come in from the right, so going back always moves them to the right and brings the
                     // one underneath in from the left — whichever edge you swipe from (like One UI's Settings).
                     val dirX = 1
-                    Box(Modifier.fillMaxSize().hazeSource(rootHaze).pageSwipe(app)) {
+                    Box(Modifier.fillMaxSize().then(if (hazeNeeded()) Modifier.hazeSource(rootHaze) else Modifier).pageSwipe(app)) {
                     val under = app.backTarget
                     if (p > 0.001f && under != null) Box(Modifier.fillMaxSize().graphicsLayer {
                         // the page underneath comes forward from behind, sliding in slightly from the opposite side
@@ -574,7 +574,7 @@ private fun Modifier.paneTouch(app: AppState, left: Boolean) = pointerInput(left
     val hasNav = app.top != Route.Dashboard                // the always-on dashboard gets the whole screen
     SideEffect { if (!hasNav) AppWindows.navPx = 0 }
     Box(Modifier.fillMaxSize()) {
-    Box(Modifier.fillMaxSize().then(LocalRootHaze.current?.let { Modifier.hazeSource(it) } ?: Modifier)) { GlowLayer()      // one glow behind the side pill and both panes
+    Box(Modifier.fillMaxSize().then(LocalRootHaze.current?.takeIf { hazeNeeded() }?.let { Modifier.hazeSource(it) } ?: Modifier)) { GlowLayer()      // one glow behind the side pill and both panes
     // the top and bottom fades carry on under the side pill, so there's no seam where the page starts
     if (hasNav && navW > 0) Box(Modifier.width(with(density) { navW.toDp() }).fillMaxHeight()) {
         StatusBarScrim(Modifier.align(Alignment.TopStart)); BottomScrim(Modifier.align(Alignment.BottomStart)) }
