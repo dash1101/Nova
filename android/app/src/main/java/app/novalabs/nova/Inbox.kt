@@ -69,7 +69,7 @@ import java.util.*
     }
     val shown = events.filter { e -> when (filter) { 1 -> e.optString("level") in listOf("warning", "critical"); 2 -> e.optString("level") == "critical"
         3 -> e.optString("category") == "login"; else -> true } }
-    val day = SimpleDateFormat("EEEE, MMM d", Locale.getDefault()); val hm = SimpleDateFormat("HH:mm", Locale.getDefault())
+    val day = remember { SimpleDateFormat("EEEE, MMM d", Locale.getDefault()) }; val hm = remember { SimpleDateFormat("HH:mm", Locale.getDefault()) }      // (made once, not on every pass)
     val today = day.format(Date()); val yesterday = day.format(Date(System.currentTimeMillis() - 86_400_000L))
     fun dayLabel(t: Double) = day.format(Date((t * 1000).toLong())).let { when (it) { today -> "Today"; yesterday -> "Yesterday"; else -> it } }
     LaunchedEffect(shown.map { it.optDouble("t") }) { picked = picked.filter { t -> shown.any { it.optDouble("t") == t } }.toSet() }
@@ -105,9 +105,9 @@ import java.util.*
         var limit by remember { mutableIntStateOf(if (lite()) 25 else 60) }                 // (a slow device builds every row at once when you open the page)
         // The rows are built a few at a time: the first screenful at once (so the page is there at once), the rest over the next few frames,
         // instead of one long freeze while sixty rows are put together.
-        var built by remember { mutableIntStateOf(if (lite()) 7 else 14) }
-        LaunchedEffect(shown.size, limit) { while (built < minOf(limit, shown.size)) { androidx.compose.runtime.withFrameNanos { }; delay(40); built += 3 } }
-        shown.take(minOf(limit, built)).groupBy { dayLabel(it.optDouble("t")) }.forEach { (d, list) ->
+        // (each row waits for its own turn, so the page itself is not redone for every batch)
+        var rowNo = 0
+        shown.take(limit).groupBy { dayLabel(it.optDouble("t")) }.forEach { (d, list) ->
             val dayTs = list.map { it.optDouble("t") }.toSet(); val allDay = picked.containsAll(dayTs)
             // the day's title: hold it (or tap "Select day" while selecting) to pick the whole day
             Row(Modifier.fillMaxWidth().combinedClickable(onClick = { if (selecting) picked = if (allDay) picked - dayTs else picked + dayTs },
@@ -124,7 +124,8 @@ import java.util.*
                     val bgTarget = if (on) N.blue.copy(alpha = 0.14f) else androidx.compose.ui.graphics.Color.Transparent
                     val bg = if (reduceMotion() || lite()) bgTarget else androidx.compose.animation.animateColorAsState(bgTarget, label = "pick").value        // (an animation per row costs a lot to build)
                     // archived rows fold away and the ones below slide up, instead of jumping
-                    key(t) { LeaveAnimated(t in leaving) { Column {
+                    val turn = rowNo++ / 3 - 2                  // the first six rows at once, then three more every few frames
+                    key(t) { Later(turn) { LeaveAnimated(t in leaving) { Column {
                     if (i > 0) RowDivider()
                     SwipeRow(start = if (selecting) null else SwipeAction("Archive", Icons.Rounded.Inventory2, N.blue) { archive(listOf(t)) },
                              end = if (selecting) null else SwipeAction("Archive", Icons.Rounded.Inventory2, N.blue) { archive(listOf(t)) }) {
@@ -150,7 +151,7 @@ import java.util.*
                         Text(hm.format(Date((e.optDouble("t") * 1000).toLong())), color = N.sub, fontSize = 13.sp)
                         evRoute(e)?.let { r -> Icon(Icons.Rounded.ChevronRight, "Open", tint = N.sub, modifier = Modifier.padding(start = 4.dp).size(22.dp).clip(CircleShape).clickable { app.go(r) }) }
                     }
-                    } } } }
+                    } } } } }
                 }
             }
         }

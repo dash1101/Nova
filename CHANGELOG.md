@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.9.13-alpha (app)
+- **The Inbox no longer redoes itself for every batch of rows.** Version 0.9.12 built rows in batches by changing one counter on the page, which made Android re-run the whole page's code for every row already built — more work, not less. Each row now waits for its own turn, so the page is only built once; the date formats are made once instead of on every pass too.
+
 ## 0.9.12-alpha (app)
 - **Heavy pages no longer freeze while they open.** The Inbox used to build all its rows (25 to 60) before showing anything; it now shows the first screenful at once and builds the rest over the next few frames. The Menu does the same with the sections below the screen. Each Inbox row is lighter to build too (no animation host or color animation per row unless it's actually leaving or you're using full animations). In testing, the heaviest frame when opening the Inbox fell from about 42 ms to about 24 ms, and the Menu's from about 24 ms to about 12 ms.
 - Still the heaviest moment: the first time each page is opened after an update, when Android has to run its code for the first time. Letting the tablet sit idle on its charger once after updating lets Android compile Nova ahead of time (Nova ships a profile for that), which is the real cure.

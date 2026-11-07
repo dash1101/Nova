@@ -911,6 +911,7 @@ fun bytesHuman(b: Long): String {
 /** Builds its content a moment after the page first appears: [step] 1, 2, 3… are built one after another, a few frames apart. For the parts of a long page
  *  that start below the screen — the page is on screen at once instead of after one long freeze while all of it is put together. */
 @Composable fun Later(step: Int, content: @Composable () -> Unit) {
+    if (step <= 0) { content(); return }
     var ready by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { repeat(1 + step * 2) { androidx.compose.runtime.withFrameNanos { }; kotlinx.coroutines.delay(30) }; ready = true }
     if (ready) content()
