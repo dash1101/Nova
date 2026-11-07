@@ -237,10 +237,10 @@ fun storageList(m: JSONObject?): List<StorageUse> {
     if (list != null && list.length() > 0) return (0 until list.length()).map { list.getJSONObject(it) }.map {
         StorageUse(it.optString("name"), it.optDouble("pct").toFloat(), "${bytesHuman(it.optLong("free"))} free", it.optString("mount")) }
     val root = m?.optString("root_used")?.takeIf { it.isNotEmpty() } ?: return emptyList()      // servers without the monitor's list
-    return listOf(StorageUse("System drive", Regex("(\\d+)%").find(root)?.groupValues?.get(1)?.toFloatOrNull() ?: 0f, Regex("\\(([^)]*)\\)").find(root)?.groupValues?.get(1) ?: root, "/"))
+    return listOf(StorageUse("System drive", Rx.percent.find(root)?.groupValues?.get(1)?.toFloatOrNull() ?: 0f, Rx.inParens.find(root)?.groupValues?.get(1) ?: root, "/"))
 }
 
-private fun pct(s: String?) = s?.let { Regex("(\\d+)%").find(it)?.groupValues?.get(1)?.toFloatOrNull() }
+private fun pct(s: String?) = s?.let { Rx.percent.find(it)?.groupValues?.get(1)?.toFloatOrNull() }
 fun rate(b: Double): String = when { b >= 1e6 -> "%.1f MB/s".format(b / 1e6); b >= 1e3 -> "%.0f kB/s".format(b / 1e3); else -> "%.0f B/s".format(b) }
 private fun uptime(s: Long) = "${s / 86400}d ${s % 86400 / 3600}h ${s % 3600 / 60}m"
 
@@ -270,7 +270,7 @@ private fun uptime(s: Long) = "${s / 86400}d ${s % 86400 / 3600}h ${s % 3600 / 6
             }
             Spacer(Modifier.height(10.dp))
             Text(if (level == "ok") "All systems normal" else st?.optString("headline") ?: "", color = N.text, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-            Text("Updated ${st?.optString("updated_local")?.let { Regex("\\d{1,2}:\\d{2}").find(it)?.value } ?: "—"} · up ${now?.optLong("uptime_s")?.let { uptime(it) } ?: m?.optString("uptime") ?: "—"}",
+            Text("Updated ${st?.optString("updated_local")?.let { Rx.clock.find(it)?.value } ?: "—"} · up ${now?.optLong("uptime_s")?.let { uptime(it) } ?: m?.optString("uptime") ?: "—"}",
                 color = N.sub, fontSize = 14.sp)
         }
         // Active alerts

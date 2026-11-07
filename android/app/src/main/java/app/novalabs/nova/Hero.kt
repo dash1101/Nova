@@ -34,6 +34,22 @@ fun fanLook(f: JSONObject?): FanLook {
         hex2 = f?.optString("color2")?.ifEmpty { null } ?: "#bf5af2")
 }
 
+/** One frame of a software effect for the whole ring, worked out once per tick. (Asking for one LED's color used to work out every LED's,
+ *  for every LED, twice a tick — and the strips under the fan do the same.) A few entries, so the ring and the strips don't evict each other. */
+private val memoKeys = arrayOfNulls<Pair<LightFx.Fx, Double>>(4); private val memoVals = arrayOfNulls<List<IntArray>>(4); private var memoNext = 0
+private fun fxFrame(fx: LightFx.Fx, tMs: Double): List<IntArray> {
+    for (i in 0 until 4) { val k = memoKeys[i]; if (k != null && k.second == tMs && k.first == fx) return memoVals[i]!! }
+    val f = LightFx.frame(fx, tMs / 1000.0); memoKeys[memoNext] = fx to tMs; memoVals[memoNext] = f; memoNext = (memoNext + 1) % 4; return f
+}
+/** The fan blade's outline for a ring of this size, kept between frames (a new Path every frame had to be rasterized again every frame). */
+private class BladeCache { private var cx = Float.NaN; private var cy = Float.NaN; private var r = Float.NaN; private val path = Path()
+    fun get(c: Offset, r: Float): Path { if (c.x != cx || c.y != cy || r != this.r) { cx = c.x; cy = c.y; this.r = r
+        path.reset(); path.moveTo(c.x, c.y - r * 0.2f)
+        path.cubicTo(c.x + r * 0.55f, c.y - r * 0.35f, c.x + r * 0.62f, c.y - r * 0.78f, c.x + r * 0.12f, c.y - r * 0.86f)
+        path.cubicTo(c.x + r * 0.25f, c.y - r * 0.55f, c.x + r * 0.1f, c.y - r * 0.32f, c.x, c.y - r * 0.2f) }
+        return path }
+}
+
 private fun hsv(h: Float) = Color.hsv(((h % 1f) + 1f) % 1f * 360f, 1f, 1f)
 private val CYCLE = listOf(Color(0xFFFF0000), Color(0xFFFF7F00), Color(0xFFFFFF00), Color(0xFF00FF00), Color(0xFF0000FF), Color(0xFF4B0082), Color(0xFF8F00FF))
 
@@ -47,7 +63,7 @@ private fun ledColor(look: FanLook, j: Int, n: Int, tMs: Double, reverse: Boolea
     val per = periodMs(look.speed)
     val jj = if (reverse) (n - j) % n else j
     if (LightFx.isSoftware(look.effect, look.palette, look.rainbow)) {        // drawn by Nova's animator from the clock: identical maths
-        val c = LightFx.frame(LightFx.Fx(look.effect, n, look.speed, look.rainbow, look.palette, look.hex, look.hex2), tMs / 1000.0)[jj]
+        val c = fxFrame(LightFx.Fx(look.effect, n, look.speed, look.rainbow, look.palette, look.hex, look.hex2), tMs)[jj]
         val m = maxOf(c[0], c[1], c[2]).coerceAtLeast(1)
         return Color(c[0] / m.toFloat(), c[1] / m.toFloat(), c[2] / m.toFloat()) to m / 255f       // hue + level
     }
@@ -70,8 +86,10 @@ private fun ledColor(look: FanLook, j: Int, n: Int, tMs: Double, reverse: Boolea
     }
 }
 
+private val TRAIL_STILL = listOf(0f to 1f); private val TRAIL = listOf(-7.5f to 0.12f, -5f to 0.2f, -2.5f to 0.35f, 0f to 1f); private val TRAIL_SLOW = listOf(-5f to 0.25f, 0f to 1f)
+
 /** The fan ring: a continuous glowing strip (the LEDs' colors blended round it), with spinning blades. */
-private fun DrawScope.fanRing(c: Offset, r: Float, look: FanLook, tMs: Double, spin: Float, dark: Boolean, reverse: Boolean) {
+private fun DrawScope.fanRing(c: Offset, r: Float, look: FanLook, tMs: Double, spin: Float, dark: Boolean, reverse: Boolean, bladeCache: BladeCache, slow: Boolean) {
     drawCircle(if (dark) Color(0xFF151518) else Color(0xFF2A2A30), r * 1.12f, c)
     if (look.on) {
         val n = look.leds; val a0 = 0.25f + 0.75f * look.brightness
@@ -79,19 +97,16 @@ private fun DrawScope.fanRing(c: Offset, r: Float, look: FanLook, tMs: Double, s
         val stops = List(n) { j -> val (col, k) = ledColor(look, j, n, tMs, reverse); col.copy(alpha = (a0 * k).coerceIn(0.03f, 1f)) }
         val brush = Brush.sweepGradient(stops + stops.first(), c)
         rotate(-90f, c) {                  // the sweep starts at 3 o'clock; LED 0 belongs at the top
-            for (i in 6 downTo 1) drawCircle(brush, r * (1.0f + i * 0.06f), c, alpha = 0.07f * (7 - i) / 6f, style = Stroke(r * 0.08f * i))
+            // (a slow device draws two of the six soft rings, a little stronger: each is a wide gradient-filled stroke)
+            for (i in 6 downTo 1) if (!slow || i == 6 || i == 3) drawCircle(brush, r * (1.0f + i * 0.06f), c, alpha = 0.07f * (7 - i) / 6f * (if (slow) 1.8f else 1f), style = Stroke(r * 0.08f * i))
             drawCircle(brush, r, c, style = Stroke(r * 0.12f))
         }
     } else drawCircle(Color(0xFF2C2C30), r, c, style = Stroke(r * 0.12f))
     drawCircle(if (dark) Color(0xFF0E0E10) else Color(0xFF1E1E22), r * 0.93f, c)
     // Motion blur: the blades drawn a few more times just behind where they are, fading out — so a
     // 30 fps picture reads as a smooth spin instead of a stutter.
-    val blade = Path().apply {
-        moveTo(c.x, c.y - r * 0.2f)
-        cubicTo(c.x + r * 0.55f, c.y - r * 0.35f, c.x + r * 0.62f, c.y - r * 0.78f, c.x + r * 0.12f, c.y - r * 0.86f)
-        cubicTo(c.x + r * 0.25f, c.y - r * 0.55f, c.x + r * 0.1f, c.y - r * 0.32f, c.x, c.y - r * 0.2f)
-    }
-    val trail = if (spin == 0f) listOf(0f to 1f) else listOf(-7.5f to 0.12f, -5f to 0.2f, -2.5f to 0.35f, 0f to 1f)
+    val blade = bladeCache.get(c, r)
+    val trail = if (spin == 0f) TRAIL_STILL else if (slow) TRAIL_SLOW else TRAIL
     trail.forEach { (d, a) -> rotate(spin + d, c) {
         for (b in 0 until 7) rotate(b * 360f / 7, c) { drawPath(blade, Color(0xFF3A3A40).copy(alpha = a)) }
     } }
@@ -108,14 +123,9 @@ private fun ringGlow(look: FanLook, tMs: Double, reverse: Boolean): Color {
 
 /** Frame clock in server time (ms), so the picture's wave lines up with the real fan. */
 @Composable private fun serverClock(skewMs: Long): State<Double> {
-    val t = remember { mutableDoubleStateOf(System.currentTimeMillis().toDouble()) }
-    LaunchedEffect(skewMs) {
-        if (reduceMotion()) { t.doubleValue = (System.currentTimeMillis() + skewMs).toDouble(); return@LaunchedEffect }
-        // ~30 fps is plenty for a slow light wave, and lets a 120 Hz screen (and the blur over it) rest in between
-        val gap = if (lite()) 66L else 30L                      // older phones: ~15 fps is still smooth for a slow wave
-        while (true) { withFrameNanos { t.doubleValue = (System.currentTimeMillis() + skewMs).toDouble() }; kotlinx.coroutines.delay(gap) }
-    }
-    return t
+    if (reduceMotion()) return remember(skewMs) { mutableDoubleStateOf((System.currentTimeMillis() + skewMs).toDouble()) }
+    UseAmbient()           // ~30 fps is plenty for a slow light wave (~15 on older devices), and it beats together with the orb
+    return remember(skewMs) { derivedStateOf { (Ambient.ms + skewMs).toDouble() } }
 }
 
 /** How often a drive's light blinks (% of 110 ms slots), from its real activity on the server
@@ -141,13 +151,14 @@ private fun activity(i: Int, tMs: Double, pct: Int = 9): Float {
  * amber when worn or hot, red (pulsing) when missing or failing.
  */
 @Composable fun ServerHero(fan: JSONObject?, statusColor: Color, drives: List<JSONObject>?, skewMs: Long, modifier: Modifier = Modifier, io: JSONObject? = null) {
-    val look = fanLook(fan); val dark = N.dark; val reverse = AppPrefs.fanReverse
-    val t by serverClock(skewMs)
-    Canvas(modifier) {
+    val look = fanLook(fan); val dark = N.dark; val reverse = AppPrefs.fanReverse; val slow = lite()
+    val t by serverClock(skewMs); val blade = remember { BladeCache() }
+    Box(modifier) {
+    // the case never changes: drawn once in a layer of its own, so each tick of the fan doesn't redraw it
+    Canvas(Modifier.fillMaxSize().graphicsLayer {}) {
         val w = size.width; val h = size.height
         val cw = (w * 0.56f).coerceAtMost(h * 0.62f); val ch = cw * 1.42f
         val left = (w - cw) / 2; val top = (h - ch) / 2
-        val spin = if (reduceMotion()) 0f else ((t % 2200.0) / 2200.0 * 360).toFloat()
         drawOval(Color.Black.copy(alpha = if (dark) 0.6f else 0.18f), Offset(left + cw * 0.05f, top + ch * 0.97f), Size(cw * 0.9f, ch * 0.06f))
         drawRoundRect(Brush.verticalGradient(listOf(Color(0xFF4A4A52), Color(0xFF26262B), Color(0xFF1B1B1F)), top, top + ch),
             Offset(left, top), Size(cw, ch), CornerRadius(cw * 0.07f))
@@ -155,9 +166,16 @@ private fun activity(i: Int, tMs: Double, pct: Int = 9): Float {
         val gp = cw * 0.07f
         drawRoundRect(Brush.linearGradient(listOf(Color(0xFF101014), Color(0xFF17171C)), Offset(left, top), Offset(left + cw, top + ch)),
             Offset(left + gp, top + gp), Size(cw - 2 * gp, ch - 2 * gp * 1.6f), CornerRadius(cw * 0.04f))
+    }
+    Canvas(Modifier.fillMaxSize().graphicsLayer {}) {
+        val w = size.width; val h = size.height
+        val cw = (w * 0.56f).coerceAtMost(h * 0.62f); val ch = cw * 1.42f
+        val left = (w - cw) / 2; val top = (h - ch) / 2
+        val spin = if (reduceMotion()) 0f else ((t % 2200.0) / 2200.0 * 360).toFloat()
+        val gp = cw * 0.07f
         val fc = Offset(left + cw / 2, top + ch * 0.33f)
         if (look.on) drawCircle(Brush.radialGradient(listOf(ringGlow(look, t, reverse).copy(alpha = 0.18f + 0.22f * look.brightness), Color.Transparent), fc, cw * 0.6f), cw * 0.6f, fc)
-        fanRing(fc, cw * 0.29f, look, t, spin, dark, reverse)
+        fanRing(fc, cw * 0.29f, look, t, spin, dark, reverse, blade, slow)
         // the two bars under the fan: plain, or your LED strips (Lighting → your lights), showing what they show
         val strips = fan?.optJSONArray("zones")?.let { a -> (0 until a.length()).map { a.getJSONObject(it) } }?.filter { it.optString("shape") == "strip" }?.take(2) ?: emptyList()
         listOf(Triple(0.62f, 0.07f, Color(0xFF26262C)), Triple(0.72f, 0.05f, Color(0xFF1F1F25))).forEachIndexed { k, (yy, hh, base) ->
@@ -196,17 +214,18 @@ private fun activity(i: Int, tMs: Double, pct: Int = 9): Float {
         drawCircle(statusColor.copy(alpha = 0.35f), cw * 0.03f, Offset(left + cw * 0.5f, top + ch * 0.935f))
         drawCircle(statusColor, cw * 0.016f, Offset(left + cw * 0.5f, top + ch * 0.935f))
     }
+    }
 }
 
 /** Big fan for the Lighting page. */
 @Composable fun FanHero(fan: JSONObject?, skewMs: Long, modifier: Modifier = Modifier) {
-    val look = fanLook(fan); val dark = N.dark; val reverse = AppPrefs.fanReverse
-    val t by serverClock(skewMs)
+    val look = fanLook(fan); val dark = N.dark; val reverse = AppPrefs.fanReverse; val slow = lite()
+    val t by serverClock(skewMs); val blade = remember { BladeCache() }
     Canvas(modifier) {
         val r = size.minDimension * 0.34f; val c = Offset(size.width / 2, size.height / 2)
         val spin = if (reduceMotion()) 0f else ((t % 2200.0) / 2200.0 * 360).toFloat()
         if (look.on) drawCircle(Brush.radialGradient(listOf(ringGlow(look, t, reverse).copy(alpha = 0.2f + 0.25f * look.brightness), Color.Transparent), c, r * 1.9f), r * 1.9f, c)
-        fanRing(c, r, look, t, spin, dark, reverse)
+        fanRing(c, r, look, t, spin, dark, reverse, blade, slow)
     }
 }
 

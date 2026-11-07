@@ -453,8 +453,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {   // FragmentAct
                         GlowBackground(Modifier.graphicsLayer { alpha = if (app.navDir == 2 && r != app.top) 0f else 1f }) { Screen(app, r) }
                     }
                     }
-                    StatusBarScrim(Modifier.align(Alignment.TopCenter))
-                    BottomScrim(Modifier.align(Alignment.BottomCenter))
+                    if (app.top != Route.Dashboard) { StatusBarScrim(Modifier.align(Alignment.TopCenter)); BottomScrim(Modifier.align(Alignment.BottomCenter)) }
                     val tabs = navTabs(app)
                     val tabIndex = tabs.indexOfFirst { it.route == app.top }
                     val openApp = (app.top as? Route.AppFrame)?.id ?: Builtins.current(app.stack.first())
@@ -472,7 +471,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {   // FragmentAct
                 // the assistant's orb, on every page but its own (Appearance → Assistant button). Drag it anywhere; drop it on
                 // the navigation pill and it becomes a tab there instead (take it out again in the pill's editor).
                 val docked = navTabs(app).any { it.id == "assistant" }
-                androidx.compose.animation.AnimatedVisibility(Assistant.on == true && AppPrefs.asstButton && !docked && app.top != Route.Assistant && app.top != Route.AssistantSettings && app.top != Route.AssistantArchive && app.top !is Route.AppFrame && DialogStack.depth == 0,
+                androidx.compose.animation.AnimatedVisibility(Assistant.on == true && AppPrefs.asstButton && !docked && app.top != Route.Assistant && app.top != Route.AssistantSettings && app.top != Route.AssistantArchive && app.top != Route.Dashboard && app.top !is Route.AppFrame && DialogStack.depth == 0,
                     Modifier.align(Alignment.BottomEnd).navigationBarsPadding().padding(end = 14.dp, bottom = if (wide) 20.dp else 92.dp)
                         .offset { androidx.compose.ui.unit.IntOffset(AppPrefs.orbDx.toInt(), AppPrefs.orbDy.toInt()) },
                     enter = fadeIn() + androidx.compose.animation.scaleIn(initialScale = .6f), exit = fadeOut() + androidx.compose.animation.scaleOut(targetScale = .6f)) {
@@ -497,7 +496,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {   // FragmentAct
                         .clickable(onClickLabel = "Ask Nova") { Sounds.feel("tap"); app.go(Route.Assistant) }, contentAlignment = Alignment.Center) {
                         AssistantOrb("idle", 52.dp) }
                 }
-                LivingTicker(); AmbienceTicker()
+                LivingTicker(); AmbienceTicker(); AmbientTicker()
                 if (DialogStack.depth == 0) OneToastHost(app.snack, Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = if (wide) 24.dp else 96.dp))
             }
             if (Dev.fps) FpsMeter(Modifier.align(Alignment.TopCenter))       // Developer options → Show frame rate
@@ -515,7 +514,8 @@ fun hop(from: Route, to: Route, dir: Int): androidx.compose.animation.ContentTra
 }
 fun navTransition(dir: Int, reduce: Boolean): androidx.compose.animation.ContentTransform {
     if (dir == 2) return androidx.compose.animation.EnterTransition.None togetherWith androidx.compose.animation.ExitTransition.None
-    if (reduce || dir == 0) return fadeIn(androidx.compose.animation.core.tween(160)) togetherWith fadeOut(androidx.compose.animation.core.tween(120))
+    // a slow device gets a quick dissolve instead of a slide: sliding repaints two whole pages for twenty frames
+    if (reduce || dir == 0 || lite()) return fadeIn(androidx.compose.animation.core.tween(if (lite()) 100 else 160)) togetherWith fadeOut(androidx.compose.animation.core.tween(if (lite()) 70 else 120))
     // Material You Expressive: spring physics (a touch of overshoot) instead of a fixed curve
     val spec: androidx.compose.animation.core.FiniteAnimationSpec<androidx.compose.ui.unit.IntOffset> = if (materialStyle())
         androidx.compose.animation.core.spring(dampingRatio = 0.82f, stiffness = 380f, visibilityThreshold = androidx.compose.ui.unit.IntOffset(1, 1))
@@ -572,6 +572,7 @@ private fun Modifier.paneTouch(app: AppState, left: Boolean) = pointerInput(left
     var navW by remember { mutableIntStateOf(0) }
     val density = androidx.compose.ui.platform.LocalDensity.current
     val hasNav = app.top != Route.Dashboard                // the always-on dashboard gets the whole screen
+    SideEffect { if (!hasNav) AppWindows.navPx = 0 }
     Box(Modifier.fillMaxSize()) {
     Box(Modifier.fillMaxSize().then(LocalRootHaze.current?.let { Modifier.hazeSource(it) } ?: Modifier)) { GlowLayer()      // one glow behind the side pill and both panes
     // the top and bottom fades carry on under the side pill, so there's no seam where the page starts
@@ -626,15 +627,16 @@ private fun Modifier.paneTouch(app: AppState, left: Boolean) = pointerInput(left
                     }
                 }
             }
-            StatusBarScrim(Modifier.align(Alignment.TopCenter))
-            BottomScrim(Modifier.align(Alignment.BottomCenter))
+            if (app.top != Route.Dashboard) { StatusBarScrim(Modifier.align(Alignment.TopCenter)); BottomScrim(Modifier.align(Alignment.BottomCenter)) }
         }
     } }
     // The bottom bar's pill, turned on its side: same tabs, same glass (hold it to choose the tabs)
     if (hasNav)
-        Box(Modifier.fillMaxHeight().onSizeChanged { navW = it.width }.statusBarsPadding().navigationBarsPadding().padding(start = 12.dp, end = 4.dp), contentAlignment = Alignment.Center) {
-            VerticalNav(tabs.indexOfFirst { it.route == root }, tabs.map { it.icon }, tabs.map { it.label }, { i -> app.tab(tabs[i].route) },
-                onLongClick = { app.go(Route.EditTabs) }, apps = AppSessions.dock(), selectedApp = (root as? Route.AppFrame)?.id ?: Builtins.current(root), onApp = { id -> dockTap(app, id) }, onAppHold = { id -> app.dockMenu = id })
+        Box(Modifier.fillMaxHeight().onSizeChanged { navW = it.width; AppWindows.navPx = it.width }.statusBarsPadding().navigationBarsPadding().padding(start = 12.dp, end = 4.dp), contentAlignment = Alignment.Center) {
+            // a maximized window is the page you're on: the pill shows that app, not the tab underneath it
+            val inWindow = if (AppWindows.on(app)) AppWindows.top()?.takeIf { it.max }?.id else null
+            VerticalNav(if (inWindow != null) -1 else tabs.indexOfFirst { it.route == root }, tabs.map { it.icon }, tabs.map { it.label }, { i -> AppWindows.leaveMaximized(); app.tab(tabs[i].route) },
+                onLongClick = { app.go(Route.EditTabs) }, apps = AppSessions.dock(), selectedApp = inWindow ?: (root as? Route.AppFrame)?.id ?: Builtins.current(root), onApp = { id -> dockTap(app, id) }, onAppHold = { id -> app.dockMenu = id })
         }
     }
 }

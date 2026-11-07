@@ -34,6 +34,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -131,7 +132,7 @@ fun openBuiltin(app: AppState, id: String) { val b = Builtins.of(id) ?: return; 
 /** Tap on an app in the dock: switch to it, or open it if it's only pinned. */
 fun dockTap(app: AppState, id: String) {
     if (Builtins.of(id) != null) { if (Builtins.current(app.top) != id) openBuiltin(app, id); return }
-    if (AppSessions.get(id) != null) { if (AppWindows.on(app)) AppWindows.open(id) else app.tab(Route.AppFrame(id)); return }
+    if (AppSessions.get(id) != null) { if (AppWindows.on(app)) AppWindows.dockTap(id) else app.tab(Route.AppFrame(id)); return }
     val a = Cache["/api/v1/apps"]?.optJSONArray("apps").objs().firstOrNull { it.optString("id") == id } ?: return
     if (appUrl(app, a) == null) { app.toast("Away from home this app needs its own link — hold it in Apps → Open it from anywhere"); return }
     AppSessions.open(a); if (AppWindows.on(app)) AppWindows.open(id) else app.tab(Route.AppFrame(id))
@@ -448,14 +449,23 @@ object WebPick { var launch: ((android.content.Intent) -> Unit)? = null; var cb:
  *  its title bar, resize it from the corner, maximize or close it. The newest (or last touched) is on top. */
 object AppWindows {
     class Win(val id: String, x: Float, y: Float, w: Float, h: Float) {
-        var x by mutableFloatStateOf(x); var y by mutableFloatStateOf(y); var w by mutableFloatStateOf(w); var h by mutableFloatStateOf(h); var max by mutableStateOf(false) }
+        var x by mutableFloatStateOf(x); var y by mutableFloatStateOf(y); var w by mutableFloatStateOf(w); var h by mutableFloatStateOf(h); var max by mutableStateOf(false)
+        var min by mutableStateOf(false) }                  // minimized: out of the way (its app keeps running) until you tap it in the dock
     val list = mutableStateListOf<Win>()
     var maxY = 2000f                                       // the lowest a title bar may go (so it can always be grabbed again)
+    var navPx by mutableIntStateOf(0)                      // how wide the navigation pill's strip is (a maximized window stays clear of it)
     fun get(id: String) = list.firstOrNull { it.id == id }
-    fun open(id: String) { val w = get(id); if (w != null) { front(id); return }
+    /** The window in front: the last one that isn't minimized. */
+    fun top(): Win? = list.lastOrNull { !it.min }
+    /** Opens an app's window, or brings it back (and in front) if it's already there. */
+    fun open(id: String) { val w = get(id); if (w != null) { w.min = false; front(id); return }
         list.add(Win(id, -1f, -1f, 0f, 0f)) }                       // placed and sized for the screen when it's first drawn
     fun front(id: String) { val w = get(id) ?: return; if (list.lastOrNull() != w) { list.remove(w); list.add(w) } }
     fun close(id: String) { list.removeAll { it.id == id } }
+    /** Tapping an app in the dock (as on web): the one in front folds away, any other comes up. */
+    fun dockTap(id: String) { val w = get(id); if (w != null && w == top()) w.min = true else open(id) }
+    /** Going to another page: a maximized window is a full-screen app, so it steps aside (to the dock, not closed). */
+    fun leaveMaximized() { list.forEach { if (it.max) it.min = true } }
     fun on(app: AppState) = app.wide && AppPrefs.appWindows
 }
 
@@ -463,19 +473,29 @@ object AppWindows {
 @Composable fun AppWindowLayer(app: AppState) {
     if (!AppWindows.on(app) || AppWindows.list.isEmpty()) return
     val d = androidx.compose.ui.platform.LocalDensity.current
+    // going to another page (search, the assistant, a link) while a window is maximized: it would cover the page, so it steps aside
+    var lastTop by remember { mutableStateOf(app.top) }
+    LaunchedEffect(app.top) { if (app.top != lastTop) { lastTop = app.top; AppWindows.leaveMaximized() } }
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val W = with(d) { maxWidth.toPx() }; val H = with(d) { maxHeight.toPx() }; AppWindows.maxY = H - with(d) { 90.dp.toPx() }
         AppWindows.list.toList().forEachIndexed { i, win -> key(win.id) {
             if (win.w == 0f) { win.w = W * .62f; win.h = H * .78f; win.x = (W * .14f + i * 48f).coerceAtMost(W - win.w); win.y = (H * .08f + i * 48f).coerceAtMost(H - win.h) }
-            val shape = RoundedCornerShape(20.dp * winK())
-            val mod = if (win.max) Modifier.fillMaxSize().statusBarsPadding().padding(start = 96.dp, end = 12.dp, bottom = 12.dp)
-                else Modifier.offset { androidx.compose.ui.unit.IntOffset(win.x.toInt(), win.y.toInt()) }.size(with(d) { win.w.toDp() }, with(d) { win.h.toDp() })
-            Box(mod.shadow(24.dp, shape).clip(shape).background(N.bg).border(1.dp, N.divider, shape)
-                .pointerInput(win.id) { awaitEachGesture { awaitFirstDown(requireUnconsumed = false, pass = androidx.compose.ui.input.pointer.PointerEventPass.Initial); AppWindows.front(win.id) } }) {
-                AppFrameScreen(app, win.id, win)
-                if (!win.max) Box(Modifier.align(Alignment.BottomEnd).size(28.dp).pointerInput(win.id) {     // resize from the corner
-                    detectDragGestures { c, dd -> c.consume(); win.w = (win.w + dd.x).coerceIn(420f, W - win.x); win.h = (win.h + dd.y).coerceIn(320f, H - win.y) } }) {
-                    Icon(Icons.Rounded.OpenInFull, "Resize", tint = N.sub.copy(alpha = .6f), modifier = Modifier.align(Alignment.Center).size(14.dp).rotate(90f)) }
+            // minimizing folds the window toward the dock and then stops drawing it altogether (a hidden web page costs nothing);
+            // the page itself lives on in its session, so restoring it from the dock brings it back as it was
+            val vis by androidx.compose.animation.core.animateFloatAsState(if (win.min) 0f else 1f,
+                if (reduceMotion() || lite()) androidx.compose.animation.core.snap() else androidx.compose.animation.core.tween(200, easing = androidx.compose.animation.core.FastOutSlowInEasing), label = "winvis")
+            if (!win.min || vis >= 0.01f) {
+                val shape = RoundedCornerShape(20.dp * winK())
+                val mod = if (win.max) Modifier.fillMaxSize().statusBarsPadding().padding(start = if (AppWindows.navPx > 0) with(d) { AppWindows.navPx.toDp() } + 4.dp else 96.dp, end = 12.dp, bottom = 12.dp)
+                    else Modifier.offset { androidx.compose.ui.unit.IntOffset(win.x.toInt(), win.y.toInt()) }.size(with(d) { win.w.toDp() }, with(d) { win.h.toDp() })
+                Box(mod.graphicsLayer { if (vis < 1f) { alpha = vis; val k = .9f + .1f * vis; scaleX = k; scaleY = k; translationX = -(1f - vis) * 48.dp.toPx() } }
+                    .shadow(if (lite()) 6.dp else 24.dp, shape).clip(shape).background(N.bg).border(1.dp, N.divider, shape)
+                    .pointerInput(win.id) { awaitEachGesture { awaitFirstDown(requireUnconsumed = false, pass = androidx.compose.ui.input.pointer.PointerEventPass.Initial); AppWindows.front(win.id) } }) {
+                    AppFrameScreen(app, win.id, win)
+                    if (!win.max) Box(Modifier.align(Alignment.BottomEnd).size(28.dp).pointerInput(win.id) {     // resize from the corner
+                        detectDragGestures { c, dd -> c.consume(); win.w = (win.w + dd.x).coerceIn(420f, W - win.x); win.h = (win.h + dd.y).coerceIn(320f, H - win.y) } }) {
+                        Icon(Icons.Rounded.OpenInFull, "Resize", tint = N.sub.copy(alpha = .6f), modifier = Modifier.align(Alignment.Center).size(14.dp).rotate(90f)) }
+                }
             }
         } }
     }
@@ -533,7 +553,8 @@ object AppWindows {
                 ))
             }
             Spacer(Modifier.width(6.dp))
-            if (win != null) { CircleButton(if (win.max) Icons.Rounded.CloseFullscreen else Icons.Rounded.OpenInFull, if (win.max) "Restore" else "Maximize", 1f, { win.max = !win.max }); Spacer(Modifier.width(6.dp)) }
+            if (win != null) { CircleButton(Icons.Rounded.Remove, "Minimize", 1f, { win.min = true }); Spacer(Modifier.width(6.dp))
+                CircleButton(if (win.max) Icons.Rounded.CloseFullscreen else Icons.Rounded.OpenInFull, if (win.max) "Restore" else "Maximize", 1f, { win.max = !win.max }); Spacer(Modifier.width(6.dp)) }
             CircleButton(Icons.Rounded.Close, "Close", 1f, { AppSessions.close(id); if (win != null) AppWindows.close(id) else app.back() })
         }
         if (progress in 1..99) ProgressBar(progress / 100f)
@@ -598,7 +619,9 @@ object AppWindows {
             } }
         }
     }
-    androidx.activity.compose.BackHandler(enabled = canBack && (win == null || AppWindows.list.lastOrNull() == win)) { s.web?.goBack() }
+    // back goes back inside the page; with nothing left to go back to, a window in front folds away (as Esc does on web)
+    androidx.activity.compose.BackHandler(enabled = canBack && (win == null || AppWindows.top() == win)) { s.web?.goBack() }
+    if (win != null) androidx.activity.compose.BackHandler(enabled = !canBack && AppWindows.top() == win && !WebFull.showing) { win.min = true }
     androidx.activity.compose.BackHandler(enabled = WebFull.showing) { WebFull.hide(app.activity) }
     sslAsk?.let { h ->
         OneDialog({ h.cancel(); sslAsk = null }, "Open with the server's own certificate?",

@@ -85,7 +85,7 @@ fun activeAlerts(app: AppState): List<JSONObject> =
     app.overview?.optJSONObject("status")?.optJSONArray("active")?.let { a -> (0 until a.length()).map { a.getJSONObject(it) } }
         ?.filter { it.optString("level") != "ok" } ?: emptyList()
 
-private fun cleanAlertTitle(t: String) = t.replace(Regex("^[^\\p{L}\\p{N}/~]+\\s*"), "")     // the status emoji goes; a path like "/ is 90% full" stays
+private fun cleanAlertTitle(t: String) = t.replace(Rx.titleLeadPath, "")     // the status emoji goes; a path like "/ is 90% full" stays
 
 /** Dismiss on the server ("ignore until it clears"; drives: "removed on purpose"), then refresh. */
 fun dismissAlert(app: AppState, a: JSONObject, done: () -> Unit = {}) {

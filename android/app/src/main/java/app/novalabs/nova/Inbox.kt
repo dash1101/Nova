@@ -102,7 +102,7 @@ import java.util.*
         val selAnim = androidx.compose.animation.core.animateFloatAsState(if (selecting) 1f else 0f, androidx.compose.animation.core.tween(if (reduceMotion()) 0 else 220), label = "sel")
         val selSlot by remember { derivedStateOf { picked.isNotEmpty() || selAnim.value > 0.01f } }      // changes twice per selection, not every frame
         // drawn in pages: the newest 60, then more on request (a long list costs every frame it animates)
-        var limit by remember { mutableIntStateOf(60) }
+        var limit by remember { mutableIntStateOf(if (lite()) 25 else 60) }                 // (a slow device builds every row at once when you open the page)
         shown.take(limit).groupBy { dayLabel(it.optDouble("t")) }.forEach { (d, list) ->
             val dayTs = list.map { it.optDouble("t") }.toSet(); val allDay = picked.containsAll(dayTs)
             // the day's title: hold it (or tap "Select day" while selecting) to pick the whole day
@@ -140,7 +140,7 @@ import java.util.*
                         Box(Modifier.padding(top = 6.dp).size(10.dp).clip(CircleShape).background(levelColor(lvl, N)))
                         Spacer(Modifier.width(14.dp))
                         Column(Modifier.weight(1f)) {
-                            Text(e.optString("title").replace(Regex("^[^\\p{L}\\p{N}]+\\s*"), ""), color = N.text, fontSize = 16.sp)
+                            Text(e.optString("title").replace(Rx.titleLead, ""), color = N.text, fontSize = 16.sp)
                             e.optString("detail").takeIf { it.isNotEmpty() }?.let { ExpandableSub(it, N.sub, lines = 3, size = 13.sp) }     // the arrow opens the full text
                         }
                         Text(hm.format(Date((e.optDouble("t") * 1000).toLong())), color = N.sub, fontSize = 13.sp)
@@ -602,7 +602,7 @@ private fun taskRoute(t: JSONObject): Route? {
 /** The app (if any) whose remote link is this address — so its page can offer share links. */
 fun appForHost(h: String, service: String = ""): String {
     val apps = Cache["/api/v1/apps"]?.optJSONArray("apps").objs()
-    val port = Regex(":(\\d+)").find(service.substringAfter("://"))?.groupValues?.get(1)?.toIntOrNull()
+    val port = Rx.port.find(service.substringAfter("://"))?.groupValues?.get(1)?.toIntOrNull()
     return (apps.firstOrNull { android.net.Uri.parse(it.optString("remote_url")).host == h }       // its remote link is this address
         ?: port?.let { p -> apps.firstOrNull { it.optInt("port") == p && service.contains("localhost") || it.optInt("port") == p && service.contains("127.0.0.1") } })  // or the route goes to its port
         ?.optString("id").orEmpty()
@@ -771,16 +771,15 @@ private fun hourLabel(h: Int) = java.text.DateFormat.getTimeInstance(java.text.D
 /** Where an Inbox event takes you: its category, or what its title is about (the same rules as Nova web's evRoute). */
 fun evRoute(e: JSONObject): Route? {
     val c = e.optString("category").substringBefore(":"); val title = e.optString("title"); val t = title + " " + e.optString("detail")
-    Regex("^Container (?:crashed|unhealthy|ran out of memory|stopped|restarted)[^:]*: (\\S+)", RegexOption.IGNORE_CASE).find(title)?.let { return Route.Container(it.groupValues[1]) }
-    fun has(p: String) = Regex(p, RegexOption.IGNORE_CASE).containsMatchIn(t)
+    Rx.evContainer.find(title)?.let { return Route.Container(it.groupValues[1]) }
     return when {
-        c == "container" || has("container") -> Route.Containers
-        c == "login" || c == "security" || has("\\b(login|ssh|sudo|fail2ban|passkey|authenticator)\\b") -> Route.Security
-        has("paired|new device|device removed") -> Route.Devices
-        c == "device" || has("drive|disk|smart|sector|raid|pool|mount|nvme|usb") -> Route.Hardware
-        has("backup|restore") -> Route.Backups
-        has("update|upgrade|new version") -> Route.Updates
-        c == "memory" || c == "service" || has("memory|cpu|temperature|swap|service") -> Route.Status
+        c == "container" || t.contains("container", ignoreCase = true) -> Route.Containers
+        c == "login" || c == "security" || Rx.evSecurity.containsMatchIn(t) -> Route.Security
+        Rx.evDevices.containsMatchIn(t) -> Route.Devices
+        c == "device" || Rx.evHardware.containsMatchIn(t) -> Route.Hardware
+        Rx.evBackups.containsMatchIn(t) -> Route.Backups
+        Rx.evUpdates.containsMatchIn(t) -> Route.Updates
+        c == "memory" || c == "service" || Rx.evStatus.containsMatchIn(t) -> Route.Status
         else -> null
     }
 }

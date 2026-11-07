@@ -272,8 +272,8 @@ fun localTime(utc: String): String = runCatching {
             items(lines) { l ->
                 val ts = l.substringBefore(' ').let { if (it.length > 19) it.substring(11, 19) else "" }
                 val msg = if (ts.isNotEmpty()) l.substringAfter(' ') else l
-                val color = when { Regex("(?i)error|fatal|panic|exception").containsMatchIn(msg) -> Color(0xFFFF6B6B)
-                    Regex("(?i)warn").containsMatchIn(msg) -> Color(0xFFFFC14D); else -> Color(0xFFD7D7DB) }
+                val color = when { Rx.logError.containsMatchIn(msg) -> Color(0xFFFF6B6B)
+                    Rx.logWarn.containsMatchIn(msg) -> Color(0xFFFFC14D); else -> Color(0xFFD7D7DB) }
                 Row { Text(ts, color = Color(0xFF6E6E76), fontFamily = Mono, fontSize = 11.sp); Spacer(Modifier.width(8.dp))
                     Text(msg, color = color, fontFamily = Mono, fontSize = 11.sp) }
             }
@@ -294,7 +294,7 @@ fun localTime(utc: String): String = runCatching {
         catch (e: Exception) { app.toast(e.message ?: "Couldn't open a shell"); app.back(); return@LaunchedEffect }
         while (alive) {
             runCatching { val r = app.api.get("/api/v1/shell/$sid?offset=$offset")
-                val d = r.optString("data"); if (d.isNotEmpty()) output = (output + d.replace(Regex("\u001B\\[[0-9;?]*[A-Za-z]"), "")).takeLast(200_000)
+                val d = r.optString("data"); if (d.isNotEmpty()) output = (output + d.replace(Rx.ansi, "")).takeLast(200_000)
                 offset = r.optInt("offset"); alive = r.optBoolean("alive", true) }
             delay(350)
         }

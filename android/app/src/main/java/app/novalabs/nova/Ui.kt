@@ -695,6 +695,8 @@ class PillBead(val x: androidx.compose.animation.core.Animatable<Float, androidx
                     dragging = false; moved = false; drag = 0f
                 }
             }), contentAlignment = Alignment.Center) {
+        // an app with a window showing (but not the one you're in) has a small dot, so a minimized one reads as tucked away
+        if (!on && AppWindows.list.any { it.id == s.id && !it.min }) Box(Modifier.align(Alignment.BottomCenter).padding(bottom = 1.dp).size(4.dp).clip(CircleShape).background(N.sub))
         Box(Modifier.size(48.dp).clip(CircleShape)
             .background(if ((highlight && on && !N.material) || dragging) (if (N.dark) Color.White.copy(alpha = 0.14f) else Color.Black.copy(alpha = 0.07f)) else Color.Transparent)
             .bouncy(onLongClick = onHold?.let { { dragging = true; moved = false; haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress) } }) { onApp(s.id) }, contentAlignment = Alignment.Center) {
@@ -729,7 +731,7 @@ class PillBead(val x: androidx.compose.animation.core.Animatable<Float, androidx
     val maxH = androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp.dp - 48.dp
     if (N.material) {
         Column(modifier.frosted(null, RoundedCornerShape(pillCorner(32.dp)), 6.dp).then(hold).heightIn(max = maxH).fadeEdges(vs, false, 40.dp).verticalScroll(vs)
-            .padding(horizontal = 8.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(gap)) {
+            .padding(horizontal = 8.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(gap), horizontalAlignment = Alignment.CenterHorizontally) {
             icons.forEachIndexed { i, ic ->
                 val on = i == selected
                 val w by androidx.compose.animation.core.animateDpAsState(if (on) 56.dp else 40.dp, if (reduceMotion()) androidx.compose.animation.core.snap() else androidx.compose.animation.core.spring(0.55f, 380f), label = "vind")

@@ -139,7 +139,7 @@ object InboxArchive {
                         Box(Modifier.padding(top = 6.dp).size(10.dp).clip(CircleShape).background(levelColor(e.optString("level"), N).copy(alpha = if (arch) 0.5f else 1f)))
                         Spacer(Modifier.width(14.dp))
                         Column(Modifier.weight(1f)) {
-                            Text(e.optString("title").replace(Regex("^[^\\p{L}\\p{N}]+\\s*"), ""), color = if (arch) N.sub else N.text, fontSize = 16.sp)
+                            Text(e.optString("title").replace(Rx.titleLead, ""), color = if (arch) N.sub else N.text, fontSize = 16.sp)
                             e.optString("detail").takeIf { it.isNotEmpty() }?.let { Text(it, color = N.sub, fontSize = 13.sp, maxLines = 4) }
                             if (arch) Text("Archived", color = N.sub, fontSize = 12.sp)
                         }
@@ -154,7 +154,7 @@ object InboxArchive {
         if (more || loading) Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = androidx.compose.ui.Alignment.Center) {
             if (loading) OneSpinner() else PillButton("Load older") { scope.launch { page(server.lastOrNull()?.optDouble("t")) } } }
     }
-    ask?.let { e -> OneDialog({ ask = null }, "Put it back in the Inbox?", e.optString("title").replace(Regex("^[^\\p{L}\\p{N}]+\\s*"), ""),
+    ask?.let { e -> OneDialog({ ask = null }, "Put it back in the Inbox?", e.optString("title").replace(Rx.titleLead, ""),
         listOf(DialogButton("Cancel") { ask = null }, DialogButton("Back to Inbox", N.blue) { ask = null; restore(e) })) }
     if (clear) OneDialog({ clear = false }, "Erase this ${DeviceForm.noun}'s copy?",
         "This ${DeviceForm.noun}'s own copy of the history is deleted. The server keeps its archive for every device.",

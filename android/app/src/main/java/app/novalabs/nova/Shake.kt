@@ -30,6 +30,9 @@ val SHAKE_ACTIONS = listOf("report" to "Report a problem", "search" to "Search N
         val sm = ctx.getSystemService(Context.SENSOR_SERVICE) as SensorManager
         val acc = sm.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
         var first = 0L; var last = 0L
+        // the accelerometer reports ~50 times a second: on its own thread, so those never wake the one that draws
+        val thread = android.os.HandlerThread("nova-shake").also { it.start() }
+        val bg = android.os.Handler(thread.looper); val main = android.os.Handler(android.os.Looper.getMainLooper())
         val l = object : SensorEventListener {
             override fun onSensorChanged(e: SensorEvent) {
                 val (x, y, z) = Triple(e.values[0], e.values[1], e.values[2])
@@ -38,16 +41,16 @@ val SHAKE_ACTIONS = listOf("report" to "Report a problem", "search" to "Search N
                 val now = System.currentTimeMillis()
                 if (now - last < 2500) return                     // just did something: let it settle
                 if (now - first > 1000) { first = now; return }   // the first jolt; a second within a second is a shake
-                first = 0L; last = now; onShake(app)
+                first = 0L; last = now; main.post { onShake(app) }
             }
             override fun onAccuracyChanged(s: Sensor?, a: Int) {}
         }
-        fun on() { if (enabled && acc != null) sm.registerListener(l, acc, SensorManager.SENSOR_DELAY_GAME) }   // fast enough to catch a jolt's peak
+        fun on() { if (enabled && acc != null) sm.registerListener(l, acc, SensorManager.SENSOR_DELAY_GAME, bg) }   // fast enough to catch a jolt's peak
         fun off() = sm.unregisterListener(l)
         val obs = LifecycleEventObserver { _, ev -> when (ev) { Lifecycle.Event.ON_RESUME -> on(); Lifecycle.Event.ON_PAUSE -> off(); else -> {} } }
         owner.lifecycle.addObserver(obs)
         if (owner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) on()
-        onDispose { owner.lifecycle.removeObserver(obs); off() }
+        onDispose { owner.lifecycle.removeObserver(obs); off(); thread.quitSafely() }
     }
 }
 

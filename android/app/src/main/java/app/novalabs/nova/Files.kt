@@ -47,7 +47,7 @@ private val FilesSeen = java.util.concurrent.ConcurrentHashMap<String, JSONObjec
 private fun enc(s: String) = Uri.encode(s)
 private fun join(d: String, n: String) = (if (d == "/") "" else d) + "/" + n
 private fun isText(e: JSONObject): Boolean { val m = e.optString("mime"); val n = e.optString("name")
-    return m.startsWith("text/") || m.contains("json") || m.contains("xml") || Regex("\\.(md|conf|cfg|ini|log|env|toml|ya?ml|sh|py|js|ts|json|txt|service|properties)$", RegexOption.IGNORE_CASE).containsMatchIn(n) }
+    return m.startsWith("text/") || m.contains("json") || m.contains("xml") || Rx.textFile.containsMatchIn(n) }
 private fun iconOf(e: JSONObject): ImageVector = when {
     e.optBoolean("dir") -> Icons.Rounded.Folder
     e.optString("mime").startsWith("image/") -> Icons.Rounded.Image

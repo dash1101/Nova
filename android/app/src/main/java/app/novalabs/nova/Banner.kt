@@ -40,7 +40,7 @@ import androidx.compose.ui.unit.sp
             Box(Modifier.padding(top = 6.dp).size(9.dp).clip(CircleShape).background(levelColor(b.optString("level"), N)))
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
-                Text(b.optString("title").replace(Regex("^[^\\p{L}\\p{N}]+\\s*"), ""), color = N.text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 2)
+                Text(b.optString("title").replace(Rx.titleLead, ""), color = N.text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 2)
                 val sub = listOf(b.optString("detail"), if (app.bannerMore > 0) "and ${app.bannerMore} more" else "").filter { it.isNotBlank() }.joinToString(" · ")
                 if (sub.isNotEmpty()) ExpandableSub(sub, N.sub, lines = 2, size = 13.sp)
             }

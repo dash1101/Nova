@@ -62,9 +62,9 @@ object I18n {
     fun tr(s: String): String {
         if (exact.isEmpty() || s.isBlank()) return s
         synchronized(cache) { cache[s]?.let { return it } }
-        val key = s.replace(Regex("\\s+"), " ").trim()
+        val key = s.replace(Rx.spaces, " ").trim()
         val out = exact[key] ?: patterns.firstNotNullOfOrNull { (re, v, names) ->
-            re.matchEntire(key)?.let { m -> Regex("\\{(\\d)\\}").replace(v) { g -> m.groupValues.getOrNull(names.indexOf(g.groupValues[1].toInt()) + 1) ?: "" } }
+            re.matchEntire(key)?.let { m -> Rx.i18nSlot.replace(v) { g -> m.groupValues.getOrNull(names.indexOf(g.groupValues[1].toInt()) + 1) ?: "" } }
         } ?: s
         synchronized(cache) { cache[s] = out }
         return out

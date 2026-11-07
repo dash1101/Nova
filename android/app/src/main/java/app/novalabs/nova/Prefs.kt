@@ -129,7 +129,7 @@ object AppPrefs {
         lang = sp.getString("lang", "auto")!!; I18n.load(ctx, lang)
         winRound = sp.getInt("winRound", 100); readability = sp.getString("readability", "auto")!!; iconAccent = sp.getBoolean("iconAccent", false)
         asstButton = sp.getBoolean("asstButton", true); orbDx = sp.getFloat("orbDx", 0f); orbDy = sp.getFloat("orbDy", 0f); appWindows = sp.getBoolean("appWindows", true); asstSpeak = sp.getBoolean("asstSpeak", false)
-        recentColors = sp.getString("recentColors", "")!!.split(",").filter { Regex("#[0-9a-fA-F]{6}").matches(it) }
+        recentColors = sp.getString("recentColors", "")!!.split(",").filter { Rx.hex6.matches(it) }
         prism = sp.getInt("prism", 50); dTrans = sp.getInt("dTrans", 0); lookBg = sp.getString("lookBg", "")!!; scrims = sp.getBoolean("scrims", true); scrimColor = sp.getString("scrimColor", "")!!; dFrost = sp.getInt("dFrost", 26); solid = sp.getBoolean("solid", false); glass = sp.getString("glass", "60")!!.toIntOrNull() ?: 60; round = sp.getString("round", "100")!!.toIntOrNull() ?: 100
         theme = sp.getString("theme", "system")!!; style = sp.getString("style", "auto")!!.let { if (it == "lumen") "default" else it };   // Lumen was retired in 0.9.4
         reduceMotion = sp.getBoolean("reduce_motion", false); animSpeed = (sp.getString("anim_speed", "100")!!.toIntOrNull() ?: 100).coerceIn(25, 300)

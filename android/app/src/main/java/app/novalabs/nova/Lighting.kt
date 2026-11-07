@@ -137,7 +137,7 @@ fun col(h: String) = runCatching { Color(android.graphics.Color.parseColor(h)) }
             }
             Spacer(Modifier.height(8.dp))
             OneTextField(hexText, { s -> hexText = s.take(7); val h = if (s.startsWith("#")) s else "#$s"
-                if (Regex("#[0-9a-fA-F]{6}").matches(h)) { val c = col(h); r = (c.red * 255).toInt(); g = (c.green * 255).toInt(); b = (c.blue * 255).toInt() } },
+                if (Rx.hex6.matches(h)) { val c = col(h); r = (c.red * 255).toInt(); g = (c.green * 255).toInt(); b = (c.blue * 255).toInt() } },
                 "#rrggbb", Modifier.fillMaxWidth(), mono = true)
         }
     }

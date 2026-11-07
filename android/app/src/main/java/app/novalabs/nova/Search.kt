@@ -118,7 +118,7 @@ val PLACES: List<Triple<String, String, Pair<ImageVector, Route>>> = listOf(
 
 fun searchNova(app: AppState, q0: String, data: Map<String, org.json.JSONObject?>): List<Hit> {
     val q = q0.trim().lowercase(); if (q.isEmpty()) return emptyList()
-    val words = q.split(Regex("\\s+"))
+    val words = q.split(Rx.spaces)
     fun score(vararg fields: String): Int {
         val text = fields.joinToString(" ").lowercase(); val title = fields.first().lowercase()
         if (words.any { it !in text }) return 0

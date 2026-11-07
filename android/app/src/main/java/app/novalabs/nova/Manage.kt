@@ -328,7 +328,7 @@ fun roleLabel(r: String) = if (r == "viewer") "View only" else "Admin"
         var scanning by remember { mutableStateOf(false) }
         val camPerm = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestPermission()) { if (it) scanning = true }
         if (scanning) Box(Modifier.fillMaxWidth().padding(horizontal = 22.dp).height(220.dp).clip(androidx.compose.foundation.shape.RoundedCornerShape(18.dp))) {
-            QrScanner(Modifier.fillMaxSize()) { txt -> Regex("^nova-approve:([A-Za-z0-9]{6})$").find(txt.trim())?.let { code = it.groupValues[1].uppercase(); scanning = false; Sounds.feel("success") } }
+            QrScanner(Modifier.fillMaxSize()) { txt -> Rx.approveQr.find(txt.trim())?.let { code = it.groupValues[1].uppercase(); scanning = false; Sounds.feel("success") } }
         } else Box(Modifier.padding(horizontal = 22.dp)) { PillButton("Scan the browser's code", color = N.blue) {
             if (ctx.checkSelfPermission(android.Manifest.permission.CAMERA) == android.content.pm.PackageManager.PERMISSION_GRANTED) scanning = true
             else camPerm.launch(android.Manifest.permission.CAMERA) } }

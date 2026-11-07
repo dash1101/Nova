@@ -1,0 +1,4 @@
+# Nova's own code, listed so Android compiles it ahead of time instead of running it from the interpreter.
+# (Compose and the other libraries ship their own profiles; this is the app's part. On Android 7 and 8 that's the difference
+# between every page being slow the first few minutes after an update and not.)
+HSPLapp/novalabs/nova/**;->**(**)**

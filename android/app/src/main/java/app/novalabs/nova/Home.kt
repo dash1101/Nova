@@ -279,8 +279,8 @@ private data class Quad(val title: String, val sub: String, val icon: androidx.c
     val now = fresh ?: app.lastNow ?: Cache["/api/v1/stats"]?.optJSONObject("now")?.takeIf { it.has("cpu") }
     val m = app.overview?.optJSONObject("status")?.optJSONObject("metrics")
     val cs = app.overview?.optJSONObject("containers")
-    fun pctOf(s: String?) = s?.let { Regex("(\\d+)%").find(it)?.groupValues?.get(1)?.toFloatOrNull() }
-    fun freeOf(s: String?) = s?.let { Regex("\\(([^)]*free)\\)").find(it)?.groupValues?.get(1) }
+    fun pctOf(s: String?) = s?.let { Rx.percent.find(it)?.groupValues?.get(1)?.toFloatOrNull() }
+    fun freeOf(s: String?) = s?.let { Rx.freeInParens.find(it)?.groupValues?.get(1) }
     val disk = m?.optString("root_used")
     val cards = listOf(
         StatCard(Icons.Rounded.Memory, "CPU", now?.let { "%.0f%%".format(it.optDouble("cpu")) } ?: "—",
@@ -303,7 +303,7 @@ private data class Quad(val title: String, val sub: String, val icon: androidx.c
                             Text(c.label, color = N.sub, fontSize = 13.sp)
                         }
                         androidx.compose.animation.AnimatedContent(c.value, transitionSpec = {
-                            if (reduceMotion()) androidx.compose.animation.fadeIn() togetherWith androidx.compose.animation.fadeOut()
+                            if (reduceMotion() || lite()) androidx.compose.animation.EnterTransition.None togetherWith androidx.compose.animation.ExitTransition.None
                             else (androidx.compose.animation.slideInVertically { it / 2 } + androidx.compose.animation.fadeIn()) togetherWith
                                 (androidx.compose.animation.slideOutVertically { -it / 2 } + androidx.compose.animation.fadeOut()) }, label = "num") { v ->
                             Text(v, color = N.text, fontSize = 24.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 6.dp))

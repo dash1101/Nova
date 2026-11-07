@@ -921,6 +921,13 @@ html.aero { --rL: calc(6px * var(--rk, 1)); --rM: calc(3px * var(--rk, 1)); }
 .dash.bg-wallpaper { background: transparent; } .dash.bg-wallpaper::before { display: none; }
 .dash.plain .card { background: transparent !important; box-shadow: none !important; backdrop-filter: none !important; -webkit-backdrop-filter: none !important; border: 0 !important; }
 .dash.plain .card::after { display: none !important; }
+.dash.amoled, html.living .dash.amoled, .dash.amoled.bg-living, .dash.amoled.bg-wallpaper, .dash.amoled.bg-picture { background: #000 !important; }
+.dash.amoled::before { display: none !important; }
+.dash.amoled { --text: #dadadf; --sub: #7c7c82; --card: #000; --divider: #26262b; }
+.dash.amoled .card { background: #000 !important; box-shadow: none !important; backdrop-filter: none !important; -webkit-backdrop-filter: none !important; border: 1px solid #26262b !important; }
+.dash.amoled .card::after { display: none !important; }
+.dash.amoled.plain .card { border: 0 !important; }
+.dash.amoled .top .circle { background: #000 !important; box-shadow: none !important; border: 1px solid #26262b !important; }
 
 /* icon themes (Appearance → Icons): override each style's own icon look */
 html[data-icons] .row .ri { box-shadow: none !important; }

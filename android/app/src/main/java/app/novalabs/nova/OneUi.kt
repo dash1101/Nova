@@ -531,7 +531,8 @@ private fun DialogButton.role(t: NovaColors) = when { color == null -> "cancel";
 /** Determinate bar, or (fraction == null) a sliding segment for "working, no number yet". */
 @Composable fun ProgressBar(fraction0: Float?, color: Color = N.blue) {
     val fraction = fraction0?.takeIf { !it.isNaN() && !it.isInfinite() }      // NaN would crash the animation
-    if (fraction != null) { val f by animateFloatAsState(fraction.coerceIn(0f, 1f), tween(600), label = "pb"); LookBar(f, color); return }
+    // (a live number changes every few seconds: on a slow device or with Reduce motion the bar just jumps, instead of repainting the window for 600 ms each time)
+    if (fraction != null) { val f by animateFloatAsState(fraction.coerceIn(0f, 1f), if (reduceMotion() || lite()) snap() else tween(600), label = "pb"); LookBar(f, color); return }
     Box(Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(4.dp)).background(N.divider)) {
         run {
             val t = rememberInfiniteTransition(label = "ind")

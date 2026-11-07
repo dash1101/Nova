@@ -508,7 +508,7 @@ private fun survives(level: String, n: Int) = when (level) { "raid1" -> n - 1; "
         if (log.isNotEmpty()) {
             val cmd = x?.optString("kind") == "run-command"
             SectionLabel(if (cmd) "Output" else "What happened")
-            Group { Column(Modifier.padding(18.dp)) { (if (cmd) log.takeLast(200).map { it.replace(Regex("^\\d\\d:\\d\\d:\\d\\d "), "") } else log.takeLast(40)).forEach {
+            Group { Column(Modifier.padding(18.dp)) { (if (cmd) log.takeLast(200).map { it.replace(Rx.logTime, "") } else log.takeLast(40)).forEach {
                 Text(it, color = if (cmd) N.text else N.sub, fontSize = 13.sp, fontFamily = Mono) } } }
             if (cmd && x?.optString("state") != "running") Group { Row1("Run it again", null, true, Icons.Rounded.PlayArrow, onClick = {
                 app.act { val t2 = app.api.post("/api/v1/apps/${x?.optString("key")}/run"); app.back(); app.go(Route.Task(t2.optString("task"))) } }) }

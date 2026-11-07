@@ -155,7 +155,7 @@ private val SESSIONS = listOf("1h" to "1 hour", "24h" to "1 day", "168h" to "1 w
         }
     }
     if (addGuest) { var e by remember { mutableStateOf("") }
-        val ok = Regex("[^@\\s]+@[^@\\s]+\\.[A-Za-z]{2,}").matches(e.trim())
+        val ok = Rx.email.matches(e.trim())
         OneDialog({ addGuest = false }, "Add a guest", "Their email address. They'll get a one-time code there each time they sign in.",
             listOf(DialogButton("Cancel") { addGuest = false }, DialogButton("Add", N.blue, enabled = ok) { addGuest = false; val g = e.trim().lowercase(); if (g !in guests) guests = guests + g })) {
             OneTextField(e, { e = it.trim().take(120) }, "name@example.com", Modifier.fillMaxWidth().padding(horizontal = 22.dp)) } }

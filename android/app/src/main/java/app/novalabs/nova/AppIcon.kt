@@ -205,7 +205,7 @@ private val ICON_SWATCHES = listOf(0xFF0A0A0C, 0xFF1C2541, 0xFF0B3D91, 0xFF2F80E
             }
         }
         var hex by remember(cur) { mutableStateOf("#%06X".format(cur and 0xFFFFFF)) }
-        OneTextField(hex, { v -> hex = v.take(7); Regex("#?([0-9a-fA-F]{6})").matchEntire(v.trim())?.let { pick(0xFF000000.toInt() or it.groupValues[1].toInt(16)) } },
+        OneTextField(hex, { v -> hex = v.take(7); Rx.hexPick.matchEntire(v.trim())?.let { pick(0xFF000000.toInt() or it.groupValues[1].toInt(16)) } },
             "#RRGGBB", Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 6.dp), mono = true)
     }
     OneDialog(onDone, "Your own colors", "Android only lets an app switch between icons it ships with. Use as the app icon picks the closest of Nova's own icons; Add to home screen adds one in exactly these colors (you can remove the old one).",

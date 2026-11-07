@@ -169,7 +169,7 @@ const PREF_DEFAULTS = {
   quick: ["backup", "freeram", "fan", "dim", "status", "dashboard"],
   dashTiles: ["clock", "health", "cpu", "mem", "temp", "net", "storage", "containers", "backup", "alerts"],
   dashDim: true, dashFrom: 23, dashTo: 7, dashDimLevel: 40, dashFull: false,
-  dashCols: 0, dashSize: {}, dashClock24: null, dashSeconds: false, dashScale: 100, dashBg: "theme", dashPlain: false,
+  dashCols: 0, dashSize: {}, dashClock24: null, dashSeconds: false, dashScale: 100, dashBg: "theme", dashPlain: false, dashAmoled: false, dashShift: "small",
   lastEventSeen: 0,
 };
 export const prefs = new Proxy({}, {

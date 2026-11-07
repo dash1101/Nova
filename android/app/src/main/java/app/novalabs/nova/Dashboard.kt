@@ -2,6 +2,7 @@ package app.novalabs.nova
 
 import android.view.WindowManager
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -72,6 +73,11 @@ class DashPrefs(ctx: android.content.Context, profile: String) {
     var scale: Int get() = p.getInt("scale", 100); set(v) { p.edit().putInt("scale", v).apply() }                // text and tile size, %
     var bg: String get() = p.getString("bg", "theme")!!; set(v) { p.edit().putString("bg", v).apply() }       // theme / black / wallpaper
     var plain: Boolean get() = p.getBoolean("plain", false); set(v) { p.edit().putBoolean("plain", v).apply() }
+    /** AMOLED: pure black, tiles with no fill, softer whites — unlit pixels stay off (saves power and wear on OLED screens). */
+    var amoled: Boolean get() = p.getBoolean("amoled", false); set(v) { p.edit().putBoolean("amoled", v).apply() }
+    /** Pixel shift: how far the whole layout drifts, to a new spot every minute, so no pixel stays lit by the same thing (off / small / medium / large). */
+    var shift: String get() = p.getString("shift", "small")!!; set(v) { p.edit().putString("shift", v).apply() }
+    val shiftReach: Int get() = when (shift) { "off" -> 0; "medium" -> 10; "large" -> 20; else -> 4 }
     var clock: String get() = p.getString("clock", "auto")!!; set(v) { p.edit().putString("clock", v).apply() } // auto / 24 / 12
     var seconds: Boolean get() = p.getBoolean("seconds", false); set(v) { p.edit().putBoolean("seconds", v).apply() }
     /** Tiles made wide or square by hand (id → columns). */
@@ -102,9 +108,12 @@ private val LocalDash = staticCompositionLocalOf<DashPrefs?> { null }
         if (prefs.fullscreen) c.hide(WindowInsetsCompat.Type.systemBars())
         onDispose { w.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON); c.show(WindowInsetsCompat.Type.systemBars()) }
     }
-    // Burn-in protection: drift the whole layout by a few pixels every minute.
+    // Burn-in protection (Pixel shift): the whole layout moves to a new spot every minute. The spots come from two irrational steps, so
+    // over a day they cover the whole range evenly instead of cycling through a few.
     val minute = (now / 60_000L).toInt()
-    val shiftX = ((minute * 7) % 9 - 4).dp; val shiftY = ((minute * 5) % 7 - 3).dp
+    val reach = prefs.shiftReach
+    fun orbit(step: Double, span: Int) = (((minute * step) % 1.0) * (2 * span + 1)).toInt() - span
+    val shiftX = if (reach == 0) 0.dp else orbit(0.6180339887, reach).dp; val shiftY = if (reach == 0) 0.dp else orbit(0.7548776662, reach * 3 / 4).dp
     val hour = Calendar.getInstance().apply { timeInMillis = now }.get(Calendar.HOUR_OF_DAY)
     val night = prefs.dimNight && (if (prefs.dimFrom > prefs.dimTo) hour >= prefs.dimFrom || hour < prefs.dimTo else hour in prefs.dimFrom until prefs.dimTo)
 
@@ -116,11 +125,12 @@ private val LocalDash = staticCompositionLocalOf<DashPrefs?> { null }
     val stats = liveStats(app)
     val events by live(app, "/api/v1/events?since=0", 30_000)
     val density = androidx.compose.ui.platform.LocalDensity.current
-    CompositionLocalProvider(LocalDash provides prefs, androidx.compose.ui.platform.LocalDensity provides androidx.compose.ui.unit.Density(density.density, density.fontScale * k)) {
-    Box(Modifier.fillMaxSize().then(if (prefs.bg == "black") Modifier.background(Color.Black) else Modifier).clickable(interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+    CompositionLocalProvider(LocalDash provides prefs, androidx.compose.ui.platform.LocalDensity provides androidx.compose.ui.unit.Density(density.density, density.fontScale * k),
+        LocalNova provides (if (prefs.amoled) amoledColors(N) else N)) {
+    Box(Modifier.fillMaxSize().then(if (prefs.bg == "black" || prefs.amoled) Modifier.background(Color.Black) else Modifier).clickable(interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
         indication = null) { chrome = !chrome }) {
-        if (prefs.bg == "wallpaper" && AppPrefs.wallV > 0L) WallpaperLayer()
-        BoxWithConstraints(Modifier.fillMaxSize().padding(16.dp).offset(shiftX, shiftY)) {
+        if (prefs.bg == "wallpaper" && !prefs.amoled && AppPrefs.wallV > 0L) WallpaperLayer()
+        BoxWithConstraints(Modifier.fillMaxSize().padding((reach + 6).coerceAtLeast(16).dp).offset(shiftX, shiftY)) {
             val fit = (maxWidth / (260.dp * k)).toInt().coerceIn(1, 6)
             val cols = if (prefs.cols > 0) minOf(prefs.cols, maxOf(fit, 1)) else fit.coerceAtLeast(2)
             Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -150,7 +160,7 @@ private val LocalDash = staticCompositionLocalOf<DashPrefs?> { null }
             }
         }
         if (chrome) Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp).clip(RoundedCornerShape(28.dp))
-            .background(N.card.copy(alpha = 0.92f)).padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            .background(N.card.copy(alpha = 0.92f)).then(if (prefs.amoled) Modifier.border(1.dp, N.divider, RoundedCornerShape(28.dp)) else Modifier).padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton({ app.back() }) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Leave dashboard", tint = N.text) }
             Text(serverName(app), color = N.text, fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
             if (!app.isAdmin) Text("View only  ", color = N.sub, fontSize = 13.sp)
@@ -162,7 +172,13 @@ private val LocalDash = staticCompositionLocalOf<DashPrefs?> { null }
 }
 
 /** A tile's surface: glass, or with Plain tiles just the numbers on the background. */
-@Composable private fun Modifier.dashCard(): Modifier = if (LocalDash.current?.plain == true) this else this.glassCard(RoundedCornerShape(28.dp))
+@Composable private fun Modifier.dashCard(): Modifier { val d = LocalDash.current; val shape = RoundedCornerShape(28.dp)
+    return if (d?.plain == true) this else if (d?.amoled == true) this.clip(shape).border(1.dp, N.divider, shape)      // AMOLED: no fill, just a faint outline
+        else this.glassCard(shape) }
+
+/** AMOLED: black where the page would be gray, whites a little softer (a full-white clock is what burns in), no glow behind. */
+private fun amoledColors(t: NovaColors) = t.copy(bg = Color.Black, glow = Color.Transparent, glow2 = Color.Transparent, card = Color.Black, pill = Color(0xFF141416), nav = Color.Black,
+    text = Color(0xFFDADADF), sub = Color(0xFF7C7C82), divider = Color(0xFF26262B), dark = true, material = false, preset = "")
 
 @Composable private fun Tile(title: String, icon: ImageVector, color: Color, content: @Composable ColumnScope.() -> Unit) {
     Column(Modifier.fillMaxSize().dashCard().padding(18.dp)) {
@@ -250,7 +266,7 @@ private val LocalDash = staticCompositionLocalOf<DashPrefs?> { null }
             ev.forEach { e ->
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 3.dp)) {
                     Box(Modifier.size(8.dp).clip(CircleShape).background(levelColor(e.optString("level"), N))); Spacer(Modifier.width(8.dp))
-                    Text(e.optString("title").replace(Regex("^[^\\p{L}\\p{N}]+\\s*"), ""), color = N.text, fontSize = 13.sp, maxLines = 1,
+                    Text(e.optString("title").replace(Rx.titleLead, ""), color = N.text, fontSize = 13.sp, maxLines = 1,
                         overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                     Text(SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date((e.optDouble("t") * 1000).toLong())), color = N.sub, fontSize = 12.sp)
                 }
@@ -270,7 +286,7 @@ private val LocalDash = staticCompositionLocalOf<DashPrefs?> { null }
         "server" -> { val sv = o?.optJSONObject("server")
             Tile("Server", Icons.Rounded.Dns, N.blue) {
                 Text(serverName(app), color = N.text, fontSize = 20.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(sv?.optString("cpu")?.replace(Regex("\\s+"), " ") ?: "", color = N.sub, fontSize = 12.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(sv?.optString("cpu")?.replace(Rx.spaces, " ") ?: "", color = N.sub, fontSize = 12.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 Spacer(Modifier.weight(1f))
                 Text(listOfNotNull(sv?.optInt("ram_gb")?.takeIf { it > 0 }?.let { "$it GB memory" }, sv?.optString("kernel")?.ifEmpty { null }?.let { "Linux $it" }).joinToString(" · "),
                     color = N.sub, fontSize = 12.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
@@ -297,6 +313,7 @@ private val LocalDash = staticCompositionLocalOf<DashPrefs?> { null }
     var sizes by remember { mutableStateOf(prefs.sizes) }
     var level by remember { mutableIntStateOf(prefs.dimLevel) }; var scale by remember { mutableIntStateOf(prefs.scale) }
     var full by remember { mutableStateOf(prefs.fullscreen) }; var plain by remember { mutableStateOf(prefs.plain) }; var secs by remember { mutableStateOf(prefs.seconds) }
+    var amoled by remember { mutableStateOf(prefs.amoled) }
     var ask by remember { mutableStateOf<String?>(null) }; var tick by remember { mutableIntStateOf(0) }
     var from by remember { mutableIntStateOf(prefs.dimFrom) }; var to by remember { mutableIntStateOf(prefs.dimTo) }
     Page("Customize dashboard", done) {
@@ -341,6 +358,10 @@ private val LocalDash = staticCompositionLocalOf<DashPrefs?> { null }
         }
         SectionLabel("Always-on")
         Group {
+            SwitchRow("AMOLED black", "Pure black, tiles with just an outline and softer whites — so most pixels stay off. Saves power and wear on OLED screens", amoled) { amoled = it; prefs.amoled = it }
+            RowDivider()
+            Row1("Pixel shift", mapOf("off" to "Off", "small" to "Small — the layout moves a few pixels every minute", "medium" to "Medium — about 10 pixels", "large" to "Large — about 20 pixels")[prefs.shift], true, Icons.Rounded.OpenWith, onClick = { ask = "shift" })
+            RowDivider()
             SwitchRow("Dim at night", if (dim) "%02d:00 – %02d:00".format(from, to) else "Off", dim, subtitleBlue = dim) { dim = it; prefs.dimNight = it }
             if (dim) {
                 RowDivider()
@@ -356,10 +377,13 @@ private val LocalDash = staticCompositionLocalOf<DashPrefs?> { null }
             "bg" -> OneDialog({ ask = null }, "Background", null, listOf(DialogButton("Cancel") { ask = null })) {
                 listOf("theme" to ("Same as Nova" to null), "black" to ("Black" to "Best for OLED screens and dark rooms"), "wallpaper" to ("Your wallpaper" to "Set one in Appearance"))
                     .forEach { (v, l) -> DialogChoice(l.first, l.second, prefs.bg == v) { prefs.bg = v; ask = null; tick++ } } }
+            "shift" -> OneDialog({ ask = null }, "Pixel shift", "Every minute the whole layout moves to a new spot, so no pixel shows the same thing for hours. Bigger moves protect better and are easier to notice.", listOf(DialogButton("Cancel") { ask = null })) {
+                listOf("off" to ("Off" to null), "small" to ("Small" to "A few pixels (the default)"), "medium" to ("Medium" to "About 10 pixels"), "large" to ("Large" to "About 20 pixels — for a screen that's on all day"))
+                    .forEach { (v, l) -> DialogChoice(l.first, l.second, prefs.shift == v) { prefs.shift = v; ask = null; tick++ } } }
             "clock" -> OneDialog({ ask = null }, "Time format", null, listOf(DialogButton("Cancel") { ask = null })) {
                 listOf("auto" to "Same as this ${DeviceForm.noun}", "24" to "24-hour", "12" to "12-hour").forEach { (v, l) -> DialogChoice(l, null, prefs.clock == v) { prefs.clock = v; ask = null; tick++ } } }
         }
-        Note("The screen stays on and the layout shifts slightly every minute to protect the display. For a wall tablet, pair it as View only and use Android's screen pinning to keep it in Nova.", 13.sp, 8.dp)
+        Note("The screen stays on and (with Pixel shift on) the layout moves slightly every minute to protect the display. For a wall tablet, pair it as View only and use Android's screen pinning to keep it in Nova.", 13.sp, 8.dp)
         LinksCard(listOf("Reset to the default tiles" to { save(DEFAULT_DASH); sizes = emptyMap(); prefs.sizes = sizes }))
     }
 }

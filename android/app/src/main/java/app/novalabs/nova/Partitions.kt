@@ -248,7 +248,7 @@ private val FLAG_NAMES = linkedMapOf("none" to "Normal data partition", "esp" to
     var mp by remember { mutableStateOf<Pair<String, JSONObject>?>(null) }
     Page("Partition manager", app::back) {
         if (st == null) { Note("Reading the drives…", 14.sp); return@Page }
-        val issues = st.optJSONArray("suggestions").objs().filter { Regex("^(dup|stale|hidden):").containsMatchIn(it.optString("id")) }
+        val issues = st.optJSONArray("suggestions").objs().filter { Rx.driveIssue.containsMatchIn(it.optString("id")) }
         if (issues.isNotEmpty()) { SectionLabel("Needs fixing"); issues.forEach { SuggestionCard(app, it) } }
         SectionLabel("Drives")
         st.optJSONArray("drives").objs().forEach { d ->
@@ -285,8 +285,8 @@ private val FLAG_NAMES = linkedMapOf("none" to "Normal data partition", "esp" to
 @Composable fun MountPointDialog(app: AppState, serial: String, p: JSONObject, done: () -> Unit) {
     val mounts = p.optJSONArray("mounts")?.let { a -> (0 until a.length()).map { a.getString(it) } }.orEmpty()
     val name = p.optString("name").ifEmpty { p.optString("node").removePrefix("/dev/") }
-    var to by remember { mutableStateOf(mounts.firstOrNull() ?: "/mnt/" + p.optString("label").ifEmpty { name }.lowercase().replace(Regex("[^a-z0-9_.-]+"), "_").trim('_').ifEmpty { "drive" }) }
-    val ok = Regex("/(mnt|srv|media|data)/[A-Za-z0-9][A-Za-z0-9_.-]{0,40}").matches(to)
+    var to by remember { mutableStateOf(mounts.firstOrNull() ?: "/mnt/" + p.optString("label").ifEmpty { name }.lowercase().replace(Rx.notSlug, "_").trim('_').ifEmpty { "drive" }) }
+    val ok = Rx.mountPath.matches(to)
     OneDialog(done, "Where ${p.optString("label").ifEmpty { name }} is mounted", (if (mounts.isNotEmpty()) "Now at ${mounts.joinToString(", ")}. " else "Not mounted now. ") +
         "It's mounted at the folder you pick only, and comes back there after a restart. Files saved into that folder while the drive wasn't there are moved onto it.",
         listOf(DialogButton("Cancel", onClick = done), DialogButton("Mount here", N.blue, enabled = ok) { val target = to.trim(); done()

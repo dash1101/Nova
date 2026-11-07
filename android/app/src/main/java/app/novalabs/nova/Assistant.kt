@@ -50,7 +50,7 @@ object Assistant {
     val turns = mutableStateListOf<Turn>()
     fun history() = JSONArray(turns.takeLast(6).map { JSONObject().put("q", it.q).put("reply", it.reply).put("done", JSONArray(it.done)) })
     private val STARTS = Regex("^(?:hey|please|can you|could you|turn|set|apply|make|free|clean|disable|enable|lower|raise|dim|install|schedule|restart|reboot|stop|start|run|back ?up|open|show|switch|erase|format|wipe|change)\\b", RegexOption.IGNORE_CASE)
-    fun looksLikeRequest(q: String) = q.trim().split(Regex("\\s+")).size >= 3 && STARTS.containsMatchIn(q.trim())
+    fun looksLikeRequest(q: String) = q.trim().split(Rx.spaces).size >= 3 && STARTS.containsMatchIn(q.trim())
     /** The only calls a plan may make (checked here before anything is signed). */
     private val ALLOWED = listOf("POST" to Regex("^/api/v1/fan$"), "POST" to Regex("^/api/v1/actions/(free-ram|backup)$"), "POST" to Regex("^/api/v1/store/[a-z0-9-]{1,40}/install$"),
         "POST" to Regex("^/api/v1/containers/[A-Za-z0-9][A-Za-z0-9_.-]{0,62}/(start|stop|restart)$"), "POST" to Regex("^/api/v1/power/(schedule|reboot|poweroff)$"), "POST" to Regex("^/api/v1/freeup$"))
@@ -63,44 +63,58 @@ object Assistant {
  *  as Nova web's. Its state shows what Nova is doing: idle (slow, breathing), think (a bright band scans over it while it
  *  turns faster), listen (a wave rolls through it with your voice), work (a band sweeps round it while steps run). */
 object OrbLevel { var v by mutableFloatStateOf(0f) }
-private val ORB_PTS = HashMap<Int, List<FloatArray>>()
+private val ORB_PTS = HashMap<Int, Array<FloatArray>>()
 private fun orbSphere(n: Int) = ORB_PTS.getOrPut(n) { val g = Math.PI * (3 - Math.sqrt(5.0))
-    List(n) { i -> val y = 1 - 2 * (i + .5) / n; val r = Math.sqrt(1 - y * y); val a = i * g; floatArrayOf((r * Math.cos(a)).toFloat(), y.toFloat(), (r * Math.sin(a)).toFloat()) } }
+    Array(n) { i -> val y = 1 - 2 * (i + .5) / n; val r = Math.sqrt(1 - y * y); val a = i * g; floatArrayOf((r * Math.cos(a)).toFloat(), y.toFloat(), (r * Math.sin(a)).toFloat()) } }
 
 @Composable fun AssistantOrb(state: String = "idle", size: androidx.compose.ui.unit.Dp = 96.dp) {
     val acc = N.blue; val reduce = reduceMotion()
-    var t by remember { mutableFloatStateOf(1.2f) }
-    LaunchedEffect(state, reduce) {
-        if (reduce && state == "idle") { t = 1.2f; return@LaunchedEffect }
-        val k = if (reduce) .45f else 1f
-        while (true) withFrameNanos { t = (it / 1e9f) * k }
-    }
+    // It turns slowly, so it doesn't need every frame — and it's on every page, where the whole window repaints each time it moves (an old
+    // tablet felt that everywhere). It moves on the shared heartbeat (Ambient): the same tick as the server picture, calmer while idle.
+    val still = reduce && state == "idle"
+    if (!still) UseAmbient(if (state == "idle") 0 else 2)
+    val calm = remember { derivedStateOf { Ambient.ms / (if (lite()) 125L else 50L) } }      // an idle orb only redraws every 125 ms (50 on a fast device)
+    val k = if (reduce) .45f else 1f
+    // everything the dots need, made once: where each sits on the sphere, and room to work out where they are this frame
+    val dn = androidx.compose.ui.platform.LocalDensity.current.density
+    val n = if (size.value >= 72) 340 else if (size.value >= 40) 190 else 110
+    val pts = remember(n) { orbSphere(n) }
+    val work = remember(n) { OrbWork(n) }
+    val rs = remember(size) { Math.pow(size.value / 96.0, .62).toFloat() * dn }
     Canvas(Modifier.size(size)) {
-        val s = this.size.minDimension; val c = s / 2; val dn = density
-        val n = if (s / dn >= 72) 340 else if (s / dn >= 40) 190 else 110
+        val ms = if (state == "idle") calm.value * (if (lite()) 125L else 50L) else Ambient.ms
+        val t = if (still) 1.2f else ((ms % 3_600_000L) / 1000f) * k                  // seconds (wrapping hourly, so a float keeps its precision)
+        val s = this.size.minDimension; val c = s / 2
         val spin = when (state) { "think" -> 1.05f; "listen" -> .45f; "work" -> .7f; else -> .22f }
         val yaw = t * spin; val tilt = .42f + kotlin.math.sin(t * .27f) * .14f
         val cy = kotlin.math.cos(yaw); val sy = kotlin.math.sin(yaw); val ct = kotlin.math.cos(tilt); val st = kotlin.math.sin(tilt)
         val R = s * .36f * (if (state == "idle") 1 + .035f * kotlin.math.sin(t * 1.5f) else 1f)
-        val rs = Math.pow((s / dn / 96.0), .62).toFloat() * dn
         val scan = kotlin.math.sin(t * 1.9f); val sweep = t * 2.2f; val lv = OrbLevel.v
         // the dark sphere behind, with a faint ring of the accent
         drawCircle(Brush.radialGradient(0f to Color(acc.red * .12f, acc.green * .12f, acc.blue * .16f + .04f, .96f), .72f to Color(acc.red * .08f, acc.green * .08f, acc.blue * .1f + .02f, .92f),
             .94f to Color(acc.red * .1f, acc.green * .1f, acc.blue * .12f + .03f, .9f), .985f to acc.copy(alpha = .35f), 1f to Color.Transparent, center = Offset(c, c * .9f), radius = c), c)
-        val pts = orbSphere(n).map { p ->
-            val x = p[0]; val y = p[1]; val z = p[2]; var k = 1f; var hot = 0f
+        val o = work.v; val bucket = work.bucket
+        for (i in 0 until n) {
+            val p = pts[i]; val x = p[0]; val y = p[1]; val z = p[2]; var k = 1f; var hot = 0f
             when (state) {
                 "listen" -> k = 1 + (.04f + .2f * lv) * kotlin.math.sin(y * 7 - t * 7)
                 "think" -> { k = 1 + .045f * kotlin.math.sin(x * 5 + t * 3.1f) * kotlin.math.cos(z * 4 - t * 2.3f); hot = kotlin.math.exp(-((y - scan) * (y - scan)) / .025f) }
                 "work" -> { val d = kotlin.math.atan2(z, x) - sweep; val w = kotlin.math.atan2(kotlin.math.sin(d), kotlin.math.cos(d)); hot = kotlin.math.exp(-(w * w) / .09f) }
             }
             val x1 = x * cy + z * sy; val z1 = -x * sy + z * cy; val y1 = y * ct - z1 * st; val z2 = y * st + z1 * ct
-            val near = (z2 + 1) / 2
-            floatArrayOf(c + x1 * R * k, c - y1 * R * k, z2, (.45f + 1.55f * near + 1.1f * hot) * rs, (.12f + .78f * near + .5f * hot).coerceAtMost(1f), (near * .55f + hot * .6f).coerceAtMost(1f))
-        }.sortedBy { it[2] }
-        for (p in pts) drawCircle(lerp(acc, Color.White, p[5]).copy(alpha = p[4]), p[3], Offset(p[0], p[1]))
+            val near = (z2 + 1) / 2; val j = i * 5
+            o[j] = c + x1 * R * k; o[j + 1] = c - y1 * R * k
+            o[j + 2] = (.45f + 1.55f * near + 1.1f * hot) * rs                                  // radius
+            o[j + 3] = (.12f + .78f * near + .5f * hot).coerceAtMost(1f)                          // alpha
+            o[j + 4] = (near * .55f + hot * .6f).coerceAtMost(1f)                                 // how white
+            bucket[i] = (near * 7.99f).toInt().coerceIn(0, 7)
+        }
+        // far dots first, near ones over them (eight depth layers: no list to build and sort every frame)
+        for (b in 0 until 8) for (i in 0 until n) if (bucket[i] == b) { val j = i * 5
+            drawCircle(lerp(acc, Color.White, o[j + 4]).copy(alpha = o[j + 3]), o[j + 2], Offset(o[j], o[j + 1])) }
     }
 }
+private class OrbWork(n: Int) { val v = FloatArray(n * 5); val bucket = IntArray(n) }
 
 /** The box you type into, with a beam of light running round its edge. */
 @Composable private fun BeamBox(content: @Composable () -> Unit) {
@@ -120,7 +134,7 @@ object AssistantRun {
         if (onScreen) return
         // just a notification (tap it to open the assistant) — no pop-up over whatever page you're on
         unseen = true
-        val short = msg.replace(Regex("\\s+"), " ").trim().let { if (it.length > 120) it.take(117).trimEnd() + "…" else it }
+        val short = msg.replace(Rx.spaces, " ").trim().let { if (it.length > 120) it.take(117).trimEnd() + "…" else it }
         Notifier.post(app.activity, 7711, "info", "Nova assistant", short, open = "assistant")
     }
 }

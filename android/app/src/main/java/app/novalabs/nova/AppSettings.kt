@@ -29,7 +29,8 @@ object Releases {
 
     private val http = OkHttpClient.Builder().connectTimeout(12, TimeUnit.SECONDS).readTimeout(60, TimeUnit.SECONDS).build()
 
-    private fun numbers(v: String) = Regex("\\d+").findAll(v.substringBefore('-')).map { it.value.toIntOrNull() ?: 0 }.toList()
+    private val DIGITS = Regex("\\d+")
+    private fun numbers(v: String) = DIGITS.findAll(v.substringBefore('-')).map { it.value.toIntOrNull() ?: 0 }.toList()
     fun isNewer(tag: String): Boolean {
         val a = numbers(tag.removePrefix("v")); val b = numbers(APP_VERSION)
         for (i in 0 until maxOf(a.size, b.size)) { val x = a.getOrElse(i) { 0 }; val y = b.getOrElse(i) { 0 }; if (x != y) return x > y }
@@ -57,7 +58,7 @@ object Releases {
     suspend fun install(ctx: android.content.Context, rel: Release, progress: (Int) -> Unit) = withContext(Dispatchers.IO) {
         if (rel.sums.isEmpty()) throw ApiException(0, "This release has no checksum list — not installing it.")
         val sums = http.newCall(Request.Builder().url(rel.sums).header("User-Agent", "Nova app").build()).execute().use { it.body.string() }
-        val want = sums.lineSequence().map { it.trim().split(Regex("\\s+")) }.firstOrNull { it.size >= 2 && it[1].removePrefix("*") == rel.apkName }?.get(0)
+        val want = sums.lineSequence().map { it.trim().split(Rx.spaces) }.firstOrNull { it.size >= 2 && it[1].removePrefix("*") == rel.apkName }?.get(0)
             ?: throw ApiException(0, "The checksum list doesn't mention ${rel.apkName} — not installing it.")
         val md = MessageDigest.getInstance("SHA-256")
         val out = java.io.ByteArrayOutputStream()

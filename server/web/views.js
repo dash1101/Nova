@@ -2165,7 +2165,7 @@ export async function hostTerminal(ctx) {
 export async function dashboard(ctx) {
   // "Living wallpaper" as the dashboard's background: shown while it's open, even if it's off for the rest of Nova
   const forceLive = on => { document.documentElement.classList.toggle("force-living", on); LV.update(); };
-  forceLive(prefs.dashBg === "living"); ctx.onLeave(() => forceLive(false));
+  forceLive(prefs.dashBg === "living" && !prefs.dashAmoled); ctx.onLeave(() => forceLive(false));
   let wake; try { wake = await navigator.wakeLock?.request("screen"); } catch {}
   ctx.onLeave(() => wake?.release?.());
   const L = { recent: [], history: [], tick: 0, added: 1 };
@@ -2198,12 +2198,16 @@ export async function dashboard(ctx) {
     }
     return "";
   };
+  // Pixel shift: the layout moves to a new spot every minute (Customize dashboard → Pixel shift). Two irrational steps, so over a day the
+  // spots cover the whole range evenly instead of cycling through a few.
+  const reach = () => ({ off: 0, small: 4, medium: 10, large: 20 })[prefs.dashShift || "small"] ?? 4;
+  const orbit = (step, span) => Math.floor(((shift * step) % 1) * (2 * span + 1)) - span;
   const draw = () => {
-    const dim = nightLevel();
+    const dim = nightLevel(), rr = reach(), dx = rr ? orbit(0.6180339887, rr) : 0, dy = rr ? orbit(0.7548776662, Math.floor(rr * 3 / 4)) : 0;
     const cols = prefs.dashCols ? Math.min(prefs.dashCols, Math.max(1, Math.floor(innerWidth / 150))) : Math.max(2, Math.min(6, Math.floor(innerWidth / 260)));
-    ctx.raw(`<div class="dash${prefs.dashPlain ? " plain" : ""} bg-${esc(prefs.dashBg || "theme")}" id="dash" style="--dscale:${(prefs.dashScale || 100) / 100}"><div class="top${chrome ? "" : " hide"}" id="dtop"><button class="circle frost" data-act="back" aria-label="Leave">${I("back")}</button><b style="font-size:18px;flex:1">${esc(serverName())}</b>
+    ctx.raw(`<div class="dash${prefs.dashPlain ? " plain" : ""}${prefs.dashAmoled ? " amoled" : ""} bg-${esc(prefs.dashBg || "theme")}" id="dash" style="--dscale:${(prefs.dashScale || 100) / 100};padding:${Math.max(16, rr + 6)}px"><div class="top${chrome ? "" : " hide"}" id="dtop"><button class="circle frost" data-act="back" aria-label="Leave">${I("back")}</button><b style="font-size:18px;flex:1">${esc(serverName())}</b>
         <button class="circle frost" data-act="edit" aria-label="Customize">${I("edit")}</button>${document.fullscreenEnabled ? `<button class="circle frost" data-act="fs" aria-label="Full screen">${I("full")}</button>` : ""}</div>
-      <div class="dgrid${arranging ? " arrange" : ""}" style="--cols:${cols};transform:translate(${(shift * 7) % 9 - 4}px,${(shift * 5) % 7 - 3}px)">${prefs.dashTiles.map(id => tileHtml(id).replace(/^<div class="card glass( span2)?/, `<div data-tile="${id}" class="card glass ${SIZE_CLS[dashSpan(id)] || ""}`)
+      <div class="dgrid${arranging ? " arrange" : ""}" style="--cols:${cols};transform:translate(${dx}px,${dy}px)">${prefs.dashTiles.map(id => tileHtml(id).replace(/^<div class="card glass( span2)?/, `<div data-tile="${id}" class="card glass ${SIZE_CLS[dashSpan(id)] || ""}`)
           .replace(/<\/div>$/, arranging ? `<button class="tsize" data-act="tsize:${id}" title="Size: ${SIZE_NAMES[dashSpan(id)]}">${I("full")}</button><button class="trm" data-act="trm:${id}" title="Remove">${I("close")}</button></div>` : "</div>")).join("")}</div>
       ${arranging ? `<button class="arrdone btn" data-act="arrdone">Done</button>` : ""}<div class="night" style="background:rgba(0,0,0,${dim.toFixed(3)})"></div></div>`);
     if (prefs.dashBg === "picture") kv("dashwall").then(b => { const d = $("#dash"); if (b && d) { dashUrl ||= URL.createObjectURL(b); d.style.backgroundImage = `url("${dashUrl}")`; } }).catch(() => {});
@@ -2261,8 +2265,10 @@ export async function editDash(ctx) {
         + switchRow("Show seconds", "", prefs.dashSeconds, "secs"))}
       ${sec("Night")}${group(switchRow("Dim at night", `${String(prefs.dashFrom).padStart(2, "0")}:00 – ${String(prefs.dashTo).padStart(2, "0")}:00`, prefs.dashDim, "dim")
         + (prefs.dashDim ? slider("How dark", "dimlvl", prefs.dashDimLevel ?? 40, 10, 90, (prefs.dashDimLevel ?? 40) + "%") + slider("Fade in and out over", "fade", prefs.dashFade ?? 30, 0, 120, (prefs.dashFade ?? 30) + " min") + slider("From", "from", prefs.dashFrom, 0, 23, prefs.dashFrom + ":00") + slider("Until", "to", prefs.dashTo, 0, 23, prefs.dashTo + ":00") : ""))}
+      ${sec("Screen care")}${group(switchRow("AMOLED black", "Pure black, tiles with just an outline and softer whites — so most pixels stay off. Saves power and wear on OLED screens.", prefs.dashAmoled, "amoled")
+        + row("Pixel shift", { sub: { off: "Off", small: "Small — the layout moves a few pixels every minute", medium: "Medium — about 10 pixels", large: "Large — about 20 pixels" }[prefs.dashShift || "small"], icon: "viewday", click: "shift" }))}
       ${document.fullscreenEnabled ? sec("Full screen") + group(switchRow("Full screen when tapped", "The first tap on the dashboard fills the screen (browsers only allow it from a tap). Esc or the button leaves it.", prefs.dashFull, "full")) : ""}
-      ${note("The dashboard keeps the screen awake, drifts a few pixels every minute so nothing burns in, and hides its buttons until you tap.")}
+      ${note("The dashboard keeps the screen awake, moves a little every minute (Pixel shift) so nothing burns in, and hides its buttons until you tap.")}
       ${links([["Reset the dashboard", "reset"]])}`, { title: "Customize dashboard" });
     reorderable($("#rl"), keys => { prefs.dashTiles = keys; draw(); });
     wireCommon(ctx.root, { onRangeInput: (k, v) => { $(`[data-lbl="${k}"]`).textContent = k === "scale" || k === "dimlvl" ? v + "%" : k === "fade" ? v + " min" : v + ":00"; },
@@ -2279,8 +2285,10 @@ export async function editDash(ctx) {
         inp.onchange = async () => { const f = inp.files?.[0]; if (!f) return; await kv("dashwall", f); prefs.dashBg = "picture"; draw(); toast("Dashboard picture set"); }; inp.click(); return; }
       prefs.dashBg = v; draw();
     },
+    amoled: () => { prefs.dashAmoled = !prefs.dashAmoled; draw(); },
+    shift: async () => { const v = await choose("Pixel shift", [["off", "Off"], ["small", "Small", "A few pixels (the default)"], ["medium", "Medium", "About 10 pixels"], ["large", "Large", "About 20 pixels — for a screen that's on all day"]], prefs.dashShift || "small"); if (v) { prefs.dashShift = v; draw(); } },
     plain: () => { prefs.dashPlain = !prefs.dashPlain; draw(); }, full: () => { prefs.dashFull = !prefs.dashFull; draw(); }, secs: () => { prefs.dashSeconds = !prefs.dashSeconds; draw(); },
     c24: async () => { const v = await choose("Time format", [["auto", "Same as this device"], ["24", "24-hour"], ["12", "12-hour"]], prefs.dashClock24 == null ? "auto" : prefs.dashClock24 ? "24" : "12"); if (v) { prefs.dashClock24 = v === "auto" ? null : v === "24"; draw(); } },
-    dim: () => { prefs.dashDim = !prefs.dashDim; draw(); }, reset: () => { ["dashTiles", "dashDim", "dashFrom", "dashTo", "dashCols", "dashSize", "dashClock24", "dashSeconds", "dashScale", "dashBg", "dashPlain", "dashDimLevel", "dashFull"].forEach(k => localStorage.removeItem("nova." + k)); draw(); } });
+    dim: () => { prefs.dashDim = !prefs.dashDim; draw(); }, reset: () => { ["dashTiles", "dashDim", "dashFrom", "dashTo", "dashCols", "dashSize", "dashClock24", "dashSeconds", "dashScale", "dashBg", "dashPlain", "dashAmoled", "dashShift", "dashDimLevel", "dashFull"].forEach(k => localStorage.removeItem("nova." + k)); draw(); } });
   draw();
 }
