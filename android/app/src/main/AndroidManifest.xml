@@ -117,6 +117,27 @@
             <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
         </activity-alias>
 
+        <!-- Home-screen widgets (Widgets.kt) -->
+        <receiver android:name=".StatusWidget" android:exported="false" android:label="Nova status">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_status_info" />
+        </receiver>
+        <receiver android:name=".StatsWidget" android:exported="false" android:label="Nova stats">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_stats_info" />
+        </receiver>
+        <receiver android:name=".ActionsWidget" android:exported="false" android:label="Nova quick actions">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_actions_info" />
+        </receiver>
+        <receiver android:name=".InboxWidget" android:exported="false" android:label="Nova inbox">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_inbox_info" />
+        </receiver>
+        <receiver android:name=".StorageWidget" android:exported="false" android:label="Nova storage">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_storage_info" />
+        </receiver>
         <!-- Quick Settings tile: fan light on/off from the notification shade -->
         <service
             android:name=".FanTileService"

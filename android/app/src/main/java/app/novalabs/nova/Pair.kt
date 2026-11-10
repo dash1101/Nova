@@ -137,10 +137,14 @@ fun parsePairInfo(raw: String): PairInfo? = runCatching {
         if (ok) scanning = true else error = "Camera permission is needed to scan — or type the code below." }
 
     /** The server said yes: remember it, set up the fingerprint key, and go in. */
-    suspend fun complete(r: JSONObject, lan: String, pin: String) {
+    suspend fun complete(r: JSONObject, lan: String, pin: String, reached: String = "") {
         val strong = app.pairing.keys.ensure()
-        app.pairing.save(r.getString("device_id"), r.optString("lan_url").ifEmpty { lan }, r.optString("remote_url"),
+        val home = r.optString("lan_url").ifEmpty { lan }
+        app.pairing.save(r.getString("device_id"), home, r.optString("remote_url"),
             r.optString("cf_client_id"), r.optString("cf_client_secret"), r.optString("lan_pin").ifEmpty { pin })
+        // Paired at an address other than the server's home one (its Tailscale address, say): keep it as a route too. The server's
+        // own home address may not be reachable from here at all, and without this the app only ever tried that one — "Disconnected".
+        if (reached.isNotEmpty() && android.net.Uri.parse(reached).host != android.net.Uri.parse(home).host) app.pairing.tailnetUrl = reached
         app.pairing.label = r.optString("name"); PairHint.address = null; PairHint.name = null
         app.pairing.role = r.optString("role").ifEmpty { "admin" }
         runCatching {   // fingerprint-bound key for risky actions: registered on home Wi-Fi, or right now when we just paired from away
@@ -166,15 +170,15 @@ fun parsePairInfo(raw: String): PairInfo? = runCatching {
                     if (info.tailnet.isNotEmpty()) add(Triple("tailnet", info.tailnet, 6L))
                     if (info.remote.isNotEmpty() && away) add(Triple("remote", info.remote, 20L))
                 }
-                var r: JSONObject? = null; var usedLan = info.lan
+                var r: JSONObject? = null; var usedLan = info.lan; var reached = ""
                 for ((route, url, t) in tries) {
                     try { r = NovaApi.pair(url, info.code.trim().uppercase(), name, pem, if (route == "remote") "" else info.pin, if (route == "remote") info.cfId else "",
-                            if (route == "remote") info.cfSecret else "", publicTls = route == "remote", timeoutSec = t); break }
+                            if (route == "remote") info.cfSecret else "", publicTls = route == "remote", timeoutSec = t); if (route != "remote") reached = url; break }
                     catch (e: ApiException) { if (e.code != 0) throw e }                  // anything but "couldn't reach it" is a real answer: stop
                 }
                 if (r == null) throw ApiException(0, if (away) "Couldn't reach the server from here (home network, Tailscale or Cloudflare). Check this ${DeviceForm.noun}'s internet connection and that the code is still fresh."
                     else "Can't reach the server at ${info.lan} — are you on home Wi-Fi? Away from home, make a code with  sudo nova add --remote.")
-                complete(r, usedLan, info.pin)
+                complete(r, usedLan, info.pin, reached)
             } catch (e: Exception) { error = e.message; app.pairing.keys.wipe() } finally { busy = false }
         }
     }

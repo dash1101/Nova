@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="w_bg">#F2FFFFFF</color>
+    <color name="w_tile">#FFF1F0F6</color>
+    <color name="w_text">#FF111111</color>
+    <color name="w_sub">#FF6D6D73</color>
+    <color name="w_track">#FFE3E2EA</color>
+    <color name="w_blue">#FF2F7DF6</color>
+    <color name="w_purple">#FFAF52DE</color>
+    <color name="w_amber">#FFE08A00</color>
+    <color name="w_green">#FF1FA34F</color>
+    <color name="w_red">#FFE5484D</color>
+</resources>

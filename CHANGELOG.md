@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.9.14-alpha (app)
+- **Home-screen widgets** — five of them, for the server you're on in the app (long-press your home screen → Widgets → Nova):
+  - **Status**: all good or what needs attention, and how many containers are running.
+  - **Stats**: CPU, memory, temperature and disk, with bars.
+  - **Quick actions**: Back up now, Free RAM, fan light on/off, and Refresh — they run right from the home screen (anything that needs your fingerprint stays in the app).
+  - **Inbox**: the newest three alerts and how many are new.
+  - **Storage**: how full each drive is.
+  They refresh every 15 minutes, whenever the app refreshes, and when you tap Refresh; tapping one opens the matching page.
+- **Fix: a server paired over Tailscale showed "Disconnected".** The app kept only the server's home-network address from pairing, which a device on Tailscale can't reach, and threw away the Tailscale address that worked. It now keeps the address you paired at. (A device already paired this way: remove it and pair again once.)
+
 ## 0.9.13-alpha (app)
 - **The Inbox no longer redoes itself for every batch of rows.** Version 0.9.12 built rows in batches by changing one counter on the page, which made Android re-run the whole page's code for every row already built — more work, not less. Each row now waits for its own turn, so the page is only built once; the date formats are made once instead of on every pass too.
 

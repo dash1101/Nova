@@ -152,14 +152,14 @@ class AppState(val activity: Activity, val pairing: Pairing, val scope: Coroutin
     suspend fun refresh() {
         try {
             val t0 = System.currentTimeMillis()
-            val o = api.get("/api/v1/overview"); overview = o
+            val o = api.get("/api/v1/overview"); overview = o; runCatching { Widgets.fromApp(activity, pairing, o) }
             val t1 = System.currentTimeMillis()
             o.optDouble("time").takeIf { !it.isNaN() && t1 - t0 < 3000 }?.let { clockSkew = (it * 1000 - (t0 + t1) / 2.0).toLong() }
             o.optJSONObject("server")?.let { srv -> pairing.label = srv.optString("display_name").ifEmpty { srv.optString("name") }
                 // Tailscale: the same server at its tailnet address (only https pairings; the port is the home one)
                 val th = srv.optString("tailnet_host"); val lan = android.net.Uri.parse(pairing.lanUrl)
                 val tu = if (th.isNotEmpty() && pairing.lanUrl.startsWith("https://")) "https://${if (':' in th) "[$th]" else th}:${if (lan.port > 0) lan.port else 8495}" else ""
-                if (tu != pairing.tailnetUrl) pairing.tailnetUrl = tu }
+                if (tu.isNotEmpty() && tu != pairing.tailnetUrl) pairing.tailnetUrl = tu }      // (never erase the address we paired at)
             if (fanInFlight == 0) o.optJSONObject("fan")?.let { f -> fan = JSONObject(fan?.toString() ?: "{}").also { m -> f.keys().forEach { k -> m.put(k, f.get(k)) } } }
             error = null; reconnecting = false; failures = 0; notAuthorized = false; lastContact = System.currentTimeMillis()
             if (pairing.lastEventSeen == 0.0) {     // fresh install: history isn't "new"
@@ -297,12 +297,15 @@ class AppState(val activity: Activity, val pairing: Pairing, val scope: Coroutin
 var openApprovals by mutableStateOf(false)
 var openAssistant by mutableStateOf(false)
 var openUpdate by mutableStateOf(false)
+/** A page a home-screen widget asked for (status, storage, lighting, inbox). */
+var openPage by mutableStateOf<String?>(null)
 
 class MainActivity : androidx.fragment.app.FragmentActivity() {   // FragmentActivity: the fingerprint prompt on Android 7–8
     override fun onNewIntent(intent: android.content.Intent) {
         super.onNewIntent(intent); if (intent.getStringExtra("open") == "approvals") openApprovals = true
         if (intent.getStringExtra("open") == "assistant") openAssistant = true
         if (intent.getStringExtra("open") == "update") openUpdate = true
+        intent.getStringExtra("open")?.takeIf { it in WIDGET_PAGES }?.let { openPage = it }
     }
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
@@ -316,6 +319,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {   // FragmentAct
         openApprovals = fresh && intent?.getStringExtra("open") == "approvals"
         openAssistant = fresh && intent?.getStringExtra("open") == "assistant"
         openUpdate = fresh && intent?.getStringExtra("open") == "update"
+        if (fresh) intent?.getStringExtra("open")?.takeIf { it in WIDGET_PAGES && it != "inbox" }?.let { openPage = it }
         intent?.removeExtra("open")
         Alerts.start(this)
         AppPrefs.init(this); Living.init(this); IconShape.init(this); Sounds.init(this); Sounds.view = java.lang.ref.WeakReference(window.decorView); Ambience.init(this); Sounds.warm(); Dev.load(this); Dev.applyFpsCap(this); applySecureFlag(this)
@@ -404,6 +408,8 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {   // FragmentAct
     LaunchedEffect(openApprovals) { if (openApprovals) { openApprovals = false; app.go(Route.Approvals) } }
     LaunchedEffect(openAssistant) { if (openAssistant) { openAssistant = false; if (app.top != Route.Assistant) app.go(Route.Assistant) } }
     LaunchedEffect(openUpdate) { if (openUpdate) { openUpdate = false; app.go(Route.Settings) } }
+    LaunchedEffect(openPage) { openPage?.let { p -> openPage = null
+        app.go(when (p) { "status" -> Route.Status; "storage" -> Route.Hardware; "lighting" -> Route.Lighting; else -> Route.Inbox }) } }
     LaunchedEffect(app.top == Route.Labs, app.notAuthorized) { Assistant.refresh(app) }          // on start, and after Labs (the assistant may have been switched)
 
     val rootHaze = remember { dev.chrisbanes.haze.HazeState() }

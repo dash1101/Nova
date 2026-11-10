@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:id="@+id/w_root" android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="horizontal" android:background="@drawable/widget_bg" android:padding="6dp">
+    <LinearLayout android:id="@+id/a_backup" android:layout_width="0dp" android:layout_weight="1" android:layout_height="match_parent" android:orientation="vertical" android:gravity="center" android:background="@drawable/widget_tile" android:layout_margin="3dp" android:padding="6dp">
+        <ImageView android:id="@+id/a_backup_i" android:layout_width="26dp" android:layout_height="26dp" android:src="@drawable/ic_w_backup" android:tint="@color/w_blue" />
+        <TextView android:id="@+id/a_backup_t" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:text="Back up" android:textColor="@color/w_text" android:textSize="12sp" android:maxLines="1" />
+    </LinearLayout>
+    <LinearLayout android:id="@+id/a_ram" android:layout_width="0dp" android:layout_weight="1" android:layout_height="match_parent" android:orientation="vertical" android:gravity="center" android:background="@drawable/widget_tile" android:layout_margin="3dp" android:padding="6dp">
+        <ImageView android:id="@+id/a_ram_i" android:layout_width="26dp" android:layout_height="26dp" android:src="@drawable/ic_w_ram" android:tint="@color/w_purple" />
+        <TextView android:id="@+id/a_ram_t" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:text="Free RAM" android:textColor="@color/w_text" android:textSize="12sp" android:maxLines="1" />
+    </LinearLayout>
+    <LinearLayout android:id="@+id/a_light" android:layout_width="0dp" android:layout_weight="1" android:layout_height="match_parent" android:orientation="vertical" android:gravity="center" android:background="@drawable/widget_tile" android:layout_margin="3dp" android:padding="6dp">
+        <ImageView android:id="@+id/a_light_i" android:layout_width="26dp" android:layout_height="26dp" android:src="@drawable/ic_w_light" android:tint="@color/w_amber" />
+        <TextView android:id="@+id/a_light_t" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:text="Light" android:textColor="@color/w_text" android:textSize="12sp" android:maxLines="1" />
+    </LinearLayout>
+    <LinearLayout android:id="@+id/a_refresh" android:layout_width="0dp" android:layout_weight="1" android:layout_height="match_parent" android:orientation="vertical" android:gravity="center" android:background="@drawable/widget_tile" android:layout_margin="3dp" android:padding="6dp">
+        <ImageView android:id="@+id/a_refresh_i" android:layout_width="26dp" android:layout_height="26dp" android:src="@drawable/ic_w_refresh" android:tint="@color/w_green" />
+        <TextView android:id="@+id/a_refresh_t" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:text="Refresh" android:textColor="@color/w_text" android:textSize="12sp" android:maxLines="1" />
+    </LinearLayout>
+</LinearLayout>
