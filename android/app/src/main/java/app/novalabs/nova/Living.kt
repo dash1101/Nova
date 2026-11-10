@@ -87,7 +87,7 @@ private fun DrawScope.petal(x: Float, y: Float, r: Float, c: Color) {
  *  picture that every card copies its part of. Each card used to draw the whole scene itself — during a back gesture
  *  (two pages, every card re-recording its backdrop as the page moves) that was the scene a dozen times a frame, and
  *  Glass dropped frames even on fast phones. The page behind still draws the scene itself, at full sharpness. */
-private object LivingFrame {
+internal object LivingFrame {
     @Volatile var front: ImageBitmap? = null; @Volatile var frontKey: List<Any>? = null
     var version by mutableIntStateOf(0)
     @Volatile private var busy = false

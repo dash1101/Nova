@@ -9,9 +9,6 @@ import android.content.Intent
 import android.view.View
 import android.widget.RemoteViews
 import androidx.work.*
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
@@ -32,7 +29,17 @@ object Widgets {
     const val ACTION_RUN = "app.novalabs.nova.widget.RUN"
 
     private fun sp(ctx: Context) = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-    private fun snap(ctx: Context, k: String) = sp(ctx).getString(k, null)?.let { runCatching { JSONObject(it) }.getOrNull() }
+    private fun snap(ctx: Context, k: String) = if (demo) DEMO[k]?.let { JSONObject(it) } else sp(ctx).getString(k, null)?.let { runCatching { JSONObject(it) }.getOrNull() }
+
+    /** Made-up numbers for a made-up server: what the widget pictures in the home screen's widget list are drawn from. */
+    private var demo = false
+    private val DEMO: Map<String, String> get() { val t = System.currentTimeMillis() / 1000.0; return mapOf(
+        "overview" to """{"status":{"level":"ok","headline":"All systems normal","active_count":0,"metrics":{"storage":[
+            {"name":"System","mount":"/","pct":41,"free":140000000000},{"name":"Media","mount":"/mnt/media","pct":68,"free":1280000000000},
+            {"name":"Backups","mount":"/mnt/backups","pct":52,"free":960000000000}]}},"containers":{"running":12,"total":12,"stopped":0},"fan":{"on":true}}""",
+        "now" to """{"cpu":14,"load":0.6,"mem":38,"mem_used_gb":6.1,"mem_total_gb":16.0,"temp":42,"nvme_temp":36}""",
+        "events" to """{"events":[{"t":${t - 1500},"level":"resolved","title":"Backup finished"},{"t":${t - 9000},"level":"warning","title":"Media is 90% full"},
+            {"t":${t - 30000},"level":"info","title":"New sign-in from your phone"}]}""") }
 
     fun anyPlaced(ctx: Context): Boolean { val m = AppWidgetManager.getInstance(ctx)
         return PROVIDERS.any { m.getAppWidgetIds(ComponentName(ctx, it)).isNotEmpty() } }
@@ -88,23 +95,37 @@ object Widgets {
         PendingIntent.getBroadcast(ctx, req, Intent(ctx, cls).setAction(action).putExtra("do", what), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
 
     private fun header(ctx: Context, v: RemoteViews, level: String) {
-        val s = sp(ctx); val at = s.getLong("at", 0)
-        v.setTextViewText(R.id.w_name, s.getString("server", null)?.ifEmpty { null } ?: "Nova")
-        v.setInt(R.id.w_dot, "setColorFilter", if (s.getBoolean("offline", false)) color(ctx, R.color.w_sub) else levelColor(ctx, level))
+        val s = sp(ctx); val at = if (demo) System.currentTimeMillis() else s.getLong("at", 0); val offline = !demo && s.getBoolean("offline", false)
+        v.setTextViewText(R.id.w_name, if (demo) "My server" else s.getString("server", null)?.ifEmpty { null } ?: "Nova")
+        v.setInt(R.id.w_dot, "setColorFilter", if (offline) color(ctx, R.color.w_sub) else levelColor(ctx, level))
         val mins = ((System.currentTimeMillis() - at) / 60_000).toInt()
-        v.setTextViewText(R.id.w_age, when { at == 0L -> ""; s.getBoolean("offline", false) -> "offline"; mins < 1 -> "now"; mins < 60 -> "${mins}m"; else -> "${mins / 60}h" })
+        v.setTextViewText(R.id.w_age, when { at == 0L -> ""; offline -> "offline"; mins < 1 -> "now"; mins < 60 -> "${mins}m"; else -> "${mins / 60}h" })
     }
 
-    private fun build(ctx: Context, p: Class<*>): RemoteViews {
+    /** What each widget is, for the Widgets page in the app (class, name, what it shows, preview size in dp). */
+    class Kind(val cls: Class<out NovaWidget>, val name: String, val about: String, val w: Int, val h: Int)
+    val KINDS = listOf(
+        Kind(StatusWidget::class.java, "Status", "All good, or what needs attention — and how many containers are running.", 170, 150),
+        Kind(StatsWidget::class.java, "Stats", "CPU, memory, temperature and disk, with bars.", 330, 210),
+        Kind(ActionsWidget::class.java, "Quick actions", "Back up now, free memory, the fan light, and refresh — right from the home screen.", 330, 84),
+        Kind(InboxWidget::class.java, "Inbox", "The newest three alerts, and how many are new.", 330, 160),
+        Kind(StorageWidget::class.java, "Storage", "How full each drive is.", 250, 170))
+
+    @Synchronized fun build(ctx: Context, p: Class<*>, sample: Boolean = false): RemoteViews {
+        demo = sample
+        try { return draw(ctx, p) } finally { demo = false }
+    }
+
+    private fun draw(ctx: Context, p: Class<*>): RemoteViews {
         val o = snap(ctx, "overview"); val st = o?.optJSONObject("status"); val level = st?.optString("level") ?: "ok"
         val m = st?.optJSONObject("metrics"); val cs = o?.optJSONObject("containers"); val now = snap(ctx, "now")
-        val paired = Pairing(ctx).paired
+        val paired = demo || Pairing(ctx).paired
         return when (p) {
             StatusWidget::class.java -> RemoteViews(ctx.packageName, R.layout.widget_status).apply {
                 header(ctx, this, level)
                 setTextViewText(R.id.st_head, when { !paired -> "Not paired"; o == null -> "Connecting…"; level == "ok" -> "All good"
                     else -> st?.optString("headline")?.ifEmpty { null } ?: "${st?.optInt("active_count")} need attention" })
-                setTextViewText(R.id.st_sub, cs?.let { "${it.optInt("running")}/${it.optInt("total")} containers running" } ?: "")
+                setTextViewText(R.id.st_sub, cs?.let { "${it.optInt("running")}/${it.optInt("total")} containers up" + (if (it.optInt("stopped") > 0) " · ${it.optInt("stopped")} stopped" else "") } ?: "")
                 setOnClickPendingIntent(R.id.w_root, open(ctx, null, 1))
             }
             StatsWidget::class.java -> RemoteViews(ctx.packageName, R.layout.widget_stats).apply {
@@ -115,14 +136,19 @@ object Widgets {
                 val temp = now?.optDouble("temp")?.takeIf { !it.isNaN() }
                 put(R.id.cpu_v, R.id.cpu_s, R.id.cpu_b, cpu?.let { "%.0f%%".format(it) } ?: "—", now?.optDouble("load")?.takeIf { !it.isNaN() }?.let { "load $it" } ?: "", cpu)
                 put(R.id.mem_v, R.id.mem_s, R.id.mem_b, mem?.let { "%.0f%%".format(it) } ?: "—", now?.let { "${it.optDouble("mem_used_gb")} / ${it.optDouble("mem_total_gb")} GB" } ?: "", mem)
-                put(R.id.tmp_v, R.id.tmp_s, R.id.tmp_b, temp?.let { "%.0f°C".format(it) } ?: m?.optString("cpu_temp")?.ifEmpty { null } ?: "—", "CPU", temp)    // (a 100 °C bar)
+                put(R.id.tmp_v, R.id.tmp_s, R.id.tmp_b, temp?.let { "%.0f°C".format(it) } ?: m?.optString("cpu_temp")?.ifEmpty { null } ?: "—",
+                    now?.optDouble("nvme_temp")?.takeIf { !it.isNaN() }?.let { "drive %.0f°".format(it) } ?: "CPU", temp)    // (a 100 °C bar)
                 val disk = storageList(m).firstOrNull()
-                put(R.id.dsk_v, R.id.dsk_s, R.id.dsk_b, disk?.let { "${it.pct.toInt()}%" } ?: "—", disk?.let { "${it.free} · ${it.name}" } ?: "", disk?.pct?.toDouble())
+                put(R.id.dsk_v, R.id.dsk_s, R.id.dsk_b, disk?.let { "${it.pct.toInt()}%" } ?: "—", disk?.free ?: "", disk?.pct?.toDouble())
                 setOnClickPendingIntent(R.id.w_root, open(ctx, "status", 2))
             }
             ActionsWidget::class.java -> RemoteViews(ctx.packageName, R.layout.widget_actions).apply {
                 val fanOn = o?.optJSONObject("fan")?.optBoolean("on")
-                setTextViewText(R.id.a_light_t, when (fanOn) { true -> "Light off"; false -> "Light on"; null -> "Light" })
+                val busy = sp(ctx).getString("busy", "")!!.takeIf { !demo && System.currentTimeMillis() - sp(ctx).getLong("busy_at", 0) < 60_000 }
+                setTextViewText(R.id.a_backup_t, if (busy == "backup") "Starting…" else "Back up")
+                setTextViewText(R.id.a_ram_t, if (busy == "freeram") "Freeing…" else "Free RAM")
+                setTextViewText(R.id.a_refresh_t, if (busy == "refresh") "Refreshing…" else "Refresh")
+                setTextViewText(R.id.a_light_t, if (busy == "light") "Switching…" else when (fanOn) { true -> "Light off"; false -> "Light on"; null -> "Light" })
                 setOnClickPendingIntent(R.id.a_backup, broadcast(ctx, ActionsWidget::class.java, ACTION_RUN, "backup", 11))
                 setOnClickPendingIntent(R.id.a_ram, broadcast(ctx, ActionsWidget::class.java, ACTION_RUN, "freeram", 12))
                 setOnClickPendingIntent(R.id.a_light, broadcast(ctx, ActionsWidget::class.java, ACTION_RUN, "light", 13))
@@ -131,7 +157,7 @@ object Widgets {
             InboxWidget::class.java -> RemoteViews(ctx.packageName, R.layout.widget_inbox).apply {
                 header(ctx, this, level)
                 val evs = snap(ctx, "events")?.optJSONArray("events").objs().take(3)
-                val seen = Pairing(ctx).lastEventSeen
+                val seen = if (demo) System.currentTimeMillis() / 1000.0 - 10000 else Pairing(ctx).lastEventSeen
                 val newOnes = snap(ctx, "events")?.optJSONArray("events").objs().count { it.optDouble("t") > seen && it.optString("level") in listOf("warning", "critical") }
                 if (newOnes > 0) setTextViewText(R.id.w_age, "$newOnes new")
                 setViewVisibility(R.id.in_empty, if (evs.isEmpty()) View.VISIBLE else View.GONE)
@@ -163,29 +189,38 @@ object Widgets {
         }
     }
 
-    /** A quick action from the widget: runs right away, says how it went, then refreshes. */
-    fun run(ctx: Context, what: String, done: () -> Unit) {
-        CoroutineScope(Dispatchers.IO).launch {
-            val pairing = Pairing(ctx)
-            val msg = if (!pairing.paired) "Open Nova and pair it first" else try {
-                val api = NovaApi(pairing)
-                when (what) {
-                    "backup" -> { api.post("/api/v1/actions/backup"); "Backup started" }
-                    "freeram" -> { api.post("/api/v1/actions/free-ram"); "Freed memory" }
-                    "light" -> { val on = api.get("/api/v1/fan").optBoolean("on"); api.post("/api/v1/fan", JSONObject().put("on", !on)); if (on) "Fan light off" else "Fan light on" }
-                    else -> "Refreshed"
-                }
-            } catch (e: ApiException) { if (e.code == 403) "This ${DeviceForm.noun} has view-only access" else e.message ?: "Couldn't reach the server" }
-              catch (e: Exception) { "Couldn't reach the server" }
-            android.os.Handler(android.os.Looper.getMainLooper()).post { android.widget.Toast.makeText(ctx, msg, android.widget.Toast.LENGTH_SHORT).show() }
-            runCatching { refresh(ctx) }
-            done()
-        }
+    /** A quick action from the widget. It's handed to WorkManager — a tap's own few seconds aren't enough when the server has to be
+     *  reached the long way round (Tailscale, Cloudflare) — and the button says what it's doing meanwhile. */
+    fun run(ctx: Context, what: String) {
+        sp(ctx).edit().putString("busy", what).putLong("busy_at", System.currentTimeMillis()).apply(); render(ctx)
+        WorkManager.getInstance(ctx).enqueueUniqueWork("nova-widget-do-$what", ExistingWorkPolicy.KEEP,
+            OneTimeWorkRequestBuilder<WidgetActionWorker>().setInputData(workDataOf("do" to what)).build())
+    }
+
+    suspend fun perform(ctx: Context, what: String) {
+        val pairing = Pairing(ctx)
+        val msg = if (!pairing.paired) "Open Nova and pair it first" else try {
+            val api = NovaApi(pairing)
+            when (what) {
+                "backup" -> { api.post("/api/v1/actions/backup"); "Backup started" }
+                "freeram" -> { api.post("/api/v1/actions/free-ram"); "Freed memory" }
+                "light" -> { val on = api.get("/api/v1/fan").optBoolean("on"); api.post("/api/v1/fan", JSONObject().put("on", !on)); if (on) "Fan light off" else "Fan light on" }
+                else -> null
+            }
+        } catch (e: ApiException) { if (e.code == 403) "This ${DeviceForm.noun} has view-only access" else e.message ?: "Couldn't reach the server" }
+          catch (e: Exception) { "Couldn't reach the server" }
+        val ok = runCatching { refresh(ctx) }.getOrDefault(false)
+        sp(ctx).edit().remove("busy").apply(); render(ctx)
+        val say = msg ?: if (ok) "Refreshed" else "Couldn't reach the server"
+        android.os.Handler(android.os.Looper.getMainLooper()).post { android.widget.Toast.makeText(ctx, say, android.widget.Toast.LENGTH_SHORT).show() }
     }
 }
 
 class WidgetWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx, params) {
-    override suspend fun doWork(): Result = if (Widgets.refresh(applicationContext)) Result.success() else Result.retry()
+    override suspend fun doWork(): Result = if (Widgets.refresh(applicationContext) || runAttemptCount >= 2) Result.success() else Result.retry()
+}
+class WidgetActionWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx, params) {
+    override suspend fun doWork(): Result { Widgets.perform(applicationContext, inputData.getString("do") ?: "refresh"); return Result.success() }
 }
 
 /** What every Nova widget does: draw from the snapshot at once, then ask for fresh numbers; tap actions come back here. */
@@ -195,8 +230,8 @@ abstract class NovaWidget : AppWidgetProvider() {
     override fun onDisabled(ctx: Context) { Widgets.unscheduleIfNone(ctx) }
     override fun onReceive(ctx: Context, intent: Intent) {
         when (intent.action) {
-            Widgets.ACTION_REFRESH -> { val r = goAsync(); Widgets.run(ctx, "refresh") { r.finish() } }
-            Widgets.ACTION_RUN -> { val r = goAsync(); Widgets.run(ctx, intent.getStringExtra("do") ?: "") { r.finish() } }
+            Widgets.ACTION_REFRESH -> Widgets.run(ctx, "refresh")
+            Widgets.ACTION_RUN -> Widgets.run(ctx, intent.getStringExtra("do")?.takeIf { it in setOf("backup", "freeram", "light") } ?: "refresh")
             else -> super.onReceive(ctx, intent)
         }
     }

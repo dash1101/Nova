@@ -6,5 +6,5 @@
         <TextView android:id="@+id/w_age" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textColor="@color/w_sub" android:textSize="12sp" android:maxLines="1" />
     </LinearLayout>
     <TextView android:id="@+id/st_head" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:layout_marginTop="6dp" android:gravity="center_vertical" android:text="Connecting…" android:textColor="@color/w_text" android:textSize="20sp" android:textStyle="bold" android:maxLines="2" android:ellipsize="end" />
-    <TextView android:id="@+id/st_sub" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="@color/w_sub" android:textSize="13sp" android:maxLines="1" android:ellipsize="end" />
+    <TextView android:id="@+id/st_sub" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="@color/w_sub" android:textSize="13sp" android:maxLines="2" android:ellipsize="end" />
 </LinearLayout>

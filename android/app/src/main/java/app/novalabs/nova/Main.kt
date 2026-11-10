@@ -71,7 +71,7 @@ sealed class Route {
     data class BackupWizard(val id: String?, val sources: List<String> = emptyList(), val dest: String? = null) : Route()
     data class BackupBrowse(val id: String, val snap: String = "", val path: String = "") : Route()
     data object Diagnostics : Route()
-    data object Apps : Route(); data class AppFrame(val id: String) : Route(); data object Updates : Route(); data object Search : Route(); data object Start : Route(); data object StartEdit : Route(); data object EditFavorites : Route(); data object NewContainer : Route(); data object ProgramSearch : Route(); data class Files(val path: String = "") : Route(); data class FileEdit(val path: String) : Route(); data object Labs : Route(); data object Automation : Route(); data object Lights : Route(); data object Features : Route(); data object Report : Route(); data object Favorites : Route(); data object Plugins : Route(); data class Access(val host: String, val appId: String = "") : Route()
+    data object Apps : Route(); data class AppFrame(val id: String) : Route(); data object Updates : Route(); data object Search : Route(); data object Start : Route(); data object StartEdit : Route(); data object EditFavorites : Route(); data object Widgets : Route(); data object NewContainer : Route(); data object ProgramSearch : Route(); data class Files(val path: String = "") : Route(); data class FileEdit(val path: String) : Route(); data object Labs : Route(); data object Automation : Route(); data object Lights : Route(); data object Features : Route(); data object Report : Route(); data object Favorites : Route(); data object Plugins : Route(); data class Access(val host: String, val appId: String = "") : Route()
 }
 
 /** Shared app state: the API, live data, navigation, messages. */
@@ -703,6 +703,7 @@ private fun Modifier.paneTouch(app: AppState, left: Boolean) = pointerInput(left
         is Route.Access -> AccessScreen(app, r.host, r.appId)
         Route.Features -> FeaturesScreen(app)
         Route.Report -> ReportScreen(app)
+        Route.Widgets -> WidgetsScreen(app)
         Route.Favorites -> FavoritesScreen(app)
         Route.Plugins -> PluginsScreen(app)
         is Route.AppFrame -> AppFrameScreen(app, r.id)

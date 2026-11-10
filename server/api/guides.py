@@ -170,4 +170,11 @@ def doctor():
     if cfg.get("tailnet_host"):
         rc, ip = _sh("tailscale", "ip", "-4")
         if rc != 0 or cfg["tailnet_host"] not in ip: add("warn", "Tailscale is set up for Nova but isn't connected", "sudo tailscale up")
+    # went off without shutting down lately? (the monitor notes each time, and why, in the Inbox)
+    try:
+        import time
+        ends = [t for t in json.load(open("/var/lib/nova-alerts/state.json")).get("counters", {}).get("bad_ends", []) if time.time() - t < 7 * 86400]
+        if ends: add("warn", f"The server went off without shutting down {len(ends)} time{'s' if len(ends) != 1 else ''} in the last 7 days",
+                     "the Inbox says why each time (a crash, heat, a power cut…) and what to change")
+    except (OSError, ValueError, TypeError, AttributeError): pass
     return out

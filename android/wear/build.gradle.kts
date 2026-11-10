@@ -19,8 +19,8 @@ android {
         applicationId = "app.novalabs.nova"
         minSdk = 30                       // Wear OS 3+
         targetSdk = 36
-        versionCode = 84
-        versionName = "0.9.14-alpha"
+        versionCode = 85
+        versionName = "0.9.15-alpha"
     }
 
     signingConfigs {

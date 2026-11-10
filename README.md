@@ -39,6 +39,8 @@ network, and optionally from anywhere through Cloudflare Access, without a VPN.
 | **Terminal** | Real SSH to the server, with a key that lives in the phone's secure chip |
 | **Quick panel** | Your own tiles: back up, free RAM, lights, pause alerts, restart a container… |
 | **Alerts & Inbox** | Inbox grouped by day, with swipe to archive, select a whole day, Archive with *Back to Inbox*, a jump to the page each notification is about, and live progress for anything running; instant notifications (no Google push service, no third party) |
+| **Why it went down** | After a restart that wasn't a normal shutdown, the Inbox says why in plain words — a crash and the driver and program involved, overheating, a hardware error, a freeze, drive errors, out of memory, or "nothing was logged" and what that usually means — with what to change |
+| **Home-screen widgets** | Five Android widgets: status, live stats, quick actions (back up, free RAM, lights), the newest alerts, and storage; previews and one-tap adding in Menu → Home-screen widgets |
 | **Files** | Browse, edit, upload and download files on the server as your normal account; deleting goes to the Trash |
 | **Server terminal** | A real terminal in the browser or app, as your normal account (approved on your phone). It never runs a command by itself: pastes wait for Enter, and shutdown/reboot-style commands ask first |
 | **Troubleshoot** | For a container that won't stay up: the last error, stop it for good, go back to the previous version, update again, recreate |

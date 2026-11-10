@@ -2,5 +2,5 @@
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
     android:minWidth="110dp" android:minHeight="110dp" android:minResizeWidth="110dp" android:minResizeHeight="60dp"
     android:updatePeriodMillis="1800000" android:initialLayout="@layout/widget_status" android:previewLayout="@layout/widget_status"
-    android:previewImage="@mipmap/ic_launcher" android:description="@string/w_status"
+    android:previewImage="@drawable/widget_preview_status" android:description="@string/w_status"
     android:resizeMode="horizontal|vertical" android:widgetCategory="home_screen" />

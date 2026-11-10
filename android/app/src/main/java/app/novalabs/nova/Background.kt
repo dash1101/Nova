@@ -29,12 +29,25 @@ class NovaApp : Application() {
     override fun onCreate() {
         super.onCreate()
         CrashReporter.install(this)
+        warmStateHolders()
         AppPrefs.init(this)
         Notifier.createChannels(this)
         val work = PeriodicWorkRequestBuilder<InboxWorker>(15, TimeUnit.MINUTES)
             .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()).build()
         WorkManager.getInstance(this).enqueueUniquePeriodicWork("nova-inbox", ExistingPeriodicWorkPolicy.KEEP, work)
     }
+}
+
+/**
+ * Every singleton that holds on-screen state is created here: on the main thread, before anything is drawn. Kotlin creates an `object` the
+ * first time anything touches it, and several of these are first touched from a network thread (the first answer from the server sets
+ * ApiCompat, DevLog…). If that happened while a page was being put together, the page read a state "created after the snapshot was taken"
+ * and the app crashed — rarely, at startup, on slow devices.
+ */
+@Volatile private var warmed = 0
+fun warmStateHolders() {
+    warmed = listOf<Any>(AccessBusy, Ambience, Ambient, ApiCompat, AppSessions, IconShape, WebFull, AppWindows, Assistant, OrbLevel, AssistantRun, Dev, DevLog,
+        PairHint, Behind, Living, LivingFrame, FilesHop, DialogStack, AppPrefs, AppLock, Sounds, SshSession, Readability).sumOf { it.hashCode() and 0xff }
 }
 
 /** Saves uncaught crashes to a file and sends them to the server on the next launch. */

@@ -21,4 +21,10 @@ from cryptography.hazmat.primitives import serialization
 k = serialization.load_pem_private_key(open(sys.argv[1], "rb").read(), None)
 open("SHA256SUMS.sig", "w").write(base64.b64encode(k.sign(open("SHA256SUMS", "rb").read())).decode() + "\n")
 PY
+# Other things fetch these by name: Nova's own installer and updater, the website's download buttons, and hub apps such as
+# NovaLabs' Orbit (which also checks SHA256SUMS.sig against the release key). A release without one of them breaks those.
+for f in nova-server.deb nova-installer.run SHA256SUMS SHA256SUMS.sig; do [[ -s "$f" ]] || { echo "release is missing $f" >&2; exit 1; }; done
+if ls nova-*.apk >/dev/null 2>&1; then
+  for f in nova-universal.apk nova-wear.apk; do [[ -s "$f" ]] || { echo "release has app builds but no $f (the stable name others download)" >&2; exit 1; }; done
+fi
 echo "signed release $VER in $D:"; cat SHA256SUMS

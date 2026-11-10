@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.9.15-alpha (server and app)
+- **Nova tells you why the server went down.** After a restart that wasn't a normal shutdown, Nova reads what the system logged just before and puts it in your Inbox in plain words: a crash inside the system and which driver and program were involved (a graphics driver crashing under a video converter gets the fix too: turn off hardware acceleration in that app), a hardware error, overheating, a freeze, drive errors, running out of memory — or "nothing was logged", with what that usually means. It says when it stopped and came back, counts repeats (a second time in a week is marked critical), and `sudo nova doctor` mentions it. Nothing is reported for normal restarts, or for anything from before Nova was installed.
+- **Widgets, finished.** A new page, **Menu → Home-screen widgets**, shows each of the five widgets as it looks right now and (on Android 8 and newer) adds one to your home screen with a tap. The home screen's own widget list now shows a picture of each widget instead of Nova's icon. Fixed while looking at them for real: the Stats widget cut off its small print and bars, and the Status widget its last line. Quick actions (Back up, Free RAM, the fan light, Refresh) are now handed to Android's background worker, so they also finish when the server is reached the long way round (Tailscale, Cloudflare), and the button says what it's doing meanwhile.
+- **Fix: a rare crash when opening the app** ("Reading a state that was created after the snapshot was taken"), most likely on a slow device right at startup: a piece of shared state was first created by the network thread while the first page was being drawn. All of it is now created up front.
+- **A quieter system log.** Nova's checks run every few seconds to a minute, and each pass wrote "Starting… / Finished…" lines — about four in every ten lines of the system log on a home server. Routine passes are now silent (errors are still logged), so the log keeps more history of everything else.
+- For maintainers: `packaging/monitor_test.py` (the crash explainer, 31 checks), and `packaging/release.sh` refuses to finish a release that lacks a file others download by name.
+
 ## 0.9.14-alpha (app)
 - **Home-screen widgets** — five of them, for the server you're on in the app (long-press your home screen → Widgets → Nova):
   - **Status**: all good or what needs attention, and how many containers are running.

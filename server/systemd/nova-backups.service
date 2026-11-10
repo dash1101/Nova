@@ -6,3 +6,9 @@ After=local-fs.target remote-fs.target
 Type=oneshot
 ExecStart=/usr/bin/python3 -I /usr/local/lib/nova-api/backups.py tick
 TimeoutStartSec=120
+# Quiet in the journal: this runs every few seconds to a minute, and "Starting… / Finished…" for every pass crowded out
+# everything else (about four lines in ten on a home server). Errors are still logged, as warnings.
+StandardOutput=null
+StandardError=journal
+SyslogLevel=warning
+LogLevelMax=notice

@@ -260,6 +260,8 @@ import org.json.JSONObject
             RowDivider()
             Row1("Appearance", "Look, theme, app icon, home layout", true, Icons.Rounded.Palette, onClick = { app.go(Route.Appearance) })
             RowDivider()
+            Row1("Home-screen widgets", "Status, stats and quick actions without opening Nova", true, Icons.Rounded.Widgets, onClick = { app.go(Route.Widgets) })
+            RowDivider()
             Row1("Settings", "Labs, features, software update", true, Icons.Rounded.Settings, N.sub, onClick = { app.go(Route.Settings) })
             RowDivider()
             Row1("Report a problem", "Or shake your ${DeviceForm.noun}", false, Icons.Rounded.BugReport, N.sub, onClick = { app.go(Route.Report) })

@@ -201,6 +201,59 @@ def readable(path, timeout=8):
     t = threading.Thread(target=go, daemon=True); t.start(); t.join(timeout)
     return res.get("ok")              # (still waiting after the timeout: None — a sleeping or busy drive isn't a dead one)
 
+# ── why the last boot ended ────────────────────────────────────────────────────
+CLEAN_END = re.compile(r"Journal stopped|Reached target .*(Reboot|Power.?Off|Shutdown|Halt)|System is (rebooting|powering down|halting)"
+                       r"|^Shutting down\.?$|systemd-shutdown|reboot: (Restarting system|Power down)", re.I)
+GRAPHICS = {"amdgpu": "AMD", "radeon": "AMD", "i915": "Intel", "xe": "Intel", "nouveau": "Nvidia", "nvidia": "Nvidia", "nvidia_drm": "Nvidia"}
+VIDEO_PROGRAMS = ("ffmpeg", "ffprobe", "vainfo", "HandBrake", "jellyfin", "Plex", "tdarr", "frigate", "go2rtc", "gst-")
+
+def boot_end(entries):
+    """How the boot these journal entries come from ended. [entries]: its last few hundred, oldest first, as dicts with
+    MESSAGE and (for kernel lines) _TRANSPORT == "kernel". Returns None when it shut down or rebooted normally, else
+    {"kind": crash|hardware|heat|freeze|storage|memory|unknown, "why": one sentence, "tip": what to do or ""}."""
+    msgs = [(e.get("MESSAGE") if isinstance(e.get("MESSAGE"), str) else "", e.get("_TRANSPORT") == "kernel") for e in entries]
+    kern = [m for m, k in msgs if k]
+    text = "\n".join(kern)
+    def first(rx, flags=0):
+        m = re.search(rx, text, flags); return m
+    # (overheating switches the machine off in an orderly way, so it's looked for before "did it shut down normally")
+    if first(r"critical temperature reached|thermal.*shutting down|Critical temperature", re.I):
+        return {"kind": "heat", "why": "it got too hot and switched itself off", "tip": "Check the fans, dust and airflow."}
+    if not msgs or any(CLEAN_END.search(m) for m, _ in msgs):
+        return None
+    # a crash inside the kernel: which driver, and which program was running
+    if first(r"kernel BUG at|Oops: |general protection fault|BUG: unable to handle|BUG: kernel NULL pointer|Kernel panic|list_(add|del) corruption"):
+        at = min(i for i, m in enumerate(kern) if re.search(r"kernel BUG at|Oops: |general protection fault|BUG: unable to handle|BUG: kernel NULL pointer|Kernel panic|list_(add|del) corruption", m))
+        trace = "\n".join(kern[at:at + 80])
+        mods = re.findall(r"\+0x[0-9a-f]+/0x[0-9a-f]+ \[([\w-]+)\]", trace)
+        mod = mods[0] if mods else ""
+        comm = re.search(r"\bComm: (\S+)", trace); prog = comm.group(1).split(":")[0] if comm else ""
+        if mod in GRAPHICS:
+            why = f"the {GRAPHICS[mod]} graphics driver ({mod}) crashed inside the system" + (f" while {prog} was using it" if prog else "")
+            tip = ("Hardware video acceleration set this off: in the app that converts video (Immich, Jellyfin, Plex…), switch hardware "
+                   "acceleration or transcoding to off / software." if any(prog.startswith(v) for v in VIDEO_PROGRAMS)
+                   else "If it keeps happening, update the system (a newer kernel often fixes graphics drivers) or stop using the graphics chip for that program.")
+        else:
+            why = "the system's core (the kernel) crashed" + (f" in the {mod} driver" if mod else "") + (f" while {prog} was running" if prog else "")
+            tip = "If it keeps happening: update the system, then check memory and the drive named in the alert, if any."
+        return {"kind": "crash", "why": why, "tip": tip}
+    if first(r"mce: \[Hardware Error\]|Machine check|Hardware Error.*(CPU|Memory|DIMM)", re.I):
+        return {"kind": "hardware", "why": "the processor reported a hardware error (machine check)",
+                "tip": "This points at hardware: memory, the processor, its cooling or the power supply. A memory test is the usual first step."}
+    if first(r"soft lockup|hard LOCKUP|rcu.*(self-detected stall|detected stalls)|blocked for more than \d+ seconds"):
+        return {"kind": "freeze", "why": "the system froze (it logged a lockup just before)",
+                "tip": "If it keeps happening: update the system, and look at what was busiest at the time (Status → graphs)."}
+    if first(r"(nvme\S*: (controller is down|I/O timeout)|EXT4-fs error|XFS .*(Corruption|shutdown)|BTRFS (critical|error)|Buffer I/O error|ata\S+: (failed command|COMRESET failed))", re.I):
+        return {"kind": "storage", "why": "the system drive stopped answering or reported errors just before",
+                "tip": "Check the drives (Storage & hardware); a failing drive or a loose cable does this."}
+    if first(r"Out of memory: Killed process|oom-kill"):
+        return {"kind": "memory", "why": "it was out of memory just before (programs were being stopped to make room)",
+                "tip": "Something used all the memory: check Status → graphs for what, and consider adding swap."}
+    return {"kind": "unknown", "why": "nothing was logged about why",
+            "tip": "That is typical of a power cut, a hard freeze (graphics drivers do this) or the power button being held. "
+                   "If it happens again without a power cut, suspect the power supply, memory or a graphics driver."}
+
+
 class Monitor:
     def __init__(self):
         cfg = load_json(CONFIG_FILE, {})
@@ -275,6 +328,39 @@ class Monitor:
         if LEVELS[lvl] < LEVELS.get(self.cfg["push_min_level"], 0) and level != "resolved":
             return
         self.pushes.append({"level": level, "title": title, "detail": detail, "t": now()})
+
+    # ── 0. did the last boot end badly? (once per boot) ──────────────────────
+    def check_last_boot(self):
+        try: boot = open("/proc/sys/kernel/random/boot_id").read().strip()
+        except OSError: return
+        c = self.st["counters"]
+        if c.get("boot_seen") == boot: return
+        fresh = self.first_run                  # just installed: what happened before Nova isn't news
+        c["boot_seen"] = boot
+        if fresh: return
+        rc, out = sh(["journalctl", "-b", "-1", "-o", "json", "--no-pager", "-n", "1500"], timeout=60)
+        if rc != 0 or not out.strip(): return   # no earlier boot in the journal
+        entries = []
+        for line in out.splitlines():
+            try: entries.append(json.loads(line))
+            except Exception: pass
+        end = boot_end(entries)
+        if end is None: return
+        try: last = int(entries[-1].get("__REALTIME_TIMESTAMP")) / 1e6
+        except Exception: last = None
+        try: up = now() - float(open("/proc/uptime").read().split()[0])
+        except Exception: up = now()
+        when = f"It stopped around {local_hm(last)} and came back {local_hm(up)}" + (
+            f" ({human_age(up - last).replace(' ago', '')} later)" if last and up - last > 300 else "") + ". " if last else ""
+        crashes = [t for t in c.get("bad_ends", []) if now() - t < 7 * 86400] + [last or now()]
+        c["bad_ends"] = crashes[-20:]
+        again = f" That's {len(crashes)} times in the last 7 days." if len(crashes) > 1 else ""
+        title = {"crash": "The server crashed and restarted", "hardware": "The server stopped on a hardware error",
+                 "heat": "The server overheated and switched off", "freeze": "The server froze and was restarted",
+                 "storage": "The server went down with drive errors", "memory": "The server went down while out of memory",
+                 }.get(end["kind"], "The server went off without shutting down")
+        self.event("critical" if end["kind"] in ("hardware", "heat", "storage") or len(crashes) > 1 else "warning", title,
+                   f"{when}Why: {end['why']}.{again} {end['tip']}".strip(), "system")
 
     # ── 1. journal events ────────────────────────────────────────────────────
     def check_journal(self):
@@ -789,7 +875,7 @@ class Monitor:
         smart_due = not self.st["counters"].get("smart") or minute % 30 == 0
         web_due = minute % 5 == 0 or "websites" not in self.st.get("last_metrics", {})
         steps = [
-            (self.check_journal, ()), (self.check_docker_events, ()), (self.drain_spool, ()),
+            (self.check_last_boot, ()), (self.check_journal, ()), (self.check_docker_events, ()), (self.drain_spool, ()),
             (self.check_temps, ()), (self.check_load_mem, ()), (self.check_disks, ()),
             (self.check_drives, (smart_due,)), (self.check_services, ()),
             (self.check_public, (web_due,)), (self.check_backups, ()),

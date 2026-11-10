@@ -110,6 +110,7 @@ val PLACES: List<Triple<String, String, Pair<ImageVector, Route>>> = listOf(
     Triple("Approve a browser or watch", "approve browser watch wear code pair computer", Icons.Rounded.Watch to Route.Devices),
     Triple("Add a server", "add server another server pair new server", Icons.Rounded.AddCircle to Route.Servers),
     Triple("Troubleshoot a container", "troubleshoot crash restart loop rollback previous version recreate container fix", Icons.Rounded.Build to Route.Containers),
+    Triple("Home-screen widgets", "widget widgets home screen launcher glance stats status quick actions add", Icons.Rounded.Widgets to Route.Widgets),
     Triple("Report a problem", "report problem bug issue feedback broken shake", Icons.Rounded.BugReport to Route.Report),
     Triple("Plugins", "plugins add-ons extensions tools tweaks", Icons.Rounded.Extension to Route.Plugins),
     Triple("Features", "features turn off disable lighting control rgb software openrgb terminal file manager discovery", Icons.Rounded.Tune to Route.Features),

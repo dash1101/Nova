@@ -7,3 +7,9 @@ Type=oneshot
 ExecStart=/usr/bin/python3 /usr/local/lib/nova-api/monitor/nova_alerts.py
 TimeoutStartSec=170
 Nice=5
+# Quiet in the journal: this runs every few seconds to a minute, and "Starting… / Finished…" for every pass crowded out
+# everything else (about four lines in ten on a home server). Errors are still logged, as warnings.
+StandardOutput=null
+StandardError=journal
+SyslogLevel=warning
+LogLevelMax=notice
