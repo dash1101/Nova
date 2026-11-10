@@ -7,12 +7,13 @@ an IP address — browsers only allow them on a real domain with a proper certif
 Checked here: the challenge (one use, five minutes), the origin and RP ID, user presence and user verification
 (fingerprint / face / PIN on the device), the signature (ES256, or RS256 for Windows Hello) and the signature counter."""
 import base64, hashlib, json, os, secrets, struct, time
+import plat
 
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import ec, padding, rsa
 
-STORE = "/var/lib/nova-api/passkeys.json"
+STORE = plat.p("/var/lib/nova-api/passkeys.json")
 CHALLENGES = {}                     # challenge -> {kind, rp, t, ...}
 
 

@@ -122,6 +122,9 @@ def _sh(*cmd, timeout=10):
 
 def doctor():
     """What's wrong with this Nova, each with the fix in plain words: [{"level": ok|warn|stop, "title", "fix"}]."""
+    if os.name == "nt":                                    # Windows has its own checks (tasks instead of systemd units, its own firewall)
+        import winhost
+        return winhost.doctor()
     out = []
     add = lambda lv, t, fix="": out.append({"level": lv, "title": t, "fix": fix})
     try: cfg = json.load(open("/etc/nova-api/config.json"))

@@ -224,16 +224,13 @@ import org.json.JSONObject
         Later(1) { SectionLabel("Server")
         Group {
             Row1("Status", "Live graphs, storage, backups", true, Icons.Rounded.MonitorHeart, androidx.compose.ui.graphics.Color(0xFF3ECF6E), onClick = { app.go(Route.Status) })
-            RowDivider()
-            Row1("Storage & hardware", "Drives, pools, set up drives", true, Icons.Rounded.Storage, androidx.compose.ui.graphics.Color(0xFF3ECF6E), onClick = { app.go(Route.Hardware) })
-            RowDivider()
-            if (app.isAdmin) { Row1("Free up", "Old images, logs, caches, trash — and memory", true, Icons.Rounded.CleaningServices, N.amber, onClick = { app.go(Route.FreeUp) }); RowDivider() }
-            if (app.isAdmin) { Row1("Task manager", "What's running on the server, by CPU and memory", true, Icons.Rounded.Memory, N.blue, onClick = { app.go(Route.TaskManager) }); RowDivider() }
-            Row1("Backups", "What's backed up, restore files", true, Icons.Rounded.Backup, onClick = { app.go(Route.Backups) })
-            RowDivider()
-            Row1("Updates", "Packages, containers and Nova", true, Icons.Rounded.Update, androidx.compose.ui.graphics.Color(0xFF3ECF6E), onClick = { app.go(Route.Updates) })
-            RowDivider()
-            Row1("Diagnostics", "Speed, stress and network tests", true, Icons.Rounded.Speed, androidx.compose.ui.graphics.Color(0xFF64D2FF), onClick = { app.go(Route.Diagnostics) })
+            // (each later row brings its own divider, so hiding one — a Windows server has no backups yet — leaves no stray line)
+            RowDivider(); Row1("Storage & hardware", "Drives, pools, set up drives", true, Icons.Rounded.Storage, androidx.compose.ui.graphics.Color(0xFF3ECF6E), onClick = { app.go(Route.Hardware) })
+            if (app.isAdmin && app.has("freeup")) { RowDivider(); Row1("Free up", "Old images, logs, caches, trash — and memory", true, Icons.Rounded.CleaningServices, N.amber, onClick = { app.go(Route.FreeUp) }) }
+            if (app.isAdmin) { RowDivider(); Row1("Task manager", "What's running on the server, by CPU and memory", true, Icons.Rounded.Memory, N.blue, onClick = { app.go(Route.TaskManager) }) }
+            if (app.has("backup")) { RowDivider(); Row1("Backups", "What's backed up, restore files", true, Icons.Rounded.Backup, onClick = { app.go(Route.Backups) }) }
+            if (app.has("updates")) { RowDivider(); Row1("Updates", "Packages, containers and Nova", true, Icons.Rounded.Update, androidx.compose.ui.graphics.Color(0xFF3ECF6E), onClick = { app.go(Route.Updates) }) }
+            if (app.has("diagnostics")) { RowDivider(); Row1("Diagnostics", "Speed, stress and network tests", true, Icons.Rounded.Speed, androidx.compose.ui.graphics.Color(0xFF64D2FF), onClick = { app.go(Route.Diagnostics) }) }
         } }
         Later(2) { SectionLabel("Apps & tools")
         Group {

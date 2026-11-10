@@ -11,11 +11,12 @@ or commands. Output is one JSON object on stdout.
 import base64, glob, json, os, re, secrets, shutil, socket, string, subprocess, sys, time
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 import safeio  # noqa: E402  (writes into nova-api's folders without following symlinks)
+import plat    # noqa: E402  (which OS this is; plat.p() maps these Linux paths on Windows)
 
 STORE = os.path.join(os.path.dirname(os.path.realpath(__file__)), "store")
 UNMOUNTED = "/run/nova-unmounted.json"           # intentionally unmounted (monitor stays quiet)
 SITE = {}
-try: SITE = json.load(open("/etc/nova-api/config.json"))
+try: SITE = json.load(open(plat.p("/etc/nova-api/config.json")))
 except Exception: pass
 # Site-specific storage layout (config.json); defaults are safe for any machine.
 PROTECTED_MOUNTS = set(SITE.get("protected_mounts", ["/", "/boot", "/boot/efi"])) | {"/", "/boot", "/boot/efi"}
@@ -70,7 +71,7 @@ def stopped_on_purpose(c):
     st, pol = c["State"], c["HostConfig"]["RestartPolicy"]["Name"]
     if st["Status"] not in ("exited", "created") or st.get("Restarting") or st.get("OOMKilled"): return False
     if pol in ("always", "unless-stopped"): return True
-    return c["Name"].lstrip("/") in load_json("/var/lib/nova-api/force-stopped.json", {})
+    return c["Name"].lstrip("/") in load_json(plat.p("/var/lib/nova-api/force-stopped.json"), {})
 
 def _since(ts):
     """Seconds since a Docker timestamp (2026-10-21T04:51:08.52Z), or None."""
@@ -103,8 +104,8 @@ def summary(c):
             "image": c["Config"]["Image"].split("@")[0], "state": c["State"]["Status"],
             "health": (c["State"].get("Health") or {}).get("Status", ""), "stopped": stopped_on_purpose(c),
             "started": c["State"].get("StartedAt", "")[:19],
-            "store": os.path.exists(f"/opt/{lab['com.docker.compose.project']}/.nova-store"),
-            "custom": os.path.exists(f"/opt/{lab['com.docker.compose.project']}/.nova-custom")}
+            "store": os.path.exists(os.path.join(plat.p("/opt"), lab['com.docker.compose.project'], ".nova-store")),
+            "custom": os.path.exists(os.path.join(plat.p("/opt"), lab['com.docker.compose.project'], ".nova-custom"))}
 
 def find(name):
     if not re.fullmatch(NAME_RE, name or ""): fail("bad name", 2)
@@ -223,6 +224,10 @@ argv = sys.argv[1:]
 if not argv: fail("no verb", 2)
 verb, args = argv[0], argv[1:]
 
+if plat.WINDOWS:                    # Windows does drives, processes, power… its own way (winhost.py); what's the same on both carries on below
+    import winhost
+    winhost.verb(verb, args, sys.modules[__name__])
+
 if verb == "containers-stats" and not args:
     # CPU and memory of every running container, for the Containers list (one docker call for all of them)
     rc, st, _ = run(["docker", "stats", "--no-stream", "--format", "{{json .}}"], timeout=30)
@@ -248,11 +253,11 @@ if verb == "container" and len(args) == 2:
     find(name)
     rc, so, se = run(["docker", action, name], timeout=180)
     if rc == 0 and action in ("start", "restart"):            # force-stopped earlier: give it its automatic restarts back
-        held = load_json("/var/lib/nova-api/force-stopped.json", {})
+        held = load_json(plat.p("/var/lib/nova-api/force-stopped.json"), {})
         if name in held:
             if held[name] in ("always", "unless-stopped", "on-failure"): run(["docker", "update", "--restart", held[name], name], timeout=30)
             held.pop(name)
-            safeio.write_json("/var/lib/nova-api/force-stopped.json", held, 0o644)
+            safeio.write_json(plat.p("/var/lib/nova-api/force-stopped.json"), held, 0o644)
     if rc == 0:
         notify("info", f"App: {action} {name}", "Done from the Nova app.")
         changelog(f"{action} container {name} (from the Nova app)")
@@ -268,8 +273,8 @@ if verb == "container-fix" and len(args) == 2:
     if action == "kill":
         # stop it for good: no more automatic restarts until you start it again
         pol = (c["HostConfig"].get("RestartPolicy") or {}).get("Name") or "no"
-        held = load_json("/var/lib/nova-api/force-stopped.json", {}); held[name] = pol
-        safeio.write_json("/var/lib/nova-api/force-stopped.json", held, 0o644)
+        held = load_json(plat.p("/var/lib/nova-api/force-stopped.json"), {}); held[name] = pol
+        safeio.write_json(plat.p("/var/lib/nova-api/force-stopped.json"), held, 0o644)
         run(["docker", "update", "--restart", "no", name], timeout=30)
         rc, so, se = run(["docker", "kill", name], timeout=60)
         if rc != 0 and "is not running" not in se: rc, so, se = run(["docker", "stop", "-t", "2", name], timeout=60)
@@ -305,7 +310,7 @@ if verb == "container-diagnose" and len(args) == 1:
          "exit_code": st.get("ExitCode"), "error": st.get("Error", ""), "oom": st.get("OOMKilled", False), "started": st.get("StartedAt", "")[:19], "finished": st.get("FinishedAt", "")[:19],
          "last_error": (errs or lines)[-1][:400] if (errs or lines) else "", "log_tail": lines[-15:],
          "can_rollback": bool(prev), "compose": bool(lab.get("com.docker.compose.project.working_dir")),
-         "store": os.path.exists(f"/opt/{lab.get('com.docker.compose.project', '')}/.nova-store")})
+         "store": os.path.exists(os.path.join(plat.p("/opt"), lab.get('com.docker.compose.project', ''), ".nova-store"))})
 
 if verb == "container-info" and len(args) == 1:
     out(info(find(args[0])))
@@ -580,7 +585,7 @@ if verb == "notify-revoked" and len(args) == 1 and args[0].isdigit():
 NOTIFY_KEYS = {"push_min_level": ("info", "warning", "critical"), "push_logins": bool, "push_usb": bool,
                "discord_paused": bool}
 if verb == "get-notify" and not args:
-    c = load_json("/etc/nova-alerts/config.json", {})
+    c = load_json(plat.p("/etc/nova-alerts/config.json"), {})
     out({k: c.get(k, {"push_min_level": "info", "push_logins": True, "push_usb": True, "discord_paused": False}[k])
          for k in NOTIFY_KEYS})
 if verb == "set-notify" and len(args) == 2:
@@ -592,27 +597,27 @@ if verb == "set-notify" and len(args) == 2:
     else:
         if v not in NOTIFY_KEYS[k]: fail("bad value", 2)
         val = v
-    p = "/etc/nova-alerts/config.json"; c = load_json(p, {}); c[k] = val
+    p = plat.p("/etc/nova-alerts/config.json"); c = load_json(p, {}); c[k] = val
     tmp = p + ".tmp"; json.dump(c, open(tmp, "w"), indent=2); os.chmod(tmp, 0o600); os.replace(tmp, p)
     out({"ok": True, k: val})
 
 DISCORD_RE = r"https://(discord|discordapp)\.com/api/webhooks/\d{5,25}/[A-Za-z0-9_-]{20,100}"
 if verb == "discord-status" and not args:
-    w = load_json("/etc/nova-alerts/config.json", {}).get("discord_webhook", "")
+    w = load_json(plat.p("/etc/nova-alerts/config.json"), {}).get("discord_webhook", "")
     m = re.match(r"https://[^/]+/api/webhooks/(\d+)/", w or "")
     out({"configured": bool(re.fullmatch(DISCORD_RE, w or "")), "hint": f"webhook …{m.group(1)[-4:]}" if m else ""})       # never the secret part
 
 if verb == "discord-set" and len(args) == 1:
     w = args[0].strip()
     if w and not re.fullmatch(DISCORD_RE, w): fail("that isn't a Discord webhook link (Channel → Edit → Integrations → Webhooks → Copy URL)")
-    p = "/etc/nova-alerts/config.json"; c = load_json(p, {}); c["discord_webhook"] = w
+    p = plat.p("/etc/nova-alerts/config.json"); c = load_json(p, {}); c["discord_webhook"] = w
     tmp = p + ".tmp"; json.dump(c, open(tmp, "w"), indent=2); os.chmod(tmp, 0o600); os.replace(tmp, p)
     changelog("Discord alerts " + ("set up" if w else "turned off") + " (from the Nova app)")
     out({"ok": True, "configured": bool(w)})
 
 if verb == "discord-test" and not args:
     import urllib.request
-    w = load_json("/etc/nova-alerts/config.json", {}).get("discord_webhook", "")
+    w = load_json(plat.p("/etc/nova-alerts/config.json"), {}).get("discord_webhook", "")
     if not re.fullmatch(DISCORD_RE, w or ""): fail("Discord isn't set up")
     req = urllib.request.Request(w, data=json.dumps({"content": f"✅ Nova on **{socket.gethostname()}** can send alerts to this channel."}).encode(),
                                  headers={"Content-Type": "application/json", "User-Agent": "nova"})
@@ -934,29 +939,30 @@ if verb == "power" and len(args) == 1 and args[0] in ("reboot", "poweroff"):
     out({"ok": rc == 0, "in_seconds": 8, "error": se.strip()[:200]}, 0 if rc == 0 else 1)
 
 # ── alerts: dismiss / delete (the monitor keeps the state) ─────────────────────────
-MONITOR = _tool("/usr/lib/nova-api/monitor/nova_alerts.py", "/usr/local/lib/nova-alerts/nova_alerts.py")
+MONITOR = _tool("/usr/lib/nova-api/monitor/nova_alerts.py", "/usr/local/lib/nova-alerts/nova_alerts.py",
+                os.path.join(os.path.dirname(os.path.realpath(__file__)), "monitor", "nova_alerts.py"))
 ALERT_KEY_RE = r"[a-z]+:[\w./:@+-]{1,200}"
 if verb == "alerts-dismiss" and len(args) == 1 and re.fullmatch(ALERT_KEY_RE, args[0]):
     if not MONITOR: fail("monitoring isn't installed")
-    rc, so, se = run(["python3", MONITOR, "dismiss", args[0]], timeout=150)
+    rc, so, se = run([sys.executable if plat.WINDOWS else "python3", MONITOR, "dismiss", args[0]], timeout=150)
     if rc != 0: fail((se or so).strip()[-200:] or "couldn't dismiss")
     changelog(f"Alert dismissed from the Nova app: {args[0]}")
     out(json.loads(so.strip().splitlines()[-1]))
 if verb == "alerts-undismiss" and len(args) == 1 and re.fullmatch(ALERT_KEY_RE, args[0]):
     if not MONITOR: fail("monitoring isn't installed")
-    rc, so, se = run(["python3", MONITOR, "undismiss", args[0]], timeout=150)
+    rc, so, se = run([sys.executable if plat.WINDOWS else "python3", MONITOR, "undismiss", args[0]], timeout=150)
     if rc != 0: fail((se or so).strip()[-200:] or "couldn't do that")
     changelog(f"Alert no longer ignored (Nova app): {args[0]}")
     out(json.loads(so.strip().splitlines()[-1]))
 if verb == "events-delete" and len(args) == 1 and re.fullmatch(r"all|[\d.]+(,[\d.]+){0,199}", args[0]):
     if not MONITOR: fail("monitoring isn't installed")
-    rc, so, se = run(["python3", MONITOR, "delete-event", args[0]], timeout=150)
+    rc, so, se = run([sys.executable if plat.WINDOWS else "python3", MONITOR, "delete-event", args[0]], timeout=150)
     if rc != 0: fail((se or so).strip()[-200:] or "couldn't delete")
     out(json.loads(so.strip().splitlines()[-1]))
 
 if verb == "events-restore" and len(args) == 1 and re.fullmatch(r"[\d.]+(,[\d.]+){0,199}", args[0]):
     if not MONITOR: fail("monitoring isn't installed")
-    rc, so, se = run(["python3", MONITOR, "restore-event", args[0]], timeout=150)
+    rc, so, se = run([sys.executable if plat.WINDOWS else "python3", MONITOR, "restore-event", args[0]], timeout=150)
     if rc != 0: fail((se or so).strip()[-200:] or "couldn't restore")
     out(json.loads(so.strip().splitlines()[-1]))
 

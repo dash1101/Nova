@@ -22,6 +22,7 @@ Pairing is only possible from the home LAN, with a one-time code shown by `sudo 
 import base64, hashlib, hmac, ipaddress, json, os, re, secrets, socket, subprocess, sys, threading, time, urllib.error, urllib.parse, urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+import plat
 import nodes
 import totp
 import passkeys
@@ -41,7 +42,7 @@ try:                       # optional module: fan/case lighting (modules/fan-gig
 except ImportError:
     nova_rgb = None
 
-API_VERSION = "0.9.15-alpha"
+API_VERSION = "0.9.16-alpha"
 # The API contract (docs/API.md). API_LEVEL only ever goes up: each new level adds endpoints or fields, never removes or
 # changes one. MIN_LEVEL is the oldest level this server still answers in full (old apps keep working back to it).
 # MIN_CLIENT: the oldest app builds still served, per platform — 0 = all of them. Raising it is the last resort, after
@@ -51,13 +52,13 @@ MIN_LEVEL = 1
 MIN_CLIENT = {"android": 0, "wear": 0, "web": 0}
 DEPRECATED = {}                                   # "/api/v1/path" → "what to use instead" (sent as a Deprecation header)
 UPDATE_PATHS = ("/api/v1/app/", "/api/v1/ping", "/api/v1/whoami", "/api/v1/server/update")    # always open, so an old app can still update
-CONFIG = "/etc/nova-api/config.json"
-DATA = "/var/lib/nova-api"
+CONFIG = plat.p("/etc/nova-api/config.json")
+DATA = plat.p("/var/lib/nova-api")
 DEVICES = f"{DATA}/devices.json"
 NOTIFY_FILE = f"{DATA}/notify.json"      # notification settings chosen in the app
 PAIRING = f"{DATA}/pairing.json"
-AUDIT = "/var/log/nova-api/audit.log"
-STATUS = "/var/lib/nova-alerts/www/status.json"
+AUDIT = plat.p("/var/log/nova-api/audit.log")
+STATUS = plat.p("/var/lib/nova-alerts/www/status.json")
 MAX_BODY = 64 * 1024
 UPLOAD_CHUNK = 4 * 1024 * 1024 + 1024
 LABS = {"cloudflare_sync": {"name": "Cloudflare auto-setup", "about": "Put an app on your own domain in one step: Nova adds the Cloudflare tunnel route, the DNS record and the Access login for you. Needs a Cloudflare API token."},
@@ -90,9 +91,9 @@ RAW_BODY_PATHS = ("/api/v1/files/upload", "/api/v1/files/save", "/api/v1/assista
 FILE_UNLOCK = {}          # browser device id → until when it may change files (after a phone approved it)
 NOTIFY_KEYS = {"push_min_level": ("info", "warning", "critical"), "push_logins": bool, "push_usb": bool,
                "discord_paused": bool}
-EVENTS = "/var/lib/nova-alerts/www/events.json"
+EVENTS = plat.p("/var/lib/nova-alerts/www/events.json")
 APK_DIR = f"{DATA}/apk"
-CRASH_DIR = "/var/log/nova-api/crash"
+CRASH_DIR = plat.p("/var/log/nova-api/crash")
 CLOCK_SKEW_MS = 60_000
 SHELL_APPROVE = f"{DATA}/shell-approve.json"   # written by `sudo nova approve CODE` (root only)
 PENDING = f"{DATA}/pending.json"               # what's waiting for approval, for `sudo nova approve` (root/nova-api only)
@@ -129,7 +130,7 @@ _docker = {"t": 0, "v": False}
 def docker_present():
     """Is Docker installed and running? (Nova works without it: no containers, the rest is the same.)"""
     if time.time() - _docker["t"] > 60:
-        _docker.update(t=time.time(), v=os.path.exists("/var/run/docker.sock") or os.path.exists("/run/docker.sock"))
+        _docker.update(t=time.time(), v=plat.docker_running())
     return _docker["v"]
 
 _origins = [0, [], []]
@@ -221,14 +222,15 @@ def app_list():
 
 _cstats = {"t": 0, "v": None}
 
+TASK_DIR = plat.p("/run/nova-tasks")
 def live_tasks():
     """Running background tasks (and ones that just ended), read straight from /run/nova-tasks."""
     out = []
-    try: names = os.listdir("/run/nova-tasks")
+    try: names = os.listdir(TASK_DIR)
     except OSError: return out
     for n in names:
         if not n.endswith(".json"): continue
-        t = load_json(f"/run/nova-tasks/{n}", None)
+        t = load_json(os.path.join(TASK_DIR, n), None)
         if t and (t.get("state") == "running" or time.time() - (t.get("finished") or 0) < 60):
             out.append({k: t.get(k) for k in ("id", "kind", "title", "state", "pct", "step", "note", "error", "key", "started", "finished")})
     return sorted(out, key=lambda t: -(t.get("started") or 0))
@@ -327,15 +329,25 @@ def audit(**kw):
 
 HELPER_SOCK = "/run/nova-helper.sock"     # socket-activated helper outside this sandbox (if installed)
 
+HELPER_WIN = plat.p("/run/nova/helper.json")   # Windows: the helper listens on this computer only; this file (readable by Nova's accounts) says where and holds its key
+
+def helper_up(): return os.path.exists(HELPER_WIN if plat.WINDOWS else HELPER_SOCK)
+
 def helper_connect(args, timeout):
     import socket
+    if plat.WINDOWS:
+        h = load_json(HELPER_WIN, {})
+        c = socket.create_connection(("127.0.0.1", int(h.get("port", 0))), timeout=10); c.settimeout(timeout)
+        c.sendall((str(h.get("key", "")) + "\n" + json.dumps(list(args)) + "\n").encode())
+        return c
     c = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM); c.settimeout(timeout)
     c.connect(HELPER_SOCK); c.sendall((json.dumps(list(args)) + "\n").encode())
     return c
 
 def helper(*args, timeout=120, data=b""):
-    if os.path.exists(HELPER_SOCK):
-        c = helper_connect(args, timeout)
+    if helper_up():
+        try: c = helper_connect(args, timeout)
+        except OSError: return 1, {"error": "the Nova helper service isn't running"}
         if data: c.sendall(data)
         c.shutdown(1)
         buf = b""
@@ -347,7 +359,7 @@ def helper(*args, timeout=120, data=b""):
         try: r = json.loads(buf); rc, so, se = r["rc"], r["stdout"], r["stderr"]
         except Exception: return 1, {"error": "helper failed"}
     else:
-        return 1, {"error": "the Nova helper service isn't running (systemctl status nova-helper.socket)"}
+        return 1, {"error": "the Nova helper service isn't running" + ("" if plat.WINDOWS else " (systemctl status nova-helper.socket)")}
     try: return rc, json.loads(so or "{}")
     except Exception: return rc, {"error": (se or so)[:200]}
 
@@ -365,11 +377,7 @@ TAILNET = ipaddress.ip_network(CFG["tailnet_subnet"]) if CFG.get("tailnet_subnet
 TAILNET_HOST = CFG.get("tailnet_host", "")
 SSH_USER = CFG.get("ssh_user", "")
 SSH_HOSTS = CFG.get("ssh_hosts", [{"name": "Home network", "host": LAN_HOST, "port": 22}])
-def board_name():
-    try:
-        v = open("/sys/class/dmi/id/board_vendor").read().strip(); n = open("/sys/class/dmi/id/board_name").read().strip()
-        return f"{v.split()[0].title() if v else ''} {n}".strip()
-    except OSError: return ""
+def board_name(): return plat.board()
 
 # ── background jobs (installs, updates — anything slower than a request) ──────────
 jobs = {}
@@ -393,7 +401,7 @@ SHELL_IDLE, SHELL_MAX, SHELL_BUF = 600, 7200, 512 * 1024
 def open_shell(dev_id, name, verb=("shell",)):
     if sum(1 for x in shells.values() if x["alive"]) >= 4: raise ValueError("too many open shells")
     args = list(verb) + ([name] if name else [])
-    if os.path.exists(HELPER_SOCK):
+    if helper_up():
         c = helper_connect(args, None)
         read, write = (lambda: c.recv(4096)), c.sendall
         def kill():
@@ -505,6 +513,11 @@ def _gpu():
         return round(sum(vals) / len(vals), 1) if vals else None
     return _NV["v"]
 
+def _cpu_temp(): return _hwmon("k10temp")
+
+if plat.WINDOWS:                       # the same numbers, read the Windows way (winhost.py)
+    from winhost import _hwmon, _cpu_times, _core_times, _default_iface, _net, _disks, _gpu, _cpu_temp  # noqa: E402,F811
+
 def stats_sampler():
     iface = _default_iface()
     prev_cpu, prev_net, prev_t = _cpu_times(), _net(iface), time.time()
@@ -518,22 +531,22 @@ def stats_sampler():
         try:
             cpu, net, t = _cpu_times(), _net(iface), time.time()
             dt_all, dt_idle = cpu[0] - prev_cpu[0], cpu[1] - prev_cpu[1]
-            m = {l.split(":")[0]: int(l.split()[1]) for l in open("/proc/meminfo")}
-            now = {"t": round(t, 2), "cpu": round(100 * (1 - dt_idle / max(1, dt_all)), 1),
+            m = plat.meminfo()
+            now = {"t": round(t, 2), "cpu": round(min(100.0, max(0.0, 100 * (1 - dt_idle / max(1, dt_all)))), 1),
                    "mem": round(100 * (1 - m["MemAvailable"] / m["MemTotal"]), 1),
                    "mem_used_gb": round((m["MemTotal"] - m["MemAvailable"]) / 1048576, 1), "mem_total_gb": round(m["MemTotal"] / 1048576, 1),
                    "swap": round(100 * (1 - m["SwapFree"] / max(1, m["SwapTotal"])), 1) if m.get("SwapTotal") else 0,
                    "swap_total_gb": round(m.get("SwapTotal", 0) / 1048576, 1), "swap_used_gb": round((m.get("SwapTotal", 0) - m.get("SwapFree", 0)) / 1048576, 1),
-                   "temp": _hwmon("k10temp"), "nvme_temp": _hwmon("nvme"),
+                   "temp": _cpu_temp(), "nvme_temp": _hwmon("nvme"),
                    "rx": round((net[0] - prev_net[0]) / (t - prev_t)), "tx": round((net[1] - prev_net[1]) / (t - prev_t)),
-                   "load": float(open("/proc/loadavg").read().split()[0]), "cores": os.cpu_count(),
-                   "uptime_s": int(float(open("/proc/uptime").read().split()[0]))}
+                   "load": round(plat.loadavg()[0], 2), "cores": os.cpu_count(),
+                   "uptime_s": plat.uptime_s()}
             # per-drive activity for the drive lights: share of the last second spent on I/O, and bytes/s
             disk = _disks(); dt = max(0.2, t - prev_t)
             now["disks"] = {d: [round(min(1.0, max(0.0, (v[1] - prev_disk[d][1]) / (dt * 1000))), 2), round((v[0] - prev_disk[d][0]) * 512 / dt)]
                             for d, v in disk.items() if d in prev_disk}
             cores = _core_times()                         # each core's use, for the per-core graphs
-            now["cpus"] = [round(100 * (1 - (c[1] - p[1]) / max(1, c[0] - p[0])), 1) for c, p in zip(cores, prev_cores)]
+            now["cpus"] = [round(min(100.0, max(0.0, 100 * (1 - (c[1] - p[1]) / max(1, c[0] - p[0])))), 1) for c, p in zip(cores, prev_cores)]   # (clamped: Windows' two clocks can disagree by a hair)
             prev_cores = cores
             now["gpu"] = _gpu()
             now["io"] = sum(v[1] for v in now["disks"].values())            # bytes/s read + written, every drive
@@ -667,18 +680,15 @@ def _run(cmd, timeout=8):
 
 def _brain_facts():
     try:
-        m = open("/proc/meminfo").read(); kb = lambda k: int(re.search(rf"^{k}:\s+(\d+)", m, re.M).group(1))
+        m = plat.meminfo(); kb = lambda k: m.get(k, 0)
         mem = f"memory {(kb('MemTotal') - kb('MemAvailable')) / 1048576:.1f} of {kb('MemTotal') / 1048576:.1f} GB used"
         if kb("SwapTotal"): mem += f", swap {(kb('SwapTotal') - kb('SwapFree')) / 1048576:.1f} of {kb('SwapTotal') / 1048576:.1f} GB"
     except Exception: mem = ""
     import shutil as _sh, platform
-    du = _sh.disk_usage("/"); la = os.getloadavg()
-    try: up = float(open("/proc/uptime").read().split()[0]); upt = f"{int(up // 86400)} days {int(up % 86400 // 3600)} hours"
+    du = _sh.disk_usage(plat.SYSTEM_DRIVE); la = plat.loadavg()
+    try: up = plat.uptime_s(); upt = f"{int(up // 86400)} days {int(up % 86400 // 3600)} hours"
     except Exception: upt = "?"
-    try: osn = re.search(r'^PRETTY_NAME="?([^"\n]+)', open("/etc/os-release").read(), re.M).group(1)
-    except Exception: osn = "Linux"
-    try: cpu = re.search(r"^model name\s*:\s*(.+)$", open("/proc/cpuinfo").read(), re.M).group(1).strip()
-    except Exception: cpu = ""
+    osn, cpu = plat.os_name(), plat.cpu_model()
     st = load_json(STATUS, {}); met = st.get("metrics") or {}
     temp = next((f"{v}°C" for k, v in met.items() if "cpu" in k and "temp" in k and isinstance(v, (int, float))), "")
     alerts = [a.get("title", "") for a in (st.get("active") or []) if a.get("level") in ("warning", "critical")][:6]
@@ -686,7 +696,7 @@ def _brain_facts():
     except Exception: cs = []
     run = [c.get("name") for c in cs if c.get("state") == "running"]; off = [c.get("name") for c in cs if c.get("state") != "running"]
     return ("Server facts:\n" + "\n".join("- " + x for x in [
-            f"Nova (this app and server software) version {API_VERSION}", f"server name {socket.gethostname()}, {osn}, Linux kernel {platform.release()}, up {upt}",
+            f"Nova (this app and server software) version {API_VERSION}", f"server name {socket.gethostname()}, {osn}, {'' if plat.WINDOWS else 'Linux '}kernel {plat.kernel()}, up {upt}",
             f"CPU {cpu} ({os.cpu_count()} threads), load {la[0]:.1f} / {la[1]:.1f} / {la[2]:.1f} (1/5/15 min)" + (f", {temp}" if temp else ""), mem,
             f"system drive {du.free / 1e9:.0f} GB free of {du.total / 1e9:.0f} GB", "alerts: " + (", ".join(alerts) if alerts else "none"),
             f"containers running ({len(run)}): " + ", ".join(run[:40]), "containers stopped: " + (", ".join(off[:20]) or "none")] if x))
@@ -717,7 +727,7 @@ def _brain_extra(text):
     if has(r"schedul|reboot|restart|shut ?down|power"):
         rc, res = helper("power-schedule-list")
         js = res.get("schedules") or [] if rc == 0 else []
-        out.append("Scheduled restarts/shutdowns: " + (", ".join(f"{x.get('action')} at {time.strftime('%a %b %-d %H:%M', time.localtime(x.get('at', 0)))}" for x in js) or "none"))
+        out.append("Scheduled restarts/shutdowns: " + (", ".join(f"{x.get('action')} at {plat.strftime('%a %b %-d %H:%M', time.localtime(x.get('at', 0)))}" for x in js) or "none"))
     if has(r"backup"):
         rc, res = helper("backup-status")
         if rc == 0: out.append("Backups: " + json.dumps(res)[:600])
@@ -751,7 +761,7 @@ def convo_save(c): save_json(CONVO, {"turns": c["turns"][-30:], "memory": c["mem
 
 def convo_history(c):
     """What the brain reads: what it remembers from before, then this conversation's last turns."""
-    when = lambda t: time.strftime("%b %-d %H:%M", time.localtime(t))
+    when = lambda t: plat.strftime("%b %-d %H:%M", time.localtime(t))
     return {"memory": [f"{when(m['t'])}: {m['text']}" for m in c["memory"][-12:]],
             "turns": [{"q": t.get("q", ""), "reply": t.get("reply", ""), "done": t.get("done") or []} for t in c["turns"][-6:]]}
 
@@ -760,10 +770,10 @@ def process_list():
     rc, res = helper("proc-list", timeout=20)                # through the helper: this service only sees its own processes
     procs = res.get("processes", []) if rc == 0 else []
     try:
-        m = open("/proc/meminfo").read(); kb = lambda k: int(re.search(rf"^{k}:\s+(\d+)", m, re.M).group(1)) * 1024
-        mem = {"total": kb("MemTotal"), "used": kb("MemTotal") - kb("MemAvailable")}
+        m = plat.meminfo()
+        mem = {"total": m["MemTotal"] * 1024, "used": (m["MemTotal"] - m["MemAvailable"]) * 1024}
     except Exception: mem = {}
-    return {"processes": procs, "count": len(procs), "cpus": os.cpu_count(), "load": list(os.getloadavg()), "memory": mem, "self": os.getpid()}
+    return {"processes": procs, "count": len(procs), "cpus": os.cpu_count(), "load": list(plat.loadavg()), "memory": mem, "self": os.getpid()}
 
 def hub_search(text):
     """Docker Hub's image search, the well-known ones first (the store's search and the assistant)."""
@@ -820,7 +830,7 @@ def describe_action(a):
         return f"Download the assistant's {'Smart (2.5 GB)' if k == 'smart' else 'Light (1.1 GB)'} brain and run it on this server — it stays private, on the server only"
     if p == ["power", "schedule"]:
         d = a.get("data", {}) or {}
-        try: at = time.strftime("%A %b %-d at %-I:%M %p", time.localtime(int(d.get("at", 0))))
+        try: at = plat.strftime("%A %b %-d at %-I:%M %p", time.localtime(int(d.get("at", 0))))
         except (TypeError, ValueError, OverflowError): at = "?"
         return f"Schedule the server to {'shut down' if d.get('action') == 'poweroff' else 'restart'} on {at}"
     if p[:1] == ["power"]: return {"reboot": "Restart the server", "nova-restart": "Restart Nova", "nova-stop": "Shut down Nova (the server keeps running)"}.get(p[1] if len(p) > 1 else "", "Shut down the server")
@@ -890,11 +900,11 @@ def basic_status():
     unless something is obviously wrong (disk nearly full, CPU very hot)."""
     import shutil as sh
     n = STATS.get("now") or {}
-    du = sh.disk_usage("/"); used = round(100 * du.used / du.total)
+    du = sh.disk_usage(plat.SYSTEM_DRIVE); used = round(100 * du.used / du.total)
     hot = (n.get("temp") or 0) >= 90
     level = "warning" if used >= 95 or hot else "ok"
     head = "System drive almost full" if used >= 95 else "CPU is very hot" if hot else "All systems normal"
-    up = n.get("uptime_s") or int(float(open("/proc/uptime").read().split()[0]))
+    up = n.get("uptime_s") or plat.uptime_s()
     return {"level": level, "headline": head, "active_count": 0 if level == "ok" else 1,
             "active": [] if level == "ok" else [{"level": level, "title": head, "detail": "", "since": ""}],
             "updated_local": time.strftime("%Y-%m-%d %H:%M:%S"),
@@ -1498,18 +1508,18 @@ class Handler(BaseHTTPRequestHandler):
             if rq.get("kind") == "head":
                 tls = lan_tls()
                 return self.send(200, {"state": rq["state"], "device_id": rq.get("device_id"), "kind": "head",
-                                       "name": load_json(SETTINGS, {}).get("display_name") or os.uname().nodename,
+                                       "name": load_json(SETTINGS, {}).get("display_name") or plat.node(),
                                        **({"lan_url": tls.get("url") or CFG.get("lan_url", ""), "remote_url": CFG.get("remote_url", "")} if rq["state"] == "approved" else {})})
             if rq.get("kind") == "app" and rq["state"] == "approved":
                 if rq.get("delivered"): return self.send(200, {"state": "done", "kind": "app"})
                 rq["delivered"] = True; tls = lan_tls()          # the way in is handed over once, to whoever holds this request's secret id
                 return self.send(200, {"state": "approved", "kind": "app", "device_id": rq.get("device_id"), "role": rq.get("role"),
-                                       "name": load_json(SETTINGS, {}).get("display_name") or os.uname().nodename, "lan_url": tls.get("url") or CFG.get("lan_url", ""), "lan_pin": tls.get("pin", ""),
+                                       "name": load_json(SETTINGS, {}).get("display_name") or plat.node(), "lan_url": tls.get("url") or CFG.get("lan_url", ""), "lan_pin": tls.get("pin", ""),
                                        "remote_url": CFG.get("remote_url", ""), "cf_client_id": CFG.get("cf_client_id", ""), "cf_client_secret": CFG.get("cf_client_secret", "")})
             return self.send(200, {"state": rq["state"], "device_id": rq.get("device_id"), "role": rq.get("role"), "kind": rq.get("kind", "browser"),
                                    "totp": bool(totp_state().get("secret")) and rq.get("kind") != "wear",
                                    "passkey": bool(passkey_rp(self.headers)) and passkeys.any_for(passkey_rp(self.headers)) and rq.get("kind") != "wear",
-                                   "server": load_json(SETTINGS, {}).get("display_name") or os.uname().nodename})
+                                   "server": load_json(SETTINGS, {}).get("display_name") or plat.node()})
         return self.send(404, {"error": "not found"})
 
     def save_crash(self, who, body):
@@ -1714,7 +1724,7 @@ class Handler(BaseHTTPRequestHandler):
                     cfg["accent"] = v.lower()
                 if "location" in data: cfg["location"] = valid_location(data["location"])
                 with lock: save_json(SETTINGS, cfg)
-            return 200, {"display_name": cfg.get("display_name", ""), "accent": cfg.get("accent", ""), "hostname": os.uname().nodename,
+            return 200, {"display_name": cfg.get("display_name", ""), "accent": cfg.get("accent", ""), "hostname": plat.node(),
                          "location": server_location()}
         if method == "DELETE" and len(parts) == 2 and parts[0] == "devices":
             with lock:
@@ -1826,7 +1836,7 @@ class Handler(BaseHTTPRequestHandler):
             if method == "GET" and parts == ["totp"]: return 200, {"enabled": bool(st.get("secret")), "since": st.get("since")}
             if method == "POST" and parts == ["totp", "setup"]:
                 sec = totp.new_secret(); totp_pending[dev["id"]] = {"secret": sec, "t": time.time()}
-                label = load_json(SETTINGS, {}).get("display_name") or os.uname().nodename
+                label = load_json(SETTINGS, {}).get("display_name") or plat.node()
                 u = totp.uri(sec, label)
                 try: svg = subprocess.run(["qrencode", "-t", "SVG", "-m", "2", "-o", "-", u], capture_output=True, text=True, timeout=10).stdout
                 except Exception: svg = ""
@@ -1881,18 +1891,18 @@ class Handler(BaseHTTPRequestHandler):
         if method == "GET" and parts == ["overview"]:
             st = load_json(STATUS, {}) or basic_status()
             rc, cs = helper("containers"); cl = cs.get("containers", [])
-            mem = {l.split(":")[0]: int(l.split()[1]) for l in open("/proc/meminfo") if l.split()[0][:-1] in ("MemTotal",)}
-            cpu = next((l.split(":", 1)[1].strip() for l in open("/proc/cpuinfo") if l.startswith("model name")), "")
+            mem = plat.meminfo()
+            cpu = plat.cpu_model()
             fan = None
             if nova_rgb:
                 with rgb_lock: fan = nova_rgb.load()
                 fan = {**fan, "status_override": nova_rgb.status_override(fan)}   # the Home picture shows the status color too
             cfg = load_json(SETTINGS, {})
             return 200, {"time": time.time(),             # lets apps line their fan animation up with the real fan
-                         "server": {"name": os.uname().nodename, "display_name": cfg.get("display_name", ""),
+                         "server": {"name": plat.node(), "display_name": cfg.get("display_name", ""),
                                     "accent": cfg.get("accent", ""), "board": board_name(), "cpu": cpu,
-                                    "ram_gb": round(mem.get("MemTotal", 0) / 1048576), "kernel": os.uname().release,
-                                    "uptime_s": int(float(open("/proc/uptime").read().split()[0])), "tailnet_host": TAILNET_HOST, "remote_url": CFG.get("remote_url", "")},
+                                    "ram_gb": round(mem.get("MemTotal", 0) / 1048576), "kernel": plat.kernel(),
+                                    "uptime_s": plat.uptime_s(), "os": plat.OS, "tailnet_host": TAILNET_HOST, "remote_url": CFG.get("remote_url", "")},
                          "status": {k: st.get(k) for k in ("level", "headline", "status", "active_count", "active", "ignored", "metrics", "updated_local")},
                          "fan": fan, "containers": {"running": sum(1 for c in cl if c["state"] == "running"), "total": sum(1 for c in cl if not c.get("stopped")),
                                         "stopped": sum(1 for c in cl if c.get("stopped"))},      # stopped on purpose: not counted as missing
@@ -1901,7 +1911,7 @@ class Handler(BaseHTTPRequestHandler):
                          "features": {"lighting": nova_rgb is not None and feat_on("lighting"), "lighting_installed": nova_rgb is not None, "monitor": os.path.exists(STATUS),
                                       "terminal": feat_on("terminal"), "files": feat_on("files"), "docker": docker_present(),
                                       "backup": True, "legacy_backup": os.path.exists("/usr/local/bin/nova-backup"), "storage": True, "diagnostics": True, "store": os.path.isdir(f"{os.path.dirname(os.path.abspath(__file__))}/store"),
-                                      "ssh": bool(SSH_HOSTS), "lan_tls": True}}
+                                      "ssh": bool(SSH_HOSTS), "lan_tls": True, **plat.WITHOUT}}
         if method == "GET" and parts == ["events", "wait"]:
             # Long poll for the phone's instant alerts: return as soon as something newer than
             # `since` is written (nova-alerts runs every 15 s, and at once for queued messages), or empty after `timeout` s.
@@ -2085,7 +2095,7 @@ class Handler(BaseHTTPRequestHandler):
             return 200, nodes.probe(str(data.get("host", "")))
         if method == "POST" and parts == ["nodes"]:
             if role_of(dev) != "admin": return 403, {"error": "admins only"}
-            head = load_json(SETTINGS, {}).get("display_name") or os.uname().nodename
+            head = load_json(SETTINGS, {}).get("display_name") or plat.node()
             return 200, nodes.pair(str(data.get("host", "")), str(data.get("code", "")), str(data.get("pin", "")), head)
         if method == "GET" and parts == ["nodes", "discover"]:
             if role_of(dev) != "admin" or dev.get("type") in ("head", "watch", "wear"): return 403, {"error": "admins only"}
@@ -2093,7 +2103,7 @@ class Handler(BaseHTTPRequestHandler):
         if method == "POST" and parts == ["nodes", "link"]:
             # ask that server to be shown here; its owner approves it there (Nova app, or sudo nova approve CODE)
             if role_of(dev) != "admin" or dev.get("type") in ("head", "watch", "wear"): return 403, {"error": "admins only"}
-            head = load_json(SETTINGS, {}).get("display_name") or os.uname().nodename
+            head = load_json(SETTINGS, {}).get("display_name") or plat.node()
             try: return 200, nodes.link_start(str(data.get("host", "")), str(data.get("pin", "")), head)
             except OSError: return 502, {"error": "couldn't reach that server — is Nova running there, and is it on your home network?"}
         if method == "GET" and len(parts) == 3 and parts[:2] == ["nodes", "link"] and re.fullmatch(r"[0-9a-f]{12}", parts[2]):
@@ -2758,10 +2768,10 @@ class Handler(BaseHTTPRequestHandler):
         tls = lan_tls()
         if head:                                      # read-only window: no Cloudflare service token for it
             return self.send(200, {"device_id": dev_id, "server": "Nova", "api": API_VERSION, "role": "viewer", "kind": "head",
-                                   "name": load_json(SETTINGS, {}).get("display_name") or os.uname().nodename,
+                                   "name": load_json(SETTINGS, {}).get("display_name") or plat.node(),
                                    "lan_url": tls.get("url") or CFG.get("lan_url", ""), "remote_url": CFG.get("remote_url", "")})
         return self.send(200, {"device_id": dev_id, "server": "Nova", "api": API_VERSION, "role": role,
-                               "name": load_json(SETTINGS, {}).get("display_name") or os.uname().nodename,
+                               "name": load_json(SETTINGS, {}).get("display_name") or plat.node(),
                                "lan_url": tls.get("url") or CFG.get("lan_url", ""), "lan_pin": tls.get("pin", ""),
                                "remote_url": CFG.get("remote_url", ""),
                                "cf_client_id": CFG.get("cf_client_id", ""),
@@ -2781,7 +2791,7 @@ def tls_material():
         from cryptography.x509.oid import NameOID
         os.makedirs(TLS_DIR, mode=0o700, exist_ok=True)
         k = ec.generate_private_key(ec.SECP256R1())
-        name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, f"nova-api {os.uname().nodename}")])
+        name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, f"nova-api {plat.node()}")])
         now = datetime.datetime.now(datetime.timezone.utc)
         c = (x509.CertificateBuilder().subject_name(name).issuer_name(name).public_key(k.public_key())
              .serial_number(x509.random_serial_number()).not_valid_before(now - datetime.timedelta(days=1))
@@ -2789,7 +2799,7 @@ def tls_material():
              .add_extension(x509.SubjectAlternativeName([x509.IPAddress(ipaddress.ip_address(LAN_HOST))]), critical=False)
              .sign(k, hashes.SHA256()))
         with open(key, "wb") as f:
-            os.fchmod(f.fileno(), 0o600)
+            if hasattr(os, "fchmod"): os.fchmod(f.fileno(), 0o600)
             f.write(k.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, serialization.NoEncryption()))
         with open(cert, "wb") as f: f.write(c.public_bytes(serialization.Encoding.PEM))
     from cryptography import x509
@@ -2854,8 +2864,8 @@ def discovery_responder():
             recent[ip] = now
             if len(recent) > 500: recent.clear()
             tls = lan_tls()
-            reply = {"nova": 1, "name": load_json(SETTINGS, {}).get("display_name") or os.uname().nodename,
-                     "host": os.uname().nodename, "lan_url": tls.get("url") or CFG.get("lan_url", ""), "pin": tls.get("pin", ""),
+            reply = {"nova": 1, "name": load_json(SETTINGS, {}).get("display_name") or plat.node(),
+                     "host": plat.node(), "lan_url": tls.get("url") or CFG.get("lan_url", ""), "pin": tls.get("pin", ""),
                      "api": API_VERSION, "accent": load_json(SETTINGS, {}).get("accent", "")}
             sk.sendto(json.dumps(reply).encode(), (ip, port))
         except Exception:

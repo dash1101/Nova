@@ -53,3 +53,23 @@ def append(path, text, mode=0o640):
         os.write(fd, text.encode())
     finally:
         os.close(fd)
+
+
+if os.name == "nt":
+    # Windows: folders can't be opened as descriptors, and making a symlink there needs a privilege Nova's API account
+    # doesn't have — so the same atomic write, without the descriptor-relative steps.
+    def write(path, data, mode=0o640, owner=None, group=None):      # noqa: F811
+        if isinstance(data, str): data = data.encode()
+        d, name = os.path.split(os.path.abspath(path))
+        tmp = os.path.join(d, f".{name}.{secrets.token_hex(6)}.tmp")
+        try:
+            with open(tmp, "xb") as f: f.write(data)
+            os.replace(tmp, path)
+        except BaseException:
+            try: os.unlink(tmp)
+            except OSError: pass
+            raise
+
+    def append(path, text, mode=0o640):                             # noqa: F811
+        if os.path.islink(path): raise OSError("not a regular file")
+        with open(path, "ab") as f: f.write(text.encode())

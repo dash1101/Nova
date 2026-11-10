@@ -27,19 +27,42 @@ Commands:  nova_alerts.py                  one check pass (the timer runs this e
            nova_alerts.py forget-drive <serial|name>
            nova_alerts.py test             send a test alert
 """
-import json, math, os, re, subprocess, sys, time, socket, glob, urllib.request, urllib.error, fcntl
+import json, math, os, re, subprocess, sys, time, socket, glob, urllib.request, urllib.error
 from datetime import datetime, timezone
 
-CONFIG_FILE = os.environ.get("NOVA_ALERTS_CONFIG", "/etc/nova-alerts/config.json")
-APP_NOTIFY_FILE = "/var/lib/nova-api/notify.json"   # notification choices made in the Nova app (allowlisted keys only)
+WINDOWS = os.name == "nt"            # the same monitor runs on Windows; its checks there are in winmon.py
+if WINDOWS:
+    _here = os.path.dirname(os.path.realpath(__file__))
+    sys.path[:0] = [_here] + [d for d in (os.path.dirname(_here), os.path.join(os.path.dirname(_here), "api")) if os.path.exists(os.path.join(d, "plat.py"))]
+    import plat
+    _p = plat.p
+else:
+    import fcntl
+    _p = lambda path: path
+
+CONFIG_FILE = os.environ.get("NOVA_ALERTS_CONFIG", _p("/etc/nova-alerts/config.json"))
+APP_NOTIFY_FILE = _p("/var/lib/nova-api/notify.json")   # notification choices made in the Nova app (allowlisted keys only)
 APP_NOTIFY_KEYS = {"push_min_level": ("info", "warning", "critical"), "push_logins": bool, "push_usb": bool,
                    "discord_paused": bool}
-_DIR = os.environ.get("NOVA_ALERTS_DIR", "/var/lib/nova-alerts")      # (overridable for testing)
+_DIR = os.environ.get("NOVA_ALERTS_DIR", _p("/var/lib/nova-alerts"))      # (overridable for testing)
 STATE_FILE  = f"{_DIR}/state.json"
 STATUS_FILE = f"{_DIR}/www/status.json"
 SPOOL_DIR   = f"{_DIR}/spool"
 ARCHIVE     = f"{_DIR}/www/archive.jsonl"        # permanent history: archived + aged-out events, one JSON per line          # nova-alert drops messages here
-LOCK_FILE   = os.environ.get("NOVA_ALERTS_LOCK", "/run/nova-alerts.lock")
+LOCK_FILE   = os.environ.get("NOVA_ALERTS_LOCK", _p("/run/nova/alerts.lock") if WINDOWS else "/run/nova-alerts.lock")
+
+def _lock(lf):
+    """Take the one-pass-at-a-time lock without waiting (OSError when another pass holds it)."""
+    if WINDOWS:
+        import msvcrt
+        msvcrt.locking(lf.fileno(), msvcrt.LK_NBLCK, 1)
+    else: fcntl.flock(lf, fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+def _is_root():
+    if WINDOWS:
+        import winhost
+        return winhost.is_admin()
+    return os.geteuid() == 0
 LEVELS = {"info": 0, "warning": 1, "critical": 2}
 COLORS = {"info": 0x3B82F6, "warning": 0xF5A524, "critical": 0xE5484D, "resolved": 0x30A46C}
 ICONS  = {"info": "ℹ️", "warning": "⚠️", "critical": "🚨", "resolved": "✅"}
@@ -874,16 +897,23 @@ class Monitor:
         minute = int(now() // 60)
         smart_due = not self.st["counters"].get("smart") or minute % 30 == 0
         web_due = minute % 5 == 0 or "websites" not in self.st.get("last_metrics", {})
-        steps = [
+        steps = [] if WINDOWS else [
             (self.check_last_boot, ()), (self.check_journal, ()), (self.check_docker_events, ()), (self.drain_spool, ()),
             (self.check_temps, ()), (self.check_load_mem, ()), (self.check_disks, ()),
             (self.check_drives, (smart_due,)), (self.check_services, ()),
             (self.check_public, (web_due,)), (self.check_backups, ()),
         ]
+        if WINDOWS:
+            import winmon
+            steps = []
+            for fn, name in winmon.steps(self, smart_due, web_due):
+                try: fn.__name__ = name
+                except (AttributeError, TypeError): pass
+                steps.append((fn, ()))
         for fn, args in steps:
             try: fn(*args)
             except Exception as e:   # one broken check must never stop the others
-                self._record("warning", f"Monitor check failed: {fn.__name__}", repr(e)[:200], "monitor")
+                self._record("warning", f"Monitor check failed: {getattr(fn, '__name__', 'check')}", repr(e)[:200], "monitor")
         # conditions checked this run that are no longer true → resolved
         self.resolve_unseen(["temp:", "load:", "mem:", "mount:", "dead:", "space:", "inodes:", "drive:", "smart:",
                              "svc:", "ctr:", "web:", "backup:", "sys:"])
@@ -917,20 +947,31 @@ def main():
     if os.path.basename(sys.argv[0]) == "nova-alert" or (len(sys.argv) > 1 and sys.argv[1] == "notify"):
         args = sys.argv[1:] if os.path.basename(sys.argv[0]) == "nova-alert" else sys.argv[2:]
         sys.exit(cli_notify(args))
-    if os.geteuid() != 0:
-        print("run as root", file=sys.stderr); sys.exit(1)
-    os.makedirs(os.path.dirname(STATE_FILE), exist_ok=True)
+    if not _is_root():
+        print("run as administrator" if WINDOWS else "run as root", file=sys.stderr); sys.exit(1)
+    if len(sys.argv) > 1 and sys.argv[1] == "loop":       # Windows: one long-running task instead of a timer — a pass every 20 s
+        os.makedirs(os.path.dirname(STATE_FILE), exist_ok=True); os.makedirs(os.path.dirname(LOCK_FILE), exist_ok=True)
+        while True:
+            t0 = time.time()
+            try:
+                with open(LOCK_FILE, "w") as lf:
+                    try: _lock(lf)
+                    except OSError: pass                  # a command (dismiss, delete…) is running: next time
+                    else: Monitor().run()
+            except Exception as e: print("pass failed:", repr(e)[:300], flush=True)
+            time.sleep(max(3, 20 - (time.time() - t0)))
+    os.makedirs(os.path.dirname(STATE_FILE), exist_ok=True); os.makedirs(os.path.dirname(LOCK_FILE), exist_ok=True)
     command = len(sys.argv) > 1 and sys.argv[1] in ("forget-drive", "dismiss", "undismiss", "delete-event", "restore-event", "test")
     with open(LOCK_FILE, "w") as lf:
         if command:                      # a command must not silently do nothing: wait for a running pass
             end = time.time() + 120
             while True:
-                try: fcntl.flock(lf, fcntl.LOCK_EX | fcntl.LOCK_NB); break
+                try: _lock(lf); break
                 except OSError:
                     if time.time() > end: print("busy: a check pass is still running", file=sys.stderr); sys.exit(3)
                     time.sleep(.5)
         else:
-            try: fcntl.flock(lf, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            try: _lock(lf)
             except OSError: return       # previous run still going
         if len(sys.argv) > 2 and sys.argv[1] == "delete-event":
             # Swiped away in the Inbox. "all" clears the history; otherwise the event's timestamp(s).

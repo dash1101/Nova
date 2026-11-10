@@ -15,4 +15,15 @@
     </defaults>
     <annotate key="org.freedesktop.policykit.exec.path">/usr/sbin/nova-setup-gui</annotate>
   </action>
+  <action id="app.novalabs.nova.server">
+    <description>Open Nova Server</description>
+    <message>Nova Server pairs devices, approves requests and starts or stops Nova on this computer, so it needs your password.</message>
+    <icon_name>nova</icon_name>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin_keep</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/sbin/nova-gui</annotate>
+  </action>
 </policyconfig>

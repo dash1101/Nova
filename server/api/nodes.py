@@ -24,10 +24,11 @@ head key never authorizes anything on its own; the node checks the browser's sig
 Node records (with their private keys) live in /var/lib/nova-api/nodes.json, readable by nova-api only.
 """
 import base64, hashlib, http.client, ipaddress, json, os, re, secrets, socket, ssl, threading, time
+import plat
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 
-DATA = "/var/lib/nova-api"
+DATA = plat.p("/var/lib/nova-api")
 FILE = f"{DATA}/nodes.json"
 PORT = 8495
 POLL_S = 20

@@ -17,8 +17,9 @@ plugin.json:
 Switch one off in Settings → Plugins (it stays installed); `sudo nova plugin remove <id>` deletes it.
 """
 import json, os, re
+import plat
 
-DIR = "/etc/nova/plugins"
+DIR = plat.p("/etc/nova/plugins")
 ID_RE = r"[a-z0-9][a-z0-9-]{0,39}"
 CMD_RE = r"[a-z0-9][a-z0-9-]{0,39}"
 
@@ -60,7 +61,7 @@ def check(m):
     return out
 
 def disabled():
-    try: return set(json.load(open("/var/lib/nova-api/settings.json")).get("plugins_off", []))
+    try: return set(json.load(open(plat.p("/var/lib/nova-api/settings.json"))).get("plugins_off", []))
     except Exception: return set()
 
 def all_plugins():

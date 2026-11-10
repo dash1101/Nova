@@ -1,0 +1,492 @@
+#!/usr/bin/python3
+"""
+nova-gui — the Nova Server window: what `nova` does in a terminal, for servers that have a screen.
+
+    nova gui            (from the app menu / Start menu: "Nova Server")
+    nova gui --pair     …and go straight to pairing a phone
+
+It shows whether Nova is running and how the server is doing, pairs a phone with a QR code, lists and removes
+devices, approves browsers and actions that are waiting, runs the check-up, and starts or stops Nova. The same
+window on Linux and Windows.
+
+How it works: a small page served on this computer only (127.0.0.1), opened in its own window. The part that does
+the work needs administrator rights, so the desktop asks for your password (Linux) or shows the usual Windows
+prompt once when it opens. Every request needs a one-time key that only the opened window has, and the window's
+address never leaves this computer. It stops by itself a little after the window is closed.
+
+    nova-gui --serve --print-url     (what the launcher runs with administrator rights; prints the address)
+"""
+import http.server, importlib.machinery, importlib.util, json, os, re, secrets, shutil, socket, subprocess, sys, tempfile, threading, time
+
+HERE = os.path.dirname(os.path.realpath(__file__))
+LIB = "/usr/lib/nova-api" if os.path.isdir("/usr/lib/nova-api") else HERE
+sys.path[:0] = [LIB, HERE]
+import plat  # noqa: E402
+
+WIN = plat.WINDOWS
+NOVA = next((p for p in (os.path.join(HERE, "nova"), shutil.which("nova") or "", "/usr/bin/nova") if p and os.path.isfile(p)), "nova")
+KEY = secrets.token_urlsafe(24)
+LAST = {"t": time.time()}                       # when the window last asked for something
+ANSI = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
+NO_WINDOW = 0x08000000 if WIN else 0
+
+
+def cli():
+    """The `nova` command's own functions (one implementation for the terminal and this window)."""
+    if "nova_cli" not in sys.modules:
+        loader = importlib.machinery.SourceFileLoader("nova_cli", NOVA)
+        spec = importlib.util.spec_from_loader("nova_cli", loader); mod = importlib.util.module_from_spec(spec)
+        sys.modules["nova_cli"] = mod; loader.exec_module(mod)
+    return sys.modules["nova_cli"]
+
+def is_admin():
+    if WIN:
+        import winhost
+        return winhost.is_admin()
+    return os.geteuid() == 0
+
+def nova(*args, timeout=90):
+    """Run `nova …` → (rc, text) with the colors taken out."""
+    try:
+        r = subprocess.run([sys.executable, NOVA, *args], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=timeout,
+                           stdin=subprocess.DEVNULL, creationflags=NO_WINDOW, env={**os.environ, "PYTHONIOENCODING": "utf-8"})
+        return r.returncode, ANSI.sub("", (r.stdout + ("\n" + r.stderr if r.stderr.strip() else "")).replace("\r", "\n")).strip()
+    except subprocess.TimeoutExpired: return 124, "It took too long."
+
+def load(p, d):
+    try:
+        with open(p, encoding="utf-8") as f: return json.load(f)
+    except Exception: return d
+
+PARTS = (("api", "Nova", "nova-api.service", "Api"), ("helper", "Helper", "nova-helper.socket", "Helper"), ("alerts", "Monitor", "nova-alerts.timer", "Alerts"))
+_parts = {"t": 0, "v": []}
+def parts():
+    """Nova's parts and whether each is running (asked at most every 3 s — on Windows each question costs a moment)."""
+    if time.time() - _parts["t"] < 3: return _parts["v"]
+    out = []
+    for pid, name, unit, task in PARTS:
+        if WIN:
+            import winhost
+            st = winhost.task_state(task)
+        else:
+            st = subprocess.run(["systemctl", "is-active", unit], capture_output=True, text=True).stdout.strip()
+            if st not in ("active",): st = "missing" if subprocess.run(["systemctl", "cat", unit], capture_output=True).returncode != 0 else "inactive"
+        out.append({"id": pid, "name": name, "state": st})
+    _parts.update(t=time.time(), v=out)
+    return out
+
+def state():
+    c = cli(); now = time.time()
+    cfg = load(c.CONFIG, {}); devs = load(c.DEVICES, {}); pend = load(c.PENDING, {}); pairing = load(c.PAIRING, {})
+    st = load(plat.p("/var/lib/nova-alerts/www/status.json"), {})
+    kinds = lambda d: ({"watch": "Watch", "head": "Another Nova server"}.get(d.get("type")) or
+                       ("Browser" if d.get("type") == "browser" else {"tablet": "Tablet", "desktop": "Computer", "watch": "Watch"}.get(d.get("form"), "Phone")))
+    ps = parts(); tls = cfg.get("tls_port", 8495); host = cfg.get("lan_host", "")
+    return {
+        "version": c.version().replace("~", "-"), "os": plat.os_name(), "host": plat.node(), "windows": WIN, "configured": bool(host),
+        "parts": ps, "running": any(p["id"] == "api" and p["state"] == "active" for p in ps),
+        "addresses": [a for a in (
+            {"label": "On your home network", "url": f"https://{host}:{tls}", "note": "encrypted; what the Nova app uses"} if host else None,
+            {"label": "On this computer", "url": f"http://127.0.0.1:{cfg.get('port', 8095)}", "note": ""} if host else None,
+            {"label": "Over Tailscale", "url": f"https://{cfg['tailnet_host']}:{tls}", "note": ""} if cfg.get("tailnet_host") else None,
+            {"label": "From anywhere", "url": cfg["remote_url"], "note": "through your Cloudflare tunnel"} if cfg.get("remote_url") else None) if a],
+        "host_ip": host, "pin": c.short_pin(c.my_pin()),
+        "devices": [{"id": k, "name": d.get("name", "?"), "kind": kinds(d), "role": "Admin" if d.get("role", "admin") == "admin" else "View only",
+                     "user": d.get("user") or "", "seen": d.get("last_seen") or "", "via": d.get("last_via") or "", "created": d.get("created", "")}
+                    for k, d in sorted(devs.items(), key=lambda kv: kv[1].get("created", ""))],
+        "waiting": [{"code": b["code"], "kind": "browser", "what": (f"Let the Nova server “{b['name']}” show this one (read-only)" if b.get("kind") == "head" else f"Add the browser “{b['name']}”"),
+                     "who": f"from {b.get('from', '?')}", "left": int(b["expires"] - now)} for b in pend.get("browsers", []) if b.get("expires", 0) > now] +
+                   [{"code": a["code"], "kind": "action", "what": a.get("what", ""), "who": f"asked by {a.get('device', '?')}", "left": int(a["expires"] - now)}
+                    for a in pend.get("approvals", []) if a.get("expires", 0) > now],
+        "pairing": {"active": bool(pairing) and pairing.get("expires", 0) > now, "left": max(0, int(pairing.get("expires", 0) - now))},
+        "health": {"level": st.get("level", ""), "headline": st.get("headline", ""), "updated": st.get("updated_local", ""),
+                   "active": [{"level": a.get("level"), "title": a.get("title", ""), "detail": a.get("detail", ""), "since": a.get("since", "")}
+                              for a in st.get("active", []) if a.get("level") in ("info", "warning", "critical")][:12]} if st else None,
+    }
+
+def service(action):
+    if action not in ("start", "stop", "restart"): return {"ok": False, "error": "bad action"}
+    if WIN:
+        import winhost
+        stop = "Stop-ScheduledTask -TaskPath '\\Nova\\' -TaskName 'Api';"
+        start = "foreach($t in 'Helper','Api','Alerts'){ if((Get-ScheduledTask -TaskPath '\\Nova\\' -TaskName $t).State -ne 'Running'){ Start-ScheduledTask -TaskPath '\\Nova\\' -TaskName $t } };"
+        rc, so, se = winhost.ps({"start": start, "stop": stop, "restart": stop + "Start-Sleep 1;" + start}[action], 60)
+    else:
+        units = ["nova-api.service"] if action != "start" else ["nova-helper.socket", "nova-api.service"]
+        r = subprocess.run(["systemctl", action, *units], capture_output=True, text=True, timeout=60); rc, se = r.returncode, r.stderr
+    _parts["t"] = 0
+    return {"ok": rc == 0, "error": (se or "").strip()[-300:] if rc else ""}
+
+def doctor():
+    import guides
+    found = guides.doctor()
+    if not WIN:
+        try:
+            import preflight
+            found += [{"level": c["level"], "title": c["title"], "fix": c["fix"]} for c in preflight.checks() if c["level"] != "ok"]
+        except Exception: pass
+    if WIN: found = [{**c, "fix": c.get("fix", "").replace("sudo nova", "nova")} for c in found]
+    return {"checks": found}
+
+def pair(d):
+    args = ["add", "--json", "--minutes", str(min(60, max(2, int(d.get("minutes") or 10))))]
+    if d.get("viewer"): args.append("--viewer")
+    if d.get("remote"): args.append("--remote")
+    user = "".join(ch for ch in str(d.get("user") or "") if ch.isprintable())[:40]
+    if user: args += ["--user", user]
+    rc, out = nova(*args)
+    try: r = json.loads(out.splitlines()[0])
+    except (ValueError, IndexError): return {"ok": False, "error": out[-300:] or "couldn't make a code"}
+    import qrgen
+    try: r["svg"] = qrgen.svg(r.pop("payload"), border=3)
+    except Exception: r.pop("payload", None)
+    return {"ok": True, **r}
+
+def activity(n=25):
+    try:
+        with open(plat.p("/var/log/nova-api/audit.log"), encoding="utf-8", errors="replace") as f: lines = f.readlines()[-400:]
+    except OSError: return {"lines": []}
+    out = []
+    for l in reversed(lines):
+        try: e = json.loads(l)
+        except ValueError: continue
+        if e.get("method") in (None, "GET") and e.get("path") != "/api/v1/pair": continue          # what was done, not what was looked at
+        out.append({"t": e.get("time") or e.get("t") or "", "who": e.get("device") or e.get("ip") or "", "what": f"{e.get('method', '')} {e.get('path', '')}".strip(),
+                    "ok": str(e.get("result", e.get("status", ""))).startswith("2")})
+        if len(out) >= n: break
+    return {"lines": out}
+
+
+class H(http.server.BaseHTTPRequestHandler):
+    server_version = "nova-gui"; sys_version = ""
+    def log_message(self, *a): pass
+
+    def reply(self, code, body, ctype="application/json"):
+        data = body if isinstance(body, bytes) else (json.dumps(body) if ctype == "application/json" else body).encode()
+        self.send_response(code)
+        for k, v in (("Content-Type", ctype + "; charset=utf-8"), ("Content-Length", str(len(data))), ("Cache-Control", "no-store"),
+                     ("X-Frame-Options", "DENY"), ("Referrer-Policy", "no-referrer"), ("X-Content-Type-Options", "nosniff"),
+                     ("Content-Security-Policy", "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'")):
+            self.send_header(k, v)
+        self.end_headers(); self.wfile.write(data)
+
+    def ok(self):
+        """This computer, asking for this window by name (not a web page somewhere else pointing a name at 127.0.0.1), with the key."""
+        import hmac
+        host = (self.headers.get("Host") or "").rsplit(":", 1)[0]
+        return (self.client_address[0] in ("127.0.0.1", "::1") and host in ("localhost", "127.0.0.1") and
+                hmac.compare_digest(self.headers.get("X-Nova-Key") or "", KEY))
+
+    def do_GET(self):
+        path = self.path.split("?", 1)[0]
+        if path == "/": return self.reply(200, PAGE, "text/html")
+        if path == "/icon.svg":
+            for d in (os.path.join(LIB, "web"), os.path.join(HERE, "web"), os.path.join(HERE, "..", "web")):
+                if os.path.exists(os.path.join(d, "icon.svg")): return self.reply(200, open(os.path.join(d, "icon.svg"), "rb").read(), "image/svg+xml")
+            return self.reply(404, b"", "text/plain")
+        if not self.ok(): return self.reply(403, {"error": "this window's key is missing — open Nova Server again"})
+        LAST["t"] = time.time()
+        try:
+            if path == "/api/state": return self.reply(200, state())
+            if path == "/api/doctor": return self.reply(200, doctor())
+            if path == "/api/activity": return self.reply(200, activity())
+        except Exception as e: return self.reply(500, {"error": repr(e)[:300]})
+        self.reply(404, {"error": "not found"})
+
+    def do_POST(self):
+        if not self.ok(): return self.reply(403, {"error": "this window's key is missing — open Nova Server again"})
+        LAST["t"] = time.time()
+        try:
+            n = int(self.headers.get("Content-Length") or 0)
+            d = json.loads(self.rfile.read(n) or b"{}") if 0 < n <= 65536 else {}
+            c = cli(); path = self.path.split("?", 1)[0]
+            if path == "/api/pair": return self.reply(200, pair(d))
+            if path == "/api/pair/cancel":
+                try: os.remove(c.PAIRING)
+                except OSError: pass
+                return self.reply(200, {"ok": True})
+            if path == "/api/approve":
+                code = re.sub(r"[^A-Za-z0-9-]", "", str(d.get("code", "")))[:24]
+                if not code: return self.reply(200, {"ok": False, "error": "Type the code the browser shows."})
+                rc, out = nova("approve", code, *(["--viewer"] if d.get("viewer") else []), timeout=70)
+                return self.reply(200, {"ok": rc == 0 and "Done" in out, "error": "" if rc == 0 and "Done" in out else (out.splitlines() or ["That didn't work."])[-1].strip()[:300]})
+            if path == "/api/remove":
+                did = str(d.get("id", ""))
+                if did not in load(c.DEVICES, {}): return self.reply(200, {"ok": False, "error": "That device is already gone."})
+                rc, out = nova("remove", did)
+                return self.reply(200, {"ok": rc == 0, "error": "" if rc == 0 else out[-300:]})
+            if path == "/api/service": return self.reply(200, service(str(d.get("action", ""))))
+            if path == "/api/test-alert":
+                rc, out = nova("alert", "info", "Test from the Nova Server window", "If you can read this on your phone, alerts work.")
+                return self.reply(200, {"ok": rc == 0, "error": "" if rc == 0 else out[-300:]})
+            if path == "/api/update-check":
+                if WIN: return self.reply(200, {"ok": True, "message": "To update Nova on Windows, download the newest release and run its installer again — your settings and paired devices stay."})
+                rc, out = nova("update", "--check", timeout=200)
+                return self.reply(200, {"ok": rc == 0, "message": out[-600:]})
+            if path == "/api/network":                       # the server's address changed (new router): look again, then restart Nova
+                if not WIN: return self.reply(200, {"ok": False, "error": "On Linux this is part of setup: Set up Nova in the app menu, or sudo nova setup."})
+                r = subprocess.run([sys.executable, os.path.join(HERE, "winsetup.py"), "--refresh"], capture_output=True, text=True, creationflags=NO_WINDOW, timeout=60)
+                if r.returncode != 0: return self.reply(200, {"ok": False, "error": (r.stderr or r.stdout)[-300:]})
+                return self.reply(200, {**service("restart"), "found": json.loads(r.stdout.strip().splitlines()[-1])})
+            if path == "/api/quit":
+                self.reply(200, {"ok": True}); threading.Thread(target=lambda: (time.sleep(.3), os._exit(0)), daemon=True).start(); return
+        except Exception as e: return self.reply(500, {"error": repr(e)[:300]})
+        self.reply(404, {"error": "not found"})
+
+
+def watchdog():
+    """Stop a little after the window is gone (it asks for the state every few seconds while open), or after 12 hours."""
+    start = time.time()
+    while True:
+        time.sleep(5)
+        if time.time() - LAST["t"] > 75 or time.time() - start > 12 * 3600: os._exit(0)
+
+def serve(print_url=False, url_file="", start=""):
+    srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), H); srv.daemon_threads = True
+    url = f"http://localhost:{srv.server_address[1]}/{'?do=pair' if start == 'pair' else ''}#{KEY}"
+    if url_file:
+        with open(url_file, "w") as f: f.write(url)
+    if print_url and not WIN:
+        if os.fork():                                   # the launcher gets the address; the window's server carries on by itself
+            print(url, flush=True); os._exit(0)
+        os.setsid(); fd = os.open(os.devnull, os.O_RDWR)
+        for n in (0, 1, 2): os.dup2(fd, n)
+    elif print_url: print(url, flush=True)
+    threading.Thread(target=watchdog, daemon=True).start()
+    return srv, url
+
+def app_window(url):
+    """Open the address in its own window (a Chromium-family browser's app mode) or, failing that, the default browser.
+    Runs as the person at the screen, never as administrator."""
+    cands = []
+    if WIN:
+        for base in (os.environ.get("ProgramFiles(x86)"), os.environ.get("ProgramFiles"), os.environ.get("LocalAppData")):
+            if base: cands += [os.path.join(base, "Microsoft", "Edge", "Application", "msedge.exe"), os.path.join(base, "Google", "Chrome", "Application", "chrome.exe")]
+    else:
+        cands = [shutil.which(n) for n in ("chromium", "chromium-browser", "google-chrome", "google-chrome-stable", "brave-browser", "microsoft-edge", "vivaldi")]
+    exe = next((c for c in cands if c and os.path.exists(c)), None)
+    try:
+        if exe:
+            subprocess.Popen([exe, f"--app={url}", "--window-size=1040,820"], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL); return True
+        if WIN: os.startfile(url); return True
+        opener = shutil.which("xdg-open") or shutil.which("gio")
+        if opener:
+            subprocess.Popen([opener, url] if opener.endswith("xdg-open") else [opener, "open", url], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL); return True
+    except OSError: pass
+    return False
+
+def launcher():
+    """Not an administrator: start the working part with administrator rights (the desktop asks), then open the window as you."""
+    if WIN:
+        import ctypes
+        fd, uf = tempfile.mkstemp(prefix="nova-gui-", suffix=".url"); os.close(fd)
+        exe = sys.executable if sys.executable.lower().endswith("pythonw.exe") else os.path.join(os.path.dirname(sys.executable), "pythonw.exe")
+        if not os.path.exists(exe): exe = sys.executable
+        rc = ctypes.windll.shell32.ShellExecuteW(None, "runas", exe, f'"{os.path.realpath(__file__)}" --serve --url-file "{uf}"' + (" --pair" if "--pair" in sys.argv else ""), None, 0)
+        if rc <= 32: return 1                              # the prompt was declined
+        url = ""
+        for _ in range(150):
+            time.sleep(.2)
+            try: url = open(uf).read().strip()
+            except OSError: url = ""
+            if url.startswith("http://localhost:"): break
+        try: os.remove(uf)
+        except OSError: pass
+    else:
+        if not shutil.which("pkexec"): sys.exit("Run it with sudo:  sudo nova gui")
+        r = subprocess.run(["pkexec", "/usr/sbin/nova-gui", "--serve", "--print-url"] + (["--pair"] if "--pair" in sys.argv else []), capture_output=True, text=True)
+        url = r.stdout.strip().splitlines()[-1] if r.returncode == 0 and r.stdout.strip() else ""
+    if not url.startswith("http://localhost:"): return 1
+    app_window(url); return 0
+
+def main():
+    a = sys.argv[1:]
+    if "--serve" not in a and not is_admin(): sys.exit(launcher())
+    if not is_admin(): sys.exit("The Nova Server window needs administrator rights." if WIN else "Run it with sudo:  sudo nova gui")
+    uf = a[a.index("--url-file") + 1] if "--url-file" in a and a.index("--url-file") + 1 < len(a) else ""
+    srv, url = serve("--print-url" in a, uf, "pair" if "--pair" in a else "")
+    if "--serve" not in a:                                 # started from an administrator terminal: open the window for whoever is at the screen
+        print(f"\n  Nova Server is open in a window. If it didn't appear, open:\n\n    {url}\n\n  (Close the window, or press Ctrl-C here, to stop.)\n", flush=True)
+        if WIN: subprocess.Popen(["explorer.exe", url])    # explorer opens it as you, not as administrator
+        elif os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"):
+            u = os.environ.get("SUDO_USER"); opener = shutil.which("xdg-open")
+            if opener: subprocess.Popen((["runuser", "-u", u, "--"] if u else []) + [opener, url], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    try: srv.serve_forever()
+    except KeyboardInterrupt: pass
+
+
+PAGE = r"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Nova Server</title><link rel="icon" href="/icon.svg">
+<style>
+:root{--bg:#f4f3f8;--card:#fff;--text:#14141a;--sub:#6b6b74;--line:#e7e7ec;--blue:#2f7df6;--green:#1fa34f;--amber:#d98500;--red:#e5484d;--soft:rgba(20,20,40,.055);--shadow:0 1px 2px rgba(20,20,40,.06),0 8px 24px rgba(20,20,40,.06)}
+@media (prefers-color-scheme:dark){:root{--bg:#0b0b0f;--card:#1b1b20;--text:#f4f4f6;--sub:#9c9ca6;--line:#2c2c33;--blue:#4b9bff;--green:#3ccf7a;--amber:#f5a524;--red:#ff6369;--soft:rgba(255,255,255,.07);--shadow:0 1px 0 rgba(255,255,255,.04) inset,0 10px 30px rgba(0,0,0,.35)}}
+*{box-sizing:border-box}html,body{margin:0}body{background:var(--bg);color:var(--text);font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased}
+main{max-width:980px;margin:0 auto;padding:22px 20px 60px;display:grid;gap:16px}
+header{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:6px 2px 4px}
+header img{width:44px;height:44px;border-radius:12px}h1{font-size:22px;margin:0;font-weight:700;letter-spacing:-.01em}
+.sub{color:var(--sub);font-size:13.5px}.grow{flex:1;min-width:0}
+.pill{display:inline-flex;align-items:center;gap:8px;padding:7px 13px;border-radius:999px;background:var(--soft);font-weight:650;font-size:14px}
+.dot{width:9px;height:9px;border-radius:50%;background:var(--sub);flex:none}.dot.ok{background:var(--green);box-shadow:0 0 0 4px color-mix(in srgb,var(--green) 22%,transparent)}.dot.bad{background:var(--red)}.dot.warn{background:var(--amber)}
+.card{background:var(--card);border-radius:20px;box-shadow:var(--shadow);padding:18px 20px}
+.card h2{font-size:16px;margin:0 0 2px;font-weight:700}.card>.sub{margin-bottom:12px}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}.col{display:grid;gap:16px;min-width:0}@media (max-width:760px){.cols{grid-template-columns:1fr}}
+.scroll{max-height:430px;overflow:auto;margin-right:-8px;padding-right:8px}
+button{font:inherit;border:0;border-radius:12px;padding:9px 16px;font-weight:650;cursor:pointer;background:var(--soft);color:var(--text);transition:filter .15s,transform .05s}
+button:hover{filter:brightness(1.08)}button:active{transform:scale(.98)}button:disabled{opacity:.5;cursor:default}
+button.pri{background:var(--blue);color:#fff}button.danger{color:var(--red)}button.small{padding:6px 12px;font-size:13.5px;border-radius:10px}
+button:focus-visible,input:focus-visible,a:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+.row{display:flex;align-items:center;gap:12px;padding:11px 0;border-top:1px solid var(--line)}.row:first-of-type{border-top:0}
+.row .t{font-weight:600}.row .s{color:var(--sub);font-size:13px}.btns{display:flex;gap:8px;flex-wrap:wrap}
+.tag{font-size:12px;font-weight:650;padding:2px 8px;border-radius:999px;background:var(--soft);color:var(--sub);white-space:nowrap}
+.empty{color:var(--sub);padding:8px 0}
+.qr{display:grid;gap:14px;justify-items:start}
+.qr .code{background:#fff;border-radius:16px;padding:8px;width:min(100%,264px);aspect-ratio:1;box-shadow:0 0 0 1px var(--line);justify-self:center}.qr .code svg{width:100%;height:100%;display:block}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;margin:10px 0}.kv dt{color:var(--sub)}.kv dd{margin:0;font-weight:650;font-variant-numeric:tabular-nums;word-break:break-all}
+.big{font:700 26px/1.1 ui-monospace,"Cascadia Mono",Menlo,monospace;letter-spacing:.12em}
+.bar{height:6px;border-radius:3px;background:var(--soft);overflow:hidden;margin-top:10px}.bar i{display:block;height:100%;background:var(--blue);border-radius:3px;transition:width 1s linear}
+input[type=text]{font:inherit;color:var(--text);background:var(--soft);border:0;border-radius:12px;padding:9px 12px;min-width:0}
+label.chk{display:inline-flex;gap:7px;align-items:center;color:var(--sub);font-size:14px;cursor:pointer}
+a{color:var(--blue);text-decoration:none}a:hover{text-decoration:underline}
+.alert{display:flex;gap:10px;padding:9px 0;border-top:1px solid var(--line)}.alert:first-child{border-top:0}
+.msg{margin-top:10px;padding:10px 12px;border-radius:12px;background:var(--soft);font-size:14px;white-space:pre-wrap}.msg.err{color:var(--red)}.msg.good{color:var(--green)}
+.fix{color:var(--sub);font-size:13px;margin-top:2px}.mono{font-family:ui-monospace,"Cascadia Mono",Menlo,monospace;font-size:13px}
+.fade{animation:fade .25s ease}@keyframes fade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){.fade{animation:none}.bar i{transition:none}}
+footer{display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between;color:var(--sub);font-size:13px;padding:0 4px}
+</style></head><body><main id="app"><div class="card"><div class="empty">Opening…</div></div></main>
+<script>
+const KEY = location.hash.slice(1); let AUTO = new URLSearchParams(location.search).get("do"); history.replaceState(null, "", location.pathname);
+const $ = (s, r = document) => r.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const clock = s => { s = Math.max(0, Math.round(s)); return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0"); };
+async function api(path, body) {
+  const r = await fetch(path, { method: body === undefined ? "GET" : "POST", headers: { "X-Nova-Key": KEY, "Content-Type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) });
+  return r.json();
+}
+let S = null, pair = null, pairedName = "", known = null, busy = {}, note = {}, doc = null, act = null, confirmRm = "", gone = false, typed = "", opts = { viewer: false, remote: false };
+
+function header() {
+  const st = !S.configured ? ["warn", "Not set up yet"] : S.running ? ["ok", "Running"] : ["bad", "Stopped"];
+  const others = S.parts.filter(p => p.id !== "api" && p.state !== "active" && p.state !== "missing");
+  return `<header><img src="/icon.svg" alt=""><div class="grow"><h1>Nova Server</h1><div class="sub">${esc(S.host)} · Nova ${esc(S.version)} · ${esc(S.os)}</div></div>
+    <span class="pill"><span class="dot ${st[0]}"></span>${st[1]}</span>
+    <span class="btns">${S.running ? `<button data-do="svc" data-a="restart" ${busy.svc ? "disabled" : ""}>Restart</button><button data-do="svc" data-a="stop" ${busy.svc ? "disabled" : ""}>Stop</button>`
+      : `<button class="pri" data-do="svc" data-a="start" ${busy.svc || !S.configured ? "disabled" : ""}>Start Nova</button>`}</span></header>
+    ${note.svc ? `<div class="msg err">${esc(note.svc)}</div>` : ""}
+    ${!S.configured ? `<div class="card"><h2>Finish setting up</h2><div class="sub">${S.windows ? "Run the Nova installer again — it writes the settings this needs." : "Open “Set up Nova” from the app menu, or run <span class=mono>sudo nova setup</span> in a terminal."}</div></div>` : ""}
+    ${S.running && others.length ? `<div class="card"><div class="alert"><span class="dot warn" style="margin-top:6px"></span><div><div class="t">${others.map(p => esc(p.name)).join(" and ")} ${others.length > 1 ? "aren't" : "isn't"} running</div><div class="fix">Press Restart to bring every part back.</div></div></div></div>` : ""}`;
+}
+function health() {
+  const h = S.health; if (!h || !S.configured) return "";
+  const lv = { ok: "ok", warning: "warn", critical: "bad" }[h.level] || "";
+  return `<div class="card"><div style="display:flex;gap:10px;align-items:center"><span class="dot ${lv}"></span><h2 style="margin:0">${esc(h.headline || "No status yet")}</h2><span class="grow"></span><span class="sub">${h.updated ? "checked " + esc(h.updated) : ""}</span></div>
+    ${h.active.length ? `<div style="margin-top:10px">${h.active.map(a => `<div class="alert"><span class="dot ${a.level === "critical" ? "bad" : a.level === "warning" ? "warn" : ""}" style="margin-top:6px"></span><div><div class="t">${esc(a.title)}</div>${a.detail ? `<div class="fix">${esc(a.detail)}</div>` : ""}</div><span class="grow"></span><span class="sub" style="white-space:nowrap">${esc(a.since)}</span></div>`).join("")}</div>` : ""}</div>`;
+}
+function pairing() {
+  if (!S.configured) return "";
+  let body;
+  if (pairedName) body = `<div class="fade"><div style="display:flex;gap:10px;align-items:center;margin:6px 0 12px"><span class="dot ok"></span><b>Paired: ${esc(pairedName)}</b></div><button data-do="pair-done">Done</button> <button data-do="pair">Pair another</button></div>`;
+  else if (pair && S.pairing.active) {
+    const left = pair.expires - Date.now() / 1000, total = pair.total || 600;
+    body = `<div class="qr fade"><div class="code">${pair.svg || ""}</div><div>
+      <div class="sub">${pair.remote ? "Scan with the Nova app from anywhere." : "Scan with the Nova app on your home Wi-Fi — or type these in:"}</div>
+      <dl class="kv"><dt>Server address</dt><dd>${esc(pair.host)}</dd><dt>Code</dt><dd class="big">${esc(pair.code)}</dd><dt>Certificate</dt><dd>${esc(pair.pin)}</dd>
+      <dt>It will be</dt><dd>${pair.role === "viewer" ? "View only" : "an Admin (full control)"} · single use</dd></dl>
+      ${pair.remote && pair.setup ? `<div class="sub">Or paste this into the app's “Away from home” box (keep it private):</div><div class="msg mono" style="word-break:break-all;user-select:all">${esc(pair.setup)}</div>` : ""}
+      <div class="sub" id="left">Waiting for the phone… ${clock(left)} left</div><div class="bar"><i id="leftbar" style="width:${Math.max(0, 100 * left / total)}%"></i></div>
+      <div style="margin-top:12px"><button data-do="pair-cancel">Cancel</button></div></div></div>`;
+  } else body = `<div class="btns" style="align-items:center"><button class="pri" data-do="pair" ${busy.pair || !S.running ? "disabled" : ""}>Pair a phone or tablet</button>
+      <label class="chk"><input type="checkbox" data-opt="viewer" ${opts.viewer ? "checked" : ""}> View only</label>
+      <label class="chk"><input type="checkbox" data-opt="remote" ${opts.remote ? "checked" : ""}> It's away from home</label></div>
+      ${!S.running ? `<div class="fix" style="margin-top:8px">Start Nova first.</div>` : ""}${note.pair ? `<div class="msg err">${esc(note.pair)}</div>` : ""}`;
+  return `<div class="card"><h2>Pair a device</h2><div class="sub">Get the Nova app on your phone, tap “Add a server”, and scan the code.</div>${body}</div>`;
+}
+function waiting() {
+  if (!S.configured) return "";
+  const rows = S.waiting.map(w => `<div class="row fade"><div class="grow"><div class="t">${esc(w.what)}</div><div class="s">${esc(w.who)} · code <b class="mono">${esc(w.code)}</b> · ${clock(w.left)} left</div></div>
+      <span class="btns">${w.kind === "browser" ? `<button class="small" data-do="approve" data-code="${esc(w.code)}" data-viewer="1" ${busy["ap" + w.code] ? "disabled" : ""}>View only</button>` : ""}
+      <button class="small pri" data-do="approve" data-code="${esc(w.code)}" ${busy["ap" + w.code] ? "disabled" : ""}>${busy["ap" + w.code] ? "Approving…" : "Approve"}</button></span></div>`).join("");
+  return `<div class="card"><h2>Waiting for approval</h2><div class="sub">A browser that wants in shows a code; so does an action a browser can't approve by itself.</div>
+    ${rows || `<div class="empty">Nothing is waiting.</div>`}
+    <div class="row"><input type="text" id="code" class="grow mono" placeholder="Or type a code" maxlength="24" value="${esc(typed)}" autocomplete="off" spellcheck="false">
+      <button class="small" data-do="approve-typed" ${busy.aptyped ? "disabled" : ""}>${busy.aptyped ? "Approving…" : "Approve"}</button></div>
+    ${note.approve ? `<div class="msg ${note.approveOk ? "good" : "err"}">${esc(note.approve)}</div>` : ""}</div>`;
+}
+function devices() {
+  if (!S.configured) return "";
+  const rows = S.devices.map(d => `<div class="row"><div class="grow"><div class="t">${esc(d.name)} <span class="tag">${esc(d.kind)}</span> <span class="tag">${esc(d.role)}</span>${d.user ? ` <span class="tag">${esc(d.user)}</span>` : ""}</div>
+      <div class="s">${d.seen ? "last seen " + esc(d.seen) + (d.via ? " via " + esc(d.via) : "") : "never connected yet"}</div></div>
+      ${confirmRm === d.id ? `<span class="btns"><button class="small danger" data-do="rm-yes" data-id="${esc(d.id)}" ${busy.rm ? "disabled" : ""}>Remove — it can never connect again</button><button class="small" data-do="rm-no">Keep</button></span>`
+        : `<button class="small" data-do="rm" data-id="${esc(d.id)}">Remove</button>`}</div>`).join("");
+  return `<div class="card"><h2>Devices</h2><div class="sub">${S.devices.length ? S.devices.length + " paired" : "Phones, tablets, watches and browsers that can use this server."}</div><div class="scroll">${rows || `<div class="empty">No devices yet.</div>`}</div>${note.rm ? `<div class="msg err">${esc(note.rm)}</div>` : ""}</div>`;
+}
+function addresses() {
+  if (!S.configured) return "";
+  return `<div class="card"><h2>Where to find it</h2><div class="sub">Open Nova in a browser, or give the app this address.</div>
+    ${S.addresses.map(a => `<div class="row"><div class="grow"><div class="t">${esc(a.label)}</div><div class="s">${a.note ? esc(a.note) : ""}</div></div><a class="mono" href="${esc(a.url)}" target="_blank" rel="noopener">${esc(a.url)}</a></div>`).join("")}
+    <div class="row"><div class="grow"><div class="t">Certificate</div><div class="s">what phones and other servers check when they pair</div></div><span class="mono">${esc(S.pin)}</span></div>
+    ${S.windows ? `<div class="row"><div class="grow"><div class="t">Address changed?</div><div class="s">after a new router, look at the network again</div></div><button class="small" data-do="network" ${busy.network ? "disabled" : ""}>${busy.network ? "Looking…" : "Look again"}</button></div>` : ""}
+    ${note.network ? `<div class="msg ${note.networkOk ? "good" : "err"}">${esc(note.network)}</div>` : ""}</div>`;
+}
+function checkup() {
+  const mark = { ok: "ok", warn: "warn", stop: "bad" };
+  return `<div class="card"><div style="display:flex;align-items:center;gap:10px"><div class="grow"><h2>Check-up</h2><div class="sub" style="margin:0">Finds what's wrong and says how to fix it.</div></div>
+    <button data-do="doctor" ${busy.doctor ? "disabled" : ""}>${busy.doctor ? "Checking…" : doc ? "Check again" : "Run it"}</button></div>
+    ${doc ? `<div style="margin-top:10px" class="fade">${doc.map(c => `<div class="alert"><span class="dot ${mark[c.level] || ""}" style="margin-top:6px"></span><div><div class="t">${esc(c.title)}</div>${c.fix ? `<div class="fix">→ ${esc(c.fix)}</div>` : ""}</div></div>`).join("") || `<div class="empty">Nothing to report.</div>`}</div>` : ""}</div>`;
+}
+function more() {
+  return `<div class="card"><h2>More</h2><div class="btns" style="margin-top:10px">
+      <button data-do="update" ${busy.update ? "disabled" : ""}>${busy.update ? "Checking…" : "Check for updates"}</button>
+      <button data-do="test" ${busy.test || !S.running ? "disabled" : ""}>Send a test alert</button>
+      <button data-do="activity">${act ? "Hide recent activity" : "Recent activity"}</button></div>
+    ${note.more ? `<div class="msg">${esc(note.more)}</div>` : ""}
+    ${act ? `<div style="margin-top:10px" class="fade">${act.map(l => `<div class="row"><span class="dot ${l.ok ? "ok" : "warn"}"></span><div class="grow"><div class="t mono">${esc(l.what)}</div><div class="s">${esc(l.who)}</div></div><span class="sub">${esc(l.t)}</span></div>`).join("") || `<div class="empty">Nothing has been done from the app yet.</div>`}</div>` : ""}</div>`;
+}
+function paint() {
+  if (gone) { $("#app").innerHTML = `<div class="card"><h2>Nova Server has closed</h2><div class="sub">Open it again from the ${S && S.windows ? "Start menu" : "app menu"}.</div></div>`; return; }
+  const sc = $(".scroll") ? $(".scroll").scrollTop : 0;
+  const keep = document.activeElement && document.activeElement.id === "code" ? [document.activeElement.selectionStart, document.activeElement.selectionEnd] : null;
+  $("#app").innerHTML = header() + health() + `<div class="cols"><div class="col">${pairing()}${waiting()}</div><div class="col">${devices()}</div></div>` + addresses() + checkup() + more() +
+    `<footer><span>This window talks only to this computer.</span><span>In a terminal: <span class="mono">${S.windows ? "" : "sudo "}nova help</span></span></footer>`;
+  if (keep) { const i = $("#code"); i.focus(); i.setSelectionRange(keep[0], keep[1]); }
+  if (sc && $(".scroll")) $(".scroll").scrollTop = sc;
+}
+async function refresh() {
+  try { S = await api("/api/state"); if (S.error) throw 0; } catch (e) { if (S) { gone = true; paint(); } return; }
+  if (known && pair && !pairedName) {                       // a device that wasn't there when the code was made: that's the one
+    const nu = S.devices.find(d => !known.has(d.id));
+    if (nu && !S.pairing.active) { pairedName = nu.name; pair = null; }
+  }
+  if (pair && !S.pairing.active && !pairedName && pair.expires < Date.now() / 1000) { pair = null; note.pair = "The code ran out. Make a new one."; }
+  paint();
+}
+function tick() {
+  if (pair && !pairedName && $("#left")) { const left = pair.expires - Date.now() / 1000; $("#left").textContent = `Waiting for the phone… ${clock(left)} left`; $("#leftbar").style.width = Math.max(0, 100 * left / (pair.total || 600)) + "%"; }
+}
+async function run(key, fn) { busy[key] = true; paint(); try { await fn(); } catch (e) { } busy[key] = false; await refresh(); }
+document.addEventListener("input", e => { if (e.target.id === "code") typed = e.target.value; if (e.target.dataset.opt) opts[e.target.dataset.opt] = e.target.checked; });
+document.addEventListener("keydown", e => { if (e.key === "Enter" && e.target.id === "code") $("[data-do=approve-typed]").click(); });
+document.addEventListener("click", async e => {
+  const b = e.target.closest("[data-do]"); if (!b || b.disabled) return; const d = b.dataset;
+  if (d.do === "svc") run("svc", async () => { note.svc = ""; const r = await api("/api/service", { action: d.a }); if (!r.ok) note.svc = r.error || "That didn't work."; await new Promise(r => setTimeout(r, 1500)); });
+  if (d.do === "pair") run("pair", async () => { note.pair = ""; pairedName = ""; known = new Set(S.devices.map(x => x.id));
+    const r = await api("/api/pair", { viewer: opts.viewer, remote: opts.remote }); if (r.ok) pair = { ...r, total: r.expires - Date.now() / 1000 }; else note.pair = r.error; });
+  if (d.do === "pair-cancel") run("pair", async () => { await api("/api/pair/cancel", {}); pair = null; });
+  if (d.do === "pair-done") { pairedName = ""; pair = null; paint(); }
+  if (d.do === "approve" || d.do === "approve-typed") { const code = d.do === "approve" ? d.code : typed.trim(); const k = d.do === "approve" ? "ap" + code : "aptyped";
+    run(k, async () => { note.approve = ""; const r = await api("/api/approve", { code, viewer: !!d.viewer }); note.approveOk = r.ok; note.approve = r.ok ? "Approved." : r.error; if (r.ok) typed = ""; }); }
+  if (d.do === "rm") { confirmRm = d.id; paint(); } if (d.do === "rm-no") { confirmRm = ""; paint(); }
+  if (d.do === "rm-yes") run("rm", async () => { note.rm = ""; const r = await api("/api/remove", { id: d.id }); if (!r.ok) note.rm = r.error; confirmRm = ""; });
+  if (d.do === "doctor") run("doctor", async () => { const r = await api("/api/doctor"); doc = r.checks || []; });
+  if (d.do === "update") run("update", async () => { const r = await api("/api/update-check", {}); note.more = r.message || r.error || ""; });
+  if (d.do === "test") run("test", async () => { const r = await api("/api/test-alert", {}); note.more = r.ok ? "Sent. It shows in the app's Inbox within a minute (and in Discord, if that's set up)." : r.error; });
+  if (d.do === "activity") { if (act) { act = null; paint(); } else run("act", async () => { act = (await api("/api/activity")).lines || []; }); }
+  if (d.do === "network") run("network", async () => { const r = await api("/api/network", {}); note.networkOk = r.ok; note.network = r.ok ? `This server's address is ${r.found.lan_host}. Nova was restarted.` : r.error; });
+});
+refresh().then(() => { if (AUTO === "pair" && S && S.running) { const b = $("[data-do=pair]"); if (b) b.click(); } AUTO = null; });
+setInterval(refresh, 3000); setInterval(tick, 1000);
+</script></body></html>"""
+
+
+if __name__ == "__main__":
+    main()

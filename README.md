@@ -53,6 +53,8 @@ network, and optionally from anywhere through Cloudflare Access, without a VPN.
 | **Tablets & dashboard** | Tablet layout (rail + list/detail) and an always-on, customizable dashboard mode |
 | **Nova web** | The same design in any browser, at `https://<server>:8495/`, installable as an app. Risky actions are approved on your phone; apps can open in windows inside Nova (Labs); game controllers work, with Xbox / PlayStation button hints |
 | **Lighting** | Fans and LED strips on a Gigabyte RGB Fusion 2 board — or any device OpenRGB supports (Labs → OpenRGB): several lights, each with its own effect (wave, comet, fire, gradients, palettes…), presets, schedules with sunrise/sunset and fades, and a status light |
+| **Nova Server window** | On a server with a screen, **Nova Server** in the app menu (or `sudo nova gui`) does what the terminal does: status, pairing with a QR code, devices, approvals, the check-up |
+| **Windows servers** | The same server runs on Windows 10/11 and Windows Server as a preview: pairing, live graphs, alerts, processes, power, drives, Docker Desktop containers ([docs/WINDOWS.md](docs/WINDOWS.md) lists what's there and what isn't yet) |
 | **Plugins** | Add apps and one-tap tools from a small `plugin.json` ([docs/PLUGINS.md](docs/PLUGINS.md)) |
 | **Optional modules** | Lighting (above); plug in your own monitor for alerts |
 
@@ -93,6 +95,18 @@ Full walkthrough, extras and troubleshooting: **[docs/SETUP.md](docs/SETUP.md)**
 
 Everything else: `sudo nova` lists all commands (`approve`, `devices`, `remove`, `status`, `update`, `backup`, …).
 
+## Install the server on Windows (preview)
+
+Download **[nova-windows.zip](https://github.com/dash1101/Nova/releases/latest/download/nova-windows.zip)**, unzip it and
+double-click **Install Nova.cmd** — or, in an administrator PowerShell:
+
+```powershell
+irm https://raw.githubusercontent.com/dash1101/Nova/main/get.ps1 | iex
+```
+
+Then open **Nova Server** from the Start menu and pair your phone. It is the same server and the same app; what works
+on Windows today and what doesn't yet is in **[docs/WINDOWS.md](docs/WINDOWS.md)**.
+
 ## Install the app
 
 Android 7.0 or newer (phones, tablets and foldables; Wear OS 3+ for the watch app). On older versions a
@@ -128,9 +142,11 @@ behind a Cloudflare Tunnel with Access and a service token. Step by step: [docs/
 ```
 android/                 the app (Kotlin, Jetpack Compose)
 server/api/              server.py (API), helper.py (root helper), nova-api (CLI), nova-app-publish
+server/api/plat.py       the one place that knows the operating system; winhost.py is everything Windows-specific
+server/windows/          the Windows installer and uninstaller (docs/WINDOWS.md)
 server/store/            app store catalog: docker/*.json (compose-based apps) + programs.json (apt)
 server/modules/          optional: lighting (fan-gigabyte-fusion2)
-packaging/               .deb builder (build-deb.sh), nova-setup-lighting, logrotate
+packaging/               .deb builder (build-deb.sh), Windows zip (build-win.sh), nova-setup-lighting, logrotate
 server/install.sh        installer
 docs/                    security model, remote access, modules, adding store apps, design rules (DESIGN.md)
 ```

@@ -15,6 +15,7 @@
     sudo nova status               version, services and addresses
     sudo nova doctor               check everything; each problem comes with how to fix it
     sudo nova setup                guided setup (network, remote access, location, tools…)
+    sudo nova gui                  the Nova Server window: status, pairing, devices and approvals without the terminal
     sudo nova update [--check]     install the newest signed release
     sudo nova lighting             set up the fan/case lighting module
     sudo nova backup [now|list]    back up now, or list backups
@@ -37,9 +38,21 @@
 """
 import base64, hashlib, json, os, re, secrets, shutil, subprocess, sys, time
 
-DATA = "/var/lib/nova-api"; DEVICES = f"{DATA}/devices.json"; PAIRING = f"{DATA}/pairing.json"
-SHELL_APPROVE = f"{DATA}/shell-approve.json"; PENDING = f"{DATA}/pending.json"
-LIB = "/usr/lib/nova-api"
+HERE = os.path.dirname(os.path.realpath(__file__))
+LIB = "/usr/lib/nova-api" if os.path.isdir("/usr/lib/nova-api") else HERE
+sys.path[:0] = [LIB, HERE]
+import plat                                               # which OS this is, and where Nova's folders are on it
+WIN = plat.WINDOWS
+DATA = plat.p("/var/lib/nova-api"); DEVICES = os.path.join(DATA, "devices.json"); PAIRING = os.path.join(DATA, "pairing.json")
+SHELL_APPROVE = os.path.join(DATA, "shell-approve.json"); PENDING = os.path.join(DATA, "pending.json")
+CONFIG = plat.p("/etc/nova-api/config.json")
+if WIN:                                                   # a Windows terminal: colors on, any character printable, and no "sudo"
+    os.system("")
+    for _s in (sys.stdout, sys.stderr):
+        try: _s.reconfigure(encoding="utf-8", errors="replace")
+        except Exception: pass
+    import builtins
+    def print(*a, **k): builtins.print(*[x.replace("sudo nova", "nova") if isinstance(x, str) else x for x in a], **k)   # noqa: A001
 B, D, G, Y, R, X = "\033[1m", "\033[2m", "\033[32m", "\033[33m", "\033[31m", "\033[0m"
 if not sys.stdout.isatty(): B = D = G = Y = R = X = ""
 
@@ -48,9 +61,9 @@ def load(p, d):
     except Exception: return d
 
 def save(p, o, mode=0o640, owner="nova-api"):
-    import pwd, grp
-    sys.path.insert(0, "/usr/lib/nova-api"); sys.path.insert(1, os.path.dirname(os.path.realpath(__file__)))
     import safeio                                         # the nova-api account owns these folders: no symlinks followed
+    if WIN: return safeio.write_json(p, o, indent=1)      # (the folder's permissions decide who reads it there)
+    import pwd, grp
     safeio.write_json(p, o, mode, pwd.getpwnam(owner).pw_uid if owner != "root" else 0, grp.getgrnam("nova-api").gr_gid, indent=1)
 
 def opt(args, name, default=None):
@@ -58,7 +71,31 @@ def opt(args, name, default=None):
 
 def clock(sec): sec = max(0, int(sec)); return f"{sec // 60}:{sec % 60:02d}"
 
-def run(*cmd): os.execvp(cmd[0], list(cmd))
+def run(*cmd):
+    if not WIN: os.execvp(cmd[0], list(cmd))
+    if os.path.basename(cmd[0]) == "nova-alert":          # Windows: the monitor takes alerts itself
+        import winhost
+        sys.exit(subprocess.run([sys.executable, winhost.MONITOR, "notify", *cmd[1:]]).returncode)
+    tool = os.path.join(HERE, os.path.basename(cmd[0]))   # Windows: the same tools sit next to this file
+    if not os.path.exists(tool): sys.exit("That isn't available on a Windows server yet.")
+    sys.exit(subprocess.run([sys.executable, tool, *cmd[1:]]).returncode)
+
+def is_root():
+    if WIN:
+        import winhost
+        return winhost.is_admin()
+    return os.geteuid() == 0
+
+def api_state():
+    """"active" when Nova's API is running."""
+    if WIN:
+        import winhost
+        return winhost.task_state("Api")
+    return subprocess.run(["systemctl", "is-active", "nova-api.service"], capture_output=True, text=True).stdout.strip()
+
+def version():
+    if os.path.exists(os.path.join(LIB, "VERSION")): return open(os.path.join(LIB, "VERSION")).read().strip()
+    return subprocess.run(["dpkg-query", "-W", "-f=${Version}", "nova-server"], capture_output=True, text=True).stdout or "?"
 
 def help_(): print(__doc__.rstrip()); print(f"\n  Short guides:  nova help TOPIC   ({', '.join(_guides().topics())})"); sys.exit(0)
 
@@ -69,9 +106,9 @@ def _guides():
 
 def menu():
     """Plain `nova`: the few things most people come for, not every command."""
-    st = subprocess.run(["systemctl", "is-active", "nova-api.service"], capture_output=True, text=True).stdout.strip()
+    st = api_state()
     ver = (open(f"{LIB}/VERSION").read().strip() if os.path.exists(f"{LIB}/VERSION") else "")
-    setup = os.path.exists("/etc/nova-api/config.json") if os.geteuid() == 0 else st == "active"
+    setup = os.path.exists(CONFIG) if is_root() else st == "active"
     print(f"\n  {B}Nova {ver}{X}  " + (f"{G}● running{X}" if st == "active" else f"{Y}● not set up yet{X}" if not setup else f"{R}● stopped{X}"))
     rows = ([("sudo nova setup", "set Nova up (or: sudo nova setup --gui, in a browser)")] if not setup else []) + [
         ("sudo nova add", "pair a phone or tablet"), ("sudo nova approve CODE", "let in a browser that shows a code"),
@@ -97,6 +134,7 @@ def help_topic(t):
 def doctor(args):
     found = _guides().doctor()
     try:                                                   # plus the machine checks setup runs (ports, systemd, clock…)
+        if WIN: raise ImportError                          # (those are Linux's; Windows' are all in the doctor above)
         import preflight
         found += [{"level": c["level"], "title": c["title"], "fix": c["fix"]} for c in preflight.checks() if c["level"] != "ok"]
     except Exception: pass
@@ -113,7 +151,7 @@ def doctor(args):
 
 def add(args):
     """Pair a phone/tablet: one-time code (+ QR), with a live countdown until it's used or runs out."""
-    cfg = load("/etc/nova-api/config.json", {})
+    cfg = load(CONFIG, {})
     mins = int(opt(args, "--minutes", 10)); role = "viewer" if "--viewer" in args else opt(args, "--role", "admin")
     if role not in ("admin", "viewer"): sys.exit("--role must be admin or viewer")
     user = (opt(args, "--user", "") or "")[:40]
@@ -137,10 +175,11 @@ def add(args):
     payload = json.dumps(info, separators=(",", ":"))
     setup = "nova1:" + base64.urlsafe_b64encode(payload.encode()).decode().rstrip("=")
     if "--json" in args:          # for the GUI setup: the same code and QR, as data (it shows them itself)
-        svg = subprocess.run(["qrencode", "-t", "SVG", "-m", "2", "-o", "-", payload], capture_output=True, text=True).stdout
-        print(json.dumps({"code": code, "host": cfg.get("lan_host", ""), "pin": " ".join(pin[i:i + 4].upper() for i in (0, 4, 8)), "expires": expires, "svg": svg, "role": role, "remote": away, "setup": setup if away else ""}))
+        svg = subprocess.run(["qrencode", "-t", "SVG", "-m", "2", "-o", "-", payload], capture_output=True, text=True).stdout if shutil.which("qrencode") else ""
+        print(json.dumps({"payload": payload, "code": code, "host": cfg.get("lan_host", ""), "pin": " ".join(pin[i:i + 4].upper() for i in (0, 4, 8)), "expires": expires, "svg": svg, "role": role, "remote": away, "setup": setup if away else ""}))
         return
-    subprocess.run(["qrencode", "-t", "ANSIUTF8", "-m", "2", payload])
+    if shutil.which("qrencode"): subprocess.run(["qrencode", "-t", "ANSIUTF8", "-m", "2", payload])
+    elif not away: print(f"\n  {D}(For a QR code to scan, open the Nova Server window: nova gui){X}")
     if away:
         print(f"\nScan this with the Nova app {B}from anywhere{X} (or paste the setup code below into the app's “Away from home” box):")
         print(f"  {B}{setup}{X}")
@@ -219,16 +258,19 @@ def remove(args):
     for k in [k for k, v in devs.items() if v.get("owner") in hit]: devs.pop(k); hit.append(k)       # a phone's watch goes with it
     save(DEVICES, devs, mode=0o640)
     for k in hit:                    # and its SSH key, if the app installed one
-        h = f"{LIB}/helper" if os.path.exists(f"{LIB}/helper") else None
+        h = f"{LIB}/helper" if os.path.exists(f"{LIB}/helper") and not WIN else None
         if h: subprocess.run([h, "ssh-unauthorize", k], capture_output=True)
     print(f"{G}✓ Removed{X} {', '.join(hit)}")
 
 
 def status(args):
-    cfg = load("/etc/nova-api/config.json", {})
-    ver = subprocess.run(["dpkg-query", "-W", "-f=${Version}", "nova-server"], capture_output=True, text=True).stdout or "?"
-    print(f"{B}Nova {ver}{X}")
-    for u in ("nova-api", "nova-helper.socket", "nova-alerts.timer", "nova-backups.timer", "nova-update-check.timer", "nova-rgb-anim", "nova-rgb-tick.timer"):
+    cfg = load(CONFIG, {})
+    print(f"{B}Nova {version()}{X}")
+    if WIN:
+        import winhost
+        for t in ("Api", "Helper", "Alerts"):
+            st = winhost.task_state(t); print(f"  {(G + '●') if st == 'active' else (R + '●')}{X} {'Nova ' + t:26} {st}")
+    for u in () if WIN else ("nova-api", "nova-helper.socket", "nova-alerts.timer", "nova-backups.timer", "nova-update-check.timer", "nova-rgb-anim", "nova-rgb-tick.timer"):
         st = subprocess.run(["systemctl", "is-active", u], capture_output=True, text=True).stdout.strip()
         if st != "inactive" or u.startswith("nova-api"): print(f"  {(G + '●') if st == 'active' else (R + '●')}{X} {u:26} {st}")
     print(f"  Home network   {cfg.get('lan_url', '—')}")
@@ -274,8 +316,8 @@ def link(args):
     print(f"  Its certificate:  {B}{p['pin_short']}{X}")
     print(f"  {D}To be sure it's really that server, check this matches the \"Certificate\" line of  sudo nova status  there.{X}")
     if input("\n  Link it? [Y/n]: ").strip().lower().startswith("n"): print("Nothing changed."); return
-    cfg = load("/var/lib/nova-api/settings.json", {})
-    try: lk = nodes.link_start(p["host"], p["pin"], cfg.get("display_name") or os.uname().nodename)
+    cfg = load(os.path.join(DATA, "settings.json"), {})
+    try: lk = nodes.link_start(p["host"], p["pin"], cfg.get("display_name") or plat.node())
     except (ValueError, OSError) as e: sys.exit(f"{R}{e}{X}")
     print(f"\n  Now approve it on that server, any one of:")
     print(f"    • the Nova app connected to it:  Menu → Users & devices → Approve a browser, code {B}{lk['code']}{X}")
@@ -304,7 +346,7 @@ def backup(args):
 
 def log(args):
     n = int(args[0]) if args and args[0].isdigit() else 20
-    for l in open("/var/log/nova-api/audit.log").readlines()[-n:]: print(l.rstrip())
+    for l in open(plat.p("/var/log/nova-api/audit.log"), errors="replace").readlines()[-n:]: print(l.rstrip())
 
 
 def plugin(args):
@@ -371,12 +413,12 @@ if __name__ == "__main__":
     if cmd in ("help", "-h", "--help", "?"): help_topic(a[1]) if len(a) > 1 else help_()
     if len(a) > 1 and a[1] in ("-h", "--help", "help", "?") and a[0] in _guides().topics() + list(_guides().ALIASES): help_topic(a[0])
     NAMES = ["add", "approve", "devices", "remove", "status", "setup", "update", "lighting", "backup", "log", "alert", "publish",
-             "plugin", "cloudflare", "doctor", "link", "help", "pair", "revoke", "approve-browser", "rm", "list"]
+             "plugin", "cloudflare", "doctor", "link", "help", "gui", "pair", "revoke", "approve-browser", "rm", "list"]
     if cmd not in NAMES:
         import difflib
         near = difflib.get_close_matches(cmd, NAMES, 1)
         sys.exit(f"{Y}There's no \"nova {cmd}\".{X}" + (f"  Did you mean:  {'' if near[0] == 'help' else 'sudo '}nova {near[0]}" if near else "") + "\nSee them all:  nova help")
-    if os.geteuid() != 0: sys.exit(f"Run it with sudo:  sudo nova {' '.join(a)}")
+    if not is_root(): sys.exit(f"Run it from an administrator terminal:  nova {' '.join(a)}" if WIN else f"Run it with sudo:  sudo nova {' '.join(a)}")
     rest = a[1:]
     # the old command names still work (nova-api pair, revoke, approve-browser)
     cmd = {"pair": "add", "revoke": "remove", "approve-browser": "approve", "rm": "remove", "list": "devices"}.get(cmd, cmd)
@@ -385,6 +427,7 @@ if __name__ == "__main__":
     elif cmd == "devices": devices(rest)
     elif cmd == "remove": remove(rest)
     elif cmd == "status": status(rest)
+    elif cmd == "gui": run("/usr/sbin/nova-gui", *rest)
     elif cmd == "setup": run("/usr/sbin/nova-setup", *rest)
     elif cmd == "update": run("/usr/sbin/nova-update", *rest)
     elif cmd == "lighting": run("/usr/sbin/nova-setup-lighting", *rest)

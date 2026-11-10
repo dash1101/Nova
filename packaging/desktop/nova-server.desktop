@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Nova Server
+GenericName=Home server remote
+Comment=See how Nova is doing, pair a phone, approve requests, and manage devices
+Exec=/usr/sbin/nova-gui
+Icon=nova
+Terminal=false
+Categories=System;Settings;
+Keywords=nova;server;remote;pair;phone;devices;approve;status;

@@ -17,29 +17,21 @@ Where Nova is heading next. Nothing here is promised; it's the plan as it stands
 
 ## Windows (server side)
 
-People will want to manage a Windows PC the same way, and nothing about the phone side stops them.
-The Linux server package leans on systemd, apt, Docker, mdadm and `/proc`, so Windows needs its own
-small agent rather than a port of everything:
+**Started — see [WINDOWS.md](WINDOWS.md).** The server now runs on Windows as a preview, from the same files as the
+Linux one (a small platform layer instead of a separate agent), speaking the same signed `/api/v1` so the app, watch
+and web are unchanged. It keeps the two halves — an API without administrator rights and a privileged helper with a
+fixed list of verbs — and is installed, tested and uninstalled on real Windows machines by CI on every change.
 
-- **Same API, same security.** The agent speaks the signed `/api/v1` protocol unchanged (P-256
-  device keys, step-up for risky actions, browser approvals), so the existing app and web work
-  against it with no changes. Unsupported features are reported in `overview.features`, which the
-  app already uses to hide screens.
-- **Two halves, like on Linux.** An unprivileged service answers the API; a separate privileged
-  Windows service runs a fixed list of verbs with checked arguments (restart, shut down, services,
-  Windows Update, Docker Desktop containers), reached over a local named pipe that only the API
-  service can open.
-- **First version:** status and live graphs (CPU, memory, disks, network, temperatures where the
-  hardware reports them), services, processes, Docker Desktop containers, drives and free space,
-  alerts, power, pairing and devices. Later: Windows Update, Storage Spaces, backups.
-- **Package manager:** where Linux uses apt, Windows uses **winget** (built into Windows 10/11), with
-  **Chocolatey** as a fallback when it's installed. The store's Programs tab searches and installs through
-  whichever is there, and updates list `winget upgrade` / `choco outdated` the same way they list apt today.
-  Containers stay on Docker Desktop (or WSL), and the Containers tab hides itself without it — the same as
-  a Linux server without Docker.
-- **Install:** a signed MSI that installs both services, opens the firewall for the home network only,
-  and shows the pairing QR code (`nova add` equivalent) in a small tray window.
-- **Remote access:** the same Cloudflare Access setup works (`cloudflared` runs on Windows).
+- [x] Pairing, devices, approvals, encrypted listener, Tailscale / Cloudflare access
+- [x] Status and live graphs, Inbox and alerts (with "why it went down" from Windows' event log), processes, power
+      and schedules, drives with health, Docker Desktop containers (list, start/stop, logs)
+- [x] Installer and uninstaller (firewall for the home network only), the `nova` command, the Nova Server window
+- [ ] Programs and updates through **winget** (one more backend in `pkg.py`, next to apt/dnf/pacman/zypper), then
+      Windows Update
+- [ ] Background tasks without systemd (`tasks.py`), which unlocks the app store, container updates and backups
+- [ ] Files, and the terminal (ConPTY)
+- [ ] Updating from the app; a signed MSI; winget / Chocolatey packages for Nova itself
+- [ ] Storage: Storage Spaces, SMART self-tests
 
 ## macOS (server side)
 

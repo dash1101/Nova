@@ -363,9 +363,9 @@ export async function menu(ctx) {
       ${sec("Server")}${group(row("Status", { sub: "Live graphs, storage, backups", blue: true, icon: "status", tint: "#3ecf6e", click: "go:status" })
         + (isAdmin() ? row("Task manager", { sub: "What's running on the server, by CPU and memory", blue: true, icon: "cpu", tint: "#64d2ff", click: "go:processes" }) : "")
         + row("Storage & hardware", { sub: "Drives, pools, set up drives", blue: true, icon: "disk", tint: "#3ecf6e", click: "go:hardware" })
-        + (isAdmin() ? row("Free up", { sub: "Old images, logs, caches, trash — and memory", blue: true, icon: "del", tint: "var(--amber)", click: "go:freeup" }) : "")
-        + row("Backups", { sub: "What's backed up, restore files", blue: true, icon: "backup", click: "go:backups" })
-        + row("Updates", { sub: "Packages, containers and Nova", blue: true, icon: "update", tint: "#3ecf6e", click: "go:updates" })
+        + (isAdmin() && has("freeup") ? row("Free up", { sub: "Old images, logs, caches, trash — and memory", blue: true, icon: "del", tint: "var(--amber)", click: "go:freeup" }) : "")
+        + (has("backup") ? row("Backups", { sub: "What's backed up, restore files", blue: true, icon: "backup", click: "go:backups" }) : "")
+        + (has("updates") ? row("Updates", { sub: "Packages, containers and Nova", blue: true, icon: "update", tint: "#3ecf6e", click: "go:updates" }) : "")
         + (has("diag") ? row("Diagnostics", { sub: "Speed, stress and network tests", blue: true, icon: "speed", tint: "#64d2ff", click: "go:diag" }) : "")
         + row("Servers", { sub: (S.nodes || []).length ? `${S.nodes.length + 1} servers — switch between them here` : "Your other Nova servers in one place — add one with +", blue: true, icon: "dns", click: "go:servers" }))}
       ${sec("Apps & tools")}${group((has("store") ? row("App store", { sub: "Containers and programs", blue: true, icon: "store", tint: "#bf5af2", click: navTabs().some(t => t.route === "store") ? "tab:store" : "go:store" }) : "")
