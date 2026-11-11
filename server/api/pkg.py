@@ -253,7 +253,8 @@ def _wrun(cmd, timeout, on_line):
             if ch in (b"\r", b"\n"):
                 line = buf.decode("utf-8", "replace").strip(); buf = b""
                 # winget redraws a progress bar and a spinner on one line: keep only what reads like a sentence or a table row
-                if line and not re.fullmatch(r"[\s\-\\|/█▒░▓]+|[\s█▒░▓]*[\d.]+\s*(KB|MB|GB|%)?\s*/?\s*[\d.]*\s*(KB|MB|GB)?", line):
+                # (a spinner frame is one of - \ | / alone; a bar is drawn with blocks — a table's ----- separator line stays)
+                if line and not re.fullmatch(r"[-\\|/]", line) and not re.search(r"[█▒░▓]", line):
                     out.append(line)
                     if on_line and ch == b"\n": on_line(line)
             else: buf += ch
