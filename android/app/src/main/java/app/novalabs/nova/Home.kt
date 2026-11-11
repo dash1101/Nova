@@ -177,6 +177,13 @@ import org.json.JSONObject
     }
 }
 
+/** The Inbox tile: new events first, then problems still going on — never "All caught up" while something needs attention. */
+fun inboxShort(app: AppState): String {
+    if (app.unread > 0) return "${app.unread} new"
+    val st = app.overview?.optJSONObject("status"); val n = st?.optInt("active_count") ?: 0
+    return if (st != null && st.optString("level") != "ok" && n > 0) "$n need${if (n == 1) "s" else ""} attention" else "All caught up"
+}
+
 @Composable fun MenuScreen(app: AppState) {
     val m = app.overview?.optJSONObject("status")?.optJSONObject("metrics")
     val cs = app.overview?.optJSONObject("containers")
@@ -198,7 +205,7 @@ import org.json.JSONObject
             if (app.has("lighting")) Quad("Lighting", app.fan?.let { if (it.optBoolean("on")) "${it.optString("effect").replaceFirstChar { c -> c.uppercase() }} · ${it.optInt("brightness")}%" else "Off" } ?: "—",
                 Icons.Rounded.Lightbulb, androidx.compose.ui.graphics.Color(0xFFFFB020)) to { app.go(Route.Lighting) }
             else Quad("Status", "Live graphs", Icons.Rounded.MonitorHeart, androidx.compose.ui.graphics.Color(0xFF3ECF6E)) to { app.go(Route.Status) },
-            Quad("Inbox", if (app.unread > 0) "${app.unread} new" else "All caught up", Icons.Rounded.Notifications, androidx.compose.ui.graphics.Color(0xFFFF5A5A)) to { app.go(Route.Inbox) }) +
+            Quad("Inbox", inboxShort(app), Icons.Rounded.Notifications, androidx.compose.ui.graphics.Color(0xFFFF5A5A)) to { app.go(Route.Inbox) }) +
             // your favorites join the live tiles (Edit favorites below to add, remove or reorder them)
             AppPrefs.favorites.mapNotNull { f -> PLACES.firstOrNull { it.first == f } }.map { (t, _, ir) -> Quad(t, "Favorite", ir.first, N.amber) to { app.go(ir.second) } }
         Column(Modifier.padding(horizontal = Space.gutter, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
