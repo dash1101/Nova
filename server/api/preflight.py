@@ -45,7 +45,7 @@ def checks():
     rc, sync = _sh("timedatectl", "show", "-p", "NTPSynchronized", "--value")
     if rc == 0 and sync.strip() == "no":
         rc2, ntp = _sh("timedatectl", "show", "-p", "NTP", "--value")
-        add("warn", "The clock isn't synced with the internet", "Phones sign each request with the time; if the server's clock drifts more than a few minutes, they're refused.",
+        add("warn", "The clock isn't synced with the internet", "Authenticator codes, light schedules and the times on alerts all go by this clock. (Phones and browsers adjust to it, so they keep working.)",
             "sudo timedatectl set-ntp true" if ntp.strip() == "no" else "Check that the server can reach a time server (NTP, udp 123)")
     # the home network
     rc, route = _sh("ip", "-4", "route", "get", "1.1.1.1")

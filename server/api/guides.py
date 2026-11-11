@@ -91,7 +91,7 @@ paired devices stay. The app updates itself from this server (Settings → Softw
 Common ones:
   The app can't reach the server     same Wi-Fi? the server's address changed? → sudo nova setup
   "Certificate doesn't match"        Nova was reinstalled → pair again (sudo nova add)
-  Requests fail with a time error    the clock is off → sudo timedatectl set-ntp true
+  Authenticator codes are refused    the server's clock is off → sudo timedatectl set-ntp true
   The firewall blocks phones         sudo nova setup opens Nova's ports for your home network"""),
 
     "uninstall": ("Removing Nova", """
@@ -127,7 +127,7 @@ Your containers, files and backups are never touched."""),
 Common ones:
   The app can't reach the server     same Wi-Fi? the address changed? → Nova Server window → Look again
   "Certificate doesn't match"        Nova was reinstalled with -Purge → pair again (nova add)
-  Requests fail with a time error    the clock is off → Settings → Time → Set time automatically
+  Authenticator codes are refused    the server's clock is off → Settings → Time → Set time automatically
   The firewall blocks phones         run the installer again (it adds the rule for your home network)"""),
 }
 
@@ -183,7 +183,7 @@ def doctor():
         if str(port) not in fw: add("warn", f"The firewall (firewalld) doesn't allow port {port}", "sudo nova setup → Start Nova opens it for your home network only")
     # time: every request is signed with a timestamp
     _, sync = _sh("timedatectl", "show", "-p", "NTPSynchronized", "--value")
-    if sync == "no": add("warn", "The clock isn't synced — signed requests can be refused", "sudo timedatectl set-ntp true")
+    if sync == "no": add("warn", "The clock isn't synced — authenticator codes, schedules and alert times can be off", "sudo timedatectl set-ntp true")
     # room to work
     for path in ("/", "/var"):
         try:
