@@ -238,7 +238,7 @@ def approve(args):
     if role not in ("admin", "viewer"): sys.exit("--role must be admin or viewer")
     what = (f"let the Nova server “{b['name']}” show this one (read-only)" if b and b.get("kind") == "head" else
             f"add the browser “{b['name']}” as {'Admin' if role == 'admin' else 'View only'}" if b else a["what"] if a else f"code {code}")
-    if os.path.exists(PENDING) and not b and not a:          # the API lists everything that's waiting there, so this code isn't
+    if not b and not a:                                   # the API lists everything that's waiting (pending.json), so this code isn't
         print(f"{Y}Nothing is waiting with the code {code}{X} (codes expire after 10 minutes)."); approve([]); sys.exit(1)
     save(SHELL_APPROVE, {"code": code, "role": role, "user": (opt(args, "--user", "") or "")[:40], "t": now}, mode=0o640, owner="root")
     print(f"Approving: {what}  {D}(it's picked up within a few seconds){X}")
