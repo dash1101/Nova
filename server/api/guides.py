@@ -96,8 +96,9 @@ Common ones:
 
     "uninstall": ("Removing Nova", """
   sudo nova cloudflare undo      first, if you used Cloudflare auto-setup (takes back what Nova added)
-  sudo apt remove nova-server    remove Nova, keep its settings and paired devices
-  sudo apt purge nova-server     remove settings and paired devices too
+  sudo nova uninstall            remove Nova, keep its settings and paired devices
+  sudo nova uninstall --purge    remove settings and paired devices too
+  (On Debian and Ubuntu that's the same as sudo apt remove / apt purge nova-server.)
 
 Your containers, files and backups are never touched."""),
 }

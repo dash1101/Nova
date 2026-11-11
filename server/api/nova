@@ -18,6 +18,7 @@
     nova gui                       the Nova Server window: status, pairing, devices and approvals without the terminal
     sudo nova update [--check]     install the newest signed release (--check: only look)
     nova version                   which Nova this is
+    sudo nova uninstall [--purge]  remove Nova (--purge: its settings and paired devices too); containers and files stay
     sudo nova lighting             set up the fan/case lighting module
     sudo nova backup [now|list]    back up now, or list backups
     sudo nova log [N]              the last N things done through Nova (--raw: as logged)
@@ -93,6 +94,19 @@ def api_state():
         import winhost
         return winhost.task_state("Api")
     return subprocess.run(["systemctl", "is-active", "nova-api.service"], capture_output=True, text=True).stdout.strip()
+
+def uninstall(rest):
+    """Remove Nova the way it was installed: apt for the .deb, the tarball's own uninstaller otherwise. Asks first."""
+    purge = "--purge" in rest
+    if WIN:
+        sys.exit('In an administrator PowerShell:  powershell -File "C:\\Program Files\\Nova\\uninstall.ps1"' + (" -Purge" if purge else ""))
+    tar = os.path.join(LIB, "uninstall.sh")
+    if os.path.exists(os.path.join(LIB, "INSTALLED_FROM_TARBALL")):                # (its uninstaller explains and asks)
+        if not os.path.exists(tar): sys.exit("This Nova came from the tarball, but its uninstaller is missing — install the newest release first (sudo nova update), then run this again.")
+        os.execvp("sh", ["sh", tar, *(["--purge"] if purge else [])])
+    print(f"  {'Nova, its settings and its paired devices' if purge else 'Nova'} will be removed. Your containers, files and backups stay"
+          + ("." if purge else "; its settings and paired devices stay too, for a reinstall (--purge removes them)."))
+    os.execvp("apt-get", ["apt-get", "purge" if purge else "remove", "nova-server"])     # apt shows what it removes and asks
 
 def version():
     """Nova's version as people see it everywhere else (0.9.17-alpha; Debian's package spells it 0.9.17~alpha)."""
@@ -476,7 +490,7 @@ if __name__ == "__main__":
     if cmd in ("version", "--version", "-v", "-V"): print(f"Nova {version()}"); sys.exit(0)
     if len(a) > 1 and a[1] in ("-h", "--help", "help", "?") and a[0] in _guides().topics() + list(_guides().ALIASES): help_topic(a[0])
     NAMES = ["add", "approve", "devices", "remove", "status", "setup", "update", "lighting", "backup", "log", "alert", "publish",
-             "plugin", "cloudflare", "doctor", "link", "help", "gui", "pair", "revoke", "approve-browser", "rm", "list"]
+             "plugin", "cloudflare", "doctor", "link", "help", "gui", "uninstall", "pair", "revoke", "approve-browser", "rm", "list"]
     if cmd not in NAMES:
         import difflib
         near = difflib.get_close_matches(cmd, NAMES, 1)
@@ -494,6 +508,7 @@ if __name__ == "__main__":
     elif cmd == "gui": run("/usr/sbin/nova-gui", *rest)
     elif cmd == "setup": run("/usr/sbin/nova-setup", *rest)
     elif cmd == "update": run("/usr/sbin/nova-update", *rest)
+    elif cmd == "uninstall": uninstall(rest)
     elif cmd == "lighting": run("/usr/sbin/nova-setup-lighting", *rest)
     elif cmd == "backup": backup(rest)
     elif cmd == "log": log(rest)

@@ -9,6 +9,7 @@ B="$(mktemp -d)"; trap 'rm -rf "$B"' EXIT
 T="$B/nova-server-$VERSION"; mkdir -p "$T/root"
 NOVA_STAGE="$T/root" VERSION="$VERSION" bash "$ROOT/packaging/build-deb.sh" >/dev/null
 install -m 755 "$ROOT/packaging/tar/install.sh" "$T/install.sh"
+install -m 755 "$ROOT/packaging/tar/uninstall.sh" "$T/root/usr/lib/nova-api/uninstall.sh"   # sudo nova uninstall (a .deb uses apt)
 install -m 644 "$ROOT/packaging/deb/postinst" "$T/postinst"
 mkdir -p "$ROOT/dist"; OUT="$ROOT/dist/nova-server_${VERSION}.tar.gz"
 tar --owner=0 --group=0 -C "$B" -czf "$OUT" "nova-server-$VERSION"
