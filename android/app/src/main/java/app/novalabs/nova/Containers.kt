@@ -55,9 +55,11 @@ fun localTime(utc: String): String = runCatching {
         Row(Modifier.padding(start = 30.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             val up = items.count { it.optString("state") == "running" }
             val off = items.count { it.optBoolean("stopped") }          // stopped on purpose: not a problem, just not running
-            Box(Modifier.size(10.dp).clip(CircleShape).background(if (up + off == items.size) N.green else N.amber))
+            val none = list != null && items.isEmpty()            // (no containers: "0 of 0 running" says nothing)
+            Box(Modifier.size(10.dp).clip(CircleShape).background(if (none) N.sub else if (up + off == items.size) N.green else N.amber))
             Spacer(Modifier.width(8.dp))
-            Text(if (list == null) "Loading…" else "$up of ${items.size - off} running" + (if (off > 0) " · $off stopped" else ""), color = N.sub, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
+            Text(if (list == null) "Loading…" else if (none) (if (app.overview?.optJSONObject("features")?.optBoolean("docker", true) == false) "No Docker yet" else "No containers yet")
+                else "$up of ${items.size - off} running" + (if (off > 0) " · $off stopped" else ""), color = N.sub, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
         }
         if (app.overview?.optJSONObject("features")?.optBoolean("docker", true) == false) Group {
             Row1("Docker isn't installed", "Containers need it. Programs from the store work without it.", false, Icons.Rounded.ViewInAr, N.amber)

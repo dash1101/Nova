@@ -591,7 +591,7 @@ export async function containers(ctx) {
     const weight = x => { const u = st[x.name] || {}; return (u.cpu || 0) * 4 + (u.mem_pct || 0); };
     const shown = heavy ? [["Using the most first", [...items].sort((a, b) => weight(b) - weight(a))]] : groups;
     const off = items.filter(x => x.stopped).length;          // stopped on purpose: not a problem, just not running
-    ctx.show(`<div class="statusline" style="cursor:default"><span class="dot" style="background:${up + off === items.length ? "var(--green)" : "var(--amber)"}"></span>${S.cache["/api/v1/containers"] ? `${up} of ${items.length - off} running${off ? ` · ${off} stopped` : ""}` : "Loading…"}</div>
+    ctx.show(`<div class="statusline" style="cursor:default"><span class="dot" style="background:${!items.length ? "var(--sub)" : up + off === items.length ? "var(--green)" : "var(--amber)"}"></span>${!S.cache["/api/v1/containers"] ? "Loading…" : !items.length ? (S.overview?.features?.docker === false ? "No Docker yet" : "No containers yet") : `${up} of ${items.length - off} running${off ? ` · ${off} stopped` : ""}`}</div>
       ${items.length > 1 ? segmented(["By app", "Heaviest first"], heavy ? 1 : 0, "csort") : ""}
       ${nod}${shown.map(([g, cs]) => sec(cap(g)) + group(cs.map(x => row(x.name, { sub: `${x.image.split("/").pop()} · ${upText(x)}${x.health ? ` (${x.health})` : ""}${portsText(x) ? " · " + portsText(x) : ""}${use(x)}`, click: "open:" + x.name, end: `<span class="dot" style="background:${stateColor(x.state, x.health)}"></span>` })).join(""))).join("")}`,
       { title: "Containers", actions: isAdmin() ? [{ icon: "add", label: "Add a container", act: "addc" }] : [] });

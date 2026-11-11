@@ -283,7 +283,9 @@ def storage_map():
             for src, cs in users.items():
                 if owner_mount(src, mps + ["/"]) == m and m != "/": uses.append("Used by " + ", ".join(cs[:4]))
         has_fs = [p for p in everything if p.get("fstype") and p.get("fstype") != "linux_raid_member"]
-        if not mps and not member_of: roles.append("unused")
+        if not d.get("size"):            # an empty card-reader slot (or a drive that isn't answering): nothing to set up
+            roles.append("empty"); uses.append("No media — an empty card reader, or a drive that isn't answering")
+        elif not mps and not member_of: roles.append("unused")
         elif mps and not system and not roles: roles.append("data")
         sm = smart.get(d.get("serial") or d["name"], {})
         bus = d.get("tran") or ("nvme" if d["name"].startswith("nvme") else "")
@@ -295,7 +297,7 @@ def storage_map():
             if not system and m not in mp: continue
             if not system and fe is None: warn.append(f"{m} isn't in /etc/fstab, so it won't come back after a restart")
             elif not system and fe and "nofail" not in fe["opts"]: warn.append(f"If this drive is missing at boot, the server waits for it (no 'nofail' for {m})")
-        erasable = not system and not member_of and not mps
+        erasable = not system and not member_of and not mps and bool(d.get("size"))
         drives.append({"name": d["name"], "path": d["path"], "serial": d.get("serial") or d["name"], "model": (d.get("model") or "").strip(),
                        "size": d["size"], "size_text": human(d["size"]), "bus": bus, "ssd": not d.get("rota"), "removable": bool(d.get("hotplug")),
                        "sector": _sector(d["name"]),       # physical sector size in bytes: bad-sector counts × this = the space they cover
