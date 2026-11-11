@@ -19,12 +19,18 @@ elif command -v zypper >/dev/null; then PM=zypper; DEPS="python3 python3-cryptog
 else echo "No package manager Nova knows (apt, dnf, pacman, zypper). Install by hand: python3 (3.10+), python3-cryptography, qrencode, iproute2, rsync, parted."; PM=""; fi
 if [ "$UPGRADE" = 0 ] && [ -n "$PM" ]; then
     say "Installing what Nova needs ($PM)…"
+    ok=1
     case "$PM" in
-        apt) DEBIAN_FRONTEND=noninteractive apt-get install -y $DEPS >/dev/null ;;
-        dnf) dnf install -y $DEPS >/dev/null ;;
-        pacman) pacman -S --noconfirm --needed $DEPS >/dev/null ;;
-        zypper) zypper --non-interactive install $DEPS >/dev/null ;;
+        apt) DEBIAN_FRONTEND=noninteractive apt-get install -y $DEPS >/dev/null || ok=0 ;;
+        dnf) dnf install -y $DEPS >/dev/null || ok=0 ;;
+        pacman) pacman -S --noconfirm --needed $DEPS >/dev/null || ok=0 ;;
+        zypper) zypper --non-interactive install $DEPS >/dev/null || ok=0 ;;
     esac
+    if [ "$ok" = 0 ]; then
+        case "$PM" in apt) up="sudo apt update";; dnf) up="sudo dnf upgrade --refresh";; pacman) up="sudo pacman -Syu";; zypper) up="sudo zypper refresh";; esac
+        echo; say "$PM couldn't install what Nova needs ($DEPS)."
+        say "Bring the system up to date first ($up), then run this again."; exit 1
+    fi
 fi
 python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)' || { echo "Nova needs Python 3.10 or newer."; exit 1; }
 python3 -c 'import cryptography' 2>/dev/null || { echo "Nova needs the Python cryptography module (python3-cryptography)."; exit 1; }
@@ -42,7 +48,7 @@ sed 's/^if \[ "\$1" = configure \]; then/if true; then/' "$HERE/postinst" > /tmp
 echo "$(cat /usr/lib/nova-api/VERSION)" > /usr/lib/nova-api/INSTALLED_FROM_TARBALL
 if [ "$UPGRADE" = 0 ] && [ ! -f /etc/nova-api/config.json ]; then
     if [ "$GUI" = 1 ]; then exec /usr/sbin/nova-setup --gui; fi
-    printf '\n  Nova is installed. Set it up now?\n    1  In this terminal\n    2  In a browser (easier)\n    q  Later (sudo nova-setup)\n\n  Choose [2]: '
-    read -r c </dev/tty || c=q
+    printf '\n  Nova is installed. Set it up now?\n    1  In this terminal\n    2  In a browser (easier)\n    q  Later (sudo nova setup)\n\n  Choose [2]: '
+    { read -r c </dev/tty; } 2>/dev/null || { c=q; echo; }
     case "${c:-2}" in 1) exec /usr/sbin/nova-setup;; 2) exec /usr/sbin/nova-setup --gui;; esac
 fi
