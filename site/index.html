@@ -46,6 +46,7 @@ p { margin: 0; max-width: var(--measure); }
 a { color: var(--accent); }
 a:focus-visible, button:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; border-radius: 6px; }
 code, .mono { font-family: var(--mono); font-size: .92em; }
+p code { overflow-wrap: anywhere; }   /* a long command in a sentence wraps on a phone instead of widening the page */
 .eyebrow { font: 600 .78rem/1 var(--body); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
 
 /* top bar */
@@ -134,6 +135,7 @@ section { padding-block: 64px; border-top: 1px solid var(--line); }
 
 .cli { background: var(--code-bg); color: var(--code-ink); border-radius: 16px; padding: 22px; overflow-x: auto; font: 500 .9rem/1.8 var(--mono); }
 .cli span { color: #8f86b3; }
+@media (max-width: 560px) { .cli { white-space: pre-line; line-height: 1.5; } .cli span { display: block; margin: 0 0 4px 2ch; } }   /* a phone: each explanation under its command, not cut off */
 
 details { border-bottom: 1px solid var(--line); padding-block: 16px; }
 summary { cursor: pointer; font: 700 1.08rem/1.4 var(--display); list-style: none; display: flex; justify-content: space-between; gap: 16px; }
