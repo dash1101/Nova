@@ -336,15 +336,15 @@ fun parsePairInfo(raw: String): PairInfo? = runCatching {
             }
         }
     }
-    Text("Nova has two parts: this app, and a small server package on the Linux machine you want to control (Debian or Ubuntu).",
+    Text("Nova has two parts: this app, and the Nova server on the computer you want to control — any Linux with systemd, or Windows (preview).",
         color = N.sub, fontSize = 15.sp, modifier = Modifier.padding(horizontal = 26.dp, vertical = 8.dp))
-    Step(1, "Install the server package", "On the server, download the Nova package (nova-server_….deb) and install it — or build it from the source code.",
-        "sudo apt install ./nova-server_*.deb\n# or from source:\ngit clone <repo> && cd nova && sudo ./server/install.sh")
+    Step(1, "Install the server package", "On the server, run this one line: it downloads the newest release, checks its signature and installs it. On Windows: download nova-windows.zip and double-click Install Nova.cmd.",
+        "curl -fsSL https://raw.githubusercontent.com/dash1101/Nova/main/get.sh | sh")
     Step(2, "Run the setup wizard", "It finds your home network, asks a few questions (press Enter for the suggested answers) and starts Nova.",
         "sudo nova setup")
     Step(3, "Pair this ${DeviceForm.noun}", "On home Wi-Fi, show a pairing code on the server and scan it here. The code works once and expires in 10 minutes.",
         "sudo nova add")
-    Step(4, "Optional: use it away from home", "Without a VPN, put Nova behind Cloudflare Access (free) — the README's docs/REMOTE.md walks you through it, then run nova-setup again. With Tailscale, nova-setup turns it on for you.")
+    Step(4, "Optional: use it away from home", "Tailscale is the easiest: sudo nova setup → Away from home turns it on. Or put Nova behind Cloudflare Access (free) — docs/REMOTE.md walks you through it, then run sudo nova setup again.")
     Step(5, "Optional: other people, tablets, browsers", "Menu → Users & devices: invite phones as Admin or View only, and approve browsers (Nova web at https://<server>:8495). A spare tablet makes a nice always-on Dashboard.")
     Text("Security in a sentence: every request is signed by a key in this ${DeviceForm.noun}'s secure chip, and anything risky also needs your fingerprint.",
         color = N.sub, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 26.dp, vertical = 12.dp))
