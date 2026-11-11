@@ -106,10 +106,35 @@ ALIASES = {"phone": "pair", "add": "pair", "approve": "browser", "iphone": "brow
            "away": "remote", "backups": "backup", "upgrade": "update", "doctor": "troubleshoot", "problems": "troubleshoot",
            "fix": "troubleshoot", "remove": "uninstall", "setup": "start", "install": "start", "begin": "start"}
 
+# On Windows a few guides are different: no apt, no journalctl, no sudo (an administrator terminal instead).
+WINDOWS = {
+    "update": ("Updating", """
+Download the newest nova-windows.zip and double-click "Install Nova.cmd" again — or, in an administrator
+PowerShell:  irm https://raw.githubusercontent.com/dash1101/Nova/main/get.ps1 | iex
+Your settings, paired devices and the server's certificate stay. The app updates itself from this server."""),
+    "uninstall": ("Removing Nova", """
+  nova cloudflare undo                                  first, if you used Cloudflare auto-setup
+  powershell -File "C:\\Program Files\\Nova\\uninstall.ps1"         remove Nova, keep settings and paired devices
+  powershell -File "C:\\Program Files\\Nova\\uninstall.ps1" -Purge  remove settings and paired devices too
+
+Your containers, files and backups are never touched."""),
+    "troubleshoot": ("When something's wrong", """
+  nova doctor                    checks everything and says what to do about each problem
+  nova status                    is it running, and at which addresses
+  nova log                       the last actions (who did what)
+  C:\\ProgramData\\Nova\\log        Nova's own logs (api.log, helper.log, alerts.log)
+
+Common ones:
+  The app can't reach the server     same Wi-Fi? the address changed? → Nova Server window → Look again
+  "Certificate doesn't match"        Nova was reinstalled with -Purge → pair again (nova add)
+  Requests fail with a time error    the clock is off → Settings → Time → Set time automatically
+  The firewall blocks phones         run the installer again (it adds the rule for your home network)"""),
+}
+
 def guide(topic):
     t = ALIASES.get(topic, topic)
     if t not in GUIDES: return None
-    title, body = GUIDES[t]
+    title, body = WINDOWS[t] if os.name == "nt" and t in WINDOWS else GUIDES[t]
     return title, body.strip("\n")
 
 def topics(): return list(GUIDES)

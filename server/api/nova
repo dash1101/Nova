@@ -15,11 +15,11 @@
     sudo nova status               version, services and addresses
     sudo nova doctor               check everything; each problem comes with how to fix it
     sudo nova setup                guided setup (network, remote access, location, tools…)
-    sudo nova gui                  the Nova Server window: status, pairing, devices and approvals without the terminal
+    nova gui                       the Nova Server window: status, pairing, devices and approvals without the terminal
     sudo nova update [--check]     install the newest signed release
     sudo nova lighting             set up the fan/case lighting module
     sudo nova backup [now|list]    back up now, or list backups
-    sudo nova log [N]              the last N actions from the audit log
+    sudo nova log [N]              the last N things done through Nova (--raw: as logged)
     sudo nova alert LEVEL TITLE [DETAIL]   send an alert (info, warning, critical)
     sudo nova publish APK [NOTES]  put an app build in the in-app updater
 
@@ -94,8 +94,21 @@ def api_state():
     return subprocess.run(["systemctl", "is-active", "nova-api.service"], capture_output=True, text=True).stdout.strip()
 
 def version():
-    if os.path.exists(os.path.join(LIB, "VERSION")): return open(os.path.join(LIB, "VERSION")).read().strip()
-    return subprocess.run(["dpkg-query", "-W", "-f=${Version}", "nova-server"], capture_output=True, text=True).stdout or "?"
+    """Nova's version as people see it everywhere else (0.9.17-alpha; Debian's package spells it 0.9.17~alpha)."""
+    if os.path.exists(os.path.join(LIB, "VERSION")): v = open(os.path.join(LIB, "VERSION")).read().strip()
+    else: v = subprocess.run(["dpkg-query", "-W", "-f=${Version}", "nova-server"], capture_output=True, text=True).stdout or "?"
+    return v.replace("~", "-")
+
+def ago(stamp):
+    """'2026-11-10 19:36' → 'today 19:36' / 'yesterday' / '3 days ago' / '5 weeks ago'."""
+    try: t = time.mktime(time.strptime(stamp[:16], "%Y-%m-%d %H:%M"))
+    except (ValueError, TypeError): return stamp or "never"
+    d = (time.time() - t) / 86400
+    if time.strftime("%Y-%m-%d") == stamp[:10]: return "today " + stamp[11:16]
+    if d < 2: return "yesterday"
+    if d < 14: return f"{int(d)} days ago"
+    if d < 60: return f"{int(d // 7)} weeks ago"
+    return f"{int(d // 30)} months ago"
 
 def help_(): print(__doc__.rstrip()); print(f"\n  Short guides:  nova help TOPIC   ({', '.join(_guides().topics())})"); sys.exit(0)
 
@@ -107,14 +120,15 @@ def _guides():
 def menu():
     """Plain `nova`: the few things most people come for, not every command."""
     st = api_state()
-    ver = (open(f"{LIB}/VERSION").read().strip() if os.path.exists(f"{LIB}/VERSION") else "")
+    ver = version()
     setup = os.path.exists(CONFIG) if is_root() else st == "active"
     print(f"\n  {B}Nova {ver}{X}  " + (f"{G}● running{X}" if st == "active" else f"{Y}● not set up yet{X}" if not setup else f"{R}● stopped{X}"))
     rows = ([("sudo nova setup", "set Nova up (or: sudo nova setup --gui, in a browser)")] if not setup else []) + [
         ("sudo nova add", "pair a phone or tablet"), ("sudo nova approve CODE", "let in a browser that shows a code"),
         ("sudo nova status", "is everything running, and where"), ("sudo nova doctor", "find what's wrong, and how to fix it"),
         ("sudo nova link SERVER", "show another Nova server here"), ("sudo nova update", "install the newest version")] + (
-        [("sudo nova setup", "change settings")] if setup else [])
+        [("sudo nova setup", "change settings")] if setup else []) + (
+        [("nova gui", "the same in a window (Nova Server)")] if setup and (WIN or os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")) else [])
     print(f"\n  {D}What would you like to do?{X}\n")
     for c, d in rows: print(f"    {B}{c:<24}{X} {d}")
     print(f"\n    {B}{'nova help':<24}{X} every command        {B}nova help TOPIC{X}  a short guide:")
@@ -224,8 +238,8 @@ def approve(args):
     if role not in ("admin", "viewer"): sys.exit("--role must be admin or viewer")
     what = (f"let the Nova server “{b['name']}” show this one (read-only)" if b and b.get("kind") == "head" else
             f"add the browser “{b['name']}” as {'Admin' if role == 'admin' else 'View only'}" if b else a["what"] if a else f"code {code}")
-    if pend and not b and not a and now - pend.get("t", 0) < 600:
-        print(f"{Y}Nothing is waiting with that code{X} (they expire after 10 minutes). Waiting codes:"); return approve([])
+    if os.path.exists(PENDING) and not b and not a:          # the API lists everything that's waiting there, so this code isn't
+        print(f"{Y}Nothing is waiting with the code {code}{X} (codes expire after 10 minutes)."); approve([]); sys.exit(1)
     save(SHELL_APPROVE, {"code": code, "role": role, "user": (opt(args, "--user", "") or "")[:40], "t": now}, mode=0o640, owner="root")
     print(f"Approving: {what}  {D}(it's picked up within a few seconds){X}")
     try:
@@ -242,12 +256,22 @@ def approve(args):
 def devices(args):
     devs = load(DEVICES, {})
     if not devs: print("No devices yet. Pair one with: sudo nova add"); return
+    rows, quiet = [], 0
     for k, d in sorted(devs.items(), key=lambda kv: kv[1].get("created", "")):
         kind = d.get("form") or ("desktop" if d.get("type") == "browser" else "phone")
         kind = {"desktop": "computer"}.get(kind, kind) + (" (browser)" if d.get("type") == "browser" else "")
         if d.get("type") in ("watch", "head"): kind = {"watch": "watch", "head": "Nova web (other server)"}[d["type"]]
-        print(f"  {B}{d['name'][:26]:26}{X} {kind:20} {'Admin' if d.get('role', 'admin') == 'admin' else 'View only':10} "
-              f"{D}{d.get('user') or '':12} last seen {d.get('last_seen') or 'never'} {('via ' + d['last_via']) if d.get('last_via') else ''}  id {k}{X}")
+        seen = d.get("last_seen") or ""
+        try: old = time.time() - time.mktime(time.strptime(seen[:16], "%Y-%m-%d %H:%M")) > 30 * 86400
+        except ValueError: old = False
+        quiet += old
+        rows.append((d["name"][:28], kind, "Admin" if d.get("role", "admin") == "admin" else "View only", (d.get("user") or "")[:18],
+                     (ago(seen) if seen else "never") + (f" via {d['last_via']}" if d.get("last_via") else ""), k, old))
+    w = [max(len(r[i]) for r in rows) for i in range(5)]
+    print(f"  {D}{'NAME':{w[0]}}  {'KIND':{w[1]}}  {'ROLE':{w[2]}}  {'PERSON':{w[3]}}  {'LAST SEEN':{w[4]}}  ID{X}")
+    for r in rows:
+        print(f"  {B}{r[0]:{w[0]}}{X}  {r[1]:{w[1]}}  {r[2]:{w[2]}}  {r[3]:{w[3]}}  {(Y if r[6] else '')}{r[4]:{w[4]}}{X}  {D}{r[5]}{X}")
+    if quiet: print(f"\n  {Y}{quiet}{X} {'has' if quiet == 1 else 'have'}n't connected in over a month. If one is gone for good:  sudo nova remove ID")
 
 
 def remove(args):
@@ -339,14 +363,51 @@ def link(args):
 def backup(args):
     sub = args[0] if args else "now"
     if sub == "now":
-        r = subprocess.run([f"{LIB}/helper", "backup-now"], capture_output=True, text=True); print(r.stdout.strip() or r.stderr.strip())
-    elif sub == "list": run("/usr/bin/python3", "-I", f"{LIB}/backups.py", "list")
+        r = subprocess.run([f"{LIB}/helper", "backup-now"], capture_output=True, text=True)
+        try:
+            j = json.loads(r.stdout or "{}")
+            print(f"{G}✓ Backup started.{X} Follow it in the app (Inbox or Backups), or: sudo nova backup list" if j.get("ok", r.returncode == 0)
+                  else f"{R}Couldn't start the backup:{X} {j.get('error') or r.stderr.strip()}")
+        except ValueError: print(r.stdout.strip() or r.stderr.strip())
+    elif sub == "list": backup_list()
     else: sys.exit("sudo nova backup [now|list]")
 
 
+def backup_list():
+    import backups
+    jobs = backups.overview(); legacy = load("/var/lib/nova-backup/backup_status.json", None) if os.path.exists("/usr/local/bin/nova-backup") else None
+    if not jobs and not legacy:
+        print("No backups are set up yet. Set one up in the app or Nova web: Menu → Backups → New backup."); return
+    for j in jobs:
+        last = j.get("last") or {}
+        state = f"{G}ok{X}" if last.get("ok") else f"{Y}partly{X}" if last.get("partial") else f"{R}failed{X}" if last else f"{D}not run yet{X}"
+        when = time.strftime("%Y-%m-%d %H:%M", time.localtime(last["t"])) if last.get("t") else ""
+        print(f"  {B}{j.get('name', j['id'])}{X}  last: {state} {D}{when}{X}" + (f"  {Y}running now{X}" if j.get("running") else "")
+              + (f"  {D}next {time.strftime('%a %H:%M', time.localtime(j['next']))}{X}" if isinstance(j.get("next"), (int, float)) else ""))
+        if last.get("error"): print(f"      {D}{last['error'][:160]}{X}")
+    if legacy:
+        print(("\n" if jobs else "") + f"  {B}Your nova-backup script{X}  last run {legacy.get('time', '?')}" + (f" · {legacy['snapshots']} snapshots" if legacy.get("snapshots") else "")
+              + (f" · drive {legacy['drive']}" if legacy.get("drive") else ""))
+        for name, st in (legacy.get("sets") or {}).items():
+            good = st == "ok"
+            print(f"    {G + '✓' if good else Y + '!'}{X} {name:12} {'' if good else st[:150]}")
+
+
 def log(args):
+    """The last N things done through Nova (and refused attempts), one line each. --raw: the log's own JSON lines."""
     n = int(args[0]) if args and args[0].isdigit() else 20
-    for l in open(plat.p("/var/log/nova-api/audit.log"), errors="replace").readlines()[-n:]: print(l.rstrip())
+    lines = open(plat.p("/var/log/nova-api/audit.log"), errors="replace").readlines()[-n:]
+    if "--raw" in args:
+        for l in lines: print(l.rstrip())
+        return
+    for l in lines:
+        try: e = json.loads(l)
+        except ValueError: continue
+        res = str(e.get("result", ""))
+        mark = f"{G}✓{X}" if res.startswith("2") else f"{R}✗{X}" if res.startswith(("4", "5")) else " "
+        what = f"{e.get('method', '') or ''} {str(e.get('path', '')).split('?')[0]}".strip()
+        who = e.get("device") or e.get("ip") or ""
+        print(f"  {D}{e.get('t', ''):19}{X} {mark} {what:42} {who[:26]:26} {D}{e.get('why') or (res if res and not res.startswith('2') else '')}{X}")
 
 
 def plugin(args):
@@ -418,7 +479,8 @@ if __name__ == "__main__":
         import difflib
         near = difflib.get_close_matches(cmd, NAMES, 1)
         sys.exit(f"{Y}There's no \"nova {cmd}\".{X}" + (f"  Did you mean:  {'' if near[0] == 'help' else 'sudo '}nova {near[0]}" if near else "") + "\nSee them all:  nova help")
-    if not is_root(): sys.exit(f"Run it from an administrator terminal:  nova {' '.join(a)}" if WIN else f"Run it with sudo:  sudo nova {' '.join(a)}")
+    if not is_root() and cmd != "gui":                     # (the window asks for the password itself)
+        sys.exit(f"Run it from an administrator terminal:  nova {' '.join(a)}" if WIN else f"Run it with sudo:  sudo nova {' '.join(a)}")
     rest = a[1:]
     # the old command names still work (nova-api pair, revoke, approve-browser)
     cmd = {"pair": "add", "revoke": "remove", "approve-browser": "approve", "rm": "remove", "list": "devices"}.get(cmd, cmd)
