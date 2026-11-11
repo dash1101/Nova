@@ -359,6 +359,50 @@ def power_unschedule(sid, fail):
     _save_scheds([x for x in s if x.get("id") != sid]); changelog(f"Scheduled sched-{sid} cancelled from the Nova app")
     return {"ok": True}
 
+# keep awake: a small process that holds Windows' "system required" request until its time is up (that request only lasts
+# as long as the thread that made it, so it can't live in a helper call that ends at once)
+KEEP_STATE = plat.p("/run/nova/keep-awake.json")
+ES_CONTINUOUS, ES_SYSTEM_REQUIRED = 0x80000000, 0x00000001
+def _keep_proc():
+    try: st = json.load(open(KEEP_STATE))
+    except (OSError, ValueError): return None, {}
+    try:
+        p = psutil.Process(int(st.get("pid", 0)))
+        if "keep-awake-hold" in " ".join(p.cmdline()): return p, st
+    except (psutil.Error, ValueError): pass
+    return None, st
+
+def keep_awake_status():
+    p, st = _keep_proc()
+    return {"on": bool(p), "until": st.get("until") if p else None, "forever": bool(p and not st.get("until")), "supported": True}
+
+def keep_awake(arg, fail):
+    p, _ = _keep_proc()
+    if p:
+        try: p.kill()
+        except psutil.Error: pass
+    try: os.remove(KEEP_STATE)
+    except OSError: pass
+    if arg == "0": changelog("Keep awake turned off (from the Nova app)"); return {"ok": True, **keep_awake_status()}
+    secs = None if arg == "forever" else min(int(arg), 7 * 86400)
+    until = int(time.time() + secs) if secs else None
+    exe = os.path.join(os.path.dirname(sys.executable), "pythonw.exe")
+    q = subprocess.Popen([exe if os.path.exists(exe) else sys.executable, os.path.realpath(__file__), "keep-awake-hold", str(until or 0)],
+                         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, close_fds=True, cwd=os.environ.get("SystemRoot") or None,
+                         creationflags=(NO_WINDOW | 0x00000008 | 0x00000200) if plat.WINDOWS else 0)          # (detached, its own group)
+    os.makedirs(os.path.dirname(KEEP_STATE), exist_ok=True)
+    with open(KEEP_STATE, "w") as f: json.dump({"pid": q.pid, "until": until}, f)
+    changelog("Kept awake from the Nova app" + (f" until {time.strftime('%a %H:%M', time.localtime(until))}" if until else ""))
+    time.sleep(.5)
+    return {"ok": True, **keep_awake_status()}
+
+def _hold_awake(until):
+    import ctypes
+    while not until or time.time() < until:
+        ctypes.windll.kernel32.SetThreadExecutionState(ES_CONTINUOUS | ES_SYSTEM_REQUIRED)
+        time.sleep(30 if not until else max(1, min(30, until - time.time())))
+    ctypes.windll.kernel32.SetThreadExecutionState(ES_CONTINUOUS)
+
 def tools_status():
     have = {"docker": bool(shutil.which("docker")), "winget": bool(winget()), "tailscale": bool(shutil.which("tailscale")), "cloudflared": bool(shutil.which("cloudflared"))}
     return {"tools": have, "missing": []}
@@ -418,6 +462,8 @@ def verb(verb, args, h):
     if verb == "power-schedule" and len(args) == 2 and args[0] in ("reboot", "poweroff") and args[1].isdigit(): out(power_schedule(args[0], int(args[1]), fail))
     if verb == "power-unschedule" and len(args) == 1 and re.fullmatch(r"[0-9a-f]{8}", args[0]): out(power_unschedule(args[0], fail))
     if verb == "tools-status" and not args: out(tools_status())
+    if verb == "keep-awake-status" and not args: out(keep_awake_status())
+    if verb == "keep-awake" and len(args) == 1 and (args[0].isdigit() or args[0] == "forever"): out(keep_awake(args[0], fail))
     if verb == "list-dirs" and len(args) == 1: out(list_dirs(args[0], fail))
     if verb == "backup-status" and not args: out({"none": True})
     if verb == "recommendations" and not args: out({"recommendations": [], "snoozed": 0, "t": time.time()})
@@ -431,3 +477,7 @@ def verb(verb, args, h):
     if verb == "update-check" and not args: out({"ok": False, "message": "Updating from the app isn't available on Windows yet — run the installer again to update."}, 1)
     if verb == "power-schedule" or verb == "proc-signal" or verb == "power": fail("bad request", 2)
     if verb not in SHARED: fail("That isn't available on a Windows server yet.", 3)
+
+
+if __name__ == "__main__" and len(sys.argv) == 3 and sys.argv[1] == "keep-awake-hold":
+    _hold_awake(int(sys.argv[2]))

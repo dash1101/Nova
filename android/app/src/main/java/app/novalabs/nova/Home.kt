@@ -69,7 +69,7 @@ import org.json.JSONObject
             val head = when { app.error != null -> "Disconnected"; app.reconnecting -> "Reconnecting…"; st == null -> "Connecting…"
                 level == "ok" -> "All systems normal"; else -> st.optInt("active_count").let { n -> "$n need${if (n == 1) "s" else ""} attention" } }
             Text(head, color = N.sub, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
-            if (cs != null) {
+            if (cs != null && (cs.optInt("total") > 0 || cs.optInt("stopped") > 0)) {      // (no containers here: "0/0 running" says nothing)
                 Box(Modifier.padding(horizontal = 10.dp).size(4.dp).clip(androidx.compose.foundation.shape.CircleShape).background(N.sub.copy(alpha = 0.6f)))
                 Text("${cs.optInt("running")}/${cs.optInt("total")} running" + (if (cs.optInt("stopped") > 0) " · ${cs.optInt("stopped")} stopped" else ""), color = N.sub, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
             }
@@ -115,6 +115,8 @@ import org.json.JSONObject
     // Hero: the server with the live fan — tap the fan for Lighting, the drive lights for Storage, the power button for power
     var powerMenu by remember { mutableStateOf(false) }
     var powerAsk by remember { mutableStateOf<String?>(null) }; var scheduling by remember { mutableStateOf(false) }
+    var awake by remember { mutableStateOf<org.json.JSONObject?>(null) }; var awakeAsk by remember { mutableStateOf(false) }
+    LaunchedEffect(powerMenu) { if (powerMenu && app.isAdmin) awake = loadAwake(app) }
     if (powerMenu) OneDialog({ powerMenu = false }, "Power", null, listOf(DialogButton("Cancel") { powerMenu = false })) {
         listOf("reboot" to ("Restart server" to "Everything goes offline for about 2 minutes"),
             "poweroff" to ("Shut down server" to "You'll need to press the power button to turn it back on"),
@@ -123,7 +125,9 @@ import org.json.JSONObject
             DialogChoice(t.first, t.second, false, action = true) { powerMenu = false; powerAsk = id }
         }
         DialogChoice("Schedule a restart or shutdown", "Pick a day and time — cancel it any time before", false, action = true) { powerMenu = false; scheduling = true }
+        if (awake != null) DialogChoice("Keep awake", awake?.takeIf { it.optBoolean("on") }?.let { awakeText(it) } ?: "Stop it from going to sleep by itself", false, action = true) { powerMenu = false; awakeAsk = true }
     }
+    if (awakeAsk) KeepAwakeDialog(app, awake, { awakeAsk = false }) { awake = it }
     powerAsk?.let { PowerConfirm(app, it) { powerAsk = null } }
     if (scheduling) ScheduleDialog(app, { scheduling = false }) {}
     val hero: @Composable (androidx.compose.ui.unit.Dp) -> Unit = { h ->
@@ -287,9 +291,13 @@ private data class Quad(val title: String, val sub: String, val icon: androidx.c
         StatCard(Icons.Rounded.DeveloperBoard, "Memory", now?.let { "%.0f%%".format(it.optDouble("mem")) } ?: m?.optString("memory")?.substringBefore(" ") ?: "—",
             now?.let { "${it.optDouble("mem_used_gb")} / ${it.optDouble("mem_total_gb")} GB" } ?: "", (now?.optDouble("mem")?.toFloat() ?: pctOf(m?.optString("memory")))?.div(100), Color(0xFFBF5AF2)),
         StatCard(Icons.Rounded.Storage, "Disk", freeOf(disk) ?: "—", "system drive", pctOf(disk)?.div(100), N.green),
-        StatCard(Icons.Rounded.ViewInAr, "Services", cs?.let { "${it.optInt("running")}/${it.optInt("total")}" } ?: "—",
-            m?.optString("websites")?.takeIf { it.isNotEmpty() }?.let { "sites $it" } ?: "containers running",
-            cs?.let { if (it.optInt("total") > 0) it.optInt("running").toFloat() / it.optInt("total") else null }, N.amber),
+        if (cs != null && (cs.optInt("total") > 0 || cs.optInt("stopped") > 0))
+            StatCard(Icons.Rounded.ViewInAr, "Services", "${cs.optInt("running")}/${cs.optInt("total")}",
+                m?.optString("websites")?.takeIf { it.isNotEmpty() && !it.startsWith("0/0") }?.let { "sites $it" } ?: "containers running",
+                if (cs.optInt("total") > 0) cs.optInt("running").toFloat() / cs.optInt("total") else null, N.amber)
+        else   // no containers here (or no Docker): how long it's been up says more than "0/0"
+            StatCard(Icons.Rounded.Schedule, "Uptime", now?.optLong("uptime_s")?.takeIf { it > 0 }?.let { upFor(it) } ?: m?.optString("uptime")?.takeIf { it.isNotEmpty() } ?: "—",
+                "since the last restart", null, N.amber),
     )
     Column(Modifier.padding(horizontal = Space.gutter), verticalArrangement = Arrangement.spacedBy(Space.gap)) {
         cards.chunked(2).forEach { row ->
@@ -350,3 +358,9 @@ fun backupLine(b: JSONObject): String {
     }
 }
 
+/** 93784 s → "1d 2h"; 5000 s → "1h 23m"; under an hour → "12 min". */
+internal fun upFor(s: Long): String = when {
+    s >= 86_400 -> "${s / 86_400}d ${s % 86_400 / 3600}h"
+    s >= 3600 -> "${s / 3600}h ${s % 3600 / 60}m"
+    else -> "${maxOf(1, s / 60)} min"
+}

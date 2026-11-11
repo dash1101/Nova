@@ -584,7 +584,7 @@ def der_sig(raw):
 # the name instead of guessing from version numbers; a server that doesn't list one doesn't have it.
 CAPABILITIES = {"devices": 1, "approvals": 1, "containers": 1, "apps": 1, "store": 1, "storage": 1, "storage-wizard": 1, "backups": 1, "lights": 1,
                 "cloudflare": 1, "access-codes": 1, "nodes": 1, "tasks": 1, "events": 1, "stats": 1, "terminal": 1, "files": 1, "updates": 1, "freeup": 1, "diag": 1,
-                "assistant": 1, "power-schedule": 1, "totp": 2, "passkeys": 2, "partitions": 2, "mount-points": 2, "swap-setup": 2, "recommendations": 2, "security-activity": 2, "capabilities": 2,
+                "assistant": 1, "power-schedule": 1, "keep-awake": 1, "totp": 2, "passkeys": 2, "partitions": 2, "mount-points": 2, "swap-setup": 2, "recommendations": 2, "security-activity": 2, "capabilities": 2,
                 "force-unmount": 2, "nova-power": 2}
 REC_CACHE = {}             # recommended actions, worked out at most once a minute
 browser_requests = {}      # id -> {pem, name, code, expires, state, device_id}
@@ -944,7 +944,7 @@ def needs_stepup(method, parts):
     if parts[:1] == ["containers"] and len(parts) == 4 and parts[2] == "fix": return True
     if parts[:1] in (["store"], ["programs"]) and len(parts) == 3: return True
     if parts[:1] == ["drives"] and parts[-1:] == ["unmount"]: return True
-    if parts[:1] == ["power"]: return True
+    if parts[:1] == ["power"] and parts[1:2] != ["keep-awake"]: return True      # (keeping it awake is harmless: no fingerprint)
     if parts == ["ssh", "authorize"]: return True
     if parts[:2] == ["storage", "task"] and len(parts) == 3 and parts[2] in STORAGE_DESTRUCTIVE: return True
     if parts in (["updates", "packages"], ["updates", "containers"]): return True
@@ -2639,6 +2639,18 @@ class Handler(BaseHTTPRequestHandler):
             if act not in ("reboot", "poweroff") or not isinstance(at, int) or isinstance(at, bool): raise ValueError("an action (reboot or poweroff) and a time")
             if not time.time() + 60 <= at <= time.time() + 366 * 86400: raise ValueError("pick a time from a minute from now to a year from now")
             rc, res = helper("power-schedule", act, str(at)); return (200 if rc == 0 else 400), res
+        # Keep this computer from sleeping for a while (a desktop or laptop that sleeps by itself is unreachable)
+        if parts == ["power", "keep-awake"] and method == "GET":
+            rc, res = helper("keep-awake-status"); return (200 if rc == 0 else 500), res
+        if parts == ["power", "keep-awake"] and method == "POST":
+            if role_of(dev) != "admin": return 403, {"error": "admins only"}
+            if data.get("off"): arg = "0"
+            elif data.get("forever"): arg = "forever"
+            else:
+                h = data.get("hours")
+                if not isinstance(h, (int, float)) or isinstance(h, bool) or not 0 < h <= 168: raise ValueError("hours: more than 0, at most a week")
+                arg = str(int(h * 3600))
+            rc, res = helper("keep-awake", arg); return (200 if rc == 0 else 400), res
         if len(parts) == 3 and parts[:2] == ["power", "schedule"] and method == "DELETE":
             if role_of(dev) != "admin": return 403, {"error": "admins only"}
             if not re.fullmatch(r"[0-9a-f]{8}", parts[2]): return 404, {"error": "no such schedule"}

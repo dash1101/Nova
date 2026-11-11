@@ -58,6 +58,7 @@ def recommendations():
             mounts[f[1]] = f[0]
     for b in branches: mounts.pop(b, None)
     for m in sorted(mounts):
+        if not os.path.isdir(m): continue        # a single file mounted on its own (/etc/hosts in a container or LXC), not a drive
         try: st = os.statvfs(m)
         except OSError: continue
         tot = st.f_blocks * st.f_frsize; free = st.f_bavail * st.f_frsize

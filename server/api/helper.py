@@ -841,6 +841,29 @@ if verb == "voice-remove" and not args:
     import brain
     brain.remove_voice(); changelog("Assistant voice removed from the Nova app"); out({"ok": True})
 
+# ── keep awake: a sleep inhibitor in its own transient unit, ending by itself (or "forever": until turned off or a restart) ──
+KEEP_UNIT, KEEP_STATE = "nova-keep-awake", "/run/nova-keep-awake.json"
+def keep_awake_status():
+    rc, so, _ = run(["systemctl", "show", f"{KEEP_UNIT}.service", "-p", "ActiveState", "--value"])
+    on = so.strip() in ("active", "activating"); st = load_json(KEEP_STATE, {}) if on else {}
+    return {"on": on, "until": st.get("until"), "forever": bool(on and not st.get("until")), "supported": bool(_tool("/usr/bin/systemd-inhibit", "/bin/systemd-inhibit"))}
+if verb == "keep-awake-status" and not args: out(keep_awake_status())
+if verb == "keep-awake" and len(args) == 1 and (args[0].isdigit() or args[0] == "forever"):
+    run(["systemctl", "stop", f"{KEEP_UNIT}.service"]); run(["systemctl", "reset-failed", f"{KEEP_UNIT}.service"])
+    if args[0] == "0":
+        try: os.remove(KEEP_STATE)
+        except OSError: pass
+        changelog("Keep awake turned off (from the Nova app)"); out({"ok": True, **keep_awake_status()})
+    secs = None if args[0] == "forever" else min(int(args[0]), 7 * 86400)
+    until = int(time.time() + secs) if secs else None
+    why = "Kept awake from the Nova app" + (f" until {time.strftime('%a %H:%M', time.localtime(until))}" if until else "")
+    rc, so, se = run(["systemd-run", f"--unit={KEEP_UNIT}", "--quiet", "--description=Nova: keep this computer awake", "systemd-inhibit",
+                      "--what=sleep:idle:handle-lid-switch:handle-suspend-key:handle-hibernate-key", "--who=Nova", f"--why={why}", "--mode=block",
+                      "sleep", "infinity" if secs is None else str(secs)])
+    if rc != 0: fail("couldn't keep it awake: " + (se or so).strip()[:200])
+    with open(KEEP_STATE, "w") as f: json.dump({"until": until}, f)
+    changelog(why); out({"ok": True, **keep_awake_status()})
+
 if verb == "power-schedule-list" and not args:
     out({"schedules": [s for s in _scheds() if s["at"] > time.time() - 120]})
 if verb == "power-schedule" and len(args) == 2 and args[0] in ("reboot", "poweroff") and args[1].isdigit():

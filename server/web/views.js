@@ -128,7 +128,31 @@ const POWER = [
   ["nova-restart", "Restart Nova", "Only Nova restarts, in a few seconds — containers and everything else keep running", "restart", "var(--blue)"],
   ["nova-stop", "Shut down Nova", "The server keeps running, but Nova can't be reached until it's started again", "stop", "var(--red)"],
   ["schedule", "Schedule a restart or shutdown", "Pick a day and time — cancel it here any time before then", "clock", "var(--blue)"],
+  ["awake", "Keep awake", "Stop it from going to sleep by itself — for a few hours, or until you say", "bright", "var(--amber)"],
 ];
+/** Kept awake right now: a row with when it ends, and Stop. */
+function awakeRow() {
+  const k = S.cache["/api/v1/power/keep-awake"];
+  if (!k?.on) return "";
+  return row(k.forever ? "Kept awake until you stop it" : `Kept awake until ${schedWhen(k.until)}`, { sub: "It won't go to sleep by itself until then", icon: "bright", tint: "var(--amber)",
+    end: `<button class="pillbtn press" data-act="awake-off">Stop</button>` });
+}
+async function keepAwake() {
+  const k = await get("/api/v1/power/keep-awake").catch(() => null);
+  if (!k) return toast("This server's Nova is too old for that — update it first");
+  if (k.supported === false) return toast("This server can't be kept awake from here");
+  const v = await choose("Keep awake", [...(k.on ? [["off", "Let it sleep again", k.forever ? "Kept awake until you stop it" : `Kept awake until ${schedWhen(k.until)}`]] : []),
+    ["1", "For 1 hour"], ["4", "For 4 hours"], ["12", "For 12 hours"], ["24", "For a day"], ["forever", "Until I stop it", "Or until the server restarts"]], null);
+  if (!v) return;
+  try {
+    const r = await post("/api/v1/power/keep-awake", v === "off" ? { off: true } : v === "forever" ? { forever: true } : { hours: +v });
+    S.cache["/api/v1/power/keep-awake"] = r;
+    toast(v === "off" ? "It can sleep again" : r.forever ? "It stays awake until you stop it" : `It stays awake until ${schedWhen(r.until)}`);
+  } catch (e) { toast(e.message); }
+}
+export async function awakeOff() {
+  try { S.cache["/api/v1/power/keep-awake"] = await post("/api/v1/power/keep-awake", { off: true }); toast("It can sleep again"); } catch (e) { toast(e.message); }
+}
 const schedWhen = at => new Date(at * 1000).toLocaleString([], { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 /** Scheduled restarts and shutdowns (made here or by the assistant), each with Cancel. */
 function schedRows() {
@@ -151,6 +175,7 @@ async function powerDo(v) {
     "nova-restart": ["Restart Nova?", "The apps and this page lose the server for a few seconds, then reconnect. Nothing else is touched. Your phone confirms it.", "Restart", () => "Nova is restarting — back in a few seconds"],
     "nova-stop": ["Shut down Nova?", "Nova stops until the server restarts or someone runs “sudo systemctl start nova-api” on it — the apps and this page can't start it again. Everything else keeps running. Your phone confirms it.", "Shut down", () => "Nova is shutting down"],
   }[v] || [];
+  if (v === "awake") return keepAwake();
   if (v === "schedule") {
     let act = "reboot", at = 0;
     const p = scheduleDialog();
@@ -278,6 +303,7 @@ export async function recommended(ctx) {
 export async function home(ctx) {
   const statCard = (icon, label, value, sub, frac, color) => `<div class="stat glass press" data-act="go:status"><div class="lbl" style="color:${color}">${I(icon)}<span class="muted">${esc(label)}</span></div>
     <div class="val">${esc(value)}</div><div class="sub">${esc(sub)}</div><div style="margin-top:10px">${frac != null ? bar(frac, color) : ""}</div></div>`;
+  const upFor = s => !s ? "" : s >= 86400 ? `${Math.floor(s / 86400)}d ${Math.floor(s % 86400 / 3600)}h` : s >= 3600 ? `${Math.floor(s / 3600)}h ${Math.floor(s % 3600 / 60)}m` : `${Math.max(1, Math.floor(s / 60))} min`;
   const stats = () => {
     const n = liveNow(), m = S.overview?.status?.metrics || {}, cs = S.overview?.containers, disk = m.root_used;
     const free = (/\(([^)]*free)\)/.exec(disk || "") || [])[1];
@@ -285,7 +311,9 @@ export async function home(ctx) {
       ${statCard("cpu", "CPU", n ? Math.round(n.cpu) + "%" : "—", n?.temp ? Math.round(n.temp) + "°C" : m.cpu_temp || "", n ? n.cpu / 100 : null, "var(--blue)")}
       ${statCard("mem", "Memory", n ? Math.round(n.mem) + "%" : (m.memory || "—").split(" ")[0], n ? `${n.mem_used_gb} / ${n.mem_total_gb} GB` : "", n ? n.mem / 100 : (pct(m.memory) ?? 0) / 100, "var(--violet)")}
       ${statCard("disk", "Disk", free || "—", "system drive", pct(disk) != null ? pct(disk) / 100 : null, "var(--green)")}
-      ${statCard("box", "Services", cs ? `${cs.running}/${cs.total}` : "—", m.websites ? "sites " + m.websites : "containers running", cs?.total ? cs.running / cs.total : null, "var(--amber)")}</div>`;
+      ${cs?.total || cs?.stopped ? statCard("box", "Services", `${cs.running}/${cs.total}`, m.websites && !/^0\/0/.test(m.websites) ? "sites " + m.websites : "containers running", cs.total ? cs.running / cs.total : null, "var(--amber)")
+        // no containers here (or no Docker): how long it's been up says more than "0/0"
+        : statCard("clock", "Uptime", upFor(n?.uptime_s) || m.uptime || "—", "since the last restart", null, "var(--amber)")}</div>`;
   };
   const pills = () => {
     const l = homeChips();
@@ -298,7 +326,7 @@ export async function home(ctx) {
     const icon = S.error || S.reconnecting ? "sync" : lvl === "ok" ? "okc" : "err";
     const top = `<div class="home-title"><h1><span>${esc(serverName())}</span></h1><span class="sp"></span>
         <button class="circle" data-act="search" aria-label="Search (press /)">${I("search")}</button><button class="circle" data-act="refresh" aria-label="Refresh">${I("refresh")}</button><button class="circle" data-act="more" aria-label="More">${I("more")}</button></div>
-      <div class="statusline" data-act="go:status"><span style="color:${S.error || S.reconnecting ? "var(--sub)" : levelColor(lvl)};display:flex">${I(icon)}</span>${esc(head)}${cs ? `<span class="sep"></span>${cs.running}/${cs.total} running${cs.stopped ? ` · ${cs.stopped} stopped` : ""}` : ""}${tasksChip()}</div>
+      <div class="statusline" data-act="go:status"><span style="color:${S.error || S.reconnecting ? "var(--sub)" : levelColor(lvl)};display:flex">${I(icon)}</span>${esc(head)}${cs && (cs.total || cs.stopped) ? `<span class="sep"></span>${cs.running}/${cs.total} running${cs.stopped ? ` · ${cs.stopped} stopped` : ""}` : ""}${tasksChip()}</div>
       <div style="height:14px"></div>${topBanner()}${S.serverUpdate && localStorage.getItem("nova.dismissedUpdate") !== S.serverUpdate ? `<div class="upnote glass"><span style="color:var(--blue);display:flex">${I("update")}</span><b data-act="go:updates" style="flex:1;cursor:pointer">Nova ${esc(S.serverUpdate)} is ready to install</b><button class="xbtn" data-act="upx" aria-label="Not now">${I("close")}</button></div>` : ""}`;
     const order = homeOrder().filter(id => prefs[HOME_SECTIONS.find(s => s[0] === id)?.[3]] && (id !== "servers" || serverStrip()));
     const block = id => id === "hero" ? `<canvas class="hero" id="hero" data-act="herotap" title="Tap the fan, the drive lights or the power button"></canvas>` : id === "shortcuts" ? pills() : id === "servers" ? serverStrip() : id === "recs" ? recsCard() : stats();
@@ -315,8 +343,10 @@ export async function home(ctx) {
       if (hit === "power") {
         if (!isAdmin()) return viewOnly();
         const sc = (await get("/api/v1/power/schedule").catch(() => ({}))).schedules || [];
-        const v = await choose("Power", [...sc.map(x => ["unsched:" + x.id, `Cancel the ${x.action === "poweroff" ? "shutdown" : "restart"} on ${schedWhen(x.at)}`, "Scheduled"]), ...POWER.map(([id, label, sub]) => [id, label, sub])], null);
-        if (v?.startsWith("unsched:")) await unschedule(v.slice(8)); else if (v) await powerDo(v);
+        const aw = await get("/api/v1/power/keep-awake").catch(() => null);
+        const v = await choose("Power", [...(aw?.on ? [["awake-off", "Let it sleep again", aw.forever ? "Kept awake until you stop it" : `Kept awake until ${schedWhen(aw.until)}`]] : []),
+          ...sc.map(x => ["unsched:" + x.id, `Cancel the ${x.action === "poweroff" ? "shutdown" : "restart"} on ${schedWhen(x.at)}`, "Scheduled"]), ...POWER.map(([id, label, sub]) => [id, label, sub])], null);
+        if (v === "awake-off") await awakeOff(); else if (v?.startsWith("unsched:")) await unschedule(v.slice(8)); else if (v) await powerDo(v);
       }
     };
     animate($("#hero"), "server", () => S.error ? "#9e9ea4" : getComputedStyle(document.documentElement).getPropertyValue(lvl === "ok" ? "--green" : lvl === "warning" ? "--amber" : "--red").trim());
@@ -1167,7 +1197,7 @@ export async function quick(ctx) {
         return `<button class="tile glass press${on ? " on" : ""}" data-act="run:${esc(id)}" data-hold="${esc(id)}"><span class="ti">${I(d.icon)}</span><span class="tt"><b>${esc(d.label)}</b>${st ? `<small>${esc(st)}</small>` : ""}</span></button>`; }).join("")}</div>
       <p class="note" style="margin-left:24px">Tip: hold a tile for its settings.${ids.length ? "" : " No quick actions — tap the pencil to add some."}</p>
       ${(busy === "backup" || b?.running) && b ? sec("Backup") + group(`<div style="padding:16px 22px">${bar(b.progress?.phase === "copying" ? b.progress.pct / 100 : .1)}<p class="muted" style="font-size:13px;margin:8px 0 0">${esc(backupLine(b))}</p></div>`) : ""}
-      ${isAdmin() ? sec("Power") + group(schedRows() + POWER.map(([id, label, sub, icon, tint]) => row(label, { sub, icon, tint, click: "power:" + id })).join("")) : ""}`,
+      ${isAdmin() ? sec("Power") + group(awakeRow() + schedRows() + POWER.map(([id, label, sub, icon, tint]) => row(label, { sub, icon, tint, click: "power:" + id })).join("")) : ""}`,
       { title: "Quick panel", actions: [{ icon: "edit", label: "Edit", act: "go:edit-quick" }] });
     wireFanSlider($("#fantile"), draw, () => ctx.go("lighting"));
     $$("[data-hold]").forEach(t => onHold(t, () => { const r = { fan: "lighting", dim: "lighting", bright: "lighting", status_light: "lighting", lighting: "lighting", backup: "status", freeram: "status", status: "status", discord: "notify", inbox: "notify", containers: "containers", storage: "hardware" }[t.dataset.hold] || (t.dataset.hold.startsWith("restart:") ? "containers/" + t.dataset.hold.slice(8) : null); if (r) ctx.go(r); }));
@@ -1189,9 +1219,11 @@ export async function quick(ctx) {
     },
     power: async what => { await powerDo(what); if (ctx.alive()) draw(); },
     unsched: async id => { await unschedule(id); if (ctx.alive()) draw(); },
+    "awake-off": async () => { await awakeOff(); if (ctx.alive()) draw(); },
   });
   draw();
   if (isAdmin()) get("/api/v1/power/schedule").then(() => ctx.alive() && draw()).catch(() => {});
+  if (isAdmin()) get("/api/v1/power/keep-awake").then(() => ctx.alive() && draw()).catch(() => {});
   get("/api/v1/notify").then(() => ctx.alive() && draw()).catch(() => {});
   ctx.every(3000, async () => { await get("/api/v1/backup"); if (!$("#fantile")?.hasPointerCapture?.()) draw(); }, true);
 }

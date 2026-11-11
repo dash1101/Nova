@@ -1,5 +1,6 @@
 package app.novalabs.nova
 
+import kotlinx.coroutines.launch
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -140,6 +141,8 @@ private fun settingsFor(id: String): Route? = when {
 @Composable fun QuickPanelScreen(app: AppState) {
     var scheds by remember { mutableStateOf(listOf<org.json.JSONObject>()) }; var scheduling by remember { mutableStateOf(false) }
     LaunchedEffect(app.isAdmin) { if (app.isAdmin) scheds = loadScheds(app) }
+    var awake by remember { mutableStateOf<org.json.JSONObject?>(null) }; var awakeAsk by remember { mutableStateOf(false) }
+    LaunchedEffect(app.isAdmin) { if (app.isAdmin) awake = loadAwake(app) }
     var confirm by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf<String?>(null) }
     val backupState = live(app, "/api/v1/backup", 3_000)
@@ -221,6 +224,11 @@ private fun settingsFor(id: String): Route? = when {
                     PillButton("Cancel") { app.act("Cancelled") { app.api.delete("/api/v1/power/schedule/${s.optString("id")}"); scheds = loadScheds(app) } } }
                 RowDivider()
             }
+            awake?.takeIf { it.optBoolean("on") }?.let { k ->
+                Row1(awakeText(k), "It won't go to sleep by itself until then", false, Icons.Rounded.LightMode, N.amber) {
+                    PillButton("Stop") { app.act("It can sleep again") { awake = app.api.post("/api/v1/power/keep-awake", org.json.JSONObject().put("off", true)) } } }
+                RowDivider()
+            }
             Row1("Restart server", "Everything goes offline for about 2 minutes", false, Icons.Rounded.RestartAlt, N.amber,
                 onClick = { confirm = "reboot" })
             RowDivider()
@@ -234,10 +242,29 @@ private fun settingsFor(id: String): Route? = when {
                 Icons.Rounded.StopCircle, N.red, onClick = { confirm = "nova-stop" })
             RowDivider()
             Row1("Schedule a restart or shutdown", "Pick a day and time — cancel it here any time before then", true, Icons.Rounded.Schedule, N.blue, onClick = { scheduling = true })
+            if (awake != null) { RowDivider()
+                Row1("Keep awake", "Stop it from going to sleep by itself — for a few hours, or until you say", true, Icons.Rounded.LightMode, N.amber, onClick = { awakeAsk = true }) }
         }
     }
+    if (awakeAsk) KeepAwakeDialog(app, awake, { awakeAsk = false }) { awake = it }
     confirm?.let { what -> PowerConfirm(app, what) { confirm = null } }
     if (scheduling) ScheduleDialog(app, { scheduling = false }) { scheds = it }
+}
+
+/** null when this server's Nova is too old to keep itself awake (the row is hidden then). */
+suspend fun loadAwake(app: AppState): org.json.JSONObject? = runCatching { app.api.get("/api/v1/power/keep-awake") }.getOrNull()?.takeIf { it.optBoolean("supported", true) }
+fun awakeText(k: org.json.JSONObject) = if (k.optBoolean("forever")) "Kept awake until you stop it" else "Kept awake until ${schedWhen(k.optLong("until"))}"
+
+/** Keep the server from sleeping: for a while, or until stopped (a desktop or laptop that sleeps by itself can't be reached). */
+@Composable fun KeepAwakeDialog(app: AppState, now: org.json.JSONObject?, close: () -> Unit, done: (org.json.JSONObject) -> Unit) {
+    fun go(body: org.json.JSONObject, msg: (org.json.JSONObject) -> String) { close(); app.scope.launch {
+        runCatching { app.api.post("/api/v1/power/keep-awake", body) }.onSuccess { done(it); app.toast(msg(it)) }.onFailure { app.toast(it.message ?: "That didn't work") } } }
+    OneDialog(close, "Keep awake", "It won't go to sleep by itself for that long. Restarting or shutting it down still works.", listOf(DialogButton("Cancel") { close() })) {
+        if (now?.optBoolean("on") == true) DialogChoice("Let it sleep again", awakeText(now), false, action = true) { go(org.json.JSONObject().put("off", true)) { "It can sleep again" } }
+        listOf(1 to "For 1 hour", 4 to "For 4 hours", 12 to "For 12 hours", 24 to "For a day").forEach { (h, l) ->
+            DialogChoice(l, null, false, action = true) { go(org.json.JSONObject().put("hours", h)) { "It stays awake until ${schedWhen(it.optLong("until"))}" } } }
+        DialogChoice("Until I stop it", "Or until the server restarts", false, action = true) { go(org.json.JSONObject().put("forever", true)) { "It stays awake until you stop it" } }
+    }
 }
 
 fun schedWhen(at: Long): String = java.text.SimpleDateFormat("EEE MMM d, h:mm a", java.util.Locale.getDefault()).format(java.util.Date(at * 1000))

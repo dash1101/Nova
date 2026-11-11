@@ -1006,7 +1006,7 @@ def mount_issues(m):
     for mnt, i in mp.items():
         if i["src"].startswith("/dev/"): bydev.setdefault(os.path.realpath(i["src"]), []).append(mnt)
     for mnt, i in mp.items():
-        if i["src"].startswith("/dev/") and not os.path.exists(i["src"]) and mnt not in PROTECTED:
+        if i["src"].startswith("/dev/") and not os.path.exists(i["src"]) and mnt not in PROTECTED and os.path.isdir(mnt):   # (a single file mounted on its own — /etc/hosts in a container — isn't a drive)
             out.append({"id": "stale:" + mnt, "level": "warning", "title": f"{mnt} is still mounted, but its drive is gone",
                         "detail": f"It was {i['src']}, which isn't connected any more. Clearing it frees the folder — nothing on any drive changes.",
                         "actions": [{"label": "Clear it", "action": "task", "kind": "mount-clear", "spec": {"mount": mnt}}]})
