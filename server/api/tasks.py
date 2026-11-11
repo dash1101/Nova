@@ -296,6 +296,9 @@ def reap():
             if WIN: rc = "active" if _alive(t) else "gone"
             else: rc = subprocess.run(["systemctl", "is-active", f"nova-task-{t['id']}.service"], capture_output=True, text=True).stdout.strip()
             if rc not in ("active", "activating", "deactivating"):
+                # it may have finished between the list above and that check: what's on disk now decides, not the copy we read
+                t = load(t["id"])
+                if not t or t.get("state") != "running": continue
                 t.update(state="failed", error="stopped unexpectedly (restart?)", finished=time.time()); save(t)
                 notify("warning", f"{t['title']} stopped unexpectedly", "The server or Nova restarted while it was running — start it again.", "task")
 

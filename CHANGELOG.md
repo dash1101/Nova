@@ -3,6 +3,7 @@
 ## 0.9.19-alpha (server and app)
 A fix for something 0.9.18 broke, and what a brand-new phone and server showed when tried from scratch.
 - **Fix: the Updates page always said "Nova is up to date · Installed: ?"** (since 0.9.18). It read Nova's version from the updater's printed line, which 0.9.18 reworded — so it also missed a new Nova release. It reads the updater's status file now, and a test on a fresh Ubuntu machine checks it. (Settings → Software update, the daily check and the Inbox notice weren't affected.)
+- **Fix: a task that finished at the very moment Nova looked in on it** (an install, an update, a backup) could be marked "stopped unexpectedly" with a warning in the Inbox, though it had worked. Caught by the Windows test; it could happen on Linux too.
 - **An old update error no longer lingers.** A server that updated from 0.9.16 kept showing "Last update failed: no update source" in Settings until the next check; an error from before the installed version is dropped.
 - **One warning per drive.** "/home is 91% full" next to "The system drive is 91% full" — Fedora's and openSUSE's default btrfs puts both on the same disk — or the same disk mounted in several places, is now one recommendation, by its plainest name.
 - **Nova in a container (LXC, Docker)** no longer says "still mounted, but its drive is gone" for every mounted folder: a container can't see the host's drives, so that check is skipped there.
