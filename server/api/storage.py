@@ -997,6 +997,15 @@ def _part_of_uuid(m, uuid):
             if uuid and p.get("uuid") == uuid: return d, p
     return None, None
 
+@__import__("functools").lru_cache(maxsize=1)
+def _in_container():
+    """Inside a container (Docker, LXC, Podman) the host's drives aren't in /dev, so a mount whose device "isn't there" says nothing."""
+    if os.path.exists("/.dockerenv") or os.path.exists("/run/.containerenv"): return True
+    try: return bool(open("/run/systemd/container").read().strip())
+    except OSError: pass
+    try: return subprocess.run(["systemd-detect-virt", "--container", "--quiet"], timeout=5).returncode == 0
+    except (OSError, subprocess.SubprocessError): return False
+
 def mount_issues(m):
     """Mount problems Nova can fix with one tap: a drive's partition mounted in several places (or listed several times
     in /etc/fstab), files saved into a mount point's folder while its drive wasn't there (hidden once it's mounted), and
@@ -1005,8 +1014,9 @@ def mount_issues(m):
     bydev = {}
     for mnt, i in mp.items():
         if i["src"].startswith("/dev/"): bydev.setdefault(os.path.realpath(i["src"]), []).append(mnt)
+    gone_ok = not _in_container()
     for mnt, i in mp.items():
-        if i["src"].startswith("/dev/") and not os.path.exists(i["src"]) and mnt not in PROTECTED and os.path.isdir(mnt):   # (a single file mounted on its own — /etc/hosts in a container — isn't a drive)
+        if gone_ok and i["src"].startswith("/dev/") and not os.path.exists(i["src"]) and mnt not in PROTECTED and os.path.isdir(mnt):   # (a single file mounted on its own — /etc/hosts in a container — isn't a drive)
             out.append({"id": "stale:" + mnt, "level": "warning", "title": f"{mnt} is still mounted, but its drive is gone",
                         "detail": f"It was {i['src']}, which isn't connected any more. Clearing it frees the folder — nothing on any drive changes.",
                         "actions": [{"label": "Clear it", "action": "task", "kind": "mount-clear", "spec": {"mount": mnt}}]})

@@ -57,8 +57,12 @@ def recommendations():
         elif len(f) > 2 and f[0].startswith("/dev/") and f[2] not in ("squashfs", "iso9660") and f[1] not in mounts and not f[1].startswith(("/boot", "/run", "/snap")):
             mounts[f[1]] = f[0]
     for b in branches: mounts.pop(b, None)
-    for m in sorted(mounts):
+    seen = set()
+    for m in sorted(mounts, key=lambda m: (m != "/", len(m), m)):
         if not os.path.isdir(m): continue        # a single file mounted on its own (/etc/hosts in a container or LXC), not a drive
+        # the same filesystem mounted in several places (bind mounts, btrfs subvolumes) is one drive: say it once, by its plainest path
+        if mounts[m] in seen: continue
+        seen.add(mounts[m])
         try: st = os.statvfs(m)
         except OSError: continue
         tot = st.f_blocks * st.f_frsize; free = st.f_bavail * st.f_frsize
