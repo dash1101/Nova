@@ -11,7 +11,7 @@ A second pass the same night, on the first hour with Nova: installing it, settin
 - **Setup guide** (Nova web and the app): the one-line installer, any Linux with systemd or Windows, Tailscale first for away from home, and Copy buttons on web — in all nine languages.
 - **Website on a phone:** the Windows one-liner no longer made the whole page wider than the screen, and the command list puts each explanation under its command.
 - Smaller: roomier text on the browser approval screen; the FAQ's security-test count is up to date everywhere (650+); `sudo nova setup`, `sudo nova lighting`, `sudo nova publish` and `sudo nova alert` everywhere instead of the old dashed names; an unsynced clock is explained by what it actually affects now (authenticator codes, schedules, alert times).
-- **Tested:** the security test on a fresh Ubuntu machine (617 of 618, plus a new check for the code replacing), Windows Server 2025 and 2022, the released one-line Windows installer, and installing and removing from the tarball on Fedora 41 and Arch.
+- **Tested:** the security test on a fresh Ubuntu machine (617 of 618, including a new check that a new code replaces the oldest), Windows Server 2025 and 2022, the released one-line Windows installer, and installing and removing from the tarball on Fedora 41 and Arch.
 
 ## 0.9.17-alpha (server and app)
 A pass of testing Nova the way a person uses it — every page of Nova web at phone and desktop size in all six looks, the Android app on an Android 11 phone and tablet, the `nova` command, a brand-new server, and the full security test — and fixing what turned up.
