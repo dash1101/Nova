@@ -60,6 +60,12 @@ check("live numbers", s == 200 and 0 <= n.get("cpu", -1) <= 100 and len(n.get("c
 s, r = d.call("GET", "/api/v1/processes"); check("every process, through the helper", s == 200 and r.get("count", 0) > 50, (s, str(r)[:200]))
 s, r = d.call("GET", "/api/v1/hardware"); check("drives", s == 200 and len(r.get("drives", [])) >= 1, (s, str(r)[:300]))
 s, r = d.call("GET", "/api/v1/server/update"); check("updates point at the official releases by default", s == 200 and r.get("source") == "github:dash1101/Nova", (s, r))
+s, t = d.call("POST", "/api/v1/updates/check", {}); tid = t.get("id", "x"); end = time.time() + 240; tj = {}
+while time.time() < end:
+    time.sleep(3); _, tj = d.call("GET", f"/api/v1/tasks/{tid}")
+    if tj.get("state") in ("done", "failed"): break
+s, u = d.call("GET", "/api/v1/updates"); nv = u.get("nova", {}); ver = open("/usr/lib/nova-api/VERSION").read().strip().replace("~", "-")
+check("the update check sees which Nova is installed (the Updates page's Nova row)", tj.get("state") == "done" and nv.get("installed") == ver and "error" not in nv, (tj.get("state"), nv, ver))
 s, r = d.call("GET", "/api/v1/whoami", ts=str(int(time.time() * 1000) - 300_000)); check("a late request says 'clock' with the server's time", s == 401 and r.get("reason") == "clock", (s, r))
 
 print("\nKeep awake")
