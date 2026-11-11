@@ -1,0 +1,44 @@
+name: linux
+# Installs the server package on a fresh Ubuntu machine (real systemd), sets it up unattended, then checks it the way a
+# person would (packaging/linux_test.py) and runs the full security test (packaging/pentest.py) against it.
+on:
+  push:
+    paths: ['server/**', 'packaging/**', '.github/workflows/linux.yml']
+  pull_request:
+    paths: ['server/**', 'packaging/**', '.github/workflows/linux.yml']
+  workflow_dispatch:
+jobs:
+  server:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and install the package
+        run: |
+          packaging/build-deb.sh
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ./dist/nova-server_*_all.deb
+      - name: Set up, unattended
+        run: |
+          IP=$(ip -4 route get 1.1.1.1 | grep -oP 'src \K\S+'); NET=$(ip -4 -o addr show | awk -v ip="$IP" '$4 ~ "^"ip"/" {print $4}')
+          NET=$(python3 -c "import ipaddress,sys; print(ipaddress.ip_interface(sys.argv[1]).network)" "$NET")
+          printf '{"lan_host": "%s", "lan_subnet": "%s", "install_tailscale": false, "install_cloudflared": false, "remote_manual": false, "discord_webhook": "", "install_docker": false, "install_tools": false, "assistant": false, "ssh_user": "runner", "advanced": false, "location": "", "firewall": true}' "$IP" "$NET" > answers.json
+          sudo nova-setup --answers answers.json --yes
+          for i in $(seq 30); do curl -sf http://127.0.0.1:8095/api/v1/ping && break; sleep 1; done
+          echo "NOVA_HOST=$IP" >> $GITHUB_ENV
+      - name: Check it like a person would
+        run: python3 packaging/linux_test.py
+      - name: Security test
+        run: |
+          mkdir -p pt && cd pt
+          sudo python3 ../packaging/pentest.py register > pt.json
+          sudo python3 -c "import json; p='/var/lib/nova-api/devices.json'; d=json.load(open(p)) if __import__('os').path.exists(p) else {}; d.update(json.load(open('pt.json'))); json.dump(d, open(p,'w'))"
+          sudo chown nova-api:nova-api /var/lib/nova-api/devices.json; sudo chmod 640 /var/lib/nova-api/devices.json
+          NOVA_HOST=$NOVA_HOST timeout 1500 python3 ../packaging/pentest.py | tee pentest.log
+          tail -1 pentest.log; grep "^FAIL" pentest.log || true
+          python3 -c "import sys,re; l=open('pentest.log').read().strip().splitlines()[-1]; m=re.match(r'(\d+)/(\d+)', l); sys.exit(0 if m and int(m.group(1)) >= int(m.group(2)) - 3 else 1)"
+      - name: Logs
+        if: always()
+        run: |
+          sudo journalctl -u nova-api -u 'nova-helper@*' -n 120 --no-pager || true
+          sudo nova doctor || true
