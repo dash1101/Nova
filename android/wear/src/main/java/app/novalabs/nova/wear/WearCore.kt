@@ -67,7 +67,9 @@ class WearStore(ctx: Context) {
     fun clear() = p.edit().clear().apply()
 }
 
-class WearApiException(val code: Int, message: String) : Exception(message)
+class WearApiException(val code: Int, message: String, val reason: String = "", val serverTime: Long = 0L) : Exception(message)
+
+@Volatile private var clockOffset = 0L         // how far this watch's clock is from the server's (learned when it refuses a request)
 
 /** Signed requests to nova-api over HTTPS, trusting exactly the server's own certificate (pinned). */
 class WearApi(private val store: WearStore) {
@@ -82,8 +84,19 @@ class WearApi(private val store: WearStore) {
     suspend fun post(path: String, body: JSONObject = JSONObject()) = call("POST", path, body)
 
     suspend fun call(method: String, path: String, body: JSONObject?): JSONObject = withContext(Dispatchers.IO) {
+        // Refused only for its timing (a clock that's off, or a request sent twice by the network): sign it again and send it
+        // once more — with the server's clock if ours is off. A repeat is only sent again for a read, never an action.
+        try { send(method, path, body) } catch (e: WearApiException) {
+            if (e.reason == "clock" || (e.reason == "replay" && method == "GET")) {
+                if (e.reason == "clock") clockOffset = (e.serverTime - System.currentTimeMillis()).takeIf { kotlin.math.abs(it) > 20_000 } ?: 0L
+                send(method, path, body)
+            } else throw e
+        }
+    }
+
+    private fun send(method: String, path: String, body: JSONObject?): JSONObject {
         val bytes = (body?.toString() ?: "").toByteArray()
-        val ts = System.currentTimeMillis().toString()
+        val ts = (System.currentTimeMillis() + clockOffset).toString()
         val nonce = java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(ByteArray(18).also { rnd.nextBytes(it) })
         val digest = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
         val msg = "$method\n$path\n$ts\n$nonce\n$digest".toByteArray()
@@ -94,13 +107,16 @@ class WearApi(private val store: WearStore) {
             http().newCall(rb.build()).execute().use { r ->
                 val text = r.body.string()
                 if (!r.isSuccessful) {
-                    val err = runCatching { JSONObject(text).optString("error") }.getOrNull().orEmpty()
+                    val o = runCatching { JSONObject(text) }.getOrDefault(JSONObject())
+                    val err = o.optString("error")
+                    if (r.code == 401 && o.optString("reason") in setOf("clock", "replay"))
+                        throw WearApiException(401, if (o.optString("reason") == "clock") "The watch's clock is off" else "Sent twice", o.optString("reason"), o.optLong("server_time"))
                     throw WearApiException(r.code, when {
                         r.code == 401 -> "This watch isn't paired anymore"
                         err.contains("phone isn't an admin") -> "Its phone isn't an admin anymore"
                         err.isNotEmpty() -> err; else -> "HTTP ${r.code}" })
                 }
-                runCatching { JSONObject(text) }.getOrDefault(JSONObject())
+                return runCatching { JSONObject(text) }.getOrDefault(JSONObject())
             }
         } catch (e: java.io.IOException) { throw WearApiException(0, "Can't reach the server") }
     }

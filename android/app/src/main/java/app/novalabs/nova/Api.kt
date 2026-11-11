@@ -31,7 +31,21 @@ object ApiCompat {
     val serverTooOld get() = serverLevel in 0 until NEEDS_LEVEL
 }
 
-class ApiException(val code: Int, message: String, val stepUpRequired: Boolean = false, val offline: Boolean = false) : Exception(message)
+class ApiException(val code: Int, message: String, val stepUpRequired: Boolean = false, val offline: Boolean = false,
+                   val reason: String = "", val serverTime: Long = 0L) : Exception(message)
+
+/** How far this device's clock is from each server's (ms, by profile). Requests are signed with the server's time, so a
+ *  phone whose clock has drifted — or was set by hand — still works; the server tells us its time when it refuses one. */
+object ServerClock {
+    private val offsets = java.util.concurrent.ConcurrentHashMap<String, Long>()
+    fun now(profile: String): Long = System.currentTimeMillis() + (offsets[profile] ?: 0L)
+    fun learn(profile: String, serverTime: Long) {
+        val off = serverTime - System.currentTimeMillis()
+        // a few seconds is just the trip there and back; a request that sat on a sleeping phone isn't a wrong clock either
+        if (kotlin.math.abs(off) > 20_000) offsets[profile] = off else offsets.remove(profile)
+    }
+    fun offMinutes(profile: String) = kotlin.math.abs(offsets[profile] ?: 0L) / 60_000
+}
 
 /**
  * Talks to nova-api. Tries the home-LAN address first (fast, works without internet),
@@ -73,7 +87,7 @@ class NovaApi(private val pairing: Pairing) {
 
     private fun prepare(method: String, path: String, body: JSONObject?): Prepared = prepareBytes(method, path, (body?.toString() ?: "").toByteArray())
     private fun prepareBytes(method: String, path: String, bytes: ByteArray): Prepared {
-        val ts = System.currentTimeMillis().toString()
+        val ts = ServerClock.now(pairing.profile).toString()
         val nonce = ByteArray(18).also { rnd.nextBytes(it) }.let { Base64.getUrlEncoder().withoutPadding().encodeToString(it) }
         val digest = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
         return Prepared(method, path, bytes, ts, nonce, "$method\n$path\n$ts\n$nonce\n$digest".toByteArray())
@@ -99,8 +113,23 @@ class NovaApi(private val pairing: Pairing) {
         // signature is bound to one message by the fingerprint prompt.
         val fixed = prepared as? Prepared
         val t0 = System.nanoTime(); var via = ""
-        val text = try { route(method) { name, base -> via = name; send(name, base, fixed ?: prepare(method, path, body), stepUpSig) } }
-            catch (e: Exception) { DevLog.add(method, path, (e as? ApiException)?.code ?: -1, (System.nanoTime() - t0) / 1_000_000, via, e.message); throw e }
+        val once = { route(method) { name, base -> via = name; send(name, base, fixed ?: prepare(method, path, body), stepUpSig) } }
+        val text = try {
+            try { once() }
+            catch (e: ApiException) {
+                // Refused only for its timing: sign it again (with the server's clock, if ours is off) and send it once more.
+                // A repeat ("replay") means the first copy arrived, so only a read is sent again — never an action.
+                // (A step-up request can't be re-signed: its fingerprint signature covers that exact message.)
+                val again = fixed == null && (e.reason == "clock" || (e.reason == "replay" && method == "GET"))
+                if (!again) throw if (e.reason == "replay") ApiException(0, "Connection dropped — check whether it went through") else e
+                if (e.reason == "clock") ServerClock.learn(pairing.profile, e.serverTime)
+                try { once() } catch (e2: ApiException) {
+                    if (e2.reason == "clock") throw ApiException(401, "This ${DeviceForm.noun}'s clock is ${ServerClock.offMinutes(pairing.profile).coerceAtLeast(1)} min off from the server's. " +
+                        "Turn on automatic date and time in Android settings.", reason = "clock")
+                    throw e2
+                }
+            }
+        } catch (e: Exception) { DevLog.add(method, path, (e as? ApiException)?.code ?: -1, (System.nanoTime() - t0) / 1_000_000, via, e.message); throw e }
         DevLog.add(method, path, 200, (System.nanoTime() - t0) / 1_000_000, via, null)
         val obj = runCatching { JSONObject(text) }.getOrElse { JSONObject().put("raw", text) }
         if (method == "GET" && Cache.isFor(pairing.profile)) Cache.put(path, obj)
@@ -140,8 +169,7 @@ class NovaApi(private val pairing: Pairing) {
 
     /** POST raw bytes (file uploads and saves); the signature covers their SHA-256. */
     suspend fun postRaw(path: String, data: ByteArray): JSONObject = withContext(Dispatchers.IO) {
-        val pr = prepareBytes("POST", path, data)
-        val text = route("POST") { name, base -> send(name, base, pr, null) }
+        val text = route("POST") { name, base -> send(name, base, prepareBytes("POST", path, data), null) }      // signed afresh per attempt
         runCatching { JSONObject(text) }.getOrElse { JSONObject().put("raw", text) }
     }
 
@@ -271,7 +299,11 @@ class NovaApi(private val pairing: Pairing) {
             if (!resp.isSuccessful) {
                 val obj = runCatching { JSONObject(text) }.getOrDefault(JSONObject())
                 if (resp.code == 426) { ApiCompat.appTooOld = true; throw ApiException(426, obj.optString("error", "Update the app to keep using this server")) }
-                if (resp.code == 401) throw ApiException(401, "This ${DeviceForm.noun} isn't authorized anymore. Pair again.")
+                if (resp.code == 401) when (obj.optString("reason")) {
+                    "clock" -> throw ApiException(401, "Signed too early or too late", reason = "clock", serverTime = obj.optLong("server_time"))
+                    "replay" -> throw ApiException(401, "Sent twice", reason = "replay")
+                    else -> throw ApiException(401, "This ${DeviceForm.noun} isn't authorized anymore. Pair again.")
+                }
                 if (obj.optString("error") == "view_only")
                     throw ApiException(403, "This ${DeviceForm.noun} has view-only access — ask an admin to change it.")
                 if (obj.optString("error") == "stepup_required")

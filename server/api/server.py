@@ -322,9 +322,10 @@ SECRET_FIELD = re.compile(r"(token|passw|secret|webhook|credential|authorization
 
 def audit(**kw):
     kw["t"] = time.strftime("%Y-%m-%d %H:%M:%S")
-    try:
+    try:                                        # one write() per line, so lines from several threads never run together
         fd = os.open(AUDIT, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o640)
-        with os.fdopen(fd, "a") as f: f.write(json.dumps(kw) + "\n")
+        try: os.write(fd, (json.dumps(kw) + "\n").encode())
+        finally: os.close(fd)
     except Exception: pass
 
 HELPER_SOCK = "/run/nova-helper.sock"     # socket-activated helper outside this sandbox (if installed)
@@ -1108,18 +1109,25 @@ class Handler(BaseHTTPRequestHandler):
             self.fail(ip, 401, "unknown device"); return None
         try: ts_i = int(ts)
         except ValueError: self.fail(ip, 401, "bad time"); return None
-        if abs(time.time() * 1000 - ts_i) > CLOCK_SKEW_MS: self.fail(ip, 401, "clock skew"); return None
         if not (16 <= len(nonce) <= 64) or not nonce.replace("-", "").replace("_", "").isalnum():
             self.fail(ip, 401, "bad nonce"); return None
-        now = time.time()
-        for k in [k for k, exp in nonces.items() if exp < now]: nonces.pop(k, None)
-        if nonce in nonces: self.fail(ip, 401, "replayed request"); return None
         msg = "\n".join([self.command, self.path, ts, nonce, hashlib.sha256(body).hexdigest()]).encode()
         try:
             pub = serialization.load_pem_public_key(dev["public_key"].encode())
             pub.verify(der_sig(base64.b64decode(sig)), msg, ec.ECDSA(hashes.SHA256()))
         except (InvalidSignature, ValueError, TypeError):
             self.fail(ip, 401, "bad signature"); return None
+        # Past this point the request is really from this device. A late or repeated one is refused all the same, but it
+        # says why (so the app re-signs, or corrects for a wrong clock, instead of telling you to pair again) and doesn't
+        # count toward locking the address out: a phone that slept on a request, or a network that sent it twice, isn't guessing.
+        now = time.time()
+        if abs(now * 1000 - ts_i) > CLOCK_SKEW_MS:
+            audit(ip=ip, device=dev.get("name", ""), path=self.path, result=401, why="clock skew", off_s=round((ts_i - now * 1000) / 1000))
+            self.send(401, {"error": "unauthorized", "reason": "clock", "server_time": int(now * 1000)}); return None
+        for k in [k for k, exp in nonces.items() if exp < now]: nonces.pop(k, None)
+        if nonce in nonces:
+            audit(ip=ip, device=dev.get("name", ""), path=self.path, result=401, why="replayed request")
+            self.send(401, {"error": "unauthorized", "reason": "replay"}); return None
         dev["stepup_ok"] = False
         su = self.headers.get("X-Nova-StepUp", "")
         if su and dev.get("stepup_key"):

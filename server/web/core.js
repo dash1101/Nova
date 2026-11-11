@@ -63,8 +63,12 @@ function cloudflareSays(code) {
 let approvalHook = null;          // set by the UI: shows "approve on your phone"
 export function onApproval(fn) { approvalHook = fn; }
 
+// How far this computer's clock is from the server's: requests are signed with the server's time, so a computer whose
+// clock is off still works. Learned when the server refuses a request for its time (it says what time it is).
+let clockOffset = 0;
+const signTime = () => String(Date.now() + clockOffset);
 async function signHeaders(method, path, bodyStr, device) {
-  const ts = String(Date.now()), nonce = b64url(crypto.getRandomValues(new Uint8Array(18)));
+  const ts = signTime(), nonce = b64url(crypto.getRandomValues(new Uint8Array(18)));
   const digest = hex(await crypto.subtle.digest("SHA-256", enc(bodyStr)));
   const sig = await crypto.subtle.sign({ name: "ECDSA", hash: "SHA-256" }, S.keys.privateKey, enc(`${method}\n${path}\n${ts}\n${nonce}\n${digest}`));
   return { "X-Nova-Device": device, "X-Nova-Time": ts, "X-Nova-Nonce": nonce, "X-Nova-Signature": b64(sig), "X-Nova-Client": "web 1" };
@@ -98,7 +102,7 @@ export async function relayFetch(t, method, path, bodyStr = "") {
 export async function signedRaw(method, path, bytes) {
   if (S.target) throw new ApiError(400, `Not while you're controlling ${S.target.name} — open its own Nova web for files`);
   const buf = bytes instanceof Blob ? new Uint8Array(await bytes.arrayBuffer()) : bytes;
-  const ts = String(Date.now()), nonce = b64url(crypto.getRandomValues(new Uint8Array(18)));
+  const ts = signTime(), nonce = b64url(crypto.getRandomValues(new Uint8Array(18)));
   const digest = hex(await crypto.subtle.digest("SHA-256", buf));
   const sig = await crypto.subtle.sign({ name: "ECDSA", hash: "SHA-256" }, S.keys.privateKey, enc(`${method}\n${path}\n${ts}\n${nonce}\n${digest}`));
   const r = await fetch(path, { method, body: buf, credentials: "same-origin", cache: "no-store",
@@ -110,7 +114,7 @@ export async function signedRaw(method, path, bytes) {
 /** Developer options → requests: the last 60 calls to the server, newest first. */
 export const devLog = [];
 function logReq(method, path, status, t0) { devLog.unshift({ t: Date.now(), method, path: String(path).split("?")[0].slice(0, 80), status, ms: Math.round(performance.now() - t0) }); devLog.length = Math.min(devLog.length, 60); }
-export async function api(method, path, body, here = false) {
+export async function api(method, path, body, here = false, again = false) {
   let r; const t0 = performance.now();
   try {
     r = await signedFetch(method, path, body, here);
@@ -129,6 +133,16 @@ export async function api(method, path, body, here = false) {
   if (r.status === 403 && !("error" in j) && /cloudflare/i.test(text))
     throw new ApiError(403, "Cloudflare Access turned this browser away — log in at the Cloudflare page first");
   if (r.status === 202 && j.approval) return approvalHook ? approvalHook(j.approval, j.code, j.totp, j.passkey) : j;     // risky: approve on the phone
+  if (r.status === 401 && (j.reason === "clock" || j.reason === "replay")) {
+    // Refused only for its timing. Sign it again (with the server's clock if ours is off) and send it once more —
+    // but a repeat means the first copy arrived, so only a read goes again, never an action.
+    if (j.reason === "clock") { const off = (+j.server_time || Date.now()) - Date.now(); clockOffset = Math.abs(off) > 20000 ? off : 0; }
+    if (!again && (j.reason === "clock" || method === "GET")) {
+      try { return await api(method, path, body, here, true); }
+      catch (e) { if (e.code === 401 && j.reason === "clock") throw new ApiError(401, `This computer's clock is ${Math.max(1, Math.round(Math.abs(clockOffset) / 60000))} min off from the server's — set it to update automatically`); throw e; }
+    }
+    if (j.reason === "replay") throw new ApiError(0, "The connection dropped — check whether it went through");
+  }
   if (r.status === 401) throw new ApiError(401, "This browser isn't authorized anymore");
   if (!r.ok) throw new ApiError(r.status, j.message || j.error || `HTTP ${r.status}`, false, j.error || "");
   S.lastContact = Date.now();

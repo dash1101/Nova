@@ -91,6 +91,12 @@ X-Nova-Signature: base64 ECDSA P-256 / SHA-256 over
   `{"approval": "<id>", "code": "..."}` and waits for an admin phone (or `sudo nova approve`) to approve it.
 - **Remote** requests through Cloudflare must also carry a valid Cloudflare Access token.
 - **View-only** devices can read everything; changes answer `403` `{"error": "view_only"}`.
+- **Late or repeated, but genuinely signed.** A request whose signature checks out but whose time is more than
+  60 s off answers `401` `{"error": "unauthorized", "reason": "clock", "server_time": <ms>}`; one whose nonce was
+  already used answers `401` `{"error": "unauthorized", "reason": "replay"}`. Clients sign again (using
+  `server_time` to correct a clock that's off) and send it once more — for `replay`, only a `GET`: the first copy
+  arrived, so an action may already have run. These don't count toward the per-address lock-out. Any other `401`
+  is a plain `{"error": "unauthorized"}`, and says nothing about why. *(Since 0.9.17.)*
 
 ## Responses and errors
 
