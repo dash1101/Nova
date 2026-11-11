@@ -62,8 +62,20 @@ def detect():
             "cloudflared": bool(shutil.which("cloudflared")),
             "docker": bool(shutil.which("docker")), "missing_tools": miss,
             "firewall": "ufw" if sh("ufw", "status")[1].startswith("Status: active") else "firewalld" if sh("firewall-cmd", "--state")[1] == "running" else "",
-            "ssh_user": cfg.get("ssh_user") or os.environ.get("SUDO_USER", ""), "discord": bool(ac.get("discord_webhook")),
+            "ssh_user": cfg.get("ssh_user") or _person(), "discord": bool(ac.get("discord_webhook")),
             "near": tzl["name"] if tzl else "", "remote_url": cfg.get("remote_url", ""), "checks": _checks()}
+
+def _person():
+    """Whose setup this is: sudo's caller, the desktop launcher's (pkexec), or the one person's account on this machine."""
+    import pwd
+    u = os.environ.get("SUDO_USER", "")
+    if not u and os.environ.get("PKEXEC_UID", "").isdigit():
+        try: u = pwd.getpwuid(int(os.environ["PKEXEC_UID"])).pw_name
+        except KeyError: u = ""
+    if not u:
+        people = [p.pw_name for p in pwd.getpwall() if 1000 <= p.pw_uid < 60000 and not p.pw_shell.endswith(("nologin", "false"))]
+        u = people[0] if len(people) == 1 else ""
+    return "" if u == "root" else u
 
 def _checks():
     try: import preflight; return [c for c in preflight.checks() if c["level"] != "ok" or c["fix"]]
@@ -156,9 +168,10 @@ input[type=text],input[type=password]{width:100%;padding:12px 14px;border-radius
 .tog{display:flex;align-items:flex-start;gap:14px;font-weight:400;margin:0;padding:12px 0;border-top:1px solid var(--line)}.tog:first-child{border-top:0;padding-top:0}
 .tog input{width:22px;height:22px;margin:2px 0 0;accent-color:var(--blue);flex:none}.tog b{display:block;font-weight:600}.tog span{color:var(--sub);font-size:14px}
 .row{display:flex;gap:10px;justify-content:space-between;margin-top:22px}button{font:inherit;font-weight:700;border:0;border-radius:14px;padding:13px 22px;cursor:pointer}
-.go{background:var(--blue);color:#fff}.back{background:transparent;color:var(--blue)}.ok{color:var(--green)}.warn{color:var(--amber)}
+.go{background:var(--blue);color:#fff}.back{background:transparent;color:var(--blue)}.ok{color:var(--green)}.warn{color:var(--amber)}.bad{color:var(--red)}
 pre{background:var(--bg);border-radius:14px;padding:14px;max-height:50vh;overflow:auto;font:13px/1.45 ui-monospace,monospace;white-space:pre-wrap;margin:0}
 .kv{display:grid;grid-template-columns:auto 1fr;gap:6px 16px}.kv dt{color:var(--sub)}.kv dd{margin:0;overflow-wrap:anywhere}
+@media(max-width:480px){.kv{grid-template-columns:1fr;gap:0}.kv dt{font-size:14px}.kv dd{margin:0 0 10px}.kv dd:last-child{margin:0}}
 .qr{display:flex;gap:22px;align-items:center;flex-wrap:wrap}.qr svg{width:220px;height:220px;background:#fff;border-radius:14px;padding:6px}
 .code{font:700 24px ui-monospace,monospace;letter-spacing:.06em}.badge{display:inline-block;padding:2px 10px;border-radius:10px;background:var(--bg);color:var(--sub);font-size:13px}
 </style></head><body><main id="app"><h1>Nova setup</h1><p class="lead">Looking at this server…</p></main>
@@ -172,7 +185,7 @@ const STEPS = [
   () => `<h2>Welcome</h2><p class="lead">This sets up Nova on <b>${esc(D.hostname)}</b>${D.os ? ` (${esc(D.os)})` : ""}. Five short steps — the suggestions are filled in, and you can change anything later.</p>
     <div class="card"><dl class="kv"><dt>Package manager</dt><dd>${esc(D.pm || "not found")}</dd><dt>Docker</dt><dd>${D.docker ? "installed" : "not installed"}</dd>
     <dt>Tailscale</dt><dd>${D.tailscale_ip ? "running (" + esc(D.tailscale_ip) + ")" : D.tailscale ? "installed" : "not installed"}</dd><dt>Firewall</dt><dd>${esc(D.firewall || "none active")}</dd></dl></div>
-    ${(D.checks || []).length ? `<div class="card">${D.checks.map(c => `<p style="margin:0 0 10px"><b class="${c.level === "ok" ? "ok" : "warn"}">${c.level === "stop" ? "✗" : c.level === "warn" ? "!" : "✓"} ${esc(c.title)}</b>${c.detail ? `<br><span class="hint">${esc(c.detail)}</span>` : ""}${c.fix ? `<br><span class="hint">→ ${esc(c.fix)}</span>` : ""}</p>`).join("")}</div>` : ""}
+    ${(D.checks || []).length ? `<div class="card">${D.checks.map(c => `<p style="margin:0 0 10px"><b class="${c.level === "ok" ? "ok" : c.level === "stop" ? "bad" : "warn"}">${c.level === "stop" ? "✗" : c.level === "warn" ? "!" : "✓"} ${esc(c.title)}</b>${c.detail ? `<br><span class="hint">${esc(c.detail)}</span>` : ""}${c.fix ? `<br><span class="hint">→ ${esc(c.fix)}</span>` : ""}</p>`).join("")}</div>` : ""}
     ${D.configured ? `<p class="hint warn">Nova is already set up here. Going through it again keeps what you don't change.</p>` : ""}`,
   () => `<h2>Network</h2><p class="lead">How phones and browsers at home find this server. Only devices on your home network can pair.</p>
     <div class="card">${field("lan_host", "This server's address at home", "Phones open Nova at https://this-address:8495", D.lan_host)}${field("lan_subnet", "Your home network", "Like 192.168.1.0/24", D.lan_subnet)}</div>`,
@@ -215,7 +228,7 @@ async function run() {
     const r = await (await fetch(base + "/log?from=" + n)).json(); n = r.n;
     const log = $("#log"); log.textContent += r.lines.map(l => l + "\n").join(""); log.scrollTop = log.scrollHeight;
     if (!r.done) return setTimeout(poll, 700);
-    if (r.rc !== 0) { $("#st").innerHTML = `<span class="warn">Setup stopped — see the last lines above.</span> Fix it and run this again, or use <b>sudo nova setup</b> in a terminal.`; return; }
+    if (r.rc !== 0) { $("#st").innerHTML = `<span class="warn">Setup stopped — the last lines below say why.</span> Fix that and run this again, or use <b>sudo nova setup</b> in a terminal.`; return; }
     $("#st").innerHTML = `<span class="ok">✓ Nova is running.</span>`;
     const p = r.pair;
     $("#end").innerHTML = p ? `<h2>Pair your phone</h2><div class="card qr">${p.svg}<div><p>Open the Nova app on your home Wi-Fi and scan this — or type it in:</p>
