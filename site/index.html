@@ -226,13 +226,13 @@ footer { padding-block: 40px 10px; border-top: 1px solid var(--line); display: f
         <div class="step"><h3>Least privilege on the server</h3><p>The API runs unprivileged in a systemd sandbox. The only root code is a helper with a fixed list of commands.</p></div>
       </div>
       <div class="sig" aria-label="What each request signs"><span class="k">signed message =</span> METHOD ␤ PATH ␤ TIME_MS ␤ NONCE ␤ sha256(BODY)<br><span class="k">key =</span> EC P-256 in the Android Keystore (StrongBox when the phone has one), never exportable</div>
-      <p class="note" style="margin-top:14px">Every release is checked with an automated security test of more than 400 checks, and update packages are signed. Remote access goes through Cloudflare Access, so nothing is open to the internet.</p>
+      <p class="note" style="margin-top:14px">Every release is checked with an automated security test of more than 650 checks, and update packages are signed. Remote access goes through Cloudflare Access, so nothing is open to the internet.</p>
     </section>
 
     <section id="install">
       <div class="sec-head"><p class="eyebrow">Install</p><h2>Three commands and a QR code.</h2>
         <p>Nova runs on any Linux with systemd — Debian, Ubuntu, Fedora, Arch, openSUSE and more — on anything from a mini PC to a Raspberry Pi.</p>
-        <p class="small"><b>Windows and macOS:</b> the server isn't available for them yet — it's planned for 1.0. You can already <em>use</em> Nova from them: Nova web runs in any browser on Windows, macOS or Linux, pointed at your Linux server.</p></div>
+        <p class="small"><b>Windows:</b> a preview of the server is out — download <a href="https://github.com/dash1101/Nova/releases/latest/download/nova-windows.zip">nova-windows.zip</a> and double-click <b>Install Nova.cmd</b>, or run <code>irm https://raw.githubusercontent.com/dash1101/Nova/main/get.ps1 | iex</code> in an administrator PowerShell. <a href="https://github.com/dash1101/Nova/blob/main/docs/WINDOWS.md">What works there yet</a>. <b>macOS:</b> not yet. Nova web runs in any browser on Windows, macOS or Linux.</p></div>
       <div class="install">
         <div class="line"><span class="n">⚡</span><div><p><b>The quick way:</b> one line on the server. It downloads the latest release, checks its signature, installs it (with apt on Debian and Ubuntu, so it updates like any package) and tells you what's next.</p>
           <div class="cmd"><span class="prompt">$</span><code id="c-0">curl -fsSL https://raw.githubusercontent.com/dash1101/Nova/main/get.sh | sh</code><button class="copy" data-copy="c-0" type="button">Copy</button></div>
