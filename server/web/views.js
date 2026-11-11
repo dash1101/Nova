@@ -400,7 +400,9 @@ export async function menu(ctx) {
         + row("Servers", { sub: (S.nodes || []).length ? `${S.nodes.length + 1} servers — switch between them here` : "Your other Nova servers in one place — add one with +", blue: true, icon: "dns", click: "go:servers" }))}
       ${sec("Apps & tools")}${group((has("store") ? row("App store", { sub: "Containers and programs", blue: true, icon: "store", tint: "#bf5af2", click: navTabs().some(t => t.route === "store") ? "tab:store" : "go:store" }) : "")
         + row("Containers", { sub: cs?.total ? `${cs.running} of ${cs.total} running` : S.overview?.features?.docker === false ? "Docker isn't installed" : cs ? "None yet" : null, blue: true, icon: "box", click: "go:containers" })
-        + (has("lighting") ? row("Lighting", { sub: "Effects, colors, schedules, your lights", blue: true, icon: "bulb", tint: "#ffb020", click: "go:lighting" }) : "")
+        + (has("lighting") ? row("Lighting", { sub: "Effects, colors, schedules, your lights", blue: true, icon: "bulb", tint: "#ffb020", click: "go:lighting" })
+          // no lights of its own here: a light in Home Assistant (a Govee strip…) can still show the server's status
+          : isAdmin() ? row("Home Assistant light", { sub: "A light in Home Assistant shows the server's status", blue: true, icon: "bulb", tint: "#ffb020", click: "go:ha-light" }) : "")
         + row("Quick panel", { sub: "Your shortcuts — tap ✎ to customize", blue: true, icon: "widgets", click: "go:quick" })
         + row("Dashboard mode", { sub: "Always-on screen for a tablet or spare screen", blue: true, icon: "dash", tint: "#64d2ff", click: "go:dashboard" }))}
       ${sec("Alerts")}${group(row("Inbox", { sub: S.unread ? `${S.unread} new` : "Alerts, logins and server events", blue: true, icon: "bell", tint: "#ff5a5a", click: "go:inbox" })

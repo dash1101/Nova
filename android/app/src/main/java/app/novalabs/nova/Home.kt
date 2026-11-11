@@ -248,6 +248,8 @@ import org.json.JSONObject
                 else if (app.overview?.optJSONObject("features")?.optBoolean("docker", true) == false) "Docker isn't installed" else "None yet" }, true, Icons.Rounded.ViewInAr, onClick = { app.go(Route.Containers) })
             if (app.has("lighting")) { RowDivider()
                 Row1("Lighting", "Effects, colors, schedules, your lights", true, Icons.Rounded.Lightbulb, androidx.compose.ui.graphics.Color(0xFFFFB020), onClick = { app.go(Route.Lighting) }) }
+            else if (app.isAdmin) { RowDivider()      // no lights of its own here: a light in Home Assistant can still show the server's status
+                Row1("Home Assistant light", "A light in Home Assistant shows the server's status", true, Icons.Rounded.Lightbulb, androidx.compose.ui.graphics.Color(0xFFFFB020), onClick = { app.go(Route.HaLight) }) }
             RowDivider()
             Row1("Quick panel", "Your shortcuts — tap ✎ to customize", true, Icons.Rounded.Widgets, onClick = { app.go(Route.QuickPanel) })
             RowDivider()
