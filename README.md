@@ -54,7 +54,8 @@ network, and optionally from anywhere through Cloudflare Access, without a VPN.
 | **Nova web** | The same design in any browser, at `https://<server>:8495/`, installable as an app. Risky actions are approved on your phone; apps can open in windows inside Nova (Labs); game controllers work, with Xbox / PlayStation button hints |
 | **Lighting** | Fans and LED strips on a Gigabyte RGB Fusion 2 board — or any device OpenRGB supports (Labs → OpenRGB): several lights, each with its own effect (wave, comet, fire, gradients, palettes…), presets, schedules with sunrise/sunset and fades, and a status light |
 | **Nova Server window** | On a server with a screen, **Nova Server** in the app menu (or `sudo nova gui`) does what the terminal does: status, pairing with a QR code, devices, approvals, the check-up |
-| **Windows servers** | The same server runs on Windows 10/11 and Windows Server as a preview: pairing, live graphs, alerts, processes, power, drives, Docker Desktop containers ([docs/WINDOWS.md](docs/WINDOWS.md) lists what's there and what isn't yet) |
+| **Keep awake** | Power → Keep awake stops a desktop or laptop server from sleeping by itself — for a few hours, or until you say |
+| **Windows servers** | The same server runs on Windows 10/11 and Windows Server as a preview: pairing, live graphs, alerts, processes, power, drives, programs and updates through winget, Docker Desktop containers ([docs/WINDOWS.md](docs/WINDOWS.md) lists what's there and what isn't yet) |
 | **Plugins** | Add apps and one-tap tools from a small `plugin.json` ([docs/PLUGINS.md](docs/PLUGINS.md)) |
 | **Optional modules** | Lighting (above); plug in your own monitor for alerts |
 
