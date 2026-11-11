@@ -98,8 +98,9 @@ answers are the defaults. For unattended installs: `sudo nova setup --yes`, or `
 ## Removing
 
 ```bash
-sudo apt remove nova-server        # keeps settings and paired devices
-sudo apt purge nova-server         # removes them too (your containers and data are never touched)
+sudo nova uninstall                # keeps settings and paired devices
+sudo nova uninstall --purge        # removes them too (your containers and data are never touched)
+# (on Debian and Ubuntu the same as: sudo apt remove / sudo apt purge nova-server)
 ```
 
 ## Troubleshooting
