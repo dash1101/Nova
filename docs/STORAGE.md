@@ -63,5 +63,5 @@ From a shell: `sudo python3 /usr/lib/nova-api/backups.py list | run <id>`.
 ## Tools
 
 The package recommends mergerfs, mdadm, xfsprogs, btrfs-progs, exfatprogs, nfs-common, cifs-utils,
-fio, stress-ng, iputils-tracepath and attr, so `apt` installs them with Nova. `sudo nova-setup` checks
+fio, stress-ng, iputils-tracepath and attr, so `apt` installs them with Nova. `sudo nova setup` checks
 for anything missing, and each feature installs what it needs the first time it's used.

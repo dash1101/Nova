@@ -38,8 +38,8 @@ Nova's own updates check both before installing anything.
 ## 2. Set it up
 
 ```bash
-sudo nova-setup          # in the terminal
-sudo nova-setup --gui    # in a browser — on this computer, or a phone or laptop on your home network
+sudo nova setup          # in the terminal
+sudo nova setup --gui    # in a browser — on this computer, or a phone or laptop on your home network
 ```
 
 The browser setup prints an address with a one-time key in it (and opens it, if the server has a desktop).
@@ -57,8 +57,8 @@ Both ask the same few questions, with the suggestions filled in:
 | This server | The account the in-app terminal signs in as, your location for sunrise/sunset light schedules, and (advanced) protected mounts and where updates come from. |
 | Start | Saves everything, opens Nova's ports (tcp 8495, udp 8496) to your home network only if `ufw` or `firewalld` is on, and starts Nova. |
 
-Type `?` at any question for a short explanation of that step. Run `sudo nova-setup` again whenever you want to change something: it asks which part, and your current
-answers are the defaults. For unattended installs: `sudo nova-setup --yes`, or `--answers answers.json --yes`.
+Type `?` at any question for a short explanation of that step. Run `sudo nova setup` again whenever you want to change something: it asks which part, and your current
+answers are the defaults. For unattended installs: `sudo nova setup --yes`, or `--answers answers.json --yes`.
 
 ## 3. Pair your phone
 
@@ -71,11 +71,11 @@ answers are the defaults. For unattended installs: `sudo nova-setup --yes`, or `
 
 | Want | Do |
 |---|---|
-| **Use Nova away from home** | [REMOTE.md](REMOTE.md) (Cloudflare Access, free), then `sudo nova-setup` |
+| **Use Nova away from home** | [REMOTE.md](REMOTE.md) (Cloudflare Access, free), then `sudo nova setup` |
 | **Family or a wall tablet** | App → Menu → Users & devices → *Invite a phone* → **View only** |
 | **Use it from a computer** | Open `https://<server>:8495/`, choose *Get a code*, then approve it in the app (*Approve a browser*) |
 | **Always-on screen** | App → Menu → *Dashboard mode*. Pair a spare tablet as View only and pin the screen |
-| **Fan / case lighting** (Gigabyte RGB Fusion 2) | `sudo nova-setup-lighting` |
+| **Fan / case lighting** (Gigabyte RGB Fusion 2) | `sudo nova lighting` |
 | **Alerts, Discord, what's watched** | Built in — see [MONITOR.md](MONITOR.md) |
 | **More servers** | Install Nova on each; in the app, Settings → Servers lists the ones it finds on your network. To see them together in Nova web: Servers → pick one it found → Link, then approve it on that server (in the app, or `sudo nova approve CODE` there). From a terminal: `sudo nova link OTHER-SERVER` |
 | **Your own look** | App → Settings → *Appearance & privacy* (theme, Home layout, app lock); *Server* (name, accent color) |
@@ -92,7 +92,7 @@ answers are the defaults. For unattended installs: `sudo nova-setup --yes`, or `
 ## Updating
 
 - **Server:** install the new `.deb` the same way. Settings and paired phones are kept.
-- **App:** publish a new APK to your own server with `sudo nova-app-publish app.apk "what's new"`.
+- **App:** publish a new APK to your own server with `sudo nova publish app.apk "what's new"`.
   Phones then update from Settings → Software update.
 
 ## Removing

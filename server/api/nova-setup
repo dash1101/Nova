@@ -99,10 +99,24 @@ def lan_guess():
 sys.path[:0] = ["/usr/lib/nova-api", os.path.dirname(os.path.realpath(__file__))]
 
 def apt_install(pkgs, recommends=True):
-    """Install with this Linux's package manager (apt, dnf, pacman or zypper), showing its output."""
+    """Install with this Linux's package manager (apt, dnf, pacman or zypper). In a terminal: one line that follows
+    along (the full output only when something goes wrong); otherwise (the browser setup) every line."""
     import pkg
-    try: return pkg.install(pkgs, recommends=recommends, on_line=lambda l: print(f"    {D}{l}{X}"))[0] == 0
+    tty, tail = sys.stdout.isatty(), []
+    width = shutil.get_terminal_size((80, 20)).columns
+    def line(l):
+        tail.append(l); del tail[:-15]
+        if not tty: return print(f"    {D}{l}{X}")
+        t = " ".join(l.split())
+        if t: print(f"\r\033[K    {D}{t[:max(20, width - 6)]}{X}", end="", flush=True)
+    if tty: info(f"Installing {', '.join(pkgs)} — this can take a few minutes…")
+    try: rc = pkg.install(pkgs, recommends=recommends, on_line=line)[0]
     except ValueError as e: warn(str(e)); return False
+    finally:
+        if tty: print("\r\033[K", end="", flush=True)
+    if rc != 0 and tty:
+        for l in tail: print(f"    {D}{l}{X}")
+    return rc == 0
 
 
 # ── 1. Network ──────────────────────────────────────────────────────────────────────────
@@ -210,13 +224,16 @@ def s_tools(cfg, st):
     if yes(f"Turn on the assistant and download its brain ({'2.5 GB, needs about 6 GB of memory' if mem >= 12 else '1.1 GB, needs about 3 GB of memory'})?", False, key="assistant"):
         st["assistant"] = "smart" if mem >= 12 else "light"
     if any("048D:00005702" in open(u).read().upper() for u in glob.glob("/sys/class/hidraw/hidraw*/device/uevent")):
-        print(f"  {B}Lighting:{X} found a Gigabyte RGB Fusion 2 controller — set it up with {B}sudo nova-setup-lighting{X}")
+        print(f"  {B}Lighting:{X} found a Gigabyte RGB Fusion 2 controller — set it up with {B}sudo nova lighting{X}")
 
 
 # ── 5. This server ──────────────────────────────────────────────────────────────────────
 def s_server(cfg, st):
     step(5, "This server", "Small details. The defaults are fine for most homes.")
-    user = ask("Account the app's Terminal signs in as", cfg.get("ssh_user") or os.environ.get("SUDO_USER", ""), key="ssh_user")
+    while True:
+        user = ask("Account the app's Terminal signs in as", cfg.get("ssh_user") or os.environ.get("SUDO_USER", "") or only_person(), key="ssh_user")
+        if YES or ANSWERS or not user or _account(user): break
+        warn(f"There's no account named {user} on this server — type yours (the one you sign in with), or press Enter to skip.")
     hosts = [{"name": "Home network", "host": cfg.get("lan_host", ""), "port": 22}]
     if cfg.get("tailnet_host"): hosts.append({"name": "Tailscale", "host": cfg["tailnet_host"], "port": 22})
     cfg.update(ssh_user=user, ssh_hosts=hosts)
@@ -232,6 +249,18 @@ def s_server(cfg, st):
         cfg["update_source"] = ask("Update source", cfg.get("update_source", ""), key="update_source")
 
 
+def _account(name):
+    import pwd
+    try: return pwd.getpwnam(name)
+    except KeyError: return None
+
+def only_person():
+    """The one person's account on this machine (when setup runs as root, without sudo): "" if there are several or none."""
+    import pwd
+    people = [p.pw_name for p in pwd.getpwall() if 1000 <= p.pw_uid < 60000 and not p.pw_shell.endswith(("nologin", "false"))]
+    return people[0] if len(people) == 1 else ""
+
+
 def location():
     """Light schedules can start at sunrise or sunset — worked out here, offline."""
     sys.path.insert(0, "/usr/lib/nova-api")
@@ -243,7 +272,7 @@ def location():
     cur = settings.get("location")
     if tzl and not cur: info(f"For sunrise and sunset, Nova assumes near {tzl['name']} (from the time zone).")
     shown = f"{cur['lat']}, {cur['lon']}" if cur else ("time zone" if tzl else "")
-    a = ask("Location for sunrise/sunset (latitude, longitude)", shown, key="location")
+    a = ask("Location for sunrise/sunset (latitude, longitude" + ("" if shown else "; Enter to skip") + ")", shown, key="location")
     if not a or a == shown: return
     if a.lower().replace(" ", "") in ("timezone", "tz"): settings.pop("location", None)
     else:
@@ -288,7 +317,7 @@ def s_start(cfg, st):
     sh("systemctl", "daemon-reload")
     sh("systemctl", "enable", "--now", "nova-helper.socket")
     sh("systemctl", "enable", "nova-api.service"); sh("systemctl", "restart", "nova-api.service")
-    if sh("systemctl", "is-active", "nova-api.service")[0] != 0: sys.exit(f"  {R}Nova didn't start — see: journalctl -u nova-api -n 50{X}")
+    if sh("systemctl", "is-active", "nova-api.service")[0] != 0: sys.exit(f"  {R}Nova didn't start.{X} {B}sudo nova doctor{X} says why (or the log: sudo journalctl -u nova-api -n 50)")
     ok("Nova is running")
     if st.get("assistant"):
         try:
@@ -307,15 +336,15 @@ def s_start(cfg, st):
     print(f"\n  {B}All set.{X}")
     print(f"    App      pair with {B}sudo nova add{X} and scan the code with the Nova app (on your home Wi-Fi)")
     print(f"    Browser  https://{host}:8495/")
-    print(f"    Later    run {B}sudo nova-setup{X} again to change any of this")
-    if not YES and yes("\nPair your phone now?", True): os.execvp("nova", ["nova", "add"])
+    print(f"    Later    run {B}sudo nova setup{X} again to change any of this · {B}nova help{X} for everything else\n")
+    if not YES and yes("Pair your phone now?", True): os.execvp("nova", ["nova", "add"])
 
 
 STEPS = [("Network", s_network), ("Away from home", s_remote), ("Notifications", s_alerts), ("Tools", s_tools), ("This server", s_server)]
 
 
 def main():
-    if os.geteuid() != 0: sys.exit("Run with sudo:  sudo nova-setup")
+    if os.geteuid() != 0: sys.exit("Run with sudo:  sudo nova setup")
     if "--gui" in sys.argv:                               # the same setup in a browser (nova-setup-gui)
         g = shutil.which("nova-setup-gui") or os.path.join(os.path.dirname(os.path.realpath(__file__)), "nova-setup-gui")
         os.execv(sys.executable, [sys.executable, g])

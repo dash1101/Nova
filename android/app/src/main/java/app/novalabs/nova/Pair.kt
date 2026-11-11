@@ -341,7 +341,7 @@ fun parsePairInfo(raw: String): PairInfo? = runCatching {
     Step(1, "Install the server package", "On the server, download the Nova package (nova-server_….deb) and install it — or build it from the source code.",
         "sudo apt install ./nova-server_*.deb\n# or from source:\ngit clone <repo> && cd nova && sudo ./server/install.sh")
     Step(2, "Run the setup wizard", "It finds your home network, asks a few questions (press Enter for the suggested answers) and starts Nova.",
-        "sudo nova-setup")
+        "sudo nova setup")
     Step(3, "Pair this ${DeviceForm.noun}", "On home Wi-Fi, show a pairing code on the server and scan it here. The code works once and expires in 10 minutes.",
         "sudo nova add")
     Step(4, "Optional: use it away from home", "Without a VPN, put Nova behind Cloudflare Access (free) — the README's docs/REMOTE.md walks you through it, then run nova-setup again. With Tailscale, nova-setup turns it on for you.")

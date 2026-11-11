@@ -13,7 +13,7 @@ setup is done (or after an hour).
 """
 import http.server, ipaddress, json, os, re, secrets, shutil, socket, subprocess, sys, tempfile, threading, time
 
-if os.geteuid() != 0: sys.exit("Run with sudo:  sudo nova-setup --gui")
+if os.geteuid() != 0: sys.exit("Run with sudo:  sudo nova setup --gui")
 HERE = os.path.dirname(os.path.realpath(__file__))
 sys.path[:0] = ["/usr/lib/nova-api", HERE]
 SETUP = shutil.which("nova-setup") or os.path.join(HERE, "nova-setup")
@@ -215,7 +215,7 @@ async function run() {
     const r = await (await fetch(base + "/log?from=" + n)).json(); n = r.n;
     const log = $("#log"); log.textContent += r.lines.map(l => l + "\n").join(""); log.scrollTop = log.scrollHeight;
     if (!r.done) return setTimeout(poll, 700);
-    if (r.rc !== 0) { $("#st").innerHTML = `<span class="warn">Setup stopped — see the last lines above.</span> Fix it and run this again, or use <b>sudo nova-setup</b> in a terminal.`; return; }
+    if (r.rc !== 0) { $("#st").innerHTML = `<span class="warn">Setup stopped — see the last lines above.</span> Fix it and run this again, or use <b>sudo nova setup</b> in a terminal.`; return; }
     $("#st").innerHTML = `<span class="ok">✓ Nova is running.</span>`;
     const p = r.pair;
     $("#end").innerHTML = p ? `<h2>Pair your phone</h2><div class="card qr">${p.svg}<div><p>Open the Nova app on your home Wi-Fi and scan this — or type it in:</p>

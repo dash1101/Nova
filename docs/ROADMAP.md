@@ -48,7 +48,7 @@ Nova now runs on any Linux with systemd: Debian and Ubuntu (the .deb), and Fedor
 (a tarball with an installer, or the one-file `nova-installer.run`). Everything that installs or updates
 packages goes through one layer (`server/api/pkg.py`) that speaks apt, dnf, pacman and zypper, and Nova's
 own updates use the signed tarball on those systems. The setup can also run in a browser
-(`sudo nova-setup --gui`), for people who'd rather not use a terminal.
+(`sudo nova setup --gui`), for people who'd rather not use a terminal.
 
 ## iOS app
 

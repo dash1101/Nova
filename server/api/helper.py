@@ -1060,7 +1060,7 @@ SSH_OPTS = "no-port-forwarding,no-agent-forwarding,no-X11-forwarding"
 def _ak_path():
     import pwd
     user = SITE.get("ssh_user", "")
-    if not re.fullmatch(r"[a-z_][a-z0-9_-]{0,31}", user or ""): fail("no terminal user set (sudo nova-setup)")
+    if not re.fullmatch(r"[a-z_][a-z0-9_-]{0,31}", user or ""): fail("no terminal user set (sudo nova setup)")
     try: pw = pwd.getpwnam(user)
     except KeyError: fail(f"user {user} doesn't exist")
     return pw, os.path.join(pw.pw_dir, ".ssh"), os.path.join(pw.pw_dir, ".ssh", "authorized_keys")

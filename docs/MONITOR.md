@@ -43,7 +43,7 @@ choices (levels, logins, USB, pausing Discord) are set from the app.
   it in the server's archive (`/var/lib/nova-alerts/www/archive.jsonl`, newest 50 000 lines), along with
   events older than the Inbox's 200. Any paired device reads it at Inbox → Archive.
 
-From a shell: `sudo nova-alert info "Title" "details"` sends an alert;
+From a shell: `sudo nova alert info "Title" "details"` sends an alert;
 `sudo python3 /usr/lib/nova-api/monitor/nova_alerts.py dismiss <key>` or `forget-drive <serial>`.
 
 ## Drive health tests
