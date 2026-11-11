@@ -1,0 +1,37 @@
+name: winget-probe
+# Does winget work for Nova's helper, which runs as SYSTEM? (Nova's Programs and Updates on Windows depend on it.)
+on:
+  push:
+    branches: [win-parity]
+    paths: ['.github/workflows/winget-probe.yml']
+  workflow_dispatch:
+jobs:
+  probe:
+    strategy: { fail-fast: false, matrix: { os: [windows-latest, windows-2022] } }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: As the runner (an administrator)
+        shell: powershell
+        continue-on-error: true
+        run: |
+          Get-Command winget -ErrorAction SilentlyContinue | Format-List Source
+          winget --version
+          winget search --id 7zip.7zip --exact --accept-source-agreements --disable-interactivity
+          winget list --accept-source-agreements --disable-interactivity | Select-Object -First 8
+          winget upgrade --accept-source-agreements --disable-interactivity | Select-Object -First 8
+      - name: As SYSTEM (how Nova's helper runs)
+        shell: powershell
+        continue-on-error: true
+        run: |
+          $exe = (Get-ChildItem "$env:ProgramFiles\WindowsApps\Microsoft.DesktopAppInstaller_*_x64__8wekyb3d8bbwe\winget.exe" -ErrorAction SilentlyContinue | Sort-Object FullName | Select-Object -Last 1).FullName
+          Write-Host "winget at: $exe"
+          if (-not $exe) { $exe = (Get-Command winget -ErrorAction SilentlyContinue).Source; Write-Host "fallback: $exe" }
+          $out = "C:\winget-probe.txt"
+          $script = "& '$exe' --version *> $out; & '$exe' search --id 7zip.7zip --exact --accept-source-agreements --disable-interactivity *>> $out; & '$exe' list --id 7zip.7zip --accept-source-agreements --disable-interactivity *>> $out; & '$exe' install --id 7zip.7zip --exact --silent --scope machine --accept-source-agreements --accept-package-agreements --disable-interactivity *>> $out; & '$exe' list --id 7zip.7zip --accept-source-agreements --disable-interactivity *>> $out; & '$exe' upgrade --accept-source-agreements --disable-interactivity *>> $out; 'done' >> $out"
+          $a = New-ScheduledTaskAction -Execute powershell.exe -Argument "-NoProfile -ExecutionPolicy Bypass -Command `"$script`""
+          Register-ScheduledTask -TaskName WingetProbe -Action $a -Principal (New-ScheduledTaskPrincipal -UserId 'S-1-5-18' -LogonType ServiceAccount -RunLevel Highest) -Force | Out-Null
+          Start-ScheduledTask -TaskName WingetProbe
+          foreach ($i in 1..120) { Start-Sleep 3; if ((Test-Path $out) -and (Select-String -Path $out -Pattern '^done' -Quiet)) { break } }
+          Get-Content $out -ErrorAction SilentlyContinue
+          Get-ScheduledTaskInfo -TaskName WingetProbe | Format-List LastTaskResult
+          Test-Path "${env:ProgramFiles}\7-Zip\7z.exe"
