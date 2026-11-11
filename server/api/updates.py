@@ -75,8 +75,15 @@ def check(spec=None, log=print, progress=lambda p, n="": None):
         res["containers"].append({k: c[k] for k in ("name", "image", "status", "updatable")})
     progress(92, "Nova")
     rc, so, _ = run(["/usr/sbin/nova-update", "--check"], timeout=200) if not plat.WINDOWS else (1, "", "")   # (Windows: updated by running the installer again)
-    m = re.search(r"installed (\S+) · release (\S+) · (.+)", so)
-    res["nova"] = {"installed": m.group(1), "available": m.group(2), "update": "available" in m.group(3)} if m else {"error": so.strip()[-200:]}
+    # what the updater found, from its status file (its printed line is for people and may change wording)
+    try: st = json.load(open(plat.p("/var/lib/nova-api/update.json")))
+    except (OSError, ValueError): st = {}
+    cur, avail = (st.get("current") or "").replace("~", "-"), (st.get("available") or "").replace("~", "-")
+    if rc == 0 and st.get("state") in ("available", "current", "manual") and cur:
+        res["nova"] = {"installed": cur, "available": avail or cur, "update": st["state"] == "available", **({"manual": True} if st["state"] == "manual" else {})}
+    else:
+        m = re.search(r"installed (\S+) · (?:newest )?release (\S+) · (.+)", so)
+        res["nova"] = {"installed": m.group(1).replace("~", "-"), "available": m.group(2).replace("~", "-"), "update": "available" in m.group(3)} if m else {"error": so.strip()[-200:]}
     save(res)
     n = len(res["apt"]) + sum(1 for c in res["containers"] if c["status"] == "update") + (1 if res["nova"].get("update") else 0)
     log(f"{n} update{'s' if n != 1 else ''} available"); progress(100)
