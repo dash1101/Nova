@@ -138,11 +138,11 @@ rc, r = helper("partitions", "PhysicalDrive0"); check("what isn't there yet says
 rc, r = helper("keep-awake", "300"); check("keep awake for 5 minutes", rc == 0 and r.get("on") and r.get("until", 0) > time.time() + 200, (rc, r))
 time.sleep(3)
 pq = subprocess.run(["powercfg", "/requests"], capture_output=True, text=True, errors="replace").stdout
-check("…and Windows really holds a 'system required' request for it", "SYSTEM:" in pq and "python" in pq.lower().split("SYSTEM:")[1].split("AWAYMODE:")[0], pq[-600:])
+check("…and Windows really holds a 'system required' request for it", "SYSTEM:" in pq and "python" in pq.split("SYSTEM:")[1].split("AWAYMODE:")[0].lower(), pq[-600:])
 rc, r = helper("keep-awake-status"); check("…which the status shows", rc == 0 and r.get("on") is True and r.get("forever") is False, (rc, r))
 rc, r = helper("keep-awake", "0"); time.sleep(2)
 pq = subprocess.run(["powercfg", "/requests"], capture_output=True, text=True, errors="replace").stdout
-check("turning it off lets Windows sleep again", rc == 0 and r.get("on") is False and "python" not in pq.lower().split("SYSTEM:")[1].split("AWAYMODE:")[0], (r, pq[-400:]))
+check("turning it off lets Windows sleep again", rc == 0 and r.get("on") is False and "python" not in pq.split("SYSTEM:")[1].split("AWAYMODE:")[0].lower(), (r, pq[-400:]))
 rc, r = helper("get-notify"); check("notification settings", rc == 0 and r.get("push_min_level") == "info", (rc, r))
 rc, r = helper("set-notify", "push_min_level", "warning"); rc2, r2 = helper("get-notify")
 check("…can be changed", rc == 0 and r2.get("push_min_level") == "warning", (r, r2)); helper("set-notify", "push_min_level", "info")
