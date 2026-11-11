@@ -42,11 +42,13 @@ rc, so, se = sh("sudo", "nova", "add", "--json"); inv = json.loads(so.strip().sp
 check("nova add makes a code with a QR", len(inv.get("code", "")) == 10 and inv.get("payload"), (rc, so[-200:], se[-200:]))
 k = ec.generate_private_key(ec.SECP256R1()); pem = k.public_key().public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo).decode()
 host = os.environ.get("NOVA_HOST", "127.0.0.1")
-req = urllib.request.Request(f"http://{host}:8095/api/v1/pair", data=json.dumps({"code": inv.get("code", ""), "name": "CI test device", "public_key": pem}).encode(), method="POST", headers={"Content-Type": "application/json"})
+import ssl
+CTX = ssl.create_default_context(); CTX.check_hostname = False; CTX.verify_mode = ssl.CERT_NONE      # (phones pin the certificate instead)
+req = urllib.request.Request(f"https://{host}:8495/api/v1/pair", data=json.dumps({"code": inv.get("code", ""), "name": "CI test device", "public_key": pem}).encode(), method="POST", headers={"Content-Type": "application/json"})
 try:
-    with urllib.request.urlopen(req, timeout=30) as r_: pr = json.loads(r_.read()); ps = r_.status
+    with urllib.request.urlopen(req, timeout=30, context=CTX) as r_: pr = json.loads(r_.read()); ps = r_.status
 except urllib.error.HTTPError as e: ps, pr = e.code, {"_": e.read()[:200]}
-check("the code pairs from the home network", ps == 200 and pr.get("device_id"), (ps, pr))
+check("the code pairs from the home network (encrypted, like a phone)", ps == 200 and pr.get("device_id") and len(pr.get("lan_pin", "")) == 64, (ps, pr))
 d = Dev(pr.get("device_id", "x"), k)
 
 print("\nSigned requests")
