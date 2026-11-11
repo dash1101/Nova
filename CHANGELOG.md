@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.9.19-alpha (server and app)
+A fix for something 0.9.18 broke, and what a brand-new phone and server showed when tried from scratch.
+- **Fix: the Updates page always said "Nova is up to date · Installed: ?"** (since 0.9.18). It read Nova's version from the updater's printed line, which 0.9.18 reworded — so it also missed a new Nova release. It reads the updater's status file now, and a test on a fresh Ubuntu machine checks it. (Settings → Software update, the daily check and the Inbox notice weren't affected.)
+- **An old update error no longer lingers.** A server that updated from 0.9.16 kept showing "Last update failed: no update source" in Settings until the next check; an error from before the installed version is dropped.
+- **One warning per drive.** "/home is 91% full" next to "The system drive is 91% full" — Fedora's and openSUSE's default btrfs puts both on the same disk — or the same disk mounted in several places, is now one recommendation, by its plainest name.
+- **Nova in a container (LXC, Docker)** no longer says "still mounted, but its drive is gone" for every mounted folder: a container can't see the host's drives, so that check is skipped there.
+- **A fresh server:** Containers says "No Docker yet" or "No containers yet" instead of "0 of 0 running"; the Menu's Inbox tile says "2 need attention" instead of "All caught up" while something is wrong; and an empty card reader (0 B) is shown as "No media" instead of being offered to be set up with your real drives.
+- **Tested:** a new phone paired by typing the address and code, the released 0.9.18 installer installed, removed and purged on Arch, the Updates page against a 0.9.16 server (it now offers 0.9.18).
+
 ## 0.9.18-alpha (server and app)
 A second pass the same night, on the first hour with Nova: installing it, setting it up, pairing a browser, updating and removing it — on Debian, Fedora and Arch.
 - **Coming from 0.9.16 or earlier?** Setup used to leave "where updates come from" empty, which meant "never check", so those servers never hear about new releases. Run `sudo nova update github:dash1101/Nova` once (tested from 0.9.16: signature checked, settings and paired devices kept); after that Nova checks by itself. `manual` now means what setup says: no daily check, and `sudo nova update` at the server still installs the official release.
