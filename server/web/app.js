@@ -333,7 +333,11 @@ function dragFab(b) {
   b.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); AS.ask(""); } });
 }
 let labsAsked = false;
+// Pages about one thing (a drive, a backup…) opened without saying which — an old bookmark, a hand-typed address:
+// the list they're picked from instead of an empty page about "undefined".
+const NEEDS_ONE = { partitions: "disks", restore: "backups", backup: "backups", "backup-edit": "backups", schedule: "schedules", task: "inbox", pool: "hardware", cmdapp: "apps" };
 function render(dir = 0) {
+  { const [r0, ...a0] = parse(); if (NEEDS_ONE[r0] && !a0.length) { history.replaceState(history.state, "", "#/" + NEEDS_ONE[r0]); } }
   if (!labsAsked && S.overview) { labsAsked = true; get("/api/v1/labs").then(() => drawFab(parse()[0])).catch(() => {}); }
   if (dir === 1) SND.feel("nav"); else if (dir === -1) SND.feel("back");     // going in or coming back has its own sound
   const my = ++seq, [r, ...args] = parse(), view = S.target && NOT_RELAYED.includes(r) ? notRelayed : ROUTES[r] || V.home;

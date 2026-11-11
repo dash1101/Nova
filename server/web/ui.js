@@ -100,7 +100,12 @@ export function row(title, { sub, blue, icon, tint = "var(--blue)", end = "", cl
 export const group = inner => `<div class="group glass">${inner}</div>`;
 export const sec = t => `<div class="sec">${esc(t)}</div>`;
 // Long notes (instructions, explanations) fold to two lines with a small arrow to open them — keeps pages tight
-export const note = t => String(t).length > 170
+// "turn on X in Settings → Labs first" (a Labs feature that's off): said properly, with the way there
+const LABS_OFF = /^turn on (.+) in Settings → Labs first$/;
+export const note = t => LABS_OFF.test(String(t))
+  ? group(row(`${String(t).replace(LABS_OFF, "$1").replace(/[“”]/g, "")} is off`, { sub: "It's one of the experimental features — turn it on in Labs to use this page", icon: "science", tint: "var(--violet, #bf5af2)" })
+      + row("Open Labs", { icon: "science", blue: true, click: "go:labs" }))
+  : String(t).length > 170
   ? `<p class="note xnote"><span class="xt">${esc(t)}</span><button class="xbtn press" aria-label="Show more" aria-expanded="false">${I("down")}</button></p>`
   : `<p class="note">${esc(t)}</p>`;
 export const sw = on => `<span class="sw${on ? " on" : ""}"></span>`;

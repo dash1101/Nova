@@ -1106,8 +1106,8 @@ if verb == "update-status" and not args:
     if rc != 0:                                           # installed from the tarball (any Linux): its VERSION file
         try: v, rc = open(os.path.join(os.path.dirname(os.path.realpath(__file__)), "VERSION")).read().strip(), 0
         except OSError: v = ""
-    st["installed"] = v.strip() if rc == 0 else ""
-    st["source"] = SITE.get("update_source", "")
+    st["installed"] = v.strip().replace("~", "-") if rc == 0 else ""
+    st["source"] = SITE.get("update_source") or "github:dash1101/Nova"      # blank: Nova's own signed releases ("manual": none)
     rc, so, _ = run(["systemctl", "is-active", "nova-self-update.service"])
     st["running"] = so.strip() in ("active", "activating")
     out(st)

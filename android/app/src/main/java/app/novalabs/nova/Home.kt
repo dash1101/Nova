@@ -189,7 +189,7 @@ import org.json.JSONObject
         // at a glance: four live tiles
         val disk = storageList(m).maxByOrNull { it.pct }
         val tiles = listOfNotNull(
-            Quad("Containers", cs?.let { "${it.optInt("running")}/${it.optInt("total")} up" } ?: "—", Icons.Rounded.ViewInAr, N.blue) to { app.go(Route.Containers) },
+            Quad("Containers", containersShort(app, cs), Icons.Rounded.ViewInAr, N.blue) to { app.go(Route.Containers) },
             Quad("Storage", disk?.let { "${it.name} ${it.pct.toInt()}%" } ?: "—", Icons.Rounded.Storage, androidx.compose.ui.graphics.Color(0xFF3ECF6E)) to { app.go(Route.Hardware) },
             if (app.has("lighting")) Quad("Lighting", app.fan?.let { if (it.optBoolean("on")) "${it.optString("effect").replaceFirstChar { c -> c.uppercase() }} · ${it.optInt("brightness")}%" else "Off" } ?: "—",
                 Icons.Rounded.Lightbulb, androidx.compose.ui.graphics.Color(0xFFFFB020)) to { app.go(Route.Lighting) }
@@ -240,7 +240,8 @@ import org.json.JSONObject
         Group {
             Row1("App store", "Containers and programs", true, Icons.Rounded.Storefront, androidx.compose.ui.graphics.Color(0xFFBF5AF2), onClick = { app.tab(Route.Store) })
             RowDivider()
-            Row1("Containers", cs?.let { "${it.optInt("running")} of ${it.optInt("total")} running" }, true, Icons.Rounded.ViewInAr, onClick = { app.go(Route.Containers) })
+            Row1("Containers", cs?.let { if (it.optInt("total") > 0) "${it.optInt("running")} of ${it.optInt("total")} running"
+                else if (app.overview?.optJSONObject("features")?.optBoolean("docker", true) == false) "Docker isn't installed" else "None yet" }, true, Icons.Rounded.ViewInAr, onClick = { app.go(Route.Containers) })
             if (app.has("lighting")) { RowDivider()
                 Row1("Lighting", "Effects, colors, schedules, your lights", true, Icons.Rounded.Lightbulb, androidx.compose.ui.graphics.Color(0xFFFFB020), onClick = { app.go(Route.Lighting) }) }
             RowDivider()
@@ -363,4 +364,12 @@ internal fun upFor(s: Long): String = when {
     s >= 86_400 -> "${s / 86_400}d ${s % 86_400 / 3600}h"
     s >= 3600 -> "${s / 3600}h ${s % 3600 / 60}m"
     else -> "${maxOf(1, s / 60)} min"
+}
+
+/** "3/4 up", or what's true when there's nothing to count. */
+internal fun containersShort(app: AppState, cs: org.json.JSONObject?): String = when {
+    cs == null -> "—"
+    cs.optInt("total") > 0 -> "${cs.optInt("running")}/${cs.optInt("total")} up"
+    app.overview?.optJSONObject("features")?.optBoolean("docker", true) == false -> "No Docker"
+    else -> "None yet"
 }

@@ -228,7 +228,7 @@ def s_server(cfg, st):
         prot = ask("Protected mounts (comma-separated)", ",".join(cfg["protected_mounts"]), key="protected_mounts")
         cfg["protected_mounts"] = sorted({p.strip() for p in prot.split(",") if p.strip()} | {"/", "/boot", "/boot/efi"})
         info("Nova only installs releases signed by the Nova release key.")
-        info("github:owner/repo — GitHub releases · a folder — releases you copy over · blank — manual only")
+        info("blank — Nova's official releases · github:owner/repo — another GitHub repo · a folder — releases you copy over · manual — only when you run sudo nova update")
         cfg["update_source"] = ask("Update source", cfg.get("update_source", ""), key="update_source")
 
 

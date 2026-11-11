@@ -152,13 +152,15 @@ def parse_sums(b):
     return out
 
 
+OFFICIAL = "github:dash1101/Nova"          # where Nova's signed releases are published
+
 def main():
     if os.geteuid() != 0: sys.exit("run with sudo")
     cfg = {}
     try: cfg = json.load(open(CONF))
     except Exception: pass
-    src = ARGS[0] if ARGS else cfg.get("update_source", "")
-    if not src: fail("no update source — pass a folder, or set \"update_source\" in /etc/nova-api/config.json (a folder or github:owner/repo)", 2)
+    src = ARGS[0] if ARGS else (cfg.get("update_source") or OFFICIAL)      # (left blank in setup: Nova's own signed releases)
+    if src == "manual": fail("updates are set to manual on this server — run: sudo nova update FOLDER (or change \"update_source\" in /etc/nova-api/config.json)", 2)
     cur = installed_version()
     status(state="checking", current=cur, source=src)
     work = tempfile.mkdtemp(prefix="nova-update-")

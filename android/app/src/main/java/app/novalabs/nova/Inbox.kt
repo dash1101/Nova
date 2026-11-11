@@ -408,7 +408,7 @@ import java.util.*
     Row1(when { running -> "Updating the server…"; avail -> "Update the server to ${u!!.optString("available")}"; else -> "Server" },
         when {
             u == null -> "Checking…"
-            u.optString("source").isEmpty() -> "Version ${u.optString("installed")} · updates aren't set up yet (sudo nova-setup)"
+            u.optString("source") == "manual" -> "Version ${u.optString("installed")} · updates are manual on this server (sudo nova update)"
             running -> "Installing a signed release — Nova restarts on its own"
             state == "failed" -> "Last update failed: ${u.optString("error").take(80)}"
             avail -> "Signed release · tap to install (fingerprint)"

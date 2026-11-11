@@ -213,7 +213,8 @@ private fun amoledColors(t: NovaColors) = t.copy(bg = Color.Black, glow = Color.
             Tile("Health", if (lvl == "ok") Icons.Rounded.CheckCircle else Icons.Rounded.Error, levelColor(lvl, N)) {
                 Text(if (lvl == "ok") "All good" else st?.optString("headline") ?: "", color = N.text, fontSize = 26.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 Spacer(Modifier.weight(1f))
-                Text(o?.optJSONObject("containers")?.let { "${it.optInt("running")}/${it.optInt("total")} containers running" } ?: "", color = N.sub, fontSize = 14.sp)
+                Text(o?.optJSONObject("containers")?.takeIf { it.optInt("total") > 0 }?.let { "${it.optInt("running")}/${it.optInt("total")} containers running" }
+                    ?: n?.optLong("uptime_s")?.takeIf { it > 0 }?.let { "Up ${upFor(it)}" } ?: "", color = N.sub, fontSize = 14.sp)
                 if (app.error != null) Text("Offline — showing the last data", color = N.amber, fontSize = 13.sp)
             } }
         "cpu" -> GraphTile("CPU", Icons.Rounded.Memory, N.blue, n?.let { "%.0f%%".format(it.optDouble("cpu")) }, n?.let { "load ${it.optDouble("load")}" }, series("cpu"), 100f, tick, window, stats.added)
@@ -241,10 +242,11 @@ private fun amoledColors(t: NovaColors) = t.copy(bg = Color.Black, glow = Color.
         }
         "containers" -> { val cs = o?.optJSONObject("containers")
             Tile("Containers", Icons.Rounded.ViewInAr, N.amber) {
-                Text(cs?.let { "${it.optInt("running")}/${it.optInt("total")}" } ?: "—", color = N.text, fontSize = 40.sp, fontWeight = FontWeight.Bold)
-                Text("running", color = N.sub, fontSize = 14.sp)
+                Text(cs?.let { if (it.optInt("total") > 0) "${it.optInt("running")}/${it.optInt("total")}" else "None" } ?: "—", color = N.text, fontSize = 40.sp, fontWeight = FontWeight.Bold)
+                Text(when { cs == null -> ""; cs.optInt("total") > 0 -> "running"
+                    o?.optJSONObject("features")?.optBoolean("docker", true) == false -> "Docker isn't installed"; else -> "nothing set up yet" }, color = N.sub, fontSize = 14.sp)
                 Spacer(Modifier.weight(1f))
-                Text(m?.optString("websites")?.takeIf { it.isNotEmpty() }?.let { "Websites $it" } ?: "", color = N.sub, fontSize = 13.sp)
+                Text(m?.optString("websites")?.takeIf { it.isNotEmpty() && !it.startsWith("0/0") }?.let { "Websites $it" } ?: "", color = N.sub, fontSize = 13.sp)
             } }
         "backup" -> { val running = m?.optString("data_backup")?.contains("running") == true
             val b = if (running) live(app, "/api/v1/backup", 10_000).value else null

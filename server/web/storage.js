@@ -550,7 +550,7 @@ const iconCache = {};
 export async function appIconUrl(id) { return appIcon(id); }
 export function appHrefFor(a) { return appHref(a); }
 async function appIcon(id) {
-  if (S.target) return null;               // icons are pictures: not carried from another server (first letter instead)
+  if (S.target || !id) return null;               // icons are pictures: not carried from another server (first letter instead)
   if (id in iconCache) return iconCache[id];
   try { const r = await signedFetch("GET", `/api/v1/apps/${enc(id)}/icon`); iconCache[id] = r.ok ? URL.createObjectURL(await r.blob()) : null; }
   catch { iconCache[id] = null; }

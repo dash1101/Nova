@@ -42,6 +42,11 @@ try:                       # optional module: fan/case lighting (modules/fan-gig
 except ImportError:
     nova_rgb = None
 
+def lights_ready():
+    """The lighting module ships with every server, but there are lights to show only once it's been set up
+    (sudo nova lighting makes /var/lib/nova-rgb) or OpenRGB is on in Labs — not on a server without that hardware."""
+    return nova_rgb is not None and (os.path.isdir("/var/lib/nova-rgb") or bool(load_json(SETTINGS, {}).get("labs", {}).get("openrgb")))
+
 API_VERSION = "0.9.16-alpha"
 # The API contract (docs/API.md). API_LEVEL only ever goes up: each new level adds endpoints or fields, never removes or
 # changes one. MIN_LEVEL is the oldest level this server still answers in full (old apps keep working back to it).
@@ -1614,7 +1619,7 @@ class Handler(BaseHTTPRequestHandler):
                     st["features"] = fs; save_json(SETTINGS, st)
                 if nova_rgb and data.get("lighting") is True:                 # back in charge: put your setting back on the lights
                     with rgb_lock: st2 = nova_rgb.load(); nova_rgb.apply(st2, nova_rgb.status_override(st2))
-            avail = {"lighting": nova_rgb is not None, "terminal": SITE_ALLOWS("host_shell"), "files": SITE_ALLOWS("file_manager"), "discovery": bool(CFG.get("discovery", True))}
+            avail = {"lighting": lights_ready(), "terminal": SITE_ALLOWS("host_shell"), "files": SITE_ALLOWS("file_manager"), "discovery": bool(CFG.get("discovery", True))}
             return 200, {"features": [{"id": k, **v, "on": feat_on(k), "available": avail.get(k, True)} for k, v in FEATURES.items()]}
         q = dict(x.split("=", 1) for x in self.path.split("?", 1)[1].split("&") if "=" in x) if "?" in self.path else {}
 
@@ -1916,7 +1921,7 @@ class Handler(BaseHTTPRequestHandler):
                                         "stopped": sum(1 for c in cl if c.get("stopped"))},      # stopped on purpose: not counted as missing
                          "tasks": [{"title": t.get("title", ""), "pct": t.get("pct", 0)} for t in live_tasks() if t.get("state") == "running"],
                          # What this server has, so the app only shows what works here.
-                         "features": {"lighting": nova_rgb is not None and feat_on("lighting"), "lighting_installed": nova_rgb is not None, "monitor": os.path.exists(STATUS),
+                         "features": {"lighting": lights_ready() and feat_on("lighting"), "lighting_installed": lights_ready(), "monitor": os.path.exists(STATUS),
                                       "terminal": feat_on("terminal"), "files": feat_on("files"), "docker": docker_present(),
                                       "backup": True, "legacy_backup": os.path.exists("/usr/local/bin/nova-backup"), "storage": True, "diagnostics": True, "store": os.path.isdir(f"{os.path.dirname(os.path.abspath(__file__))}/store"),
                                       "ssh": bool(SSH_HOSTS), "lan_tls": True, **plat.WITHOUT}}

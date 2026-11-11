@@ -217,7 +217,9 @@ input[type=range]:disabled { opacity: .45; }
 .tile.on::after { display: none; }
 .tile .ti { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; background: color-mix(in srgb, var(--text) 7%, transparent); color: var(--blue); flex: none; }
 .tile.on .ti { background: rgba(255,255,255,.22); color: #fff; }
-.tile .tt { min-width: 0; } .tile b { display: block; font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tile .tt { min-width: 0; flex: 1; }
+/* two lines before an ellipsis: "Back up now" and "Server status" fit a phone's half-width tile */
+.tile b { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; font-size: 15px; font-weight: 600; line-height: 1.15; overflow: hidden; overflow-wrap: anywhere; }
 .tile small { display: block; font-size: 12px; opacity: .75; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tile.wide { grid-column: span 2; }
 /* Google Home–style light slider: the fill is the brightness; text flips color exactly at the fill edge */
