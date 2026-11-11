@@ -322,7 +322,7 @@ PAGE = r"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name
 @media (prefers-color-scheme:dark){:root{--bg:#0b0b0f;--card:#1b1b20;--text:#f4f4f6;--sub:#9c9ca6;--line:#2c2c33;--blue:#4b9bff;--green:#3ccf7a;--amber:#f5a524;--red:#ff6369;--soft:rgba(255,255,255,.07);--shadow:0 1px 0 rgba(255,255,255,.04) inset,0 10px 30px rgba(0,0,0,.35)}}
 *{box-sizing:border-box}html,body{margin:0}body{background:var(--bg);color:var(--text);font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased}
 main{max-width:980px;margin:0 auto;padding:22px 20px 60px;display:grid;gap:16px}
-header{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:6px 2px 4px}
+header{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:6px 2px 4px}header .grow{flex:1 1 260px}
 header img{width:44px;height:44px;border-radius:12px}h1{font-size:22px;margin:0;font-weight:700;letter-spacing:-.01em}
 .sub{color:var(--sub);font-size:13.5px}.grow{flex:1;min-width:0}
 .pill{display:inline-flex;align-items:center;gap:8px;padding:7px 13px;border-radius:999px;background:var(--soft);font-weight:650;font-size:14px}
@@ -358,6 +358,11 @@ footer{display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:s
 const KEY = location.hash.slice(1); let AUTO = new URLSearchParams(location.search).get("do"); history.replaceState(null, "", location.pathname);
 const $ = (s, r = document) => r.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+// "2026-11-10 20:16" → "today 20:16" / "yesterday" / "5 days ago" / "4 weeks ago"
+const ago = st => { const t = Date.parse((st || "").replace(" ", "T")); if (!t) return st || "";
+  const d = (Date.now() - t) / 864e5, today = new Date().toLocaleDateString("sv");      // (sv: YYYY-MM-DD, in local time)
+  return st.slice(0, 10) === today ? "today " + st.slice(11, 16) : d < 2 ? "yesterday" : d < 14 ? Math.floor(d) + " days ago" : d < 30 ? Math.floor(d / 7) + " weeks ago" : d < 60 ? "a month ago" : Math.floor(d / 30) + " months ago"; };
+const quiet = st => { const t = Date.parse((st || "").replace(" ", "T")); return t && Date.now() - t > 30 * 864e5; };
 const clock = s => { s = Math.max(0, Math.round(s)); return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0"); };
 async function api(path, body) {
   const r = await fetch(path, { method: body === undefined ? "GET" : "POST", headers: { "X-Nova-Key": KEY, "Content-Type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) });
@@ -415,7 +420,7 @@ function waiting() {
 function devices() {
   if (!S.configured) return "";
   const rows = S.devices.map(d => `<div class="row"><div class="grow"><div class="t">${esc(d.name)} <span class="tag">${esc(d.kind)}</span> <span class="tag">${esc(d.role)}</span>${d.user ? ` <span class="tag">${esc(d.user)}</span>` : ""}</div>
-      <div class="s">${d.seen ? "last seen " + esc(d.seen) + (d.via ? " via " + esc(d.via) : "") : "never connected yet"}</div></div>
+      <div class="s">${d.seen ? "last seen " + esc(ago(d.seen)) + (d.via ? " via " + esc(d.via) : "") : "never connected yet"}${quiet(d.seen) ? ` <span class="tag" style="color:var(--amber)">quiet for over a month</span>` : ""}</div></div>
       ${confirmRm === d.id ? `<span class="btns"><button class="small danger" data-do="rm-yes" data-id="${esc(d.id)}" ${busy.rm ? "disabled" : ""}>Remove — it can never connect again</button><button class="small" data-do="rm-no">Keep</button></span>`
         : `<button class="small" data-do="rm" data-id="${esc(d.id)}">Remove</button>`}</div>`).join("");
   return `<div class="card"><h2>Devices</h2><div class="sub">${S.devices.length ? S.devices.length + " paired" : "Phones, tablets, watches and browsers that can use this server."}</div><div class="scroll">${rows || `<div class="empty">No devices yet.</div>`}</div>${note.rm ? `<div class="msg err">${esc(note.rm)}</div>` : ""}</div>`;

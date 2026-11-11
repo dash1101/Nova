@@ -107,8 +107,8 @@ def ago(stamp):
     if time.strftime("%Y-%m-%d") == stamp[:10]: return "today " + stamp[11:16]
     if d < 2: return "yesterday"
     if d < 14: return f"{int(d)} days ago"
-    if d < 60: return f"{int(d // 7)} weeks ago"
-    return f"{int(d // 30)} months ago"
+    if d < 30: return f"{int(d // 7)} weeks ago"
+    return "a month ago" if d < 60 else f"{int(d // 30)} months ago"
 
 def help_(): print(__doc__.rstrip()); print(f"\n  Short guides:  nova help TOPIC   ({', '.join(_guides().topics())})"); sys.exit(0)
 
