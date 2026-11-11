@@ -403,7 +403,7 @@ def shell_user():
     """Whose account the server terminal, file manager and command apps use: config "shell_user",
     else the only person account on the machine (uid 1000+ with a login shell). Never root."""
     import pwd
-    want = SITE.get("shell_user", "")
+    want = SITE.get("shell_user", "") or SITE.get("ssh_user", "")      # (setup asks for the latter: "Account the app's Terminal signs in as")
     if want:
         try: u = pwd.getpwnam(want)
         except KeyError: return None
@@ -418,7 +418,7 @@ def _files_user():
     import files
     if SITE.get("file_manager", True) is False: fail("the file manager is turned off (file_manager in /etc/nova-api/config.json)")
     u = shell_user()
-    if not u: fail("set shell_user in /etc/nova-api/config.json to the account the file manager should use")
+    if not u: fail("this server has several accounts — pick yours in sudo nova setup (“Account the app's Terminal signs in as”)")
     files.drop(u); return files, u
 
 if verb in ("files", "files-data") and len(args) == 1:
@@ -462,7 +462,7 @@ if verb == "host-shell" and len(args) == 1:
     import pty, select, fcntl, termios, struct
     if SITE.get("host_shell", True) is False: fail("the server terminal is turned off (host_shell in /etc/nova-api/config.json)")
     u = shell_user()
-    if not u: fail("set shell_user in /etc/nova-api/config.json to the account the terminal should open as")
+    if not u: fail("this server has several accounts — pick yours in sudo nova setup (“Account the app's Terminal signs in as”)")
     who = "".join(c for c in args[0] if c.isalnum() or c in " -_.'")[:60] or "a device"
     notify("warning", f"Server terminal opened by {who}", f"A shell as {u.pw_name}. If this wasn't you, remove that device in Users & devices.")
     changelog(f"Server terminal opened as {u.pw_name} from {who}")

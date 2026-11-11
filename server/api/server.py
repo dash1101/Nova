@@ -664,7 +664,7 @@ def shell_approval(code):
 
 def shell_account():
     """Name of the normal account the terminal and file manager use (for approval texts)."""
-    if CFG.get("shell_user"): return CFG["shell_user"]
+    if CFG.get("shell_user") or CFG.get("ssh_user"): return CFG.get("shell_user") or CFG["ssh_user"]
     try:
         import pwd
         ok = set(l.strip() for l in open("/etc/shells") if l.startswith("/"))

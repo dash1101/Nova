@@ -327,12 +327,12 @@ def run_command(spec, log, progress):
     if a is None and aid.startswith("plugin-"):
         import plugins; a = plugins.command(aid)           # a plugin's tool: from its root-owned manifest
     if not a: raise ValueError("no such command app")
-    user = SITE.get("shell_user", "")
+    user = SITE.get("shell_user", "") or SITE.get("ssh_user", "")       # (setup's "Account the app's Terminal signs in as")
     if not user:
         ok = set(l.strip() for l in open("/etc/shells") if l.startswith("/")) if os.path.exists("/etc/shells") else {"/bin/bash"}
         people = [u.pw_name for u in pwd.getpwall() if 1000 <= u.pw_uid < 60000 and u.pw_shell in ok]
         user = people[0] if len(people) == 1 else ""
-    if not user: raise ValueError("set shell_user in /etc/nova-api/config.json first")
+    if not user: raise ValueError("this server has several accounts — pick yours in sudo nova setup (“Account the app's Terminal signs in as”)")
     log(f"$ {a['command'][:300]}"); progress(5, f"as {user}")
     p = subprocess.Popen(["/usr/sbin/runuser", "-l", user, "-c", a["command"]], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="replace",
                          env={"PATH": "/usr/local/bin:/usr/bin:/bin", "LANG": "C.UTF-8", "TERM": "dumb"})
