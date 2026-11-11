@@ -1433,14 +1433,17 @@ class Handler(BaseHTTPRequestHandler):
         for k in [k for k, v in browser_requests.items() if v["expires"] < now]: browser_requests.pop(k, None)
         if method == "POST" and path == "/api/v1/browser/request":
             fails.setdefault(ip, []).append(now)                      # counts toward the rate limit
-            pend = [v for v in browser_requests.values() if v["state"] == "pending"]
-            # per address, so one noisy device can't fill the queue and lock real browsers out
-            if sum(1 for v in pend if v["from"] == ip) >= 3 or len(pend) >= 30: return self.send(429, {"error": "too many pending requests"})
+            pend = [(k, v) for k, v in browser_requests.items() if v["state"] == "pending"]
+            if len(pend) >= 30: return self.send(429, {"error": "Too many devices are waiting for approval right now — try again in a few minutes."})
             try:
                 d = json.loads(body); pem = d["public_key"]; name = "".join(c for c in str(d.get("name", "Browser")) if c.isprintable())[:40]
                 pub = serialization.load_pem_public_key(pem.encode())
                 if not isinstance(pub, ec.EllipticCurvePublicKey) or pub.curve.name != "secp256r1": raise ValueError
             except Exception: return self.send(400, {"error": "need a P-256 public_key"})
+            # at most 3 waiting per address, so one noisy device can't fill the queue and lock real browsers out — and a
+            # browser asking again (a reload, a second try) makes room by dropping its address's oldest request, not by waiting 10 minutes
+            mine = sorted((v["expires"], k) for k, v in pend if v["from"] == ip)
+            for _, k in mine[:max(0, len(mine) - 2)]: browser_requests.pop(k, None)
             rid = secrets.token_urlsafe(18)
             code = "".join(secrets.choice("ABCDEFGHJKLMNPQRSTUVWXYZ23456789") for _ in range(6))
             kind = "wear" if d.get("kind") == "wear" else "app" if d.get("kind") == "app" else "browser"   # a Wear OS watch pairs the same way, then gets a watch's narrow access; so does the Android app, signed in through Cloudflare (a phone or tablet away from home)

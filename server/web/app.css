@@ -301,7 +301,7 @@ body.side #toast { bottom: 24px; }
 
 /* pairing */
 .pair { max-width: 520px; margin: 0 auto; padding: 12vh 0 40px; }
-.pair h1 { font-size: 52px; margin: 0 26px 6px; } .pair .lead { margin: 0 26px 26px; font-size: 17px; color: var(--sub); }
+.pair h1 { font-size: 52px; margin: 0 26px 6px; line-height: 1.1; } .pair .lead { margin: 0 26px 26px; font-size: 17px; line-height: 1.4; color: var(--sub); }
 
 /* dashboard (always-on) */
 .dash { position: fixed; inset: 0; z-index: 20; padding: 16px; overflow: auto; background: var(--bg); }
