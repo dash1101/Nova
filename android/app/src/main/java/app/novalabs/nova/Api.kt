@@ -124,7 +124,7 @@ class NovaApi(private val pairing: Pairing) {
                 if (!again) throw if (e.reason == "replay") ApiException(0, "Connection dropped — check whether it went through") else e
                 if (e.reason == "clock") ServerClock.learn(pairing.profile, e.serverTime)
                 try { once() } catch (e2: ApiException) {
-                    if (e2.reason == "clock") throw ApiException(401, "This ${DeviceForm.noun}'s clock is ${ServerClock.offMinutes(pairing.profile).coerceAtLeast(1)} min off from the server's. " +
+                    if (e2.reason == "clock") throw ApiException(0, "This ${DeviceForm.noun}'s clock is ${ServerClock.offMinutes(pairing.profile).coerceAtLeast(1)} min off from the server's. " +
                         "Turn on automatic date and time in Android settings.", reason = "clock")
                     throw e2
                 }

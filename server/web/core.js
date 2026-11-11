@@ -139,7 +139,7 @@ export async function api(method, path, body, here = false, again = false) {
     if (j.reason === "clock") { const off = (+j.server_time || Date.now()) - Date.now(); clockOffset = Math.abs(off) > 20000 ? off : 0; }
     if (!again && (j.reason === "clock" || method === "GET")) {
       try { return await api(method, path, body, here, true); }
-      catch (e) { if (e.code === 401 && j.reason === "clock") throw new ApiError(401, `This computer's clock is ${Math.max(1, Math.round(Math.abs(clockOffset) / 60000))} min off from the server's — set it to update automatically`); throw e; }
+      catch (e) { if (e.code === 401 && j.reason === "clock") throw new ApiError(0, `This computer's clock is ${Math.max(1, Math.round(Math.abs(clockOffset) / 60000))} min off from the server's — set it to update automatically`, false, "clock"); throw e; }      // (not 401: that would make this browser forget its pairing)
     }
     if (j.reason === "replay") throw new ApiError(0, "The connection dropped — check whether it went through");
   }
