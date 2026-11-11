@@ -7,10 +7,16 @@ whose signature checks out. This page is for the cases around that.
 ## Server
 
 - **From the app or Nova web:** Settings → Software update → Update the server (needs your fingerprint).
-- **From a terminal:** `sudo nova-update` (checks GitHub, verifies the signature, installs).
+- **From a terminal:** `sudo nova update` (checks Nova's releases on GitHub, verifies the signature, installs);
+  `sudo nova update --check` only looks.
 - **Debian / Ubuntu by hand:** `sudo apt install ./nova-server_VERSION_all.deb`.
 - **Other Linux by hand:** `sudo sh nova-installer.run`.
 - **Fresh install or reinstall:** `curl -fsSL https://raw.githubusercontent.com/dash1101/Nova/main/get.sh | sh`.
+
+**Where updates come from** (`sudo nova setup` → advanced settings): blank means Nova's official releases, checked
+once a day and never installed without you; `github:owner/repo` or a folder for your own builds; `manual` turns
+the daily check off (`sudo nova update` at the server still works). Before 0.9.17, blank meant "never check" — a
+server set up then can catch up once with `sudo nova update github:dash1101/Nova`.
 
 Your settings, paired devices, alerts and backup jobs stay where they are (`/etc/nova-api`, `/var/lib/nova-api`,
 `/etc/nova-backup`) through every update and reinstall.

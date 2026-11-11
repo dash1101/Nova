@@ -4,6 +4,7 @@ nova-update — install a signed Nova release (server package + app for the in-a
 
     sudo nova-update --check             is there something newer? (no changes)
     sudo nova-update                     install the newest release from the configured source
+    sudo nova-update github:owner/repo   … from that GitHub repo's releases instead
     sudo nova-update /path/to/release    install from a folder (or a single SHA256SUMS-signed set)
 
 A release is a folder (or a GitHub release) containing:
@@ -12,7 +13,8 @@ A release is a folder (or a GitHub release) containing:
 
 Nothing is installed unless SHA256SUMS is signed by the release key shipped in this package and
 every file matches it. Downgrades are refused (unless --allow-downgrade).
-Source: "update_source" in /etc/nova-api/config.json — a local folder, or "github:owner/repo".
+Source: "update_source" in /etc/nova-api/config.json — blank (Nova's official releases), "github:owner/repo",
+a local folder, or "manual" (never checks by itself; sudo nova update at the server still installs the official release).
 Status for the app: /var/lib/nova-api/update.json
 """
 import hashlib, json, os, re, shutil, subprocess, sys, tempfile, time, urllib.request
@@ -27,6 +29,7 @@ FLAGS = {a for a in sys.argv[1:] if a.startswith("--")}
 
 
 def say(m): print(m, flush=True)
+def pretty(v): return (v or "").replace("~", "-")           # Debian spells it 0.9.17~alpha; people see 0.9.17-alpha
 
 
 def check_everything():
@@ -160,8 +163,14 @@ def main():
     try: cfg = json.load(open(CONF))
     except Exception: pass
     src = ARGS[0] if ARGS else (cfg.get("update_source") or OFFICIAL)      # (left blank in setup: Nova's own signed releases)
-    if src == "manual": fail("updates are set to manual on this server — run: sudo nova update FOLDER (or change \"update_source\" in /etc/nova-api/config.json)", 2)
     cur = installed_version()
+    if src == "manual":
+        # "manual": Nova never looks by itself (no daily check, no update from the app) — but a person who runs
+        # sudo nova update at the server gets Nova's official release, as nova setup promises.
+        if sys.stdin.isatty(): src = OFFICIAL
+        elif "--check" in FLAGS:
+            status(state="manual", current=cur, source="manual", error=""); say("updates are set to manual on this server — nothing checked"); return
+        else: fail("updates are set to manual on this server — run sudo nova update there", 2)
     status(state="checking", current=cur, source=src)
     work = tempfile.mkdtemp(prefix="nova-update-")
     try:
@@ -183,15 +192,15 @@ def main():
             if avail_newer and prev.get("notified") != ver:            # once per new version
                 a = shutil.which("nova-alert") or "/usr/sbin/nova-alert"
                 if os.path.exists(a):
-                    subprocess.run([a, "info", f"Server update available: Nova {ver}", f"You have {cur}. Install it from Nova → Settings → Software update (or: sudo nova-update)."],
+                    subprocess.run([a, "info", f"Server update available: Nova {pretty(ver)}", f"You have {pretty(cur)}. Install it from Nova → Settings → Software update (or: sudo nova update)."],
                                    env={**os.environ, "NOVA_ALERT_CATEGORY": "update"}, capture_output=True)
                 status(notified=ver)
-            say(f"installed {cur or 'none'} · release {ver} · {'update available' if avail_newer else 'up to date'}")
+            say(f"installed {pretty(cur) or 'none'} · newest release {pretty(ver)} · {'update available — sudo nova update installs it' if avail_newer else 'up to date'}")
             if "--all" in FLAGS: check_everything()
             return
         if not avail_newer and "--allow-downgrade" not in FLAGS and "--reinstall" not in FLAGS:
-            say(f"✓ already up to date ({cur})"); return
-        say(f"→ installing nova-server {ver} (signature and checksums verified)")
+            say(f"✓ already up to date ({pretty(cur)})"); return
+        say(f"→ installing Nova {pretty(ver)} (signature and checksums verified)")
         status(state="installing", available=ver)
         apks = sorted(n for n in listed if n.endswith("-universal.apk") and os.path.exists(os.path.join(work, n)))
         keep = None
@@ -209,10 +218,10 @@ def main():
             r = subprocess.run(["apt-get", "install", "-y", "--allow-downgrades", os.path.join(work, deb)], capture_output=True, text=True)
             if r.returncode != 0: fail("apt couldn't install it: " + (r.stderr or r.stdout)[-400:])
         if keep:
-            subprocess.run(["nova-app-publish", keep, f"Nova {ver}"], capture_output=True)
-            say(f"→ app {os.path.basename(keep)} published to the in-app updater")
+            subprocess.run(["nova-app-publish", keep, f"Nova {pretty(ver)}"], capture_output=True)
+            say("→ the matching app is ready in the in-app updater (Nova app → Settings → Software update)")
         status(state="done", current=installed_version(), available=ver, error="")
-        say(f"✓ Nova {installed_version()} installed")
+        say(f"✓ Nova {pretty(installed_version())} installed — settings and paired devices kept")
     finally:
         shutil.rmtree(work, ignore_errors=True)
 

@@ -16,7 +16,8 @@
     sudo nova doctor               check everything; each problem comes with how to fix it
     sudo nova setup                guided setup (network, remote access, location, tools…)
     nova gui                       the Nova Server window: status, pairing, devices and approvals without the terminal
-    sudo nova update [--check]     install the newest signed release
+    sudo nova update [--check]     install the newest signed release (--check: only look)
+    nova version                   which Nova this is
     sudo nova lighting             set up the fan/case lighting module
     sudo nova backup [now|list]    back up now, or list backups
     sudo nova log [N]              the last N things done through Nova (--raw: as logged)
@@ -472,6 +473,7 @@ if __name__ == "__main__":
     if not a: menu()
     cmd = a[0]
     if cmd in ("help", "-h", "--help", "?"): help_topic(a[1]) if len(a) > 1 else help_()
+    if cmd in ("version", "--version", "-v", "-V"): print(f"Nova {version()}"); sys.exit(0)
     if len(a) > 1 and a[1] in ("-h", "--help", "help", "?") and a[0] in _guides().topics() + list(_guides().ALIASES): help_topic(a[0])
     NAMES = ["add", "approve", "devices", "remove", "status", "setup", "update", "lighting", "backup", "log", "alert", "publish",
              "plugin", "cloudflare", "doctor", "link", "help", "gui", "pair", "revoke", "approve-browser", "rm", "list"]
