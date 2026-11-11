@@ -173,7 +173,7 @@ def port_free(port):
         except OSError: return False
 
 def programs():
-    return {p["pkg"]: p for p in load_json(f"{STORE}/programs.json", [])}
+    return {p["pkg"]: p for p in load_json(f"{STORE}/{'programs-windows' if plat.WINDOWS else 'programs'}.json", [])}
 
 # ── drives ───────────────────────────────────────────────────────────────────
 ROLES = {"/": "Boot drive", **SITE.get("drive_roles", {})}

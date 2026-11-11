@@ -16,7 +16,7 @@ try: SITE = json.load(open("/etc/nova-api/config.json"))
 except Exception: SITE = {}
 ENV = {**os.environ, "DEBIAN_FRONTEND": "noninteractive", "LC_ALL": "C"}
 NOVA_PORTS = {8095, 8495, 8496}
-PKG_RE = r"[a-z0-9][a-z0-9+.-]{0,100}"
+PKG_RE = r"[A-Za-z0-9][A-Za-z0-9+._-]{0,100}" if os.name == "nt" else r"[a-z0-9][a-z0-9+.-]{0,100}"     # (winget ids: 7zip.7zip, Docker.DockerDesktop)
 # Removing these would take the server (or Nova) down with it.
 ESSENTIAL = {"nova-server", "systemd", "systemd-sysv", "openssh-server", "sudo", "apt", "dpkg", "bash", "coreutils", "libc6", "python3",
              "python3-cryptography", "docker-ce", "docker.io", "containerd.io", "linux-image-amd64", "linux-image-arm64", "grub-pc", "grub-efi-amd64", "grub-efi-arm64", "raspberrypi-kernel", "raspberrypi-bootloader", "linux-image-rpi-v8", "linux-image-rpi-2712", "network-manager",
@@ -257,7 +257,7 @@ def program_install(spec, log, progress):
     import pkg
     if pkg.which() != "apt":
         log("Refreshing the package lists…"); progress(3); pkg.refresh()
-        names = [pk, *WITH.get(pk, [])[:1]]
+        names = [pk, *[x for x in WITH.get(pk, [])[:1] if pkg.name(x)]]
         _other("install", names, log, progress)
         if pk == "docker.io": run(["systemctl", "enable", "--now", "docker"], timeout=120)
         changelog(f"Installed program {' '.join(names)} (from the Nova app)"); progress(100); return {"ok": True, "pkg": pk}
@@ -292,10 +292,11 @@ def search_programs(q, limit=40):
     """apt-cache search, with whether each one is installed. (Read-only.)"""
     q = str(q).strip().lower()[:60]
     if len(q) < 2 or not re.fullmatch(r"[a-z0-9+.\- ]+", q): return []
+    if os.name == "nt": q = q.strip()
     import pkg
     if pkg.which() != "apt":
         out = [{"pkg": n, "description": d[:160]} for n, d in pkg.search(q, 80)]
-        out.sort(key=lambda p: (not p["pkg"].startswith(q), p["pkg"] != q, len(p["pkg"]))); out = out[:limit]
+        out.sort(key=lambda p: (not p["pkg"].lower().startswith(q), p["pkg"].lower() != q, len(p["pkg"]))); out = out[:limit]
         inst = pkg.installed([p["pkg"] for p in out])
         for p in out: p["installed"] = inst.get(p["pkg"], False); p["essential"] = p["pkg"] in ESSENTIAL
         return out

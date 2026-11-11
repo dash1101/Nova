@@ -217,7 +217,10 @@ def is_admin():
 # background tasks. Listed so a verb that hasn't been looked at on Windows says so instead of failing oddly.
 SHARED = {"containers", "containers-stats", "container", "container-info", "container-logs", "container-diagnose", "container-policy",
           "notify-paired", "notify-ssh-key", "notify-revoked", "get-notify", "set-notify", "discord-status", "discord-set", "discord-test",
-          "alerts-dismiss", "alerts-undismiss", "events-delete", "events-restore", "recommendations-snooze"}
+          "alerts-dismiss", "alerts-undismiss", "events-delete", "events-restore", "recommendations-snooze",
+          "programs", "program-search", "task-start", "task-list", "task-status", "task-stop"}
+# Background tasks a Windows server can run so far (winget programs and updates; container updates with Docker Desktop)
+WIN_TASKS = {"program-install", "program-remove", "updates-check", "apt-upgrade", "containers-update"}
 
 LIB = os.path.dirname(os.path.realpath(__file__))
 MONITOR = next((p for p in (os.path.join(LIB, "monitor", "nova_alerts.py"), os.path.join(LIB, "..", "monitor", "nova_alerts.py")) if os.path.exists(p)), None)
@@ -404,7 +407,7 @@ def _hold_awake(until):
     ctypes.windll.kernel32.SetThreadExecutionState(ES_CONTINUOUS)
 
 def tools_status():
-    have = {"docker": bool(shutil.which("docker")), "winget": bool(winget()), "tailscale": bool(shutil.which("tailscale")), "cloudflared": bool(shutil.which("cloudflared"))}
+    have = {"docker": bool(shutil.which("docker") or docker_running()), "winget": bool(winget()), "tailscale": bool(shutil.which("tailscale")), "cloudflared": bool(shutil.which("cloudflared"))}
     return {"tools": have, "missing": []}
 
 _WINGET = []
@@ -467,8 +470,9 @@ def verb(verb, args, h):
     if verb == "list-dirs" and len(args) == 1: out(list_dirs(args[0], fail))
     if verb == "backup-status" and not args: out({"none": True})
     if verb == "recommendations" and not args: out({"recommendations": [], "snoozed": 0, "t": time.time()})
-    if verb == "task-list" and not args: out({"tasks": []})
-    if verb in ("programs", "program-search"): out({"items": []})
+    if verb == "task-start" and args and args[0] not in WIN_TASKS: fail("That isn't available on a Windows server yet.", 3)
+    if verb in ("programs", "program-search") and not winget():
+        fail("winget isn't on this computer — it comes with Windows 10/11 (App Installer from the Microsoft Store) and Windows Server 2025", 3)
     if verb == "power-schedule-list" and not args: out({"schedules": _scheds()})
     if verb == "update-status" and not args:
         try: v = open(os.path.join(LIB, "VERSION")).read().strip()

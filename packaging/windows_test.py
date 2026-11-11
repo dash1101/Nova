@@ -154,6 +154,44 @@ try:
 except OSError: got = b""
 check("the helper ignores a caller without the key", got == b"", got[:100])
 
+print("\nPrograms and updates (winget)")
+def task(kind, spec, limit=900):
+    rc, r = helper("task-start", kind, json.dumps(spec))
+    if rc != 0: return {"state": "refused", **r}
+    tid = r.get("id"); end = time.time() + limit
+    while time.time() < end:
+        rc, t = helper("task-status", tid)
+        if t.get("state") in ("done", "failed", "stopped"): return t
+        time.sleep(3)
+    return {"state": "timeout", "id": tid}
+rc, tl = helper("tools-status"); has_wg = bool((tl.get("tools") or {}).get("winget"))
+print("      winget here:", has_wg)
+s_, ov2 = d.call("GET", "/api/v1/overview", timeout=60); ft2 = ov2.get("features", {})
+check("Programs, Updates and the store show exactly when winget is here", bool(ft2.get("programs")) == has_wg and bool(ft2.get("updates")) == has_wg and bool(ft2.get("store")) == has_wg, ft2)
+rc, r = helper("task-start", "format", json.dumps({"x": 1})); check("a task Windows can't do yet is refused plainly", rc != 0 and "Windows" in r.get("error", ""), (rc, r))
+if has_wg:
+    rc, r = helper("programs", timeout=300); items = r.get("items", [])
+    check("the programs list (winget catalog) with what's installed", rc == 0 and len(items) >= 15 and any(i["pkg"] == "7zip.7zip" for i in items) and all("installed" in i for i in items), (rc, str(r)[:300]))
+    rc, r = helper("program-search", "windirstat", timeout=120); found = [i["pkg"] for i in r.get("items", [])]
+    check("search finds a program", rc == 0 and "WinDirStat.WinDirStat" in found, (rc, str(r)[:300]))
+    t = task("program-install", {"pkg": "WinDirStat.WinDirStat"})
+    check("install a program as a background task", t.get("state") == "done", str(t)[:600])
+    rc, r = helper("programs", timeout=300)
+    check("…and it shows as installed", any(i["pkg"] == "WinDirStat.WinDirStat" and i["installed"] for i in r.get("items", [])), str([i for i in r.get("items", []) if "WinDir" in i["pkg"]])[:200])
+    t = task("program-remove", {"pkg": "WinDirStat.WinDirStat"})
+    check("remove it again", t.get("state") == "done", str(t)[:600])
+    t = task("updates-check", {})
+    up = json.load(open(os.path.join(DATA, "data", "updates.json"))) if os.path.exists(os.path.join(DATA, "data", "updates.json")) else {}
+    check("check for updates lists what winget can upgrade", t.get("state") == "done" and isinstance(up.get("apt"), list), (str(t)[:300], str(up)[:300]))
+    print("      upgradable:", [u["name"] for u in up.get("apt", [])][:12])
+    target = next((u["name"] for u in up.get("apt", []) if u["name"] in ("7zip.7zip", "Notepad++.Notepad++", "Git.Git")), None)
+    if target:
+        t = task("apt-upgrade", {"packages": [target]}, 1200)
+        check(f"upgrade one ({target})", t.get("state") == "done", str(t)[:600])
+    rc, r = helper("task-list"); check("the task list shows them", rc == 0 and len(r.get("tasks", [])) >= 3, (rc, str(r)[:200]))
+else:
+    rc, r = helper("programs"); check("without winget, Programs says why", rc != 0 and "winget" in r.get("error", ""), (rc, r))
+
 print("\nThe monitor")
 status = os.path.join(DATA, "alerts", "www", "status.json"); end = time.time() + 120
 while time.time() < end and not os.path.exists(status): time.sleep(2)

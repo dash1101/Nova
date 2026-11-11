@@ -13,11 +13,13 @@ again themselves (storage.py, backups.py, diag.py).
   tasks.py exec <id>                  (systemd)
   tasks.py run <kind> <spec-json>     (root shell: inline, for testing)
 """
-import fcntl, json, os, re, secrets, subprocess, sys, time
+import json, os, re, secrets, subprocess, sys, time
 
 HERE = os.path.dirname(os.path.realpath(__file__))
 sys.path.insert(0, HERE)
-DIR = "/run/nova-tasks"
+import plat  # noqa: E402
+WIN = plat.WINDOWS                     # Windows: each task is a detached process instead of a systemd unit (the rest is the same)
+DIR = plat.p("/run/nova-tasks")
 STORAGE_KINDS = {"format", "combine", "raid", "pool-remove", "pool-add", "fstab-nofail", "fstab-add", "repair", "clone", "swap-setup", "partition-apply", "partition-restore", "mount-set", "mount-clear"}
 DIAG_KINDS = {"net-internet", "disk-speed", "cpu-stress", "mem-test"}
 BACKUP_KINDS = {"backup-run", "restore", "tools"}
@@ -46,7 +48,8 @@ def load(tid):
     except Exception: return None
 
 def save(t):
-    os.makedirs(DIR, exist_ok=True); os.chmod(DIR, 0o755)
+    os.makedirs(DIR, exist_ok=True)
+    if not WIN: os.chmod(DIR, 0o755)
     tmp = path(t["id"]) + ".tmp"
     with open(tmp, "w") as f: json.dump(t, f)
     os.chmod(tmp, 0o644); os.replace(tmp, path(t["id"]))
@@ -136,6 +139,14 @@ def start(kind, spec):
     with os.fdopen(fd, "w") as f: json.dump({"kind": kind, "spec": spec}, f)
     if os.environ.get("NOVA_TASKS_INLINE") == "1":
         execute(tid); return load(tid)
+    if WIN:                            # its own process, detached from the helper call that started it (all three streams closed, so that call returns)
+        try:
+            p = subprocess.Popen([sys.executable, "-I", os.path.join(HERE, "tasks.py"), "exec", tid], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                                 stderr=subprocess.DEVNULL, close_fds=True, cwd=os.environ.get("SystemRoot") or None, creationflags=0x08000000 | 0x00000008 | 0x00000200)
+            t["pid"] = p.pid; save(t)
+        except OSError as e:
+            t.update(state="failed", error=f"couldn't start: {e}"[:200], finished=time.time()); save(t)
+        return t
     rc = subprocess.run(["systemd-run", f"--unit=nova-task-{tid}", "--collect", "--quiet", "--property=KillMode=mixed",
                          "--property=TimeoutStopSec=30", "/usr/bin/python3", "-I", os.path.join(HERE, "tasks.py"), "exec", tid],
                         capture_output=True, text=True, timeout=30)
@@ -246,11 +257,15 @@ def stop(tid):
     t = load(tid)
     if not t or t["state"] != "running": raise ValueError("not running")
     if t["kind"] in ("format", "combine", "raid", "pool-remove", "pool-add", "repair"): raise ValueError("drive setup can't be stopped halfway — it finishes in a moment")
-    subprocess.run(["systemctl", "stop", f"nova-task-{tid}.service"], capture_output=True, timeout=60)
+    if WIN:
+        if t.get("pid"): subprocess.run(["taskkill", "/T", "/F", "/PID", str(int(t["pid"]))], capture_output=True, timeout=60)
+    else: subprocess.run(["systemctl", "stop", f"nova-task-{tid}.service"], capture_output=True, timeout=60)
     t.update(state="stopped", step="Stopped", finished=time.time()); save(t)
     return t
 
 def notify(level, title, detail="", category="script"):
+    if WIN:
+        import winhost; return winhost.notify(level, title, detail)
     p = next((x for x in ("/usr/sbin/nova-alert", "/usr/local/bin/nova-alert") if os.path.exists(x)), None)
     try:
         if p: subprocess.run([p, level, title, detail], capture_output=True, timeout=30, env={**os.environ, "NOVA_ALERT_CATEGORY": category})
@@ -258,6 +273,8 @@ def notify(level, title, detail="", category="script"):
     except Exception: pass
 
 def changelog(msg):
+    if WIN:
+        import winhost; return winhost.changelog(msg)
     p = next((x for x in ("/usr/local/bin/nova-log", "/usr/bin/nova-log") if os.path.exists(x)), None)
     try:
         if p: subprocess.run([p, "app", msg], capture_output=True, timeout=30)
@@ -265,11 +282,19 @@ def changelog(msg):
             import safeio; safeio.append("/var/log/nova-api/changes.log", time.strftime("%Y-%m-%d %H:%M ") + msg + "\n")
     except Exception: pass
 
+def _alive(t):
+    """Windows: is the task's process still the one running it?"""
+    try:
+        import psutil
+        return any(t["id"] in a for a in psutil.Process(int(t.get("pid") or 0)).cmdline())
+    except Exception: return False
+
 def reap():
     """A task whose unit died (server restart, kill) is marked failed instead of 'running' forever."""
     for t in all_tasks():
         if t["state"] == "running" and time.time() - t["started"] > 5:
-            rc = subprocess.run(["systemctl", "is-active", f"nova-task-{t['id']}.service"], capture_output=True, text=True).stdout.strip()
+            if WIN: rc = "active" if _alive(t) else "gone"
+            else: rc = subprocess.run(["systemctl", "is-active", f"nova-task-{t['id']}.service"], capture_output=True, text=True).stdout.strip()
             if rc not in ("active", "activating", "deactivating"):
                 t.update(state="failed", error="stopped unexpectedly (restart?)", finished=time.time()); save(t)
                 notify("warning", f"{t['title']} stopped unexpectedly", "The server or Nova restarted while it was running — start it again.", "task")

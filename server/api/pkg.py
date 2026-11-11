@@ -14,8 +14,11 @@ doesn't care which one it is. Names that differ between distros (Docker, the SMA
   upgradable()                    [{"name", "from", "to", "security"}]
   upgrade(names|None, on_line)    upgrade those (or everything), each output line to on_line
   clean() / autoremove(dry)       downloaded package files / packages nothing needs
+
+On Windows the same calls go to winget (Windows' own package manager, part of App Installer on Windows 10/11 and
+Server 2025): the programs there are named by their winget id (7zip.7zip, Docker.DockerDesktop…).
 """
-import os, re, shutil, subprocess
+import json, os, re, shutil, subprocess, tempfile
 
 ENV = {**os.environ, "DEBIAN_FRONTEND": "noninteractive", "LC_ALL": "C"}
 
@@ -28,12 +31,21 @@ NAMES = {
     "pacman": {"gddrescue": "ddrescue", "gdisk": "gptfdisk", "dosfstools": "dosfstools", "ntfs-3g": "ntfs-3g", "docker.io": "docker", "docker-compose-v2": "docker-compose", "docker-compose": "docker-compose", "openssh-server": "openssh",
                "nfs-common": "nfs-utils", "lm-sensors": "lm_sensors", "zfsutils-linux": None, "python3-cryptography": "python-cryptography",
                "btrfs-progs": "btrfs-progs", "cifs-utils": "cifs-utils"},
+    # Windows: Debian names that have a Windows equivalent; anything else without a dot (winget ids always have one) isn't there
+    "winget": {"docker.io": "Docker.DockerDesktop", "docker-compose-v2": None, "docker-compose": None, "rclone": "Rclone.Rclone",
+               "smartmontools": "smartmontools.smartmontools", "git": "Git.Git", "python3": "Python.Python.3.12", "7zip": "7zip.7zip",
+               "syncthing": "Syncthing.Syncthing", "tailscale": "Tailscale.Tailscale", "cloudflared": "Cloudflare.cloudflared"},
     "zypper": {"gddrescue": "gddrescue", "gdisk": "gptfdisk", "dosfstools": "dosfstools", "ntfs-3g": "ntfs-3g", "docker.io": "docker", "docker-compose-v2": "docker-compose", "docker-compose": "docker-compose", "nfs-common": "nfs-client",
                "lm-sensors": "sensors", "zfsutils-linux": None, "python3-cryptography": "python3-cryptography"},
 }
 
 
+WINDOWS = os.name == "nt"
+
 def which():
+    if WINDOWS:
+        import winhost
+        return "winget" if winhost.winget() else ""
     for pm in ("apt-get", "dnf", "pacman", "zypper"):
         if shutil.which(pm): return "apt" if pm == "apt-get" else pm
     return ""
@@ -42,9 +54,11 @@ def name(pkg):
     """Debian's package name in this distro's words (None if it has no such package)."""
     pm = which()
     if pm in ("apt", ""): return pkg
+    if pm == "winget": return NAMES["winget"].get(pkg, pkg if "." in pkg else None)
     return NAMES.get(pm, {}).get(pkg, pkg)
 
 def _run(cmd, timeout=900, on_line=None):
+    if WINDOWS: return _wrun(cmd, timeout, on_line)
     try:
         if on_line is None:
             r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, env=ENV)
@@ -61,7 +75,7 @@ def _names(pkgs):
     for p in pkgs:
         n = name(p)
         (out if n else missing).append(n or p)
-    if missing: raise ValueError(f"not packaged for this Linux: {', '.join(missing)}")
+    if missing: raise ValueError(f"not available {'from winget' if which() == 'winget' else 'for this Linux'}: {', '.join(missing)}")
     return out
 
 def install(pkgs, recommends=True, on_line=None, timeout=1800):
@@ -75,6 +89,7 @@ def install(pkgs, recommends=True, on_line=None, timeout=1800):
     if pm == "dnf": return _run(["dnf", "install", "-y", *([] if recommends else ["--setopt=install_weak_deps=False"]), *pk], timeout, on_line)
     if pm == "pacman": return _run(["pacman", "-S", "--noconfirm", "--needed", *pk], timeout, on_line)
     if pm == "zypper": return _run(["zypper", "--non-interactive", "install", *([] if recommends else ["--no-recommends"]), *pk], timeout, on_line)
+    if pm == "winget": return _wg_each("install", pk, timeout, on_line)
     return 127, "no package manager Nova knows (apt, dnf, pacman or zypper)"
 
 def remove(pkgs, on_line=None, timeout=1800):
@@ -82,12 +97,13 @@ def remove(pkgs, on_line=None, timeout=1800):
     return {"apt": lambda: _run(["apt-get", "remove", "-y", "--", *pk], timeout, on_line),
             "dnf": lambda: _run(["dnf", "remove", "-y", *pk], timeout, on_line),
             "pacman": lambda: _run(["pacman", "-R", "--noconfirm", *pk], timeout, on_line),
-            "zypper": lambda: _run(["zypper", "--non-interactive", "remove", *pk], timeout, on_line)}.get(pm, lambda: (127, "no package manager"))()
+            "zypper": lambda: _run(["zypper", "--non-interactive", "remove", *pk], timeout, on_line),
+            "winget": lambda: _wg_each("uninstall", pk, timeout, on_line)}.get(pm, lambda: (127, "no package manager"))()
 
 def refresh():
     pm = which()
     cmd = {"apt": ["apt-get", "update", "-qq"], "dnf": ["dnf", "makecache", "-q"], "pacman": ["pacman", "-Sy", "--noconfirm"],
-           "zypper": ["zypper", "--non-interactive", "refresh"]}.get(pm)
+           "zypper": ["zypper", "--non-interactive", "refresh"], "winget": ["winget", "source", "update", "--disable-interactivity"]}.get(pm)
     return _run(cmd, 600) if cmd else (127, "")
 
 def installed(pkgs):
@@ -103,6 +119,8 @@ def installed(pkgs):
         have = {l.strip() for l in so.splitlines() if l.strip() and " " not in l.strip()}
     elif pm == "pacman":
         have = {n for n in want if _run(["pacman", "-Q", n], 30)[0] == 0}
+    elif pm == "winget":
+        have = _wg_installed() & set(want)
     else: have = set()
     return {p: (names[p] in have) for p in pkgs}
 
@@ -130,6 +148,9 @@ def search(q, limit=60):
         for l in so.splitlines():
             c = [x.strip() for x in l.split("|")]
             if len(c) >= 4 and c[1] and c[1] != "Name": res.append((c[1], c[3]))
+    elif pm == "winget":
+        _, so = _run(["winget", "search", q, "--source", "winget", *WG], 90)
+        res = [(r[1], r[0]) for r in _wg_table(so) if len(r) >= 2 and "." in r[1]]          # (id, name: winget has no short description here)
     seen, out = set(), []
     for n, d in res:
         if n not in seen: seen.add(n); out.append((n, d))
@@ -159,6 +180,10 @@ def upgradable():
         for l in so.splitlines():
             c = [x.strip() for x in l.split("|")]
             if len(c) >= 6 and c[0] == "v": out.append({"name": c[2], "origin": c[1], "to": c[4], "from": c[3], "security": False})
+    elif pm == "winget":
+        _, so = _run(["winget", "upgrade", "--source", "winget", *WG], 180)
+        for r in _wg_table(so):            # Name · Id · Version · Available · Source
+            if len(r) >= 4 and "." in r[1] and r[3]: out.append({"name": r[1], "title": r[0], "origin": "winget", "to": r[3], "from": r[2], "security": False})
     return out
 
 def upgrade(names=None, on_line=None, timeout=3600):
@@ -170,9 +195,13 @@ def upgrade(names=None, on_line=None, timeout=3600):
     if pm == "dnf": return _run(["dnf", "upgrade", "-y", *(names or [])], timeout, on_line)
     if pm == "pacman": return _run(["pacman", "-Syu", "--noconfirm"] if names is None else ["pacman", "-S", "--noconfirm", *names], timeout, on_line)   # (Arch: partial upgrades aren't supported, so "all" is safest)
     if pm == "zypper": return _run(["zypper", "--non-interactive", "update", *(names or [])], timeout, on_line)
+    if pm == "winget":
+        if names is None: return _run(["winget", "upgrade", "--all", "--source", "winget", "--silent", *WG, "--accept-package-agreements"], timeout, on_line)
+        return _wg_each("upgrade", names, timeout, on_line)
     return 127, "no package manager"
 
 def clean():
+    if which() == "winget": return 0, ""
     return _run({"apt": ["apt-get", "clean"], "dnf": ["dnf", "clean", "packages"], "pacman": ["pacman", "-Sc", "--noconfirm"],
                  "zypper": ["zypper", "clean"]}.get(which(), ["true"]), 300)
 
@@ -201,4 +230,82 @@ def autoremove(dry=True, on_line=None):
 
 def label():
     """For the UI: what to call this server's package manager."""
-    return {"apt": "apt", "dnf": "dnf", "pacman": "pacman", "zypper": "zypper"}.get(which(), "your package manager")
+    return {"apt": "apt", "dnf": "dnf", "pacman": "pacman", "zypper": "zypper", "winget": "winget"}.get(which(), "your package manager")
+
+
+# ── winget (Windows) ─────────────────────────────────────────────────────────────────
+WG = ["--accept-source-agreements", "--disable-interactivity"]
+
+def _wrun(cmd, timeout, on_line):
+    """Like _run, for winget: found where it really is (not on SYSTEM's PATH), UTF-8, its progress bars dropped."""
+    import winhost
+    if cmd[0] == "winget": cmd = [winhost.winget() or "winget", *cmd[1:]]
+    try:
+        p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
+                             creationflags=0x08000000, cwd=os.environ.get("SystemRoot") or None)
+    except FileNotFoundError: return 127, f"{cmd[0]} isn't installed"
+    out, buf = [], b""
+    try:
+        import time; end = time.time() + timeout
+        while True:
+            ch = p.stdout.read(1)
+            if not ch: break
+            if ch in (b"\r", b"\n"):
+                line = buf.decode("utf-8", "replace").strip(); buf = b""
+                # winget redraws a progress bar and a spinner on one line: keep only what reads like a sentence or a table row
+                if line and not re.fullmatch(r"[\s\-\\|/█▒░▓]+|[\s█▒░▓]*[\d.]+\s*(KB|MB|GB|%)?\s*/?\s*[\d.]*\s*(KB|MB|GB)?", line):
+                    out.append(line)
+                    if on_line and ch == b"\n": on_line(line)
+            else: buf += ch
+            if time.time() > end: p.kill(); return 124, "it took too long"
+        if buf.strip(): out.append(buf.decode("utf-8", "replace").strip())
+        return p.wait(timeout=30), "\n".join(out)
+    except subprocess.TimeoutExpired: p.kill(); return 124, "it took too long"
+
+def _wg_each(action, ids, timeout, on_line):
+    """install / uninstall / upgrade, one winget id at a time (winget takes one per call). For everyone on the
+    machine where the program allows it, else the way it allows."""
+    log = []
+    for i in ids:
+        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9+._-]{0,100}", str(i)): return 2, f"bad program id: {i}"
+        base = ["winget", action, "--id", i, "--exact", "--source", "winget", "--silent", *WG]
+        if action != "uninstall": base += ["--accept-package-agreements"]
+        rc, out = _run(base + (["--scope", "machine"] if action == "install" else []), timeout, on_line)
+        if rc != 0 and action == "install" and re.search(r"scope|No applicable installer", out, re.I):
+            rc, out = _run(base, timeout, on_line)                       # (some only install one way)
+        log.append(out)
+        if rc != 0 and not (action == "upgrade" and re.search(r"No available upgrade|No applicable upgrade|already installed", out, re.I)):
+            return rc, "\n".join(log)
+    _wg_installed.cache = None
+    return 0, "\n".join(log)
+
+def _wg_installed():
+    """Ids of what's installed (from winget's JSON export: the same whatever language Windows speaks). Cached a minute."""
+    import time
+    c = getattr(_wg_installed, "cache", None)
+    if c and time.time() - c[0] < 60: return c[1]
+    fd, tmp = tempfile.mkstemp(suffix=".json"); os.close(fd)
+    try:
+        _run(["winget", "export", "-o", tmp, "--source", "winget", *WG], 180)
+        ids = {p.get("PackageIdentifier") for s in json.load(open(tmp, encoding="utf-8-sig")).get("Sources", []) for p in s.get("Packages", [])}
+    except (OSError, ValueError): ids = set()
+    finally:
+        try: os.remove(tmp)
+        except OSError: pass
+    _wg_installed.cache = (time.time(), ids - {None})
+    return _wg_installed.cache[1]
+
+def _wg_table(text):
+    """A winget table (search, upgrade) → rows of cells, by the columns its header lines up (Name · Id · Version · …)."""
+    lines = text.splitlines()
+    for i in range(len(lines) - 1):
+        if re.fullmatch(r"-{20,}", lines[i + 1].strip()) and len(lines[i].split()) >= 3:
+            head = lines[i]; break
+    else: return []
+    starts = [m.start() for m in re.finditer(r"(?:^|(?<=\s))\S", head)]
+    rows = []
+    for l in lines[i + 2:]:
+        if not l.strip() or re.fullmatch(r"\d+ .*", l.strip()) and len(l.split()) < 8 and not re.search(r"\S+\.\S+", l): continue
+        cells = [l[a:b].strip() if b else l[a:].strip() for a, b in zip(starts, starts[1:] + [None])]
+        if len(cells) >= 2 and cells[1]: rows.append(cells)
+    return rows

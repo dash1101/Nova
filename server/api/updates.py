@@ -8,9 +8,11 @@ Nova update center: what can be updated on this server, and doing it.
   containers(spec)     pull the newest image and recreate the chosen containers (Compose)
 Run as background tasks (tasks.py), from the root helper.
 """
-import json, os, re, subprocess, time
+import json, os, re, subprocess, sys, time
 
-OUT = "/var/lib/nova-api/updates.json"
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+import plat  # noqa: E402
+OUT = plat.p("/var/lib/nova-api/updates.json")
 ENV = {**os.environ, "DEBIAN_FRONTEND": "noninteractive", "LC_ALL": "C"}
 
 
@@ -72,7 +74,7 @@ def check(spec=None, log=print, progress=lambda p, n="": None):
         c["updatable"] = bool(c["service"] and c["dir"].startswith("/"))
         res["containers"].append({k: c[k] for k in ("name", "image", "status", "updatable")})
     progress(92, "Nova")
-    rc, so, _ = run(["/usr/sbin/nova-update", "--check"], timeout=200)
+    rc, so, _ = run(["/usr/sbin/nova-update", "--check"], timeout=200) if not plat.WINDOWS else (1, "", "")   # (Windows: updated by running the installer again)
     m = re.search(r"installed (\S+) · release (\S+) · (.+)", so)
     res["nova"] = {"installed": m.group(1), "available": m.group(2), "update": "available" in m.group(3)} if m else {"error": so.strip()[-200:]}
     save(res)

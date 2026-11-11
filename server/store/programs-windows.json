@@ -1,0 +1,140 @@
+[
+ {
+  "pkg": "Docker.DockerDesktop",
+  "name": "Docker Desktop",
+  "category": "Editor's choice",
+  "description": "Run containers — needed for the Containers tab and the app store's containers."
+ },
+ {
+  "pkg": "Tailscale.Tailscale",
+  "name": "Tailscale",
+  "category": "Editor's choice",
+  "description": "Reach this server from anywhere, privately — no ports opened."
+ },
+ {
+  "pkg": "Cloudflare.cloudflared",
+  "name": "cloudflared",
+  "category": "Editor's choice",
+  "description": "Cloudflare Tunnel: put Nova and your apps on your own domain, behind a login."
+ },
+ {
+  "pkg": "Microsoft.PowerShell",
+  "name": "PowerShell 7",
+  "category": "Editor's choice",
+  "description": "The current PowerShell, side by side with the one Windows ships."
+ },
+ {
+  "pkg": "7zip.7zip",
+  "name": "7-Zip",
+  "category": "Files",
+  "description": "Open and make zip, 7z, rar and most other archives."
+ },
+ {
+  "pkg": "Rclone.Rclone",
+  "name": "rclone",
+  "category": "Files",
+  "description": "Copy and sync folders with Google Drive, OneDrive, S3, Backblaze and 70 more."
+ },
+ {
+  "pkg": "Syncthing.Syncthing",
+  "name": "Syncthing",
+  "category": "Files",
+  "description": "Keep folders in sync between your computers, peer to peer."
+ },
+ {
+  "pkg": "WinDirStat.WinDirStat",
+  "name": "WinDirStat",
+  "category": "Files",
+  "description": "See what's filling a drive, as a map of every folder."
+ },
+ {
+  "pkg": "CrystalDewWorld.CrystalDiskInfo",
+  "name": "CrystalDiskInfo",
+  "category": "Monitoring",
+  "description": "Every drive's SMART health, temperature and hours."
+ },
+ {
+  "pkg": "smartmontools.smartmontools",
+  "name": "smartmontools",
+  "category": "Monitoring",
+  "description": "smartctl: read and test drives' SMART data from the command line."
+ },
+ {
+  "pkg": "Jellyfin.Server",
+  "name": "Jellyfin Server",
+  "category": "Media",
+  "description": "Stream your movies, shows and music to any device."
+ },
+ {
+  "pkg": "Plex.PlexMediaServer",
+  "name": "Plex Media Server",
+  "category": "Media",
+  "description": "Organize and stream your media library."
+ },
+ {
+  "pkg": "VideoLAN.VLC",
+  "name": "VLC",
+  "category": "Media",
+  "description": "Plays nearly any video or audio file."
+ },
+ {
+  "pkg": "qBittorrent.qBittorrent",
+  "name": "qBittorrent",
+  "category": "Media",
+  "description": "A clean, ad-free torrent client with a web UI."
+ },
+ {
+  "pkg": "Git.Git",
+  "name": "Git",
+  "category": "Development",
+  "description": "Version control (and Git Bash)."
+ },
+ {
+  "pkg": "Microsoft.VisualStudioCode",
+  "name": "Visual Studio Code",
+  "category": "Development",
+  "description": "A code editor, with remote and container extensions."
+ },
+ {
+  "pkg": "Python.Python.3.12",
+  "name": "Python 3.12",
+  "category": "Development",
+  "description": "The Python language."
+ },
+ {
+  "pkg": "OpenJS.NodeJS.LTS",
+  "name": "Node.js (LTS)",
+  "category": "Development",
+  "description": "JavaScript outside the browser, the long-term-support version."
+ },
+ {
+  "pkg": "Notepad++.Notepad++",
+  "name": "Notepad++",
+  "category": "Development",
+  "description": "A fast text editor."
+ },
+ {
+  "pkg": "Microsoft.PowerToys",
+  "name": "PowerToys",
+  "category": "Shell",
+  "description": "Handy Windows tools: FancyZones, PowerRename, Awake and more."
+ },
+ {
+  "pkg": "Microsoft.Sysinternals.ProcessExplorer",
+  "name": "Process Explorer",
+  "category": "Shell",
+  "description": "What every process is doing, in depth."
+ },
+ {
+  "pkg": "WireGuard.WireGuard",
+  "name": "WireGuard",
+  "category": "Network",
+  "description": "A fast, simple VPN."
+ },
+ {
+  "pkg": "WiresharkFoundation.Wireshark",
+  "name": "Wireshark",
+  "category": "Network",
+  "description": "See what's happening on the network, packet by packet."
+ }
+]

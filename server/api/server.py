@@ -132,6 +132,16 @@ _apps_cache = {"t": 0, "apps": []}
 def SITE_ALLOWS(k): return CFG.get(k, True) is not False          # what config.json (root) allows at all
 
 _docker = {"t": 0, "v": False}
+_winx = {"t": 0, "v": {}}
+def win_extras():
+    """Windows: Programs, Updates and the store's programs work where winget is (asked of the helper, at most every 10 minutes)."""
+    if not plat.WINDOWS: return {}
+    if time.time() - _winx["t"] > 600:
+        rc, r = helper("tools-status", timeout=30)
+        ok = rc == 0 and bool((r.get("tools") or {}).get("winget"))
+        _winx.update(t=time.time(), v={"updates": True, "programs": True, "store": True} if ok else {})
+    return _winx["v"]
+
 def docker_present():
     """Is Docker installed and running? (Nova works without it: no containers, the rest is the same.)"""
     if time.time() - _docker["t"] > 60:
@@ -1924,7 +1934,7 @@ class Handler(BaseHTTPRequestHandler):
                          "features": {"lighting": lights_ready() and feat_on("lighting"), "lighting_installed": lights_ready(), "monitor": os.path.exists(STATUS),
                                       "terminal": feat_on("terminal"), "files": feat_on("files"), "docker": docker_present(),
                                       "backup": True, "legacy_backup": os.path.exists("/usr/local/bin/nova-backup"), "storage": True, "diagnostics": True, "store": os.path.isdir(f"{os.path.dirname(os.path.abspath(__file__))}/store"),
-                                      "ssh": bool(SSH_HOSTS), "lan_tls": True, **plat.WITHOUT}}
+                                      "ssh": bool(SSH_HOSTS), "lan_tls": True, **plat.WITHOUT, **win_extras()}}
         if method == "GET" and parts == ["events", "wait"]:
             # Long poll for the phone's instant alerts: return as soon as something newer than
             # `since` is written (nova-alerts runs every 15 s, and at once for queued messages), or empty after `timeout` s.
