@@ -182,6 +182,9 @@ class Pairing(ctx: Context, val profile: String = Servers.active(ctx)) {
     var stepUpRegistered: Boolean
         get() = p.getBoolean("stepup_registered", false)
         set(v) { p.edit().putBoolean("stepup_registered", v).apply() }
+    var pairedAt: Long                       // when this device paired with this server (ms)
+        get() = p.getLong("paired_at", 0L)
+        set(v) { p.edit().putLong("paired_at", v).apply() }
     var lastEventSeen: Double
         get() = p.getFloat("last_event", 0f).toDouble().let { if (it == 0.0) p.getString("last_event_s", "0")!!.toDouble() else it }
         set(v) { p.edit().putString("last_event_s", v.toString()).putFloat("last_event", 0f).apply() }

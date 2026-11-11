@@ -63,6 +63,9 @@ object Alerts {
                 continue
             }
             if (since <= 0 || !Notifier.atLeast(e.optString("level"), pairing.phoneNotifyLevel)) continue
+            // "New device paired: <this phone>" right after this phone paired is about itself — no need to warn it (any other device still does)
+            if (e.optString("title").startsWith("New device paired") && kotlin.math.abs(t * 1000 - pairing.pairedAt) < 120_000 &&
+                e.optString("title").contains(android.os.Build.MODEL.filter { it.isLetterOrDigit() || it in " -_" }, ignoreCase = true)) continue
             if (pairing.quietNow() && e.optString("level") != "critical") continue          // quiet hours: it waits in the Inbox
             if (t < fresh) { stale++; continue }
             Notifier.post(ctx, (t * 1000).toLong().toInt() xor pairing.profile.hashCode(), e.optString("level"),

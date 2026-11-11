@@ -155,7 +155,7 @@ private fun settingsFor(id: String): Route? = when {
     val fan = app.fan
 
     fun state(id: String): Pair<String?, Boolean> = when (id) {
-        "backup" -> (if (running) backup?.let { backupLine(it).removePrefix("Backing up ") } ?: "Starting…" else "Last: ${backup?.optString("time")?.drop(5)?.take(11) ?: "—"}") to running
+        "backup" -> (if (running) backup?.let { backupLine(it).removePrefix("Backing up ") } ?: "Starting…" else if (backup?.optBoolean("none") == true) "None set up yet" else "Last: ${backup?.optString("time")?.takeIf { it.length > 5 }?.drop(5)?.take(11) ?: "—"}") to running
         "fan" -> (if (fan?.optBoolean("on") != false) "On · ${fan?.optInt("brightness") ?: 0}%" else "Off") to (fan?.optBoolean("on") != false)
         "dim" -> null to (fan?.optBoolean("on") != false && fan?.optInt("brightness") == 5)
         "bright" -> null to (fan?.optBoolean("on") != false && fan?.optInt("brightness") == 60)

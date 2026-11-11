@@ -42,8 +42,12 @@ import org.json.JSONObject
             Box(Modifier.weight(1f)) {
                 Row(Modifier.clip(androidx.compose.foundation.shape.RoundedCornerShape(16.dp)).clickable { switcher = true },
                     verticalAlignment = Alignment.CenterVertically) {
-                    Text(serverName(app), fontSize = if (LocalCompactHeight.current) 24.sp else 32.sp, fontWeight = FontWeight.Bold, color = N.text, maxLines = 1,
-                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                    // the name shrinks a little before it's cut short (a tablet's half-width column, a long name)
+                    val full = if (LocalCompactHeight.current) 24f else 32f
+                    var size by remember(serverName(app), full) { mutableFloatStateOf(full) }
+                    Text(serverName(app), fontSize = size.sp, fontWeight = FontWeight.Bold, color = N.text, maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false),
+                        onTextLayout = { if (it.hasVisualOverflow && size > 22f) size -= 2f })
                     Icon(Icons.Rounded.KeyboardArrowDown, "Switch server", tint = N.sub)
                 }
                 val ctx = app.activity
@@ -298,7 +302,7 @@ private data class Quad(val title: String, val sub: String, val icon: androidx.c
                 if (cs.optInt("total") > 0) cs.optInt("running").toFloat() / cs.optInt("total") else null, N.amber)
         else   // no containers here (or no Docker): how long it's been up says more than "0/0"
             StatCard(Icons.Rounded.Schedule, "Uptime", now?.optLong("uptime_s")?.takeIf { it > 0 }?.let { upFor(it) } ?: m?.optString("uptime")?.takeIf { it.isNotEmpty() } ?: "—",
-                "since the last restart", null, N.amber),
+                "since restart", null, N.amber),
     )
     Column(Modifier.padding(horizontal = Space.gutter), verticalArrangement = Arrangement.spacedBy(Space.gap)) {
         cards.chunked(2).forEach { row ->

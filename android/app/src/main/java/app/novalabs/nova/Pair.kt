@@ -146,6 +146,7 @@ fun parsePairInfo(raw: String): PairInfo? = runCatching {
         // own home address may not be reachable from here at all, and without this the app only ever tried that one — "Disconnected".
         if (reached.isNotEmpty() && android.net.Uri.parse(reached).host != android.net.Uri.parse(home).host) app.pairing.tailnetUrl = reached
         app.pairing.label = r.optString("name"); PairHint.address = null; PairHint.name = null
+        app.pairing.pairedAt = System.currentTimeMillis()
         app.pairing.role = r.optString("role").ifEmpty { "admin" }
         runCatching {   // fingerprint-bound key for risky actions: registered on home Wi-Fi, or right now when we just paired from away
             app.pairing.keys.ensureStepUp()

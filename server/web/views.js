@@ -313,7 +313,7 @@ export async function home(ctx) {
       ${statCard("disk", "Disk", free || "—", "system drive", pct(disk) != null ? pct(disk) / 100 : null, "var(--green)")}
       ${cs?.total || cs?.stopped ? statCard("box", "Services", `${cs.running}/${cs.total}`, m.websites && !/^0\/0/.test(m.websites) ? "sites " + m.websites : "containers running", cs.total ? cs.running / cs.total : null, "var(--amber)")
         // no containers here (or no Docker): how long it's been up says more than "0/0"
-        : statCard("clock", "Uptime", upFor(n?.uptime_s) || m.uptime || "—", "since the last restart", null, "var(--amber)")}</div>`;
+        : statCard("clock", "Uptime", upFor(n?.uptime_s) || m.uptime || "—", "since restart", null, "var(--amber)")}</div>`;
   };
   const pills = () => {
     const l = homeChips();
@@ -1182,7 +1182,7 @@ export async function quick(ctx) {
   const state = id => {
     const f = S.fan || {}, b = S.cache["/api/v1/backup"], n = S.cache["/api/v1/notify"], running = busy === "backup" || b?.running;
     switch (id) {
-      case "backup": return [running ? (b ? backupLine(b).replace(/^Backing up /, "") : "Starting…") : `Last: ${b?.time ? b.time.slice(5, 16) : "—"}`, running];
+      case "backup": return [running ? (b ? backupLine(b).replace(/^Backing up /, "") : "Starting…") : b?.none ? "None set up yet" : `Last: ${b?.time ? b.time.slice(5, 16) : "—"}`, running];
       case "dim": return [null, f.on !== false && f.brightness === 5];
       case "bright": return [null, f.on !== false && f.brightness === 60];
       case "status_light": return [f.status_light ? "On" : "Off", !!f.status_light];
