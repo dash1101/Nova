@@ -99,6 +99,13 @@ s, r = d.call("GET", "/api/v1/processes", timeout=60); ps = r.get("processes", [
 check("processes", s == 200 and len(ps) > 15 and any("python" in p["name"].lower() for p in ps) and all(p["pid"] > 0 for p in ps), (s, str(r)[:300]))
 check("…with memory, owner and system ones marked", any(p["mem"] > 1e6 for p in ps) and any(p["kernel"] for p in ps) and any(p["user"] for p in ps), ps[:3])
 check("…and the machine's memory", r.get("memory", {}).get("total", 0) > 1e9 and r.get("cpus") == os.cpu_count(), r.get("memory"))
+# a request signed by this device but sent late (a phone that slept on it) says why, with the server's time
+def late(path, off_ms):
+    ts = str(int(time.time() * 1000) - off_ms); nonce = secrets.token_urlsafe(18)
+    msg = "\n".join(["GET", path, ts, nonce, hashlib.sha256(b"").hexdigest()]).encode()
+    h = {"X-Nova-Device": d.id, "X-Nova-Time": ts, "X-Nova-Nonce": nonce, "X-Nova-Signature": base64.b64encode(d.k.sign(msg, ec.ECDSA(hashes.SHA256()))).decode()}
+    s_, r_ = raw("GET", path, b"", h); return s_, json.loads(r_ or b"{}")
+s, r = late("/api/v1/whoami", 5 * 60_000); check("a late request says 'clock' and the server's time", s == 401 and r.get("reason") == "clock" and abs(r.get("server_time", 0) - time.time() * 1000) < 10_000, (s, r))
 s, r = d.call("GET", "/api/v1/devices"); check("devices", s == 200 and "CI test device" in json.dumps(r), (s, str(r)[:200]))
 s, r = d.call("GET", "/api/v1/events"); check("events", s == 200, (s, str(r)[:200]))
 s, r = d.call("GET", "/api/v1/containers", timeout=60); check("containers (none here is fine)", s == 200 and isinstance(r.get("containers"), list), (s, str(r)[:300]))
@@ -128,6 +135,14 @@ rc, r = helper("power-unschedule", sid); check("cancel it", rc == 0 and r.get("o
 q = subprocess.run(["schtasks", "/Query", "/TN", f"\\Nova\\sched-{sid}"], capture_output=True, text=True)
 check("…gone from Task Scheduler", q.returncode != 0)
 rc, r = helper("partitions", "PhysicalDrive0"); check("what isn't there yet says so plainly", rc != 0 and "Windows" in r.get("error", ""), (rc, r))
+rc, r = helper("keep-awake", "300"); check("keep awake for 5 minutes", rc == 0 and r.get("on") and r.get("until", 0) > time.time() + 200, (rc, r))
+time.sleep(3)
+pq = subprocess.run(["powercfg", "/requests"], capture_output=True, text=True, errors="replace").stdout
+check("…and Windows really holds a 'system required' request for it", "SYSTEM:" in pq and "python" in pq.lower().split("SYSTEM:")[1].split("AWAYMODE:")[0], pq[-600:])
+rc, r = helper("keep-awake-status"); check("…which the status shows", rc == 0 and r.get("on") is True and r.get("forever") is False, (rc, r))
+rc, r = helper("keep-awake", "0"); time.sleep(2)
+pq = subprocess.run(["powercfg", "/requests"], capture_output=True, text=True, errors="replace").stdout
+check("turning it off lets Windows sleep again", rc == 0 and r.get("on") is False and "python" not in pq.lower().split("SYSTEM:")[1].split("AWAYMODE:")[0], (r, pq[-400:]))
 rc, r = helper("get-notify"); check("notification settings", rc == 0 and r.get("push_min_level") == "info", (rc, r))
 rc, r = helper("set-notify", "push_min_level", "warning"); rc2, r2 = helper("get-notify")
 check("…can be changed", rc == 0 and r2.get("push_min_level") == "warning", (r, r2)); helper("set-notify", "push_min_level", "info")
