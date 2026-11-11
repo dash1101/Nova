@@ -44,14 +44,15 @@ import org.json.JSONObject
                 onClick = { app.go(Route.Settings) }) }
         }
         if (u != null) {
-            SelectHeader("System packages", apt.size > 1 && app.isAdmin, pickedPk.size == apt.size) {
+            SelectHeader(if (app.overview?.optJSONObject("server")?.optString("os") == "windows") "Programs (winget)" else "System packages", apt.size > 1 && app.isAdmin, pickedPk.size == apt.size) {
                 pickedPk = if (pickedPk.size == apt.size) emptySet() else apt.map { it.optString("name") }.toSet() }
             Group {
                 if (apt.isEmpty()) Row1("All packages are up to date", null, false, Icons.Rounded.CheckCircle, N.green)
                 apt.forEachIndexed { i, p ->
                     if (i > 0) RowDivider()
                     val n = p.optString("name"); val on = n in pickedPk
-                    Row1(n, "${p.optString("from")} → ${p.optString("to")}" + (if (p.optBoolean("security")) " · security" else "") +
+                    val title = p.optString("title")          // (winget: a friendly name, the id underneath)
+                    Row1(title.ifEmpty { n }, (if (title.isNotEmpty()) "$n · " else "") + "${p.optString("from")} → ${p.optString("to")}" + (if (p.optBoolean("security")) " · security" else "") +
                         when (p.optString("restarts")) { "docker" -> " · restarts Docker (every container)"; "server" -> " · needs a restart"; else -> "" },
                         p.optBoolean("security"), null, onClick = { pickedPk = if (on) pickedPk - n else pickedPk + n }) { CheckMark(on) }
                 }
