@@ -54,7 +54,7 @@ object Widgets {
             val now = runCatching { api.get("/api/v1/stats?since=9e12").optJSONObject("now") }.getOrNull()
             val ev = runCatching { api.get("/api/v1/events?since=0").optJSONArray("events") }.getOrNull()
             sp(ctx).edit().putString("overview", o.toString()).putString("now", now?.toString()).putString("events", JSONObject().put("events", ev ?: org.json.JSONArray()).toString())
-                .putLong("at", System.currentTimeMillis()).putBoolean("offline", false).putString("server", pairing.label).apply()
+                .putLong("at", System.currentTimeMillis()).putBoolean("offline", false).putString("server", prettyServerName(o, pairing.label)).apply()
         }.isSuccess
         if (!ok) sp(ctx).edit().putBoolean("offline", true).apply()
         render(ctx); return ok
@@ -64,7 +64,7 @@ object Widgets {
     fun fromApp(ctx: Context, pairing: Pairing, overview: JSONObject) {
         if (pairing.profile != Servers.active(ctx) || !anyPlaced(ctx)) return
         if (System.currentTimeMillis() - sp(ctx).getLong("at", 0) < 60_000) return
-        sp(ctx).edit().putString("overview", overview.toString()).putLong("at", System.currentTimeMillis()).putBoolean("offline", false).putString("server", pairing.label).apply()
+        sp(ctx).edit().putString("overview", overview.toString()).putLong("at", System.currentTimeMillis()).putBoolean("offline", false).putString("server", prettyServerName(overview, pairing.label)).apply()
         render(ctx)
     }
 
@@ -125,7 +125,8 @@ object Widgets {
                 header(ctx, this, level)
                 setTextViewText(R.id.st_head, when { !paired -> "Not paired"; o == null -> "Connecting…"; level == "ok" -> "All good"
                     else -> st?.optString("headline")?.ifEmpty { null } ?: "${st?.optInt("active_count")} need attention" })
-                setTextViewText(R.id.st_sub, cs?.let { "${it.optInt("running")}/${it.optInt("total")} containers up" + (if (it.optInt("stopped") > 0) " · ${it.optInt("stopped")} stopped" else "") } ?: "")
+                setTextViewText(R.id.st_sub, cs?.takeIf { it.optInt("total") > 0 || it.optInt("stopped") > 0 }?.let { "${it.optInt("running")}/${it.optInt("total")} containers up" + (if (it.optInt("stopped") > 0) " · ${it.optInt("stopped")} stopped" else "") }
+                    ?: o?.optJSONObject("server")?.optLong("uptime_s")?.takeIf { it > 0 }?.let { "Up ${upFor(it)}" } ?: "")      // (no containers here: how long it's been up)
                 setOnClickPendingIntent(R.id.w_root, open(ctx, null, 1))
             }
             StatsWidget::class.java -> RemoteViews(ctx.packageName, R.layout.widget_stats).apply {
@@ -149,6 +150,8 @@ object Widgets {
                 setTextViewText(R.id.a_ram_t, if (busy == "freeram") "Freeing…" else "Free RAM")
                 setTextViewText(R.id.a_refresh_t, if (busy == "refresh") "Refreshing…" else "Refresh")
                 setTextViewText(R.id.a_light_t, if (busy == "light") "Switching…" else when (fanOn) { true -> "Light off"; false -> "Light on"; null -> "Light" })
+                // no lights on this server (never set up): no light button
+                setViewVisibility(R.id.a_light, if (o?.optJSONObject("features")?.optBoolean("lighting", true) == false) android.view.View.GONE else android.view.View.VISIBLE)
                 setOnClickPendingIntent(R.id.a_backup, broadcast(ctx, ActionsWidget::class.java, ACTION_RUN, "backup", 11))
                 setOnClickPendingIntent(R.id.a_ram, broadcast(ctx, ActionsWidget::class.java, ACTION_RUN, "freeram", 12))
                 setOnClickPendingIntent(R.id.a_light, broadcast(ctx, ActionsWidget::class.java, ACTION_RUN, "light", 13))

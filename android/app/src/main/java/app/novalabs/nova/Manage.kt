@@ -23,11 +23,14 @@ import androidx.compose.ui.text.font.FontWeight
 import org.json.JSONObject
 
 /** What to call the active server: the name set in the app, else its hostname, prettified. */
-fun serverName(app: AppState): String {
-    val s = app.overview?.optJSONObject("server")
+fun serverName(app: AppState): String = prettyServerName(app.overview, app.pairing.label)
+
+/** The name people see everywhere (app, widgets): the name given in Settings, else the machine's name with capitals (nova-test → Nova-Test). */
+fun prettyServerName(overview: org.json.JSONObject?, label: String): String {
+    val s = overview?.optJSONObject("server")
     return s?.optString("display_name")?.ifEmpty { null }
-        ?: s?.optString("name")?.split("-")?.joinToString("-") { w -> w.replaceFirstChar { it.uppercase() } }
-        ?: app.pairing.label.ifEmpty { "Nova" }
+        ?: s?.optString("name")?.ifEmpty { null }?.split("-")?.joinToString("-") { w -> w.replaceFirstChar { it.uppercase() } }
+        ?: label.ifEmpty { "Nova" }
 }
 
 fun labelOf(app: AppState, id: String) = Pairing(app.activity, id).let { p ->

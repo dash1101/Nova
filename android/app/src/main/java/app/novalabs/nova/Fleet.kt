@@ -80,8 +80,8 @@ fun pairedLanUrls(ctx: Context) = Servers.all(ctx).map { Pairing(ctx, it) }.filt
                 Icon(Icons.Rounded.ChevronRight, null, tint = N.sub) }
         }
         if (fresh.isNotEmpty()) RowDivider()
-        Row1(if (scanning) "Searching…" else if (fresh.isEmpty()) "No other Nova servers found" else "Search again",
-            if (!scanning && fresh.isEmpty()) "Servers need Nova 0.4.4 or newer, on the same network (and udp 8496 open)" else null, false,
+        Row1(if (scanning) "Searching…" else if (fresh.isEmpty()) "No Nova servers found on this network" else "Search again",
+            if (!scanning && fresh.isEmpty()) "Is the server on, and this ${DeviceForm.noun} on the same Wi-Fi? (Nova answers on UDP port 8496.) Tap to look again." else null, false,
             Icons.Rounded.Refresh, N.sub, enabled = !scanning, onClick = { round++ })
     }
 }
