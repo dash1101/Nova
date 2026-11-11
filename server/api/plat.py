@@ -98,6 +98,7 @@ SYSTEM_DRIVE = (os.environ.get("SystemDrive") or "C:") + "\\" if WINDOWS else "/
 # pages instead of showing errors. Remove a line here when the part works on Windows (docs/WINDOWS.md has the list).
 WITHOUT = {"terminal": False, "files": False, "store": False, "backup": False, "storage": False, "diagnostics": False, "diag": False,
            "lighting": False, "lighting_installed": False, "ssh": False, "updates": False, "programs": False, "freeup": False} if WINDOWS else {}
+# (updates, programs and the store come back on where winget is: server.py's win_extras())
 
 def strftime(fmt, t=None):
     """time.strftime with Linux's %-d / %-I (no leading zero), which Windows spells %#d / %#I."""

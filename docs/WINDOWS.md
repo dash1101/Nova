@@ -37,14 +37,16 @@ are kept. **Removing:** `C:\Program Files\Nova\uninstall.ps1` (add `-Purge` to d
 | Low space, failing or worn drives, hot drives | ✅ | health as Windows reports it (the same source as Settings → Storage) |
 | Stopped services (OpenSSH, Docker, Tailscale, cloudflared), Windows needing a restart for updates | ✅ | |
 | Task manager: processes, end / force stop | ✅ | Windows' own processes are protected |
-| Power: restart, shut down, schedule either, restart or stop Nova | ✅ | schedules are one-time tasks in Task Scheduler |
+| Power: restart, shut down, schedule either, restart or stop Nova, keep awake | ✅ | schedules are one-time tasks in Task Scheduler; keep awake holds Windows' "system required" request |
 | Drives list with space and health | ✅ | |
 | Containers (Docker Desktop): list, start / stop / restart, logs, details | ✅ | untested with running containers in CI — the test machines have none |
 | `nova` command: add, approve, devices, remove, status, doctor, log, alert, link, plugin | ✅ | run from an administrator terminal |
 | **Nova Server** window (status, pairing QR, devices, approvals, check-up) | ✅ | Start menu |
 | Nova web in a browser | ✅ | `http://<address>:8095` or `https://<address>:8495` |
-| Programs and updates (winget), Windows Update | ❌ | planned: winget joins apt/dnf/pacman/zypper in `pkg.py` |
-| App store, new containers, compose editing, container updates | ❌ | planned |
+| Programs: browse a Windows catalog, search, install, remove | ✅ | through **winget** (Windows 10/11, Server 2025); on Server 2019/2022 install App Installer first — Nova says so |
+| Updates: what winget can upgrade, upgrade one or all | ✅ | the same Updates page as on Linux, with programs' friendly names |
+| Windows Update | ❌ | planned (Nova already says when Windows needs a restart to finish updates) |
+| App store containers, compose editing, container updates | ◐ | need Docker Desktop; untested — the test machines have no Docker |
 | Files, terminal | ❌ | planned (terminal needs Windows' ConPTY) |
 | Backups | ❌ | planned |
 | Storage wizard, partitions, RAID, SMART self-tests, unmounting | ❌ | Windows' own tools for now |

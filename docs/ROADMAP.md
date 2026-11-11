@@ -26,9 +26,9 @@ fixed list of verbs — and is installed, tested and uninstalled on real Windows
 - [x] Status and live graphs, Inbox and alerts (with "why it went down" from Windows' event log), processes, power
       and schedules, drives with health, Docker Desktop containers (list, start/stop, logs)
 - [x] Installer and uninstaller (firewall for the home network only), the `nova` command, the Nova Server window
-- [ ] Programs and updates through **winget** (one more backend in `pkg.py`, next to apt/dnf/pacman/zypper), then
-      Windows Update
-- [ ] Background tasks without systemd (`tasks.py`), which unlocks the app store, container updates and backups
+- [x] Programs and updates through **winget** (one more backend in `pkg.py`, next to apt/dnf/pacman/zypper)
+- [x] Background tasks without systemd (`tasks.py` starts each as a detached process)
+- [ ] Windows Update; backups; the app store's containers on Docker Desktop (tested)
 - [ ] Files, and the terminal (ConPTY)
 - [ ] Updating from the app; a signed MSI; winget / Chocolatey packages for Nova itself
 - [ ] Storage: Storage Spaces, SMART self-tests
