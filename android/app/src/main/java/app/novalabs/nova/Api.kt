@@ -265,7 +265,7 @@ class NovaApi(private val pairing: Pairing) {
                     notes += "${routeName(name, base)}: ${e.message}"; last = IOException(e.message); break
                 } catch (e: IOException) {
                     if (attempt == 1 || notSent(e)) notes += "${routeName(name, base)}: ${describe(e)}" +
-                        (if (isTailscale(base) && e !is javax.net.ssl.SSLException) " — is Tailscale on and connected on this ${DeviceForm.noun}?" else "")
+                        (if (isTailscale(base) && e !is javax.net.ssl.SSLException) " — is Tailscale on and connected on this ${DeviceForm.noun}? If it is: sudo nova doctor on the server" else "")
                     last = e
                     // A POST that may have arrived must not run twice (e.g. restart a container twice).
                     if (method != "GET" && !notSent(e)) throw ApiException(0, "Connection dropped — check whether it went through")
@@ -315,7 +315,7 @@ class NovaApi(private val pairing: Pairing) {
                 val t0 = System.nanoTime()
                 val why = try { send(name, base, prepare("GET", "/api/v1/ping", null), null); null }
                     catch (e: ApiException) { e.message ?: "refused (${e.code})" }
-                    catch (e: IOException) { describe(e) + (if (isTailscale(base) && e !is javax.net.ssl.SSLException) " — is Tailscale on and connected on this ${DeviceForm.noun}?" else "") }
+                    catch (e: IOException) { describe(e) + (if (isTailscale(base) && e !is javax.net.ssl.SSLException) " — is Tailscale on and connected on this ${DeviceForm.noun}? If it is: sudo nova doctor on the server" else "") }
                 routeName(name, base) to (why ?: "OK · ${(System.nanoTime() - t0) / 1_000_000} ms")
             } }.map { it.await() }
         }
