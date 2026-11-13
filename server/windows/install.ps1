@@ -14,22 +14,29 @@
     * adds the  nova  command and a "Nova Server" entry to the Start menu
 
   Options:  -NoStart   install without starting      -NoFirewall   leave Windows Firewall alone
+            -NoWindow  don't open Nova Server at the end (it opens after a first install, when run by a person)
             -Python C:\path\python.exe               use this Python instead of looking for one
+
+  It never waits for a key. The last line is for programs that run it (hub apps such as Orbit):
+      NOVA-RESULT {"ok":true,"version":"...","previous":"...","firstRun":true,"running":true,"devices":0,"ports":{...},"urls":{...}}
+  and the exit code is 0 when it worked, 1 when it didn't (then the line has "ok":false and "error").
 #>
 [CmdletBinding()]
-param([switch]$NoStart, [switch]$NoFirewall, [string]$Python = "")
+param([switch]$NoStart, [switch]$NoFirewall, [switch]$NoWindow, [string]$Python = "")
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 
+$Version = ''; $Prev = ''
 function Say($t)  { Write-Host "  $t" }
 function Step($t) { Write-Host "`n$t" -ForegroundColor Cyan }
-function Die($t)  { Write-Host "`n  $t`n" -ForegroundColor Red; exit 1 }
+function Result($o) { [Console]::Out.WriteLine("NOVA-RESULT " + ($o | ConvertTo-Json -Compress -Depth 4)) }
+function Die($t)  { Write-Host "`n  $t`n" -ForegroundColor Red; Result ([ordered]@{ ok = $false; error = "$t"; version = $Version; previous = $Prev }); exit 1 }
 
 $admin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 if (-not $admin) {
     # ask Windows for permission and carry on in a new window (declined: nothing happens)
     $a = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-NoExit', '-File', "`"$($MyInvocation.MyCommand.Path)`"")
-    if ($NoStart) { $a += '-NoStart' }; if ($NoFirewall) { $a += '-NoFirewall' }; if ($Python) { $a += @('-Python', "`"$Python`"") }
+    if ($NoStart) { $a += '-NoStart' }; if ($NoFirewall) { $a += '-NoFirewall' }; if ($NoWindow) { $a += '-NoWindow' }; if ($Python) { $a += @('-Python', "`"$Python`"") }
     try { Start-Process powershell.exe -Verb RunAs -ArgumentList $a | Out-Null; exit 0 }
     catch { Die "Nova needs administrator permission to install. Run this again and choose Yes when Windows asks." }
 }
@@ -45,7 +52,10 @@ foreach ($need in 'api\server.py', 'web\index.html', 'monitor\nova_alerts.py') {
 }
 $Version = if (Test-Path (Join-Path $Src 'VERSION')) { (Get-Content (Join-Path $Src 'VERSION') -Raw).Trim() }
            else { ([regex]'API_VERSION = "([^"]+)"').Match((Get-Content (Join-Path $Src 'api\server.py') -Raw)).Groups[1].Value }
-Write-Host "`nNova server $Version for Windows" -ForegroundColor White
+$Prev  = if (Test-Path (Join-Path $Lib 'VERSION')) { (Get-Content (Join-Path $Lib 'VERSION') -Raw).Trim() } else { '' }
+$First = -not (Test-Path (Join-Path $Data 'config\config.json'))          # no settings yet: a first install, not an update
+if ($Prev) { Write-Host "`nUpdating Nova $Prev -> $Version  (settings and paired devices stay)" -ForegroundColor White }
+else       { Write-Host "`nInstalling Nova $Version for Windows" -ForegroundColor White }
 
 # -- 1. Python --------------------------------------------------------------------
 Step "Python"
@@ -158,6 +168,7 @@ try {
 } catch { Say "(couldn't add the Start menu entry: $($_.Exception.Message))" }
 
 # -- 7. start ----------------------------------------------------------------------
+$ok = $false
 if (-not $NoStart) {
     Step "Starting"
     foreach ($t in 'Helper', 'Api', 'Alerts') { Start-ScheduledTask -TaskPath '\Nova\' -TaskName $t }
@@ -169,7 +180,21 @@ if (-not $NoStart) {
     if ($ok) { Say "Nova is running." } else { Write-Host "  Nova didn't answer yet - see $Data\log\api.log" -ForegroundColor Yellow }
 }
 
+$devices = 0
+try { $devices = @((Get-Content (Join-Path $Data 'data\devices.json') -Raw | ConvertFrom-Json).PSObject.Properties).Count } catch {}
+$tls = if ($cfg.tls_port) { $cfg.tls_port } else { 8495 }
 Write-Host "`nDone." -ForegroundColor Green
-Write-Host "  Pair your phone:   open 'Nova Server' from the Start menu, or run:  nova add   (in a NEW administrator terminal)"
-Write-Host "  In a browser:      http://$($cfg.lan_host):$($cfg.port)"
-Write-Host "  Remove Nova:       powershell -ExecutionPolicy Bypass -File `"$App\uninstall.ps1`"`n"
+if ($devices -eq 0) { Write-Host "  Next, pair your phone:  'Nova Server' in the Start menu -> Pair a phone   (or in a NEW administrator terminal:  nova add)" }
+else                { Write-Host "  Your $devices paired device(s) keep working.   Nova Server in the Start menu shows them." }
+Write-Host "  Nova web:     https://$($cfg.lan_host):$tls   (on this PC: https://localhost:$tls)"
+if ($cfg.tailnet_host) { Write-Host "  Tailscale:    https://$($cfg.tailnet_host):$tls" }
+Write-Host "  Check-up:     nova doctor      Remove:  powershell -ExecutionPolicy Bypass -File `"$App\uninstall.ps1`"`n"
+# a person installing for the first time goes straight on to pairing (not when a program runs this and reads its output)
+if (-not $NoStart -and -not $NoWindow -and $ok -and $devices -eq 0 -and -not [Console]::IsOutputRedirected) {
+    try { Start-Process -FilePath $PyW -ArgumentList "`"$(Join-Path $Lib 'nova-gui')`" --pair" -WorkingDirectory $Lib; Say "Opening Nova Server to pair your phone..." } catch {}
+}
+$urls = [ordered]@{ local = "https://127.0.0.1:$tls"; home = "https://$($cfg.lan_host):$tls"; plain = "http://127.0.0.1:$($cfg.port)" }
+if ($cfg.tailnet_host) { $urls.tailnet = "https://$($cfg.tailnet_host):$tls" }
+Result ([ordered]@{ ok = $true; version = $Version; previous = $Prev; firstRun = $First; running = [bool]$ok; devices = $devices
+                    ports = [ordered]@{ https = $tls; http = $cfg.port }; urls = $urls })
+exit 0

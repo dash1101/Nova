@@ -39,8 +39,15 @@ jobs:
         run: |
           Expand-Archive -Path dl\nova-windows.zip -DestinationPath dl -Force
           $py = (Get-Command python).Source
-          powershell -NoProfile -ExecutionPolicy Bypass -File dl\Nova\windows\install.ps1 -Python $py
-          if ($LASTEXITCODE -ne 0) { exit 1 }
+          # the way a hub app (Orbit) runs it: output captured, so no window opens; the last line says what happened
+          $out = powershell -NoProfile -ExecutionPolicy Bypass -File dl\Nova\windows\install.ps1 -Python $py
+          $code = $LASTEXITCODE; $out | ForEach-Object { Write-Host $_ }
+          if ($code -ne 0) { exit 1 }
+          $line = @($out | Where-Object { $_ -like 'NOVA-RESULT *' })[-1]
+          if (-not $line) { Write-Host "no NOVA-RESULT line"; exit 1 }
+          $res = $line.Substring(12) | ConvertFrom-Json
+          if (-not $res.ok -or -not $res.firstRun -or $res.previous -or -not $res.running -or $res.ports.https -ne 8495 -or $res.urls.local -ne 'https://127.0.0.1:8495') { Write-Host "unexpected result: $line"; exit 1 }
+          if (Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*nova-gui*' }) { Write-Host "Nova Server opened although the output was captured"; exit 1 }
       - name: Test
         shell: powershell
         run: |
@@ -51,8 +58,11 @@ jobs:
         run: |
           $before = Get-Content "$env:ProgramData\Nova\data\tls\cert.pem" -Raw
           $py = (Get-Command python).Source
-          powershell -NoProfile -ExecutionPolicy Bypass -File dl\Nova\windows\install.ps1 -Python $py
-          if ($LASTEXITCODE -ne 0) { exit 1 }
+          $out = powershell -NoProfile -ExecutionPolicy Bypass -File dl\Nova\windows\install.ps1 -Python $py
+          $code = $LASTEXITCODE; $out | ForEach-Object { Write-Host $_ }
+          if ($code -ne 0) { exit 1 }
+          $res = (@($out | Where-Object { $_ -like 'NOVA-RESULT *' })[-1]).Substring(12) | ConvertFrom-Json
+          if (-not $res.ok -or $res.firstRun -or -not $res.previous) { Write-Host "an update should say so: $($res | ConvertTo-Json -Compress)"; exit 1 }
           if ((Get-Content "$env:ProgramData\Nova\data\tls\cert.pem" -Raw) -ne $before) { Write-Host "the certificate changed: paired phones would stop trusting the server"; exit 1 }
           $r = Invoke-WebRequest -UseBasicParsing -TimeoutSec 10 http://127.0.0.1:8095/api/v1/ping
           if ($r.StatusCode -ne 200) { exit 1 }
@@ -66,7 +76,9 @@ jobs:
         if: always()
         shell: powershell
         run: |
-          powershell -NoProfile -ExecutionPolicy Bypass -File "$env:ProgramFiles\Nova\uninstall.ps1" -Purge
+          $out = powershell -NoProfile -ExecutionPolicy Bypass -File "$env:ProgramFiles\Nova\uninstall.ps1" -Purge
+          $code = $LASTEXITCODE; $out | ForEach-Object { Write-Host $_ }
+          if ($code -ne 0 -or -not (@($out | Where-Object { $_ -like 'NOVA-RESULT {"ok":true*' }).Count)) { Write-Host "uninstall didn't report success"; exit 1 }
           if (Test-Path "$env:ProgramFiles\Nova") { Write-Host "left behind:"; Get-ChildItem "$env:ProgramFiles\Nova" -Recurse | Select-Object -First 20 FullName; exit 1 }
           if (Test-Path "$env:ProgramData\Nova") { Write-Host "data left behind after -Purge"; exit 1 }
           if (Get-ScheduledTask -TaskPath '\Nova\' -ErrorAction SilentlyContinue) { Write-Host "tasks left behind"; exit 1 }

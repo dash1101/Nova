@@ -8,7 +8,12 @@
 param([switch]$Purge)
 $ErrorActionPreference = 'Continue'
 $admin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-if (-not $admin) { Write-Host "Run this from an administrator PowerShell." -ForegroundColor Red; exit 1 }
+function Result($o) { [Console]::Out.WriteLine("NOVA-RESULT " + ($o | ConvertTo-Json -Compress)) }      # the last line, for programs that run this
+if (-not $admin) {
+    $a = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-NoExit', '-File', "`"$($MyInvocation.MyCommand.Path)`""); if ($Purge) { $a += '-Purge' }
+    try { Start-Process powershell.exe -Verb RunAs -ArgumentList $a | Out-Null; exit 0 }
+    catch { Write-Host "Removing Nova needs administrator permission. Run this again and choose Yes when Windows asks." -ForegroundColor Red; Result ([ordered]@{ ok = $false; error = "not an administrator" }); exit 1 }
+}
 $App = Join-Path $env:ProgramFiles 'Nova'; $Data = Join-Path $env:ProgramData 'Nova'
 Get-ScheduledTask -TaskPath '\Nova\' -ErrorAction SilentlyContinue | ForEach-Object {
     Stop-ScheduledTask -TaskPath '\Nova\' -TaskName $_.TaskName -ErrorAction SilentlyContinue
@@ -30,3 +35,5 @@ foreach ($i in 1..15) {                                   # a part that is still
 if (Test-Path $App) { Write-Host "Couldn't remove everything in $App (something is still using it) - delete that folder after a restart." -ForegroundColor Yellow }
 if ($Purge) { Remove-Item -Recurse -Force $Data -ErrorAction SilentlyContinue; Write-Host "Nova and its data are removed." }
 else { Write-Host "Nova is removed. Your settings and paired devices are kept in $Data (add -Purge to remove them too)." }
+Result ([ordered]@{ ok = $true; purged = [bool]$Purge; leftovers = [bool](Test-Path $App) })
+exit 0
