@@ -92,7 +92,9 @@ Common ones:
   The app can't reach the server     same Wi-Fi? the server's address changed? → sudo nova setup
   "Certificate doesn't match"        Nova was reinstalled → pair again (sudo nova add)
   Authenticator codes are refused    the server's clock is off → sudo timedatectl set-ntp true
-  The firewall blocks phones         sudo nova setup opens Nova's ports for your home network"""),
+  The firewall blocks phones         sudo nova setup opens Nova's ports (home network and Tailscale)
+  Works at home but not away         sudo nova setup → Away from home → Tailscale, and Tailscale
+                                     on the phone (same account); the app picks it up by itself"""),
 
     "uninstall": ("Removing Nova", """
   sudo nova cloudflare undo      first, if you used Cloudflare auto-setup (takes back what Nova added)
