@@ -214,7 +214,8 @@ def s_remote(cfg, st):
     if shutil.which("cloudflared"):
         info("Nova's own address on your domain is set up by hand once (docs/REMOTE.md, about 5 minutes).")
         if yes("Enter those details now?", False, key="remote_manual"):
-            cfg["remote_url"] = ask("Public address (https://…)", cfg.get("remote_url", ""))
+            cfg["remote_url"] = ask("Public address (https://…)", cfg.get("remote_url", "")).strip().rstrip("/")
+            if cfg["remote_url"] and "://" not in cfg["remote_url"]: cfg["remote_url"] = "https://" + cfg["remote_url"]   # (typed without it)
             cfg["cf_access_team"] = ask("Cloudflare team domain (…cloudflareaccess.com)", cfg.get("cf_access_team", ""))
             cfg["cf_access_aud"] = ask("Access application AUD tag", cfg.get("cf_access_aud", ""))
             cfg["cf_client_id"] = ask("Service token client ID", cfg.get("cf_client_id", ""))

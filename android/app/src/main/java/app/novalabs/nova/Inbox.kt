@@ -445,6 +445,20 @@ import java.util.*
                 Text(line, color = N.text, fontSize = 14.sp) }
             Text("Showing the last data Nova had${ago?.let { " (from $it)" } ?: ""}. Nova keeps trying in the background and reconnects by itself when the server is back.",
                 color = N.sub, fontSize = 13.sp)
+            // the server moved, or this phone never learned one of its addresses (its Tailscale one, say): type it in
+            var addr by remember { mutableStateOf("") }; var trying by remember { mutableStateOf(false) }; var found by remember { mutableStateOf<String?>(null) }
+            Text("Know another address for it — its Tailscale one (sudo nova status shows them), or a new home address? Nova only takes it if the server's certificate matches the one this ${DeviceForm.noun} paired with.",
+                color = N.sub, fontSize = 13.sp)
+            OneTextField(addr, { addr = it.trim().take(80); found = null }, "e.g. 100.64.0.1 or 192.168.1.20", Modifier.fillMaxWidth())
+            PillButton(if (trying) "Trying…" else "Try this address", !trying && addr.isNotBlank()) {
+                trying = true
+                app.act { try {
+                    val u = app.api.probeAddress(addr)
+                    if (u == null) found = "Nothing answered there with this server's certificate."
+                    else { app.api.adoptAddress(u); found = null; open = false; app.toast("Found it — reconnecting"); app.refresh() }
+                } finally { trying = false } }
+            }
+            found?.let { Text(it, color = N.amber, fontSize = 13.sp) }
         }
     }
 }

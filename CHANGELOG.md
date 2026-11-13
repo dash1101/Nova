@@ -1,7 +1,17 @@
 # Changelog
 
-## 0.9.24-alpha (server)
-Two bugs that stopped `sudo nova update`, found while updating a desktop from 0.9.19.
+## 0.9.24-alpha (server and app)
+A phone that stayed "Disconnected" from a desktop it had paired with over Tailscale, and two bugs that stopped `sudo nova update` there.
+
+**The app**
+- **Fix: a phone could stay "Disconnected" forever without trying a single address.** A server whose remote address was typed without `https://` (`nova.example.com`) handed it out that way; the app then refused the whole pairing as "plain HTTP" — before trying the home, Tailscale or Cloudflare address at all, so the server never even saw it. The app now reads such an address as https, and skips (rather than refuses everything for) any address that isn't. A phone stuck this way reconnects by itself once it has 0.9.24 — no pairing again.
+- **"Can't reach your server" → Try another address:** type the server's Tailscale address (`sudo nova status` shows it) or its new home address; the app takes it only if the server's certificate matches the one it paired with. For a phone that never learned the Tailscale address (paired with an app before 0.9.20) or a server that moved.
+- **When nothing answers and there's no Tailscale route, the app looks the server's name up over Tailscale** (MagicDNS) and tries its Tailscale address, certificate-checked.
+- **Reached over Tailscale or Cloudflare, the app takes the server's current home address** — so after `sudo nova setup` → Network on the server, phones follow by themselves.
+- Something other than Nova answering an address (a website on the same domain, another program on the port) counts as "not reachable" and the app tries the next way in, instead of stopping on "HTTP 404"; "Can't reach your server" lists what each way in said.
+
+**The server**
+- A remote address saved without `https://` is handed out with it (and `sudo nova setup` adds it when you type one without).
 - **Fix: updating from the tarball failed on Python 3.12 and newer** ("is a link to an absolute path"): the server tarball had one absolute link (`/usr/sbin/nova-alert`), which the updater's safe unpacking refuses. Nothing was installed and the old version kept running. The link is relative now, and a test unpacks every tarball exactly the way the updater does.
 - **Fix: a server first installed from the tarball and later from the .deb updated the wrong way.** The tarball install's marker stayed behind, so `sudo nova update` (and `sudo nova uninstall`) treated a .deb install as a tarball one. Now what the package manager owns decides; installing the .deb removes the leftover marker; and the tarball's installer, run over a .deb install, no longer claims it.
 - **Already hit this?** On a Debian/Ubuntu server: `sudo rm /usr/lib/nova-api/INSTALLED_FROM_TARBALL`, then `sudo nova update` as usual. (Without that, an updater from 0.9.23 or older still picks the tarball — which now installs, after which the next update switches back to the package.)

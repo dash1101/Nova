@@ -246,16 +246,20 @@ class NovaApi(private val pairing: Pairing) {
     }
 
     private inline fun route(method: String, block: (String, String) -> String): String {
-        val routes = buildList {
-            if (pairing.lanUrl.isNotEmpty()) add("home" to pairing.lanUrl)
-            if (pairing.tailnetUrl.isNotEmpty() && pairing.tailnetUrl != pairing.lanUrl) add("tailnet" to pairing.tailnetUrl)
-            if (pairing.remoteUrl.isNotEmpty()) add("remote" to pairing.remoteUrl)
-        }.let { r -> preferred?.let { p -> r.sortedBy { if (it.first == p) 0 else 1 } } ?: r }      // whatever worked last goes first
-        if (routes.isEmpty()) throw ApiException(0, "Not paired")
-        // HTTPS only for Nova's own API (plain http is allowed app-wide only for the Apps frame)
-        if (routes.any { !it.second.startsWith("https://") }) throw ApiException(0, "This pairing uses plain HTTP — open Nova on your home Wi-Fi to upgrade it, or pair again")
+        val all = buildList {
+            if (pairing.lanUrl.isNotEmpty()) add("home" to normUrl(pairing.lanUrl))
+            if (pairing.tailnetUrl.isNotEmpty() && pairing.tailnetUrl != pairing.lanUrl) add("tailnet" to normUrl(pairing.tailnetUrl))
+            if (pairing.remoteUrl.isNotEmpty()) add("remote" to normUrl(pairing.remoteUrl))
+        }
+        if (all.isEmpty()) throw ApiException(0, "Not paired")
+        // HTTPS only for Nova's own API (plain http is allowed app-wide only for the Apps frame). A plain-http address is skipped —
+        // not a reason to try none of them (one such address used to leave a phone "Disconnected" without ever trying the others).
+        val routes = all.filter { it.second.startsWith("https://") }
+            .let { r -> preferred?.let { p -> r.sortedBy { if (it.first == p) 0 else 1 } } ?: r }      // whatever worked last goes first
+        if (routes.isEmpty()) throw ApiException(0, "This pairing uses plain HTTP — open Nova on your home Wi-Fi to upgrade it, or pair again")
         var last: Exception = IOException("unreachable")
         val notes = mutableListOf<String>()
+        all.filter { !it.second.startsWith("https://") }.forEach { notes += "${routeName(it.first, it.second)}: skipped (not https)" }
         for ((name, base) in routes) {
             for (attempt in 0..1) {
                 try {
@@ -302,6 +306,37 @@ class NovaApi(private val pairing: Pairing) {
         return rb.build()
     }
 
+    /** Recovery: does this server — the certificate this phone paired with — answer at `address`? Its https URL, or null.
+     *  (Nothing is trusted on the address alone: the certificate must match, and every request is still signed.) */
+    suspend fun probeAddress(address: String): String? = withContext(Dispatchers.IO) {
+        val pin = pairing.lanPin; val a = address.trim().removePrefix("https://").removePrefix("http://").substringBefore('/')
+        if (pin.isEmpty() || a.isEmpty()) return@withContext null
+        val port = android.net.Uri.parse(normUrl(pairing.lanUrl)).port.takeIf { it > 0 } ?: 8495
+        val url = when { a.startsWith("[") || a.count { it == ':' } == 1 -> "https://$a"; ':' in a -> "https://[$a]:$port"; else -> "https://$a:$port" }
+        runCatching {
+            pinned(OkHttpClient.Builder().connectTimeout(8, TimeUnit.SECONDS).readTimeout(15, TimeUnit.SECONDS), pin).build()
+                .newCall(Request.Builder().url("$url/api/v1/ping").build()).execute().use { r -> if (r.isSuccessful) url else null }
+        }.getOrNull()
+    }
+
+    /** Keep an address found that way: a Tailscale one as the Tailscale route, anything else as home. */
+    fun adoptAddress(url: String) {
+        if (isTailscaleUrl(url)) pairing.tailnetUrl = url else pairing.lanUrl = url
+        preferred = null
+    }
+
+    /** Paired without a Tailscale route (apps before 0.9.20 didn't keep it) while nothing answers: look the server's name up
+     *  through Tailscale's MagicDNS and try its Tailscale IPv4 address (the name can resolve to the IPv6 one first, where
+     *  Nova may not listen). Certificate-checked like any address. True when it found the server. */
+    suspend fun findOverTailscale(): Boolean = withContext(Dispatchers.IO) {
+        if (pairing.tailnetUrl.isNotEmpty()) return@withContext false
+        val name = pairing.label.trim().lowercase()
+        if (!Regex("[a-z0-9][a-z0-9-]{0,62}").matches(name)) return@withContext false
+        val ips = runCatching { java.net.InetAddress.getAllByName(name).filterIsInstance<java.net.Inet4Address>().mapNotNull { it.hostAddress } }.getOrDefault(emptyList())
+        for (ip in ips.filter { isTailscaleUrl("https://$it") }) probeAddress(ip)?.let { pairing.tailnetUrl = it; preferred = "tailnet"; return@withContext true }
+        false
+    }
+
     /** Each way in, tried right now and side by side (This phone → Connection → Test): what it is with its address, and
      *  "42 ms" or why it didn't get through. At home that answers "will Tailscale work when I leave?" before you leave. */
     suspend fun testRoutes(): List<Pair<String, String>> = withContext(Dispatchers.IO) {
@@ -339,6 +374,10 @@ class NovaApi(private val pairing: Pairing) {
                     throw ApiException(403, obj.optString("message", "Needs fingerprint confirmation"), stepUpRequired = true)
                 if (route == "remote" && !obj.has("error") && (resp.code in 520..530 || resp.code in 502..504))
                     throw ApiException(resp.code, cloudflareSays(resp.code), offline = true)
+                // Nova's own errors always say {"error": …}: anything else is something other than Nova answering at that address
+                // (a website on the same domain, another program on the port) — not this server: try the next way in
+                if (!obj.has("error")) throw ApiException(resp.code, "something other than Nova answered (HTTP ${resp.code})" +
+                    (if (route == "remote") " — is the Cloudflare tunnel to this server running?" else ""), offline = true)
                 throw ApiException(resp.code, obj.optString("error", "HTTP ${resp.code}"))
             }
             return text
@@ -451,5 +490,8 @@ class NovaApi(private val pairing: Pairing) {
 }
 
 /** A Tailscale address (100.64.0.0/10) in an https://host:port URL. */
+/** A stored server address as a URL: a bare host ("nova.example.com", as some servers handed it out) is https://… */
+fun normUrl(u: String): String { val t = u.trim().trimEnd('/'); return if (t.isEmpty() || "://" in t) t else "https://$t" }
+
 fun isTailscaleUrl(url: String) = runCatching {
     val p = (java.net.URI(url).host ?: "").split(".").map { it.toInt() }; p.size == 4 && p[0] == 100 && p[1] in 64..127 }.getOrDefault(false)

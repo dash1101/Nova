@@ -149,6 +149,7 @@ class AppState(val activity: Activity, val pairing: Pairing, val scope: Coroutin
     }
     fun toast(m: String) = scope.launch { snack.currentSnackbarData?.dismiss(); snack.showSnackbar(m) }
 
+    private var triedTailscale = false
     suspend fun refresh() {
         try {
             val t0 = System.currentTimeMillis()
@@ -162,9 +163,11 @@ class AppState(val activity: Activity, val pairing: Pairing, val scope: Coroutin
                 if (tu.isNotEmpty() && tu != pairing.tailnetUrl) pairing.tailnetUrl = tu       // (never erase the address we paired at)
                 // Paired when the server's "home" address was its Tailscale one (setups before 0.9.20): once it has a real home
                 // address, use that at home — the Tailscale one stays as the Tailscale route above.
+                // Reached some other way (Tailscale, Cloudflare) while the home address didn't answer: the server's own, current
+                // home address wins (a new router, or setup → Network run again) — it comes in the signed, pinned overview.
                 val lu = srv.optString("lan_url")
-                if (lu.startsWith("https://") && lu != pairing.lanUrl && isTailscaleUrl(pairing.lanUrl) && !isTailscaleUrl(lu)) {
-                    if (pairing.tailnetUrl.isEmpty()) pairing.tailnetUrl = pairing.lanUrl
+                if (lu.startsWith("https://") && lu != pairing.lanUrl && !isTailscaleUrl(lu) && (isTailscaleUrl(pairing.lanUrl) || api.via != "home")) {
+                    if (isTailscaleUrl(pairing.lanUrl) && pairing.tailnetUrl.isEmpty()) pairing.tailnetUrl = pairing.lanUrl
                     pairing.lanUrl = lu
                 } }
             if (fanInFlight == 0) o.optJSONObject("fan")?.let { f -> fan = JSONObject(fan?.toString() ?: "{}").also { m -> f.keys().forEach { k -> m.put(k, f.get(k)) } } }
@@ -191,6 +194,8 @@ class AppState(val activity: Activity, val pairing: Pairing, val scope: Coroutin
             } else {
                 reconnecting = true
                 if (failures >= 2) error = e.message
+                // nothing answers and there's no Tailscale route (paired with an app before 0.9.20): look for the server over Tailscale
+                if (failures == 2 && !triedTailscale) { triedTailscale = true; scope.launch { if (runCatching { api.findOverTailscale() }.getOrDefault(false)) refresh() } }
             }
         }
     }

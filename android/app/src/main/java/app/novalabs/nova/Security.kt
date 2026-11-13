@@ -154,7 +154,7 @@ class Pairing(ctx: Context, val profile: String = Servers.active(ctx)) {
     var lanUrl: String
         get() = p.getString("lan_url", "")!!
         set(v) { p.edit().putString("lan_url", v).apply() }
-    val remoteUrl get() = p.getString("remote_url", "")!!
+    val remoteUrl get() = normUrl(p.getString("remote_url", "")!!)        // (a server set up with "nova.example.com" handed that out as-is)
     val cfClientId get() = p.getString("cf_id", "")!!
     val cfClientSecret get() = runCatching { keys.decrypt(p.getString("cf_secret", "")!!) }.getOrDefault("")
     /** sha256 of the server's LAN TLS certificate (hex) — the only certificate accepted on https LAN. */

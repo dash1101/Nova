@@ -200,7 +200,9 @@ def add(args):
         pin = hashlib.sha256(der).hexdigest()
         lan = f"https://{cfg.get('lan_host') or '127.0.0.1'}:{cfg.get('tls_port', 8495)}"
     except Exception: pass
-    info = {"nova": 1, "lan": lan, "pin": pin, "remote": cfg.get("remote_url", ""), "code": code}
+    rem = cfg.get("remote_url", "") or ""
+    if rem and "://" not in rem: rem = "https://" + rem.strip().rstrip("/")             # (typed without https://)
+    info = {"nova": 1, "lan": lan, "pin": pin, "remote": rem, "code": code}
     if away:                        # the ways in from outside: Tailscale's address, and the key to the Cloudflare door
         th = cfg.get("tailnet_host")
         try:                        # set up with its Tailscale address as "home" (setups before 0.9.20): that address is the way in
@@ -346,7 +348,7 @@ def status_info():
         tail = {"url": f"https://{cfg['tailnet_host']}:{tls}", "connected": here}
     return {"version": version().replace("~", "-"), "running": any(p["state"] == "active" for p in parts[:1]), "parts": parts,
             "home": f"https://{host}:{tls}" if host else "", "tailscale": tail, "local": f"https://localhost:{tls}",
-            "remote": cfg.get("remote_url", ""), "pin": short_pin(my_pin()), "devices": len(load(DEVICES, {})), "configured": bool(host)}
+            "remote": ("https://" + cfg["remote_url"] if cfg.get("remote_url") and "://" not in cfg["remote_url"] else cfg.get("remote_url", "")), "pin": short_pin(my_pin()), "devices": len(load(DEVICES, {})), "configured": bool(host)}
 
 def status(args):
     i = status_info()

@@ -383,6 +383,9 @@ if os.path.exists(CONFIG) and not os.access(CONFIG, os.R_OK):
     # Running with an empty config would silently break remote access and auth checks.
     sys.exit(f"cannot read {CONFIG} — it must be root:nova-api, mode 640 (sudo chown root:nova-api {CONFIG}; sudo chmod 640 {CONFIG})")
 CFG = load_json(CONFIG, {})
+# A remote address typed without its scheme ("nova.example.com") is handed out as https://…: phones refused a pairing whose
+# addresses weren't all https, and never tried any of them (0.9.22 and older).
+if CFG.get("remote_url") and "://" not in CFG["remote_url"]: CFG["remote_url"] = "https://" + CFG["remote_url"].strip().rstrip("/")
 PLUGIN_CAT = {}                                   # Store → Plugins: the community list, cached
 # Everything site-specific comes from config.json (defaults match the original install).
 # No config yet (fresh install before `nova-setup`): only localhost, nothing on the network.
