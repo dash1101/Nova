@@ -212,6 +212,10 @@ private fun heroLayout(model: String, w: Float, h: Float, n: Int): HeroLayout = 
     }
 }
 
+/** The layout for the last size and shape asked for (the live layer draws ~30 times a second; the layout only changes with them). */
+private class LayoutCache { private var key = ""; private var last: HeroLayout? = null
+    fun get(model: String, w: Float, h: Float, n: Int): HeroLayout { val k = "$model/$w/$h/$n"; if (k != key || last == null) { last = heroLayout(model, w, h, n); key = k }; return last!! } }
+
 private fun DrawScope.heroBody(L: HeroLayout, dark: Boolean) {
     val left = L.left; val top = L.top; val bw = L.bw; val bh = L.bh
     drawOval(Color.Black.copy(alpha = if (dark) 0.6f else 0.18f), Offset(left + bw * .04f, top + bh - max(4f, bh * .03f)), Size(bw * .92f, max(8f, bh * .06f)))
@@ -287,13 +291,13 @@ private fun DrawScope.heroBody(L: HeroLayout, dark: Boolean) {
 @Composable fun ServerHero(fan: JSONObject?, statusColor: Color, drives: List<JSONObject>?, skewMs: Long, modifier: Modifier = Modifier, io: JSONObject? = null, model: String = "tower",
                           still: Boolean = false) {        // still: one frame, no clock (the picker's five previews would otherwise all animate)
     val look = fanLook(fan); val dark = N.dark; val reverse = AppPrefs.fanReverse; val slow = lite()
-    val t by serverClock(skewMs, still); val blade = remember { BladeCache() }
+    val t by serverClock(skewMs, still); val blade = remember { BladeCache() }; val layouts = remember { LayoutCache() }
     val list = drives?.takeIf { it.isNotEmpty() }; val n = list?.size ?: 6
     Box(modifier) {
     // the body never changes: drawn once in a layer of its own, so each tick of the light doesn't redraw it
     Canvas(Modifier.fillMaxSize().graphicsLayer {}) { heroBody(heroLayout(model, size.width, size.height, n), dark) }
     Canvas(Modifier.fillMaxSize().graphicsLayer {}) {
-        val L = heroLayout(model, size.width, size.height, n)
+        val L = layouts.get(model, size.width, size.height, n)
         val spin = if (still || reduceMotion()) 0f else ((t % 2200.0) / 2200.0 * 360).toFloat()
         L.fan?.let { f ->
             scale(1f, f.squash, f.c) {
