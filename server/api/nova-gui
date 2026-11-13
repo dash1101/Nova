@@ -78,11 +78,22 @@ def parts():
             import winhost
             st = winhost.task_state(task)
         else:
-            st = subprocess.run(["systemctl", "is-active", unit], capture_output=True, text=True).stdout.strip()
-            if st not in ("active",): st = "missing" if subprocess.run(["systemctl", "cat", unit], capture_output=True).returncode != 0 else "inactive"
+            try:
+                st = subprocess.run(["systemctl", "is-active", unit], capture_output=True, text=True, timeout=10).stdout.strip()
+                if st not in ("active",): st = "missing" if subprocess.run(["systemctl", "cat", unit], capture_output=True, timeout=10).returncode != 0 else "inactive"
+            except (OSError, subprocess.SubprocessError): st = "missing"        # (no systemd here)
         out.append({"id": pid, "name": name, "state": st})
     _parts.update(t=time.time(), v=out)
     return out
+
+APP_URL = "https://dash1101.github.io/Nova/"         # where the app is downloaded (Android) and Nova web is explained (iPhone)
+_app_qr = {}
+def app_qr():
+    if "svg" not in _app_qr:
+        try:
+            import qrgen; _app_qr["svg"] = qrgen.svg(APP_URL, border=2)
+        except Exception: _app_qr["svg"] = ""
+    return _app_qr["svg"]
 
 def state():
     c = cli(); now = time.time()
@@ -108,6 +119,7 @@ def state():
                    [{"code": a["code"], "kind": "action", "what": a.get("what", ""), "who": f"asked by {a.get('device', '?')}", "left": int(a["expires"] - now)}
                     for a in pend.get("approvals", []) if a.get("expires", 0) > now],
         "pairing": {"active": bool(pairing) and pairing.get("expires", 0) > now, "left": max(0, int(pairing.get("expires", 0) - now))},
+        "app": {"url": APP_URL, "qr": app_qr() if not devs else ""},             # (only while nothing is paired: the first step)
         "health": {"level": st.get("level", ""), "headline": st.get("headline", ""), "updated": st.get("updated_local", ""),
                    "active": [{"level": a.get("level"), "title": a.get("title", ""), "detail": a.get("detail", ""), "since": a.get("since", "")}
                               for a in st.get("active", []) if a.get("level") in ("info", "warning", "critical")][:12]} if st else None,
@@ -398,6 +410,15 @@ function health() {
   return `<div class="card"><div style="display:flex;gap:10px;align-items:center"><span class="dot ${lv}"></span><h2 style="margin:0">${esc(h.headline || "No status yet")}</h2><span class="grow"></span><span class="sub">${h.updated ? "checked " + esc(h.updated) : ""}</span></div>
     ${h.active.length ? `<div style="margin-top:10px">${h.active.map(a => `<div class="alert"><span class="dot ${a.level === "critical" ? "bad" : a.level === "warning" ? "warn" : ""}" style="margin-top:6px"></span><div><div class="t">${esc(a.title)}</div>${a.detail ? `<div class="fix">${esc(a.detail)}</div>` : ""}</div><span class="grow"></span><span class="sub" style="white-space:nowrap">${esc(a.since)}</span></div>`).join("")}</div>` : ""}</div>`;
 }
+function welcome() {
+  if (!S.configured || S.devices.length || pairedName) return "";
+  return `<div class="card fade"><h2>Get started</h2><div class="sub">Two steps, about a minute.</div>
+    <div style="display:flex;flex-wrap:wrap;gap:20px;align-items:center;margin-top:12px"><div class="code" style="width:150px;flex:none;background:#fff;border-radius:12px;padding:6px">${S.app.qr || ""}</div><div style="flex:1;min-width:240px">
+      <div class="t" style="font-weight:600">1. Get the Nova app</div>
+      <div class="sub">Scan this with your phone's camera, or open <span class="mono">${esc(S.app.url)}</span>. Android: install the app. iPhone: use Nova web in Safari.</div>
+      <div class="t" style="font-weight:600;margin-top:12px">2. Pair it</div>
+      <div class="sub">In the app tap “Add a server”, then press <b>Pair a phone or tablet</b> here and scan the code it shows.</div></div></div></div>`;
+}
 function pairing() {
   if (!S.configured) return "";
   let body;
@@ -468,7 +489,7 @@ function paint() {
   if (!S) { $("#app").innerHTML = `<div class="card"><h2>Nova Server</h2><div class="sub">Opening…</div></div>`; return; }
   const sc = $(".scroll") ? $(".scroll").scrollTop : 0;
   const keep = document.activeElement && document.activeElement.id === "code" ? [document.activeElement.selectionStart, document.activeElement.selectionEnd] : null;
-  $("#app").innerHTML = header() + health() + `<div class="cols"><div class="col">${pairing()}${waiting()}</div><div class="col">${devices()}</div></div>` + addresses() + checkup() + more() +
+  $("#app").innerHTML = header() + health() + welcome() + `<div class="cols"><div class="col">${pairing()}${waiting()}</div><div class="col">${devices()}</div></div>` + addresses() + checkup() + more() +
     `<footer><span>This window talks only to this computer.</span><span>In a terminal: <span class="mono">${S.windows ? "" : "sudo "}nova help</span></span></footer>`;
   if (keep) { const i = $("#code"); i.focus(); i.setSelectionRange(keep[0], keep[1]); }
   if (sc && $(".scroll")) $(".scroll").scrollTop = sc;
