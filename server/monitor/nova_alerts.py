@@ -52,6 +52,34 @@ ARCHIVE     = f"{_DIR}/www/archive.jsonl"        # permanent history: archived +
 PENDING_FILE = os.environ.get("NOVA_PENDING_FILE", _p("/var/lib/nova-api/pending.json"))   # written by nova-api (what waits for approval)
 LOCK_FILE   = os.environ.get("NOVA_ALERTS_LOCK", _p("/run/nova/alerts.lock") if WINDOWS else "/run/nova-alerts.lock")
 
+API_CONFIG  = _p("/etc/nova-api/config.json")
+DOCTOR_FILE = f"{_DIR}/doctor.json"                # the check-up's last findings (run at most every 10 minutes)
+
+def hub_info():
+    """For hub apps (Orbit) and dashboards: whether Nova is set up and where it answers — ports and addresses, nothing secret."""
+    try: c = json.load(open(API_CONFIG))
+    except (OSError, ValueError): c = {}
+    host = c.get("lan_host", "") or ""; tls = int(c.get("tls_port", 8495) or 8495); port = int(c.get("port", 8095) or 8095)
+    urls = {"local": f"https://127.0.0.1:{tls}", "plain": f"http://127.0.0.1:{port}"}
+    if host and host not in ("127.0.0.1", "0.0.0.0", "::"): urls["home"] = f"https://{host}:{tls}"
+    if c.get("tailnet_host"): urls["tailnet"] = f"https://{c['tailnet_host']}:{tls}"
+    return {"setup": {"done": bool(host)}, "ports": {"https": tls, "http": port}, "urls": urls}
+
+def doctor_findings(max_age=600):
+    """`nova doctor`'s findings ([{level ok|warn|stop, title, fix}]), refreshed at most every 10 minutes — for hub apps, which
+    can't run it themselves without administrator rights. On failure the last findings stay."""
+    try: d = json.load(open(DOCTOR_FILE))
+    except (OSError, ValueError): d = {}
+    if time.time() - d.get("t", 0) < max_age: return d.get("checks", []), d.get("t", 0)
+    try:
+        import guides
+        checks = [{"level": x.get("level", ""), "title": x.get("title", ""), "fix": x.get("fix", "")} for x in guides.doctor()]
+        if WINDOWS: checks = [{**x, "fix": x["fix"].replace("sudo nova", "nova")} for x in checks]
+        d = {"t": int(time.time()), "checks": checks}
+        write_json_atomic(DOCTOR_FILE, d, 0o600)
+    except Exception: pass
+    return d.get("checks", []), d.get("t", 0)
+
 def waiting_counts():
     """How many requests wait for approval right now: browsers (and other servers, or the app signing in from away) asking to
     pair, and actions a browser is holding for an admin's OK. Counts only, never the codes — a code is read off the browser
@@ -897,6 +925,9 @@ class Monitor:
             "delivery": {"discord": bool(self.cfg.get("discord_webhook")), "queued": len(self.st["outbox"])},
             "waiting": waiting_counts(),
         }
+        status.update(hub_info())                                     # setup, ports, urls
+        checks, at = doctor_findings()
+        status["doctor"] = checks; status["doctor_updated"] = datetime.fromtimestamp(at, timezone.utc).isoformat() if at else ""
         os.makedirs(os.path.dirname(STATUS_FILE), exist_ok=True)
         write_json_atomic(STATUS_FILE, status, 0o644)
         # Inbox for the Nova app: same events Discord gets, with exact timestamps.

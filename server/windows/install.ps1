@@ -125,7 +125,7 @@ foreach ($d in 'config', 'config\alerts', 'data', 'alerts', 'alerts\www', 'log',
 & icacls (Join-Path $Data 'config\alerts') /inheritance:r /grant "${SYSTEM}:(OI)(CI)F" "${ADMINS}:(OI)(CI)F" | Out-Null   # ...but not the Discord webhook
 & icacls (Join-Path $Data 'data')   /grant "${SERVICE}:(OI)(CI)M"  | Out-Null          # devices, pairing, its certificate
 & icacls (Join-Path $Data 'log')    /grant "${SERVICE}:(OI)(CI)M"  | Out-Null
-& icacls (Join-Path $Data 'alerts\www') /grant "${SERVICE}:(OI)(CI)RX" | Out-Null      # status and Inbox, written by the monitor
+& icacls (Join-Path $Data 'alerts\www') /grant "${SERVICE}:(OI)(CI)RX" "*S-1-5-32-545:(OI)(CI)RX" | Out-Null   # status and Inbox, written by the monitor: readable by everyone here, as on Linux (hub apps such as Orbit read status.json)
 & icacls (Join-Path $Data 'run')    /grant "${SERVICE}:(OI)(CI)RX" | Out-Null          # where the helper listens, and its key
 $r = & $Py (Join-Path $Lib 'winsetup.py'); if ($LASTEXITCODE -ne 0) { Die "Couldn't write the settings: $r" }
 $cfg = Get-Content (Join-Path $Data 'config\config.json') -Raw | ConvertFrom-Json

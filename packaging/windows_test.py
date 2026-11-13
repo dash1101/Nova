@@ -217,6 +217,26 @@ rc, so, se = nova("approve"); check("nova approve (nothing waiting)", rc == 0, (
 rc, so, se = nova("log", "5"); check("nova log", rc == 0 and "/api/v1/" in so, (rc, so[-200:], se[-300:]))
 rc, so, se = nova("doctor"); check("nova doctor", rc in (0, 1) and "Nova is running" in so and "Listening for phones" in so and "Windows Firewall lets" in so, (rc, so[-600:], se[-300:])); print("     ", " | ".join(l.strip() for l in so.split("\n") if l.strip())[:700])
 
+print("\nFor hub apps (Orbit)")
+sf = os.path.join(os.environ.get("ProgramData", r"C:\ProgramData"), "Nova", "alerts", "www", "status.json"); end = time.time() + 90; hs = {}
+while time.time() < end:
+    try: hs = json.load(open(sf, encoding="utf-8"))
+    except (OSError, ValueError): hs = {}
+    if hs.get("doctor"): break
+    time.sleep(3)
+check("status.json says setup is done and where Nova answers", hs.get("setup", {}).get("done") is True and hs.get("ports", {}).get("https") == 8495 and hs.get("urls", {}).get("local") == "https://127.0.0.1:8495", {k: hs.get(k) for k in ("setup", "ports", "urls")})
+check("…and the check-up's findings", any(c.get("title") == "Nova is running" for c in hs.get("doctor", [])), str(hs.get("doctor"))[:300])
+r = subprocess.run(["icacls", os.path.dirname(sf)], capture_output=True, text=True)
+check("…readable by every user here (as on Linux)", "S-1-5-32-545" in r.stdout or "BUILTIN\\Users" in r.stdout or "Users:" in r.stdout, r.stdout[-400:])
+rc, so, se = nova("status", "--json")
+try: sj = json.loads(so)
+except ValueError: sj = {}
+check("nova status --json", rc == 0 and sj.get("running") is True and sj.get("home", "").startswith("https://"), so[-300:])
+rc, so, se = nova("doctor", "--json")
+try: dj = json.loads(so)
+except ValueError: dj = {}
+check("nova doctor --json", rc in (0, 1) and isinstance(dj.get("checks"), list), so[-300:])
+
 print("\nThe Nova Server window")
 import tempfile
 # From the Start menu it runs under pythonw.exe, with no console: sys.stdout is None. The `nova` module it loads must cope —

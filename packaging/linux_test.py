@@ -92,6 +92,19 @@ s, r = d.call("GET", "/api/v1/status"); check("the monitor writes the status", s
 try: wt = json.load(open("/var/lib/nova-alerts/www/status.json")).get("waiting")
 except (OSError, ValueError) as e: wt = str(e)
 check("…with how many approvals wait (counts only, for hub apps)", isinstance(wt, dict) and set(wt) == {"browsers", "actions"}, wt)
+try: hs = json.load(open("/var/lib/nova-alerts/www/status.json"))
+except (OSError, ValueError) as e: hs = {"error": str(e)}
+check("…whether setup is done and where Nova answers (for hub apps)", hs.get("setup", {}).get("done") is True and hs.get("ports", {}).get("https") == 8495
+      and hs.get("urls", {}).get("local") == "https://127.0.0.1:8495" and hs.get("urls", {}).get("home", "").startswith("https://"), {k: hs.get(k) for k in ("setup", "ports", "urls")})
+check("…and the check-up's findings", isinstance(hs.get("doctor"), list) and any(c.get("title") == "Nova is running" for c in hs.get("doctor", [])), str(hs.get("doctor"))[:300])
+rc, so, se = sh("sudo", "nova", "status", "--json")
+try: sj = json.loads(so)
+except ValueError: sj = {}
+check("nova status --json", rc == 0 and sj.get("running") is True and sj.get("home", "").startswith("https://") and isinstance(sj.get("devices"), int), so[-300:])
+rc, so, se = sh("sudo", "nova", "doctor", "--json")
+try: dj = json.loads(so)
+except ValueError: dj = {}
+check("nova doctor --json", rc in (0, 1) and isinstance(dj.get("checks"), list) and "ok" in dj, so[-300:])
 rc, so, se = sh("sudo", "nova", "status"); check("nova status", rc == 0 and "nova-api" in so and "~" not in so.splitlines()[0], so[-400:])
 rc, so, se = sh("sudo", "nova", "devices"); check("nova devices", rc == 0 and "CI test device" in so, so[-300:])
 rc, so, se = sh("sudo", "nova", "log", "5"); check("nova log reads like sentences", rc == 0 and "/api/v1/" in so and '{"' not in so, so[-300:])
