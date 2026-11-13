@@ -72,6 +72,9 @@ def doctor_findings(max_age=600):
     except (OSError, ValueError): d = {}
     if time.time() - d.get("t", 0) < max_age: return d.get("checks", []), d.get("t", 0)
     try:
+        here = os.path.dirname(os.path.realpath(__file__))           # the doctor lives next to the API: /usr/lib/nova-api (or the source tree)
+        for d in (os.path.dirname(here), os.path.join(os.path.dirname(here), "api"), "/usr/lib/nova-api"):
+            if os.path.exists(os.path.join(d, "guides.py")) and d not in sys.path: sys.path.append(d)
         import guides
         checks = [{"level": x.get("level", ""), "title": x.get("title", ""), "fix": x.get("fix", "")} for x in guides.doctor()]
         if WINDOWS: checks = [{**x, "fix": x["fix"].replace("sudo nova", "nova")} for x in checks]
