@@ -167,8 +167,9 @@ fun parsePairInfo(raw: String): PairInfo? = runCatching {
                 val name = "${Build.MANUFACTURER} ${Build.MODEL}".trim(); val pem = app.pairing.keys.publicKeyPem()
                 val away = info.tailnet.isNotEmpty() || info.cfId.isNotEmpty()
                 val tries = buildList {
-                    if (info.lan.isNotEmpty()) add(Triple("home", info.lan, if (away) 3L else 4L))
-                    if (info.tailnet.isNotEmpty()) add(Triple("tailnet", info.tailnet, 6L))
+                    // (a server whose "home" address is its Tailscale one: that's a Tailscale connection, with Tailscale's patience, tried once)
+                    if (info.lan.isNotEmpty()) add(Triple("home", info.lan, if (isTailscaleUrl(info.lan)) 8L else if (away) 3L else 4L))
+                    if (info.tailnet.isNotEmpty() && info.tailnet.trimEnd('/') != info.lan.trimEnd('/')) add(Triple("tailnet", info.tailnet, 6L))
                     if (info.remote.isNotEmpty() && away) add(Triple("remote", info.remote, 20L))
                 }
                 var r: JSONObject? = null; var usedLan = info.lan; var reached = ""

@@ -346,10 +346,11 @@ class NovaApi(private val pairing: Pairing) {
             }
             val ctx = javax.net.ssl.SSLContext.getInstance("TLS").apply { init(null, arrayOf(tm), SecureRandom()) }
             try {
-                OkHttpClient.Builder().connectTimeout(4, TimeUnit.SECONDS).sslSocketFactory(ctx.socketFactory, tm)
+                OkHttpClient.Builder().connectTimeout(if (isTailscaleUrl(url)) 8L else 4L, TimeUnit.SECONDS).sslSocketFactory(ctx.socketFactory, tm)
                     .hostnameVerifier { _, _ -> true }.build()
                     .newCall(Request.Builder().url(url.trimEnd('/') + "/api/v1/ping").build()).execute().close()
-            } catch (e: IOException) { if (pin.isEmpty()) throw ApiException(0, "Can't reach $url — check the address and that you're on the server's network.") }
+            } catch (e: IOException) { if (pin.isEmpty()) throw ApiException(0, if (isTailscaleUrl(url)) "Can't reach $url — check that Tailscale is running on this ${DeviceForm.noun}, signed in to the same account as the server."
+                else "Can't reach $url — check the address and that you're on the server's network.") }
             pin
         }
 
