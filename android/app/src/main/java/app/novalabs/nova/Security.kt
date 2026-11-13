@@ -146,7 +146,7 @@ class DeviceKey(profile: String) {
 
 /** Pairing details for one server. Non-secret fields in plain prefs; the Cloudflare secret encrypted. */
 class Pairing(ctx: Context, val profile: String = Servers.active(ctx)) {
-    private val appCtx: Context = ctx.applicationContext
+    val appCtx: Context = ctx.applicationContext
     private val p = ctx.getSharedPreferences(if (profile.isEmpty()) "nova" else "nova_$profile", Context.MODE_PRIVATE)
     val keys = DeviceKey(profile)
     val paired get() = deviceId.isNotEmpty()

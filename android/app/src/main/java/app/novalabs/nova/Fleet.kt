@@ -59,6 +59,12 @@ object Discovery {
     }
 }
 
+/** A VPN (Tailscale, say) is on: with an exit node and without "Allow LAN access", this phone can't reach anything at home. */
+fun vpnOn(ctx: Context): Boolean = runCatching {
+    val cm = ctx.getSystemService(android.net.ConnectivityManager::class.java)
+    cm.getNetworkCapabilities(cm.activeNetwork)?.hasTransport(android.net.NetworkCapabilities.TRANSPORT_VPN) == true
+}.getOrDefault(false)
+
 /** Address picked from "Found on this network", for the pairing screen to fill in. */
 object PairHint { var address: String? = null; var name: String? = null; var awayHost: String? = null }
 
@@ -81,7 +87,9 @@ fun pairedLanUrls(ctx: Context) = Servers.all(ctx).map { Pairing(ctx, it) }.filt
         }
         if (fresh.isNotEmpty()) RowDivider()
         Row1(if (scanning) "Searching…" else if (fresh.isEmpty()) "No Nova servers found on this network" else "Search again",
-            if (!scanning && fresh.isEmpty()) "Is the server on, and this ${DeviceForm.noun} on the same Wi-Fi? (Nova answers on UDP port 8496.) Tap to look again." else null, false,
+            if (!scanning && fresh.isEmpty()) "Is the server on, and this ${DeviceForm.noun} on the same Wi-Fi? (Nova answers on UDP port 8496.)" +
+                (if (vpnOn(app.activity)) " A VPN is on — if it's Tailscale with an exit node, turn on Allow LAN access, or pair with sudo nova add --remote." else "") +
+                " Tap to look again." else null, false,
             Icons.Rounded.Refresh, N.sub, enabled = !scanning, onClick = { round++ })
     }
 }

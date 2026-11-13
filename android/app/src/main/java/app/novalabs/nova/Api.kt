@@ -272,6 +272,8 @@ class NovaApi(private val pairing: Pairing) {
                 }
             }
         }
+        if (notes.isNotEmpty() && vpnOn(pairing.appCtx) && !isTailscale(pairing.lanUrl))       // a full-tunnel VPN hides the home network
+            notes += "A VPN is on: if it's Tailscale with an exit node, turn on Allow LAN access in Tailscale, or this ${DeviceForm.noun} can't reach the server at home"
         if (pairing.remoteUrl.isEmpty() && pairing.tailnetUrl.isEmpty() && !isTailscale(pairing.lanUrl))
             notes += "Away-from-home access isn't set up, so Nova only works on the home network (sudo nova setup → Away from home)"
         lastAttempts = notes
