@@ -1,12 +1,13 @@
-# Nova  ·  0.8.9-alpha
+# Nova  ·  0.9.22-alpha
 
 **A secure remote control for your home server, from your Android phone or any browser.**
 Status and live graphs, containers (logs, shell, start/stop), a one-tap app store, drives,
 backups, alerts, an SSH terminal and more, in a clean, glassy app. It works on your home
-network, and optionally from anywhere through Cloudflare Access, without a VPN.
+network, and optionally from anywhere over Tailscale or through Cloudflare Access.
 
 ```
  phone (Nova app) ──home network: HTTPS, pinned certificate──┐
+        ├── away: Tailscale, same pinned certificate ────────┤
         │                                                    ├─► nova-api (unprivileged)
         └── anywhere: Cloudflare Access ─► cloudflared ──────┘        │
                                                              fixed-verb root helper
@@ -29,7 +30,7 @@ network, and optionally from anywhere through Cloudflare Access, without a VPN.
 
 | | |
 |---|---|
-| **Home** | Server health, live fan/LED preview, banner for anything that needs attention |
+| **Home** | Server health and a picture of your machine — tower, mini PC, NAS, rack server, laptop or single-board computer, dark or light — whose lights show its status and drive activity; a banner for anything that needs attention |
 | **Status** | CPU, memory, temperature and network graphs (last hour), storage, backups, services |
 | **Containers** | Every Docker Compose container: logs, a shell inside it, start/stop/restart, update, restart policy |
 | **App store** | One-tap installs of popular self-hosted apps (Jellyfin, Vaultwarden, Uptime Kuma, …) and apt programs |
@@ -135,8 +136,9 @@ Keep the signing key safe. Updates must be signed with the same key, or Android 
 
 ## Remote access (optional)
 
-Nova works on your home network out of the box. To use it from anywhere without a VPN, put it
-behind a Cloudflare Tunnel with Access and a service token. Step by step: [docs/REMOTE.md](docs/REMOTE.md).
+Nova works on your home network out of the box. To use it from anywhere: **Tailscale** (a private
+network between your own devices — `sudo nova setup` → Away from home), or a **Cloudflare Tunnel** with
+Access and a service token. Both, step by step: [docs/REMOTE.md](docs/REMOTE.md).
 
 ## Layout
 
@@ -167,9 +169,8 @@ app uses). See docs/REMOTE.md.
 
 ## Known limitations
 
-- Fan **speed** control needs a kernel driver for your board's fan chip. Fan/case **lighting** is
-  supported only on Gigabyte RGB Fusion 2 boards for now (the module is small, so other controllers
-  are welcome).
+- Fan **speed** control needs a kernel driver for your board's fan chip. Fan/case **lighting** works
+  directly on Gigabyte RGB Fusion 2 boards, and on anything OpenRGB supports through Labs → OpenRGB.
 - Monitoring and alerts are built in (docs/MONITOR.md); you can still plug in your own monitor.
 - Pools use mergerfs (combined) or Linux software RAID (mdadm); ZFS isn't offered from the app yet.
 
