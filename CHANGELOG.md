@@ -1,19 +1,25 @@
 # Changelog
 
 ## 0.9.22-alpha (server and app)
-- **A sixth shape: a single-board computer** (a Raspberry Pi and the like) — the board from above with its pin header, ports and a fan on its chip. A board with no firmware chassis type but a device tree (most Pis) shows it until you pick.
-- **Until you pick, a quiet "Doesn't look like your computer? Pick its look"** sits under the picture on Home (for admins; × hides it).
-- **Dark or light case.** Under the shapes, pick the case's color — black/gunmetal or white/silver — for every shape but the board. Every phone and browser of that server shows it.
-- **Pairing over Tailscale is more patient:** a phone pairing at a Tailscale address waits as long as Tailscale needs (8 s instead of 3–4), tries that address once instead of twice, and if it can't get through, says to check that Tailscale is running on the phone. "Can't reach your server" calls a Tailscale address Tailscale (even when it's the server's "home" one), with the same hint, and only says Nova works at home only when there's really no other way in.
-- **Fix: Nova could start before Tailscale (or Wi-Fi) had its address and then never answer there.** At boot, if tailscaled or the network was slower than Nova, listening on that address failed once and Nova ran on without it — phones over Tailscale (or, on a server whose home address is its Tailscale one, every phone) couldn't connect until Nova was restarted. Now Nova keeps trying until the address is there, and `sudo nova doctor` says whether Tailscale is connected on this computer, whether its address changed since setup (after reinstalling Tailscale, say), and whether Nova answers on it.
-- **Test each way in** (Settings → This phone → Connection): tries the home network, Tailscale and Cloudflare side by side and says how long each took or why it didn't get through — at home, it tells you whether Tailscale will work before you leave. The Connection row knows Tailscale now (it said "—").
+Phones that couldn't reach a computer over Tailscale, and more ways for the Home picture to look like yours.
+
+**Connecting over Tailscale**
+- **Fix: Nova could start before Tailscale (or Wi-Fi) had its address and then never answer there.** At boot, if tailscaled or the network was slower than Nova, listening on that address failed once and Nova ran on without it — phones over Tailscale (or, on a server whose home address is its Tailscale one, every phone) couldn't connect until Nova was restarted. Now Nova keeps trying until the address is there.
 - **Tailscale's "shields up"** ("Allow incoming connections" off) lets the computer reach its own Tailscale address but turns every other device away — exactly "it works on my PC, not on my phone". `sudo nova doctor` now says so (on Windows too), and setup's Tailscale step offers to turn it off.
-- **A VPN on the phone that hides the home network** (Tailscale with an exit node, without Allow LAN access) — the app now says so when it can't find or reach the server at home.
-- `sudo nova help troubleshoot`: what to do when Nova works at home but not away.
-- **Pairing a phone to a server whose "home" address is its Tailscale one:** `sudo nova add --remote` works there now (it was refused — the Tailscale address *is* the way in), and once you run `sudo nova setup` → Network and pick the real home address, a phone paired before moves to it by itself and keeps Tailscale for when you're away.
+- **`sudo nova doctor` checks Tailscale:** connected on this computer, the same address as at setup (reinstalling Tailscale can change it), and Nova answering there. `sudo nova status` says when it isn't connected.
+- **Test each way in** (app: Settings → This phone → Connection): tries the home network, Tailscale and Cloudflare side by side and says how long each took or why it didn't get through — at home, it tells you whether Tailscale will work before you leave. The Connection row knows Tailscale now (it said "—").
+- **Pairing over Tailscale is more patient:** a phone pairing at a Tailscale address waits as long as Tailscale needs (8 s instead of 3–4), tries that address once instead of twice, and if it can't get through says to check Tailscale on the phone. "Can't reach your server" calls a Tailscale address Tailscale (even when it's the server's "home" one), with the same hint, and only says Nova works at home only when there's really no other way in.
+- **A server whose "home" address is its Tailscale one:** `sudo nova add --remote` works there now (it was refused — the Tailscale address *is* the way in), and once `sudo nova setup` → Network picks the real home address, a phone paired before moves to it by itself and keeps Tailscale for when you're away.
+- **A VPN on the phone that hides the home network** (Tailscale with an exit node, without Allow LAN access): the app says so when it can't find or reach the server at home.
 - **Changing only setup's Network (or Away from home) also opens the firewall** for the new network and for Tailscale devices (ufw/firewalld) — before, only a full setup did.
-- **Settings → Server → Looks like:** still previews instead of six live ones (they were heavy on slow tablets); on the web they're cards; a view-only device sees them without being offered to change them. Windows reads its chassis type too, so a Windows laptop shows the laptop.
-- The home picture works out its layout once per size and shape instead of on every frame.
+- The remote-access guide (REMOTE.md) starts with Tailscale now; `sudo nova help troubleshoot` covers "works at home, not away".
+
+**The Home picture**
+- **A sixth shape: a single-board computer** (a Raspberry Pi and the like) — the board from above with its pin header, ports and a fan on its chip. A board with no firmware chassis type but a device tree (most Pis) shows it until you pick.
+- **Dark or light case.** Under the shapes, pick the case's color — black/gunmetal or white/silver — for every shape but the board. Every phone and browser of that server shows it.
+- **Until you pick, a quiet "Doesn't look like your computer? Pick its look"** sits under the picture on Home (for admins; × hides it).
+- **Settings → Server → Looks like:** still previews instead of live ones (lighter on slow tablets); cards on the web; a view-only device sees them without being offered to change them. Windows reads its chassis type too, so a Windows laptop shows the laptop. The picture works out its layout once per size and shape instead of on every frame.
+- Server versions read 0.9.22-alpha everywhere (the update row said 0.9.21~alpha).
 
 ## 0.9.21-alpha (server and app)
 - **Your server, as it looks.** The picture on Home now comes in five shapes — a **tower** (as before), a **mini PC**, a **NAS** with one tray per drive, a **rack server** and a **laptop**. Pick it in Settings → Server → Looks like, and every phone and browser of that server shows it. Until you pick, Nova goes by what the computer's firmware says it is (a laptop shows the laptop, a rack server the rack). Each one keeps what the tower has: the live light (on a laptop, its screen shows the ring and the keyboard glows), your LED strips, one LED per drive that blinks with real activity, the power LED in the status color — and tapping them still opens Lighting, Storage and the power menu.
