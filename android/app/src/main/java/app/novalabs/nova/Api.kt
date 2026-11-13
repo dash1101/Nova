@@ -226,7 +226,8 @@ class NovaApi(private val pairing: Pairing) {
     @Volatile var lastAttempts: List<String> = emptyList(); private set
 
     private fun routeName(name: String, base: String) =
-        (when (name) { "home" -> "Home network"; "tailnet" -> "Tailscale"; else -> "Remote (Cloudflare)" }) + " · " + base.substringAfter("://").substringBefore("/")
+        (when { name == "home" && isTailscaleUrl(base) -> "Tailscale"; name == "home" -> "Home network"; name == "tailnet" -> "Tailscale"; else -> "Remote (Cloudflare)" }) +
+            " · " + base.substringAfter("://").substringBefore("/")
 
     private fun describe(e: IOException): String = when (e) {
         is java.net.UnknownHostException -> "no internet, or the name can't be found"
@@ -261,7 +262,8 @@ class NovaApi(private val pairing: Pairing) {
                     if (!e.offline) throw e
                     notes += "${routeName(name, base)}: ${e.message}"; last = IOException(e.message); break
                 } catch (e: IOException) {
-                    if (attempt == 1 || notSent(e)) notes += "${routeName(name, base)}: ${describe(e)}"
+                    if (attempt == 1 || notSent(e)) notes += "${routeName(name, base)}: ${describe(e)}" +
+                        (if (isTailscale(base) && e !is javax.net.ssl.SSLException) " — is Tailscale on and connected on this ${DeviceForm.noun}?" else "")
                     last = e
                     // A POST that may have arrived must not run twice (e.g. restart a container twice).
                     if (method != "GET" && !notSent(e)) throw ApiException(0, "Connection dropped — check whether it went through")
@@ -270,7 +272,8 @@ class NovaApi(private val pairing: Pairing) {
                 }
             }
         }
-        if (pairing.remoteUrl.isEmpty()) notes += "Remote access isn't set up, so Nova only works on the home network"
+        if (pairing.remoteUrl.isEmpty() && pairing.tailnetUrl.isEmpty() && !isTailscale(pairing.lanUrl))
+            notes += "Away-from-home access isn't set up, so Nova only works on the home network (sudo nova setup → Away from home)"
         lastAttempts = notes
         throw ApiException(0, "Disconnected", offline = true)
     }
