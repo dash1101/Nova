@@ -2958,14 +2958,30 @@ def main():
     threading.Thread(target=chassis_type, daemon=True).start()       # (on Windows that's a PowerShell call: not during the first Home)
     port = int(CFG.get("port", 8095))
     binds = list(dict.fromkeys(CFG.get("bind", ["127.0.0.1", LAN_HOST])))
-    servers = []
-    for addr in binds:
-        try:
-            s = NovaServer((addr, port), Handler)
-            servers.append(s); threading.Thread(target=s.serve_forever, daemon=True).start()
-            print(f"nova-api {API_VERSION} listening on {addr}:{port}", flush=True)
+    servers = []; waiting = []
+    def listen(make, addr, port, what):
+        """Listen on addr:port. An address this computer doesn't have yet — Tailscale's before tailscaled is up, a Wi-Fi
+        address before the network connects, both usual right after boot — is tried again until it appears, instead of
+        Nova running on without it (phones on that network would never get through until Nova restarted)."""
+        def attempt():
+            s = make((addr, port)); servers.append(s); threading.Thread(target=s.serve_forever, daemon=True).start()
+            print(f"nova-api {what} on {addr}:{port}", flush=True)
+        try: attempt(); return
         except OSError as e:
-            print(f"cannot bind {addr}:{port}: {e}", flush=True)
+            print(f"cannot listen on {addr}:{port} ({what}): {e}" + ("" if addr in ("127.0.0.1", "", "0.0.0.0") else " — trying again until it's there"), flush=True)
+            if addr in ("127.0.0.1", "", "0.0.0.0"): return
+        waiting.append(addr)
+        def again():
+            delay = 2
+            while True:
+                time.sleep(delay); delay = min(30, delay * 2)
+                try: attempt()
+                except OSError: continue
+                if addr in waiting: waiting.remove(addr)
+                return
+        threading.Thread(target=again, daemon=True).start()
+    for addr in binds:
+        listen(lambda a: NovaServer(a, Handler), addr, port, f"{API_VERSION} listening")
     # Encrypted listener on the home network (the app pins its certificate).
     try:
         import ssl
@@ -2979,17 +2995,15 @@ def main():
             def handle_error(self, request, client_address): pass    # failed handshakes are noise
         # the home address, Tailscale's, and this computer itself (https://localhost:8495 — a browser on the server, a hub app):
         # requests on 127.0.0.1 count as home, like the network's (a forged Cloudflare header only makes them "remote", stricter)
+        def tls_server(a):
+            s = TLSServer(a, Handler)
+            s.socket = ctx.wrap_socket(s.socket, server_side=True, do_handshake_on_connect=False)
+            return s
         for host in dict.fromkeys([LAN_HOST] + ([TAILNET_HOST] if TAILNET_HOST else []) + ["127.0.0.1"]):
-            try:
-                s = TLSServer((host, TLS_PORT), Handler)
-                s.socket = ctx.wrap_socket(s.socket, server_side=True, do_handshake_on_connect=False)
-                servers.append(s); threading.Thread(target=s.serve_forever, daemon=True).start()
-                print(f"nova-api TLS on {host}:{TLS_PORT} (pin {pin[:16]}…)", flush=True)
-            except OSError as e:
-                print(f"cannot bind TLS {host}:{TLS_PORT}: {e}", flush=True)
+            listen(tls_server, host, TLS_PORT, f"TLS (pin {pin[:16]}…)")
     except Exception as e:
         print(f"no TLS listener: {e}", flush=True)
-    if not servers: sys.exit(1)
+    if not servers and not waiting: sys.exit(1)
     threading.Event().wait()
 
 

@@ -182,6 +182,15 @@ def doctor():
         if host in addrs: add("ok", f"Home address {host} is this machine's")
         else: add("stop", f"Phones look for this server at {host}, but that's no longer its address",
                   "sudo nova setup → Network (then the app finds it again; pairing stays)")
+        # Tailscale: this computer has its address, and Nova answers there (it waits for an address that comes up after it starts)
+        th = cfg.get("tailnet_host", "")
+        if th and th != host:
+            if th not in addrs:
+                add("warn", f"Tailscale isn't connected on this computer (its address {th} isn't here), so phones away from home can't reach Nova",
+                    "sudo tailscale up   (or check: tailscale status)")
+            elif active and f"{th}:{port}" not in _sh("ss", "-H", "-ltn", f"sport = :{port}")[1]:
+                add("warn", f"Nova isn't answering on its Tailscale address {th} yet", "it picks it up within half a minute; if not: sudo systemctl restart nova-api")
+            else: add("ok", f"Tailscale address {th} is this machine's, and Nova answers there")
     # firewall
     rc, ufw = _sh("ufw", "status")
     if rc == 0 and ufw.startswith("Status: active"):
