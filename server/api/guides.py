@@ -145,7 +145,7 @@ def topics(): return list(GUIDES)
 
 # ── sudo nova doctor ────────────────────────────────────────────────────────────────────
 def _sh(*cmd, timeout=10):
-    try: r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout); return r.returncode, r.stdout.strip()
+    try: r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, creationflags=0x08000000 if os.name == "nt" else 0); return r.returncode, r.stdout.strip()
     except (FileNotFoundError, subprocess.TimeoutExpired): return 127, ""
 
 def _in_tailnet(ip):

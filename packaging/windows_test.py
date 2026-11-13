@@ -238,8 +238,8 @@ while time.time() < end and not url.startswith("http://localhost:"):
     time.sleep(.3)
     try: url = open(uf).read().strip()
     except OSError: pass
-check("starts and says where it is", url.startswith("http://localhost:") and "#" in url, (url[:40], gui.poll()))
-gbase, gkey = (url.split("/#") + [""])[:2]
+check("starts and says where it is", url.startswith("http://localhost:") and "?k=" in url, (url[:40], gui.poll()))
+gbase, gkey = url.split("/?k=")[0], url.split("?k=")[-1].split("&")[0]
 def g(path, body=None, key=None, host=None):
     h = {"X-Nova-Key": gkey if key is None else key, "Content-Type": "application/json"}
     if host: h["Host"] = host

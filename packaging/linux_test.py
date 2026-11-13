@@ -99,8 +99,8 @@ rc, so, se = sh("sudo", "nova", "approve", "ZZZZZZ"); check("a wrong approval co
 
 print("\nThe Nova Server window")
 p = subprocess.Popen(["sudo", "/usr/sbin/nova-gui", "--serve", "--print-url"], stdout=subprocess.PIPE, text=True)
-url = (p.stdout.readline() or "").strip(); check("starts and gives its address", url.startswith("http://localhost:") and "#" in url, url[:40])
-base, key = (url.split("/#") + [""])[:2]
+url = (p.stdout.readline() or "").strip(); check("starts and gives its address", url.startswith("http://localhost:") and "?k=" in url, url[:40])
+base, key = url.split("/?k=")[0], url.split("?k=")[-1].split("&")[0]
 def g(path, body=None):
     rq = urllib.request.Request(base + path, data=json.dumps(body).encode() if body is not None else None, method="POST" if body is not None else "GET", headers={"X-Nova-Key": key, "Content-Type": "application/json"})
     try:

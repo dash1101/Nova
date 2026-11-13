@@ -252,7 +252,9 @@ def watchdog():
 
 def serve(print_url=False, url_file="", start=""):
     srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), H); srv.daemon_threads = True
-    url = f"http://localhost:{srv.server_address[1]}/{'?do=pair' if start == 'pair' else ''}#{KEY}"
+    # the key rides in the query, not after "#": some ways of opening an address on Windows drop the "#…" part (the page
+    # takes it out of the address bar at once, and never sends it on: no referrer, nothing logged)
+    url = f"http://localhost:{srv.server_address[1]}/?k={KEY}{'&do=pair' if start == 'pair' else ''}"
     if url_file:
         with open(url_file, "w") as f: f.write(url)
     if print_url and not WIN:
@@ -364,7 +366,7 @@ a{color:var(--blue);text-decoration:none}a:hover{text-decoration:underline}
 footer{display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between;color:var(--sub);font-size:13px;padding:0 4px}
 </style></head><body><main id="app"><div class="card"><div class="empty">Opening…</div></div></main>
 <script>
-const KEY = location.hash.slice(1); let AUTO = new URLSearchParams(location.search).get("do"); history.replaceState(null, "", location.pathname);
+const Q = new URLSearchParams(location.search), KEY = Q.get("k") || location.hash.slice(1); let AUTO = Q.get("do"); history.replaceState(null, "", location.pathname);
 const $ = (s, r = document) => r.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 // "2026-11-10 20:16" → "today 20:16" / "yesterday" / "5 days ago" / "4 weeks ago"
