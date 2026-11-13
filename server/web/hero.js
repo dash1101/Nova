@@ -314,18 +314,20 @@ function drawFan(c, w, h, look, t, spin, reverse) {
 }
 
 /** Animate a canvas until it leaves the page. kind: "server" | "fan". */
-export function animate(canvas, kind, statusColor = () => "#3ecf6e") {
+export function animate(canvas, kind, statusColor = () => "#3ecf6e", still = false) {   // still: one frame, then only on resize (pickers)
   if (!canvas) return;
   const t0 = performance.now();
   const frame = now => {
     if (!canvas.isConnected) return;
     const dpr = devicePixelRatio || 1, w = canvas.clientWidth, h = canvas.clientHeight;
+    if (still && canvas._drawn === `${w}x${h}`) return void setTimeout(() => requestAnimationFrame(frame), 500);
     requestAnimationFrame(frame);           // first: one bad frame (lights half-loaded, say) must never stop the picture for good
     if (!w || !h) return;
+    if (still) canvas._drawn = `${w}x${h}`;
     if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(h * dpr)) { canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr); }
     const c = canvas.getContext("2d"); c.setTransform(dpr, 0, 0, dpr, 0, 0);
     const look = fanLook(S.fan), t = Date.now() + (S.skew || 0);     // server time: the wave lines up with the real fan
-    const spin = reduce() ? 0 : (t % 2200) / 2200 * 360, reverse = localStorage.getItem("nova.fanReverse") === "true";
+    const spin = reduce() || still ? 0 : (t % 2200) / 2200 * 360, reverse = localStorage.getItem("nova.fanReverse") === "true";
     c.clearRect(0, 0, w, h);
     try {
       if (kind === "server") drawServer(c, w, h, look, t, spin, statusColor(), S.overview?.status?.metrics?.drive_states, reverse, canvas.dataset.look || heroLook());

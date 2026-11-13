@@ -149,7 +149,7 @@ private val ACCENTS = listOf("", "#3e91ff", "#5e5ce6", "#bf5af2", "#ff2d55", "#f
                         Column(Modifier.weight(1f).clip(RoundedCornerShape(smallCorner(20.dp))).background(N.card)
                             .border(2.dp, if (sel) N.blue else Color.Transparent, RoundedCornerShape(smallCorner(20.dp)))
                             .clickable(enabled = app.isAdmin) { save(JSONObject().put("look", k)) }.padding(vertical = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                            ServerHero(app.fan, N.green, drives, app.clockSkew, Modifier.fillMaxWidth().height(96.dp), model = k)
+                            ServerHero(app.fan, N.green, drives, app.clockSkew, Modifier.fillMaxWidth().height(96.dp), model = k, still = true)
                             Text(label, color = N.text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
                         }
                     }

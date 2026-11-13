@@ -80,6 +80,7 @@ d = Dev(pr.get("device_id", "x"), k)
 print("\nSigned requests")
 s, r = d.call("GET", "/api/v1/whoami"); check("whoami", s == 200 and r.get("role") == "admin", (s, r))
 s, ov = d.call("GET", "/api/v1/overview", timeout=60)
+check("overview says which picture Home shows (from the Windows chassis type)", ov.get("server", {}).get("look") in ("tower", "mini", "nas", "rack", "laptop"), ov.get("server", {}).get("look"))
 sv = ov.get("server", {}) if s == 200 else {}
 check("overview", s == 200 and sv.get("os") == "windows", (s, str(ov)[:300]))
 check("…knows the machine", bool(sv.get("name")) and sv.get("ram_gb", 0) >= 1 and "Windows" in sv.get("kernel", "") and sv.get("uptime_s", 0) > 0, sv)

@@ -125,8 +125,8 @@ private fun ringGlow(look: FanLook, tMs: Double, reverse: Boolean): Color {
 }
 
 /** Frame clock in server time (ms), so the picture's wave lines up with the real fan. */
-@Composable private fun serverClock(skewMs: Long): State<Double> {
-    if (reduceMotion()) return remember(skewMs) { mutableDoubleStateOf((System.currentTimeMillis() + skewMs).toDouble()) }
+@Composable private fun serverClock(skewMs: Long, still: Boolean = false): State<Double> {
+    if (still || reduceMotion()) return remember(skewMs) { mutableDoubleStateOf((System.currentTimeMillis() + skewMs).toDouble()) }
     UseAmbient()           // ~30 fps is plenty for a slow light wave (~15 on older devices), and it beats together with the orb
     return remember(skewMs) { derivedStateOf { (Ambient.ms + skewMs).toDouble() } }
 }
@@ -284,16 +284,17 @@ private fun DrawScope.heroBody(L: HeroLayout, dark: Boolean) {
  * server or a laptop), with its live light, its LED strips, one LED per drive (boot drive included) and the power LED in the
  * status color. Drive LEDs: green with activity when healthy, amber when worn or hot, red (pulsing) when missing or failing.
  */
-@Composable fun ServerHero(fan: JSONObject?, statusColor: Color, drives: List<JSONObject>?, skewMs: Long, modifier: Modifier = Modifier, io: JSONObject? = null, model: String = "tower") {
+@Composable fun ServerHero(fan: JSONObject?, statusColor: Color, drives: List<JSONObject>?, skewMs: Long, modifier: Modifier = Modifier, io: JSONObject? = null, model: String = "tower",
+                          still: Boolean = false) {        // still: one frame, no clock (the picker's five previews would otherwise all animate)
     val look = fanLook(fan); val dark = N.dark; val reverse = AppPrefs.fanReverse; val slow = lite()
-    val t by serverClock(skewMs); val blade = remember { BladeCache() }
+    val t by serverClock(skewMs, still); val blade = remember { BladeCache() }
     val list = drives?.takeIf { it.isNotEmpty() }; val n = list?.size ?: 6
     Box(modifier) {
     // the body never changes: drawn once in a layer of its own, so each tick of the light doesn't redraw it
     Canvas(Modifier.fillMaxSize().graphicsLayer {}) { heroBody(heroLayout(model, size.width, size.height, n), dark) }
     Canvas(Modifier.fillMaxSize().graphicsLayer {}) {
         val L = heroLayout(model, size.width, size.height, n)
-        val spin = if (reduceMotion()) 0f else ((t % 2200.0) / 2200.0 * 360).toFloat()
+        val spin = if (still || reduceMotion()) 0f else ((t % 2200.0) / 2200.0 * 360).toFloat()
         L.fan?.let { f ->
             scale(1f, f.squash, f.c) {
                 if (look.on) drawCircle(Brush.radialGradient(listOf(ringGlow(look, t, reverse).copy(alpha = 0.18f + 0.22f * look.brightness), Color.Transparent), f.c, f.r * 2.05f), f.r * 2.05f, f.c)

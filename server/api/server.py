@@ -401,10 +401,24 @@ SSH_HOSTS = CFG.get("ssh_hosts", [{"name": "Home network", "host": LAN_HOST, "po
 def board_name(): return plat.board()
 
 LOOKS = ("tower", "mini", "nas", "rack", "laptop")
+_chassis = []
+def chassis_type():
+    """The firmware's SMBIOS chassis type (3 desktop, 9 laptop, 23 rack…), read once: /sys on Linux, CIM on Windows."""
+    if not _chassis:
+        ct = 0
+        try:
+            if plat.WINDOWS:
+                r = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", "(Get-CimInstance Win32_SystemEnclosure).ChassisTypes[0]"],
+                                   capture_output=True, text=True, timeout=20, creationflags=0x08000000)
+                ct = int((r.stdout or "0").strip() or 0)
+            else: ct = int(open("/sys/class/dmi/id/chassis_type").read().strip())
+        except (OSError, ValueError, subprocess.SubprocessError): ct = 0
+        _chassis.append(ct)
+    return _chassis[0]
+
 def detected_look():
     """What the home picture shows until someone picks: from the firmware's chassis type (SMBIOS), else a tower."""
-    try: ct = int(open("/sys/class/dmi/id/chassis_type").read().strip())
-    except (OSError, ValueError): return "tower"
+    ct = chassis_type()
     if ct in (8, 9, 10, 14, 31, 32): return "laptop"          # portable, laptop, notebook, sub-notebook, convertible, detachable
     if ct in (35, 36, 4): return "mini"                       # mini PC, stick PC, low-profile desktop
     if ct in (17, 23, 25, 28, 29): return "rack"              # main server chassis, rack mount, multi-system, blade

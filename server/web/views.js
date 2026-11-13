@@ -1771,10 +1771,10 @@ export async function serverSettings(ctx) {
       ${sec("Location")}${group(row("Where the server is", { sub: locationText(st.location), blue: st.location?.source === "set", icon: "place", tint: "var(--amber)", click: isAdmin() ? "loc" : "" }))}
       ${note("For sunrise and sunset light schedules — worked out on the server, nothing is looked up online.")}
       ${sec("Looks like")}<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px;margin:0 var(--gutter)">${LOOKS.map(([k, label]) =>
-        `<button class="group press" data-act="${isAdmin() ? `look:${k}` : ""}" aria-pressed="${(st.look || "tower") === k}" style="margin:0;padding:8px 6px 10px;border:2px solid ${(st.look || "tower") === k ? "var(--blue)" : "transparent"};cursor:pointer;color:var(--text);font:inherit;text-align:center">
+        `<button class="group glass press" data-act="${isAdmin() ? `look:${k}` : ""}" aria-pressed="${(st.look || "tower") === k}" style="margin:0;padding:8px 6px 10px;border:2px solid ${(st.look || "tower") === k ? "var(--blue)" : "transparent"};cursor:pointer;color:var(--text);font:inherit;text-align:center">
           <canvas data-look="${k}" style="width:100%;height:96px;display:block"></canvas><b style="font-size:14px;font-weight:600">${esc(label)}</b></button>`).join("")}</div>
       ${note(st.look_set ? "The picture on Home, for every phone and browser of this server." : "Picked from what the server says it is — choose the one that looks most like yours. It's the picture on Home, for every phone and browser.")}`, { title: "Server" });
-    ctx.root.querySelectorAll("canvas[data-look]").forEach(cv => animate(cv, "server", () => getComputedStyle(document.documentElement).getPropertyValue("--green").trim() || "#3ecf6e"));
+    ctx.root.querySelectorAll("canvas[data-look]").forEach(cv => animate(cv, "server", () => getComputedStyle(document.documentElement).getPropertyValue("--green").trim() || "#3ecf6e", true));
   };
   const save = async patch => {
     try { S.cache["/api/v1/settings"] = await post("/api/v1/settings", patch); if (S.overview?.server) Object.assign(S.overview.server, patch); await refresh(); toast("Saved"); } catch (e) { toast(e.message); }
