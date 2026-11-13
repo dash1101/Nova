@@ -118,7 +118,7 @@ Grouped by area; each is `GET` unless marked. Fields are documented by the apps 
 - **Server:** `ping` · `whoami` · `overview` (`status`, `server`, `features`, `containers`) · `status` · `stats` ·
   `settings` (GET/POST) · `features` (POST, step-up) · `server/update` (GET/POST)
   · the home picture's shape (capability `looks`): `settings` POST `{"look": "tower|mini|nas|rack|laptop|sbc"}` (or `""` to go
-  back to what the firmware says); `overview.server.look` is the shape to draw, `settings` returns `look` and `look_set`.
+  back to what the firmware says); `overview.server.look` is the shape to draw and `look_set` whether someone picked it (both are in `settings` too).
   An app that doesn't know a shape draws its default. Capability `look-finish`: `{"finish": "dark|light"}` is the case's
   color (`overview.server.finish`, default `dark`).
 - **Inbox:** `events` · `events/wait` · `events/delete` (POST) · `events/restore` (POST) · `archive` ·
