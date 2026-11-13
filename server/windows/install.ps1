@@ -36,6 +36,7 @@ function Wait-Close { if ($Relaunched) { Read-Host "`n  Press Enter to close thi
 function Die($t)  { Write-Host "`n  $t`n" -ForegroundColor Red; Result ([ordered]@{ ok = $false; error = "$t"; version = $Version; previous = $Prev }); Wait-Close; exit 1 }
 
 $admin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+if (-not $admin -and [Console]::IsOutputRedirected) { Die "Nova needs administrator rights to install: a program running this has to start it elevated." }
 if (-not $admin) {
     # ask Windows for permission and carry on in a new window (declined: nothing happens)
     $a = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "`"$($MyInvocation.MyCommand.Path)`"", '-Relaunched')

@@ -9,6 +9,7 @@ param([switch]$Purge, [switch]$Relaunched)
 $ErrorActionPreference = 'Continue'
 $admin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 function Result($o) { [Console]::Out.WriteLine("NOVA-RESULT " + ($o | ConvertTo-Json -Compress)) }      # the last line, for programs that run this
+if (-not $admin -and [Console]::IsOutputRedirected) { Write-Host "Removing Nova needs administrator rights: a program running this has to start it elevated." -ForegroundColor Red; Result ([ordered]@{ ok = $false; error = "not an administrator" }); exit 1 }
 if (-not $admin) {
     $a = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "`"$($MyInvocation.MyCommand.Path)`"", '-Relaunched'); if ($Purge) { $a += '-Purge' }
     try { Start-Process powershell.exe -Verb RunAs -ArgumentList $a | Out-Null; exit 0 }
