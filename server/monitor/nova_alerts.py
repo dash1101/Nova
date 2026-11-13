@@ -70,7 +70,9 @@ def doctor_findings(max_age=600):
     can't run it themselves without administrator rights. On failure the last findings stay."""
     try: d = json.load(open(DOCTOR_FILE))
     except (OSError, ValueError): d = {}
-    if time.time() - d.get("t", 0) < max_age: return d.get("checks", []), d.get("t", 0)
+    try: changed = os.path.getmtime(API_CONFIG)                        # setup just ran (or ran again): look now, not in 10 minutes
+    except OSError: changed = 0
+    if time.time() - d.get("t", 0) < max_age and changed < d.get("t", 0): return d.get("checks", []), d.get("t", 0)
     try:
         here = os.path.dirname(os.path.realpath(__file__))           # the doctor lives next to the API: /usr/lib/nova-api (or the source tree)
         for d in (os.path.dirname(here), os.path.join(os.path.dirname(here), "api"), "/usr/lib/nova-api"):
