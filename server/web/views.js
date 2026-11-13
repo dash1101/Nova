@@ -1773,7 +1773,7 @@ export async function serverSettings(ctx) {
       ${sec("Looks like")}<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px;margin:0 var(--gutter)">${LOOKS.map(([k, label]) =>
         `<button class="group glass${isAdmin() ? " press" : ""}" data-act="${isAdmin() ? `look:${k}` : ""}" ${isAdmin() ? "" : "disabled"} aria-pressed="${(st.look || "tower") === k}" style="margin:0;padding:8px 6px 10px;border:2px solid ${(st.look || "tower") === k ? "var(--blue)" : "transparent"};cursor:${isAdmin() ? "pointer" : "default"};color:var(--text);font:inherit;text-align:center;opacity:1">
           <canvas data-look="${k}" data-finish="${st.finish === "light" ? "light" : "dark"}" style="width:100%;height:96px;display:block"></canvas><b style="font-size:14px;font-weight:600">${esc(label)}</b></button>`).join("")}</div>
-      ${isAdmin() && st.finish ? `<div style="margin:12px var(--gutter) 0">${segmented(["Dark case", "Light case"], st.finish === "light" ? 1 : 0, "finish")}</div>` : ""}
+      ${isAdmin() && st.finish ? `<div style="margin-top:12px">${segmented(["Dark case", "Light case"], st.finish === "light" ? 1 : 0, "finish")}</div>` : ""}
       ${note(st.look_set ? "The picture on Home, for every phone and browser of this server." : "Picked from what the server says it is — choose the one that looks most like yours. It's the picture on Home, for every phone and browser.")}`, { title: "Server" });
     ctx.root.querySelectorAll("canvas[data-look]").forEach(cv => animate(cv, "server", () => getComputedStyle(document.documentElement).getPropertyValue("--green").trim() || "#3ecf6e", true));
     wireCommon(ctx.root, { onSeg: (k, i) => { if (k === "finish") save({ finish: i ? "light" : "dark" }); } });
