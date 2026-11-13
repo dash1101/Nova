@@ -67,6 +67,10 @@ def fail(m, code=1):
     status(state="failed", error=m); say(f"✗ {m}"); sys.exit(code)
 
 
+class Offline(Exception):
+    """The update source couldn't be reached (no network yet, GitHub busy) — not a problem with Nova or its releases."""
+
+
 TARBALL = os.path.exists("/usr/lib/nova-api/INSTALLED_FROM_TARBALL") or not shutil.which("dpkg-query")   # any Linux (install.sh)
 
 def installed_version():
@@ -108,9 +112,10 @@ def fetch(url, dest=None, limit=200 * 1024 * 1024):
         with urllib.request.urlopen(req, timeout=60) as r:
             data = r.read(limit + 1)
     except urllib.error.HTTPError as e:
+        if e.code in (403, 429) or e.code >= 500: raise Offline(f"{'GitHub' if 'github' in url else 'the update source'} is busy right now ({e.code})")
         fail(f"{'GitHub' if 'github' in url else 'the update source'} answered {e.code} for {url.split('?')[0]}" + (" (no release published yet?)" if e.code == 404 else ""))
     except (urllib.error.URLError, OSError) as e:
-        fail(f"couldn't download {url.split('?')[0]}: {getattr(e, 'reason', e)}")
+        raise Offline(f"couldn't reach {url.split('/')[2]}: {getattr(e, 'reason', e)}")
     if len(data) > limit: fail("download too large")
     if dest: open(dest, "wb").write(data)
     return data
@@ -174,7 +179,16 @@ def main():
     status(state="checking", current=cur, source=src)
     work = tempfile.mkdtemp(prefix="nova-update-")
     try:
-        listed = gather(os.path.abspath(src) if not src.startswith("github:") else src, work)
+        # The daily check (--patient, from its timer) often runs right after boot, before Wi-Fi is up: it waits for the network
+        # a few minutes, and if it's still offline that's not a failure — it says so and looks again tomorrow.
+        tries = 5 if "--patient" in FLAGS else 1
+        for i in range(tries):
+            try: listed = gather(os.path.abspath(src) if not src.startswith("github:") else src, work); break
+            except Offline as e:
+                if i + 1 < tries: time.sleep(30 * (i + 1)); continue
+                if "--patient" in FLAGS:
+                    status(state="offline", current=cur, error=str(e)); say(f"couldn't check for updates: {e} — trying again tomorrow"); return
+                fail(str(e))
         if TARBALL:
             debs = sorted(n for n in listed if re.fullmatch(r"nova-server_[\w.~+-]+\.tar\.gz", n) and os.path.exists(os.path.join(work, n)))
             if not debs: fail("the release has no server tarball (nova-server_<version>.tar.gz) for this Linux")

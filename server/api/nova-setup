@@ -386,7 +386,10 @@ def s_start(cfg, st):
     print(f"    App      pair with {B}sudo nova add{X} and scan the code with the Nova app (on your home Wi-Fi)")
     print(f"    Browser  https://{host}:8495/")
     print(f"    Later    run {B}sudo nova setup{X} again to change any of this · {B}nova help{X} for everything else\n")
-    if not YES and yes("Pair your phone now?", True): os.execvp("nova", ["nova", "add"])
+    try: paired = len(json.load(open("/var/lib/nova-api/devices.json")))
+    except (OSError, ValueError): paired = 0
+    if not YES and (yes("Pair your phone now?", True) if not paired else yes(f"Pair another phone or tablet now? ({paired} already paired)", False)):
+        os.execvp("nova", ["nova", "add"])
 
 
 STEPS = [("Network", s_network), ("Away from home", s_remote), ("Notifications", s_alerts), ("Tools", s_tools), ("This server", s_server)]
