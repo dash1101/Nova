@@ -5,6 +5,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
@@ -95,6 +96,7 @@ private val ACCENTS = listOf("", "#3e91ff", "#5e5ce6", "#bf5af2", "#ff2d55", "#f
             val srv = o.optJSONObject("server") ?: JSONObject().also { o.put("server", it) }
             if (patch.has("display_name")) srv.put("display_name", patch.getString("display_name"))
             if (patch.has("accent")) srv.put("accent", patch.getString("accent"))
+            if (patch.has("look")) srv.put("look", patch.getString("look"))
         }
         if (patch.has("display_name")) app.pairing.label = patch.getString("display_name").ifEmpty { st?.optString("hostname") ?: "" }
         app.act { try { st = app.api.post("/api/v1/settings", patch) } catch (e: Exception) { st = before; throw e } }
@@ -135,6 +137,28 @@ private val ACCENTS = listOf("", "#3e91ff", "#5e5ce6", "#bf5af2", "#ff2d55", "#f
         Text("For sunrise and sunset light schedules — worked out on the server, nothing is looked up online.",
             color = N.sub, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 30.dp, vertical = 4.dp))
         if (locating) ServerLocationDialog(app, st?.optJSONObject("location")) { l -> locating = false; st = JSONObject(st?.toString() ?: "{}").put("location", l ?: JSONObject.NULL) }
+        if (app.overview?.optJSONObject("server")?.has("look") == true) {     // (a server from before 0.9.21 doesn't know about it)
+            SectionLabel("Looks like")
+            val cur = st?.optString("look")?.ifEmpty { null } ?: heroLook(app)
+            val drives = app.overview?.optJSONObject("status")?.optJSONObject("metrics")?.optJSONArray("drive_states")?.let { a -> (0 until a.length()).map { a.getJSONObject(it) } }
+            // the five shapes, live, three to a row; the chosen one outlined
+            LOOKS.chunked(3).forEach { row ->
+                Row(Modifier.fillMaxWidth().padding(horizontal = Space.gutter, vertical = 5.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    row.forEach { (k, label) ->
+                        val sel = cur == k
+                        Column(Modifier.weight(1f).clip(RoundedCornerShape(smallCorner(20.dp))).background(N.card)
+                            .border(2.dp, if (sel) N.blue else Color.Transparent, RoundedCornerShape(smallCorner(20.dp)))
+                            .clickable(enabled = app.isAdmin) { save(JSONObject().put("look", k)) }.padding(vertical = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                            ServerHero(app.fan, N.green, drives, app.clockSkew, Modifier.fillMaxWidth().height(96.dp), model = k)
+                            Text(label, color = N.text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                        }
+                    }
+                    repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
+                }
+            }
+            Note(if (st?.optBoolean("look_set") == true) "The picture on Home, for every phone and browser of this server."
+                else "Picked from what the server says it is — choose the one that looks most like yours. It's the picture on Home, for every phone and browser.", 13.sp, 4.dp)
+        }
     }
 }
 

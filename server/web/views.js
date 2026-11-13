@@ -10,7 +10,7 @@ import { S, $, $$, esc, get, post, del, api, loadNodes, serverHost, sleep, prefs
          serverName, uptime, hm, refresh, changeFan, waitJob, kv, archiveMerge, archiveAll, archiveClear, archiveUnmark } from "./core.js";
 import { I, row, group, sec, note, sw, radio, switchRow, links, expand, slider, segmented, bar, usageColor,
          toast, dialog, confirm, choose, ask, sheet, closeSheet, wireCommon, reorderable, onHold, spark, swipeable, colorPicker, copyCmd } from "./ui.js";
-import { animate, heroHit } from "./hero.js";
+import { animate, heroHit, LOOKS } from "./hero.js";
 import * as ST from "./storage.js";
 import { LANGS, pickLang } from "./i18n.js";
 import { canRefract } from "./glass.js";
@@ -1769,13 +1769,18 @@ export async function serverSettings(ctx) {
       ${sec("Accent color")}${group(`<div style="display:flex;justify-content:space-between;padding:18px">${ACCENTS.map(h => `<button class="swatch${(st.accent || "") === h ? " on" : ""}" style="width:32px;height:32px;${h ? `background:${h}` : ""}" data-act="${isAdmin() ? "acc:" + (h || "none") : ""}">${h ? "" : `<span class="muted" style="font-size:13px">A</span>`}</button>`).join("")}</div>`)}
       ${note('Gives each server its own color, so you always know which one you\'re controlling. "A" is the default blue.')}
       ${sec("Location")}${group(row("Where the server is", { sub: locationText(st.location), blue: st.location?.source === "set", icon: "place", tint: "var(--amber)", click: isAdmin() ? "loc" : "" }))}
-      ${note("For sunrise and sunset light schedules — worked out on the server, nothing is looked up online.")}`, { title: "Server" });
+      ${note("For sunrise and sunset light schedules — worked out on the server, nothing is looked up online.")}
+      ${sec("Looks like")}<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px;margin:0 var(--gutter)">${LOOKS.map(([k, label]) =>
+        `<button class="group press" data-act="${isAdmin() ? `look:${k}` : ""}" aria-pressed="${(st.look || "tower") === k}" style="margin:0;padding:8px 6px 10px;border:2px solid ${(st.look || "tower") === k ? "var(--blue)" : "transparent"};cursor:pointer;color:var(--text);font:inherit;text-align:center">
+          <canvas data-look="${k}" style="width:100%;height:96px;display:block"></canvas><b style="font-size:14px;font-weight:600">${esc(label)}</b></button>`).join("")}</div>
+      ${note(st.look_set ? "The picture on Home, for every phone and browser of this server." : "Picked from what the server says it is — choose the one that looks most like yours. It's the picture on Home, for every phone and browser.")}`, { title: "Server" });
+    ctx.root.querySelectorAll("canvas[data-look]").forEach(cv => animate(cv, "server", () => getComputedStyle(document.documentElement).getPropertyValue("--green").trim() || "#3ecf6e"));
   };
   const save = async patch => {
     try { S.cache["/api/v1/settings"] = await post("/api/v1/settings", patch); if (S.overview?.server) Object.assign(S.overview.server, patch); await refresh(); toast("Saved"); } catch (e) { toast(e.message); }
     if (ctx.alive()) draw();
   };
-  ctx.handlers({ save: () => save({ display_name: $("#nm").value.trim() }), host: () => save({ display_name: "" }), acc: h => save({ accent: h === "none" ? "" : h }),
+  ctx.handlers({ save: () => save({ display_name: $("#nm").value.trim() }), host: () => save({ display_name: "" }), acc: h => save({ accent: h === "none" ? "" : h }), look: k => save({ look: k }),
     loc: async () => { await locationDialog(S.cache["/api/v1/settings"]?.location); if (ctx.alive()) draw(); } });
   draw(); try { await get("/api/v1/settings"); if (ctx.alive()) draw(); } catch (e) { toast(e.message); }
 }

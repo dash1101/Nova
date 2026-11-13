@@ -137,7 +137,8 @@ import org.json.JSONObject
     val hero: @Composable (androidx.compose.ui.unit.Dp) -> Unit = { h ->
         Box(Modifier.fillMaxWidth().height(h).pointerInput(Unit) {
             detectTapGestures { o ->
-                when (heroHit(size.width.toFloat(), size.height.toFloat(), o.x, o.y)) {
+                when (heroHit(size.width.toFloat(), size.height.toFloat(), o.x, o.y, heroLook(app),
+                        app.overview?.optJSONObject("status")?.optJSONObject("metrics")?.optJSONArray("drive_states")?.length()?.takeIf { it > 0 } ?: 6)) {
                     "fan" -> if (app.has("lighting")) app.go(Route.Lighting)
                     "drives" -> app.go(Route.Hardware)
                     "power" -> if (app.isAdmin) powerMenu = true else app.toast("This ${DeviceForm.noun} has view-only access")
@@ -145,7 +146,7 @@ import org.json.JSONObject
             }
         }) {
             val drives = st?.optJSONObject("metrics")?.optJSONArray("drive_states")?.let { a -> (0 until a.length()).map { a.getJSONObject(it) } }
-            ServerHero(app.fan, levelColor(level, N), drives, app.clockSkew, Modifier.fillMaxSize(), io = app.lastNow?.optJSONObject("disks"))
+            ServerHero(app.fan, levelColor(level, N), drives, app.clockSkew, Modifier.fillMaxSize(), io = app.lastNow?.optJSONObject("disks"), model = heroLook(app))
         }
     }
     val pills: @Composable () -> Unit = {

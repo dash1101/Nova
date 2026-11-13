@@ -400,6 +400,16 @@ SSH_USER = CFG.get("ssh_user", "")
 SSH_HOSTS = CFG.get("ssh_hosts", [{"name": "Home network", "host": LAN_HOST, "port": 22}])
 def board_name(): return plat.board()
 
+LOOKS = ("tower", "mini", "nas", "rack", "laptop")
+def detected_look():
+    """What the home picture shows until someone picks: from the firmware's chassis type (SMBIOS), else a tower."""
+    try: ct = int(open("/sys/class/dmi/id/chassis_type").read().strip())
+    except (OSError, ValueError): return "tower"
+    if ct in (8, 9, 10, 14, 31, 32): return "laptop"          # portable, laptop, notebook, sub-notebook, convertible, detachable
+    if ct in (35, 36, 4): return "mini"                       # mini PC, stick PC, low-profile desktop
+    if ct in (17, 23, 25, 28, 29): return "rack"              # main server chassis, rack mount, multi-system, blade
+    return "tower"
+
 # ── background jobs (installs, updates — anything slower than a request) ──────────
 jobs = {}
 def start_job(title, args, timeout=3600):
@@ -604,7 +614,7 @@ def der_sig(raw):
 # the name instead of guessing from version numbers; a server that doesn't list one doesn't have it.
 CAPABILITIES = {"devices": 1, "approvals": 1, "containers": 1, "apps": 1, "store": 1, "storage": 1, "storage-wizard": 1, "backups": 1, "lights": 1,
                 "cloudflare": 1, "access-codes": 1, "nodes": 1, "tasks": 1, "events": 1, "stats": 1, "terminal": 1, "files": 1, "updates": 1, "freeup": 1, "diag": 1,
-                "assistant": 1, "power-schedule": 1, "keep-awake": 1, "totp": 2, "passkeys": 2, "partitions": 2, "mount-points": 2, "swap-setup": 2, "recommendations": 2, "security-activity": 2, "capabilities": 2,
+                "assistant": 1, "power-schedule": 1, "keep-awake": 1, "looks": 1, "totp": 2, "passkeys": 2, "partitions": 2, "mount-points": 2, "swap-setup": 2, "recommendations": 2, "security-activity": 2, "capabilities": 2,
                 "force-unmount": 2, "nova-power": 2}
 REC_CACHE = {}             # recommended actions, worked out at most once a minute
 browser_requests = {}      # id -> {pem, name, code, expires, state, device_id}
@@ -1754,9 +1764,13 @@ class Handler(BaseHTTPRequestHandler):
                     if v and not (len(v) == 7 and v[0] == "#" and all(x in "0123456789abcdefABCDEF" for x in v[1:])): raise ValueError("accent must be #rrggbb")
                     cfg["accent"] = v.lower()
                 if "location" in data: cfg["location"] = valid_location(data["location"])
+                if "look" in data:                    # what the home picture shows ("" = what the server's firmware says it is)
+                    v = str(data["look"])
+                    if v and v not in LOOKS: raise ValueError(f"look must be one of {', '.join(LOOKS)}")
+                    cfg["look"] = v
                 with lock: save_json(SETTINGS, cfg)
             return 200, {"display_name": cfg.get("display_name", ""), "accent": cfg.get("accent", ""), "hostname": plat.node(),
-                         "location": server_location()}
+                         "location": server_location(), "look": cfg.get("look") or detected_look(), "look_set": bool(cfg.get("look"))}
         if method == "DELETE" and len(parts) == 2 and parts[0] == "devices":
             with lock:
                 devs = load_json(DEVICES, {}); gone = devs.pop(parts[1], None)
@@ -1931,7 +1945,7 @@ class Handler(BaseHTTPRequestHandler):
             cfg = load_json(SETTINGS, {})
             return 200, {"time": time.time(),             # lets apps line their fan animation up with the real fan
                          "server": {"name": plat.node(), "display_name": cfg.get("display_name", ""),
-                                    "accent": cfg.get("accent", ""), "board": board_name(), "cpu": cpu,
+                                    "accent": cfg.get("accent", ""), "look": cfg.get("look") or detected_look(), "board": board_name(), "cpu": cpu,
                                     "ram_gb": round(mem.get("MemTotal", 0) / 1048576), "kernel": plat.kernel(),
                                     "uptime_s": plat.uptime_s(), "os": plat.OS, "tailnet_host": TAILNET_HOST, "remote_url": CFG.get("remote_url", "")},
                          "status": {k: st.get(k) for k in ("level", "headline", "status", "active_count", "active", "ignored", "metrics", "updated_local")},
