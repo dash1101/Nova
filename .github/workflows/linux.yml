@@ -28,6 +28,13 @@ jobs:
           echo "NOVA_HOST=$IP" >> $GITHUB_ENV
       - name: Check it like a person would
         run: python3 packaging/linux_test.py
+      - name: A tarball install's leftover marker doesn't change how a .deb install updates
+        run: |
+          sudo touch /usr/lib/nova-api/INSTALLED_FROM_TARBALL
+          sudo python3 -c "import importlib.machinery as m, importlib.util as u; l = m.SourceFileLoader('nu', '/usr/sbin/nova-update'); x = u.module_from_spec(u.spec_from_loader('nu', l)); l.exec_module(x); assert not x.TARBALL, 'took the tarball path'; print('deb path: ok')"
+          sudo dpkg -i ./dist/nova-server_*_all.deb >/dev/null
+          test ! -e /usr/lib/nova-api/INSTALLED_FROM_TARBALL && echo "installing the .deb removed the stale marker"
+          for i in $(seq 30); do curl -sf http://127.0.0.1:8095/api/v1/ping >/dev/null && break; sleep 1; done
       - name: Security test
         run: |
           mkdir -p pt && cd pt

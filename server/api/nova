@@ -101,7 +101,8 @@ def uninstall(rest):
     if WIN:
         sys.exit('In an administrator PowerShell:  powershell -File "C:\\Program Files\\Nova\\uninstall.ps1"' + (" -Purge" if purge else ""))
     tar = os.path.join(LIB, "uninstall.sh")
-    if os.path.exists(os.path.join(LIB, "INSTALLED_FROM_TARBALL")):                # (its uninstaller explains and asks)
+    deb = shutil.which("dpkg-query") and "install ok installed" in subprocess.run(["dpkg-query", "-W", "-f=${Status}", "nova-server"], capture_output=True, text=True).stdout
+    if not deb and os.path.exists(os.path.join(LIB, "INSTALLED_FROM_TARBALL")):    # (its uninstaller explains and asks; a .deb install with a leftover marker uses apt)
         if not os.path.exists(tar): sys.exit("This Nova came from the tarball, but its uninstaller is missing — install the newest release first (sudo nova update), then run this again.")
         os.execvp("sh", ["sh", tar, *(["--purge"] if purge else [])])
     print(f"  {'Nova, its settings and its paired devices' if purge else 'Nova'} will be removed. Your containers, files and backups stay"

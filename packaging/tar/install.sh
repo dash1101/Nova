@@ -45,7 +45,11 @@ tar -C "$HERE/root/lib/systemd/system" -cf - . | tar -C /usr/lib/systemd/system 
 chown -R root:root /usr/lib/nova-api /usr/lib/nova-rgb 2>/dev/null || true
 # the same first-time setup the .deb does (user, folders, timers), then start
 sed 's/^if \[ "\$1" = configure \]; then/if true; then/' "$HERE/postinst" > /tmp/nova-postinst.$$ && sh /tmp/nova-postinst.$$; rm -f /tmp/nova-postinst.$$
-echo "$(cat /usr/lib/nova-api/VERSION)" > /usr/lib/nova-api/INSTALLED_FROM_TARBALL
+if command -v dpkg-query >/dev/null 2>&1 && dpkg-query -W -f='${Status}' nova-server 2>/dev/null | grep -q 'install ok installed'; then
+    say "This server's Nova came from the .deb package: the next sudo nova update installs the package the usual way."
+else
+    echo "$(cat /usr/lib/nova-api/VERSION)" > /usr/lib/nova-api/INSTALLED_FROM_TARBALL
+fi
 if [ "$UPGRADE" = 0 ] && [ ! -f /etc/nova-api/config.json ]; then
     if [ "$GUI" = 1 ]; then exec /usr/sbin/nova-setup --gui; fi
     printf '\n  Nova is installed. Set it up now?\n    1  In this terminal\n    2  In a browser (easier)\n    q  Later (sudo nova setup)\n\n  Choose [2]: '

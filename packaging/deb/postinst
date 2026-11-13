@@ -6,6 +6,7 @@ if [ "$1" = configure ]; then
     install -d -m 750 -g nova-api /etc/nova-api
     install -d -m 755 /etc/nova/plugins
     rm -f /etc/sudoers.d/nova-api           # very old source installs used a sudo rule
+    rm -f /usr/lib/nova-api/INSTALLED_FROM_TARBALL   # a tarball install's marker: the package owns Nova now (install.sh writes it again after this runs)
     # the access-code gate (Who can open it → Anyone with a code): its own locked-down user; idle until an address uses it
     getent passwd nova-gate >/dev/null || useradd --system --home-dir /var/lib/nova-gate --shell /usr/sbin/nologin nova-gate
     install -d -o root -g nova-gate -m 750 /var/lib/nova-gate

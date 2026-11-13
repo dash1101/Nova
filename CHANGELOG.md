@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.9.24-alpha (server)
+Two bugs that stopped `sudo nova update`, found while updating a desktop from 0.9.19.
+- **Fix: updating from the tarball failed on Python 3.12 and newer** ("is a link to an absolute path"): the server tarball had one absolute link (`/usr/sbin/nova-alert`), which the updater's safe unpacking refuses. Nothing was installed and the old version kept running. The link is relative now, and a test unpacks every tarball exactly the way the updater does.
+- **Fix: a server first installed from the tarball and later from the .deb updated the wrong way.** The tarball install's marker stayed behind, so `sudo nova update` (and `sudo nova uninstall`) treated a .deb install as a tarball one. Now what the package manager owns decides; installing the .deb removes the leftover marker; and the tarball's installer, run over a .deb install, no longer claims it.
+- **Already hit this?** On a Debian/Ubuntu server: `sudo rm /usr/lib/nova-api/INSTALLED_FROM_TARBALL`, then `sudo nova update` as usual. (Without that, an updater from 0.9.23 or older still picks the tarball — which now installs, after which the next update switches back to the package.)
+
 ## 0.9.23-alpha (server)
 Windows' Nova Server window works again, and installing and updating Nova on Windows is smoother.
 

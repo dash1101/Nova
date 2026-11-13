@@ -17,6 +17,12 @@ jobs:
           for f in server/web/*.js; do node --check "$f"; done
       - name: Build package
         run: packaging/build-deb.sh
+      - name: The tarball unpacks the way every installed updater unpacks it
+        run: |
+          # nova-update extracts with tarfile's "data" filter, which (Python 3.12+) refuses absolute links: one broke
+          # every tarball update in 0.9.23. Servers keep their old updater, so the tarball itself must stay safe.
+          packaging/build-tar.sh >/dev/null
+          python3 -c "import glob, tarfile, tempfile; t = tarfile.open(glob.glob('dist/nova-server_*.tar.gz')[0]); t.extractall(tempfile.mkdtemp(), filter='data'); print('ok')"
       - uses: actions/upload-artifact@v4
         with: { name: nova-server-deb, path: dist/*.deb }
   android:

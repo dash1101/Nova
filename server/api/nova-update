@@ -71,7 +71,13 @@ class Offline(Exception):
     """The update source couldn't be reached (no network yet, GitHub busy) — not a problem with Nova or its releases."""
 
 
-TARBALL = os.path.exists("/usr/lib/nova-api/INSTALLED_FROM_TARBALL") or not shutil.which("dpkg-query")   # any Linux (install.sh)
+def _dpkg_owns():
+    """Is Nova installed as the .deb? (Then that's how it updates, even if a tarball install once left its marker behind.)"""
+    if not shutil.which("dpkg-query"): return False
+    r = subprocess.run(["dpkg-query", "-W", "-f=${Status}", "nova-server"], capture_output=True, text=True)
+    return r.returncode == 0 and "install ok installed" in r.stdout
+
+TARBALL = not _dpkg_owns() and (os.path.exists("/usr/lib/nova-api/INSTALLED_FROM_TARBALL") or not shutil.which("dpkg-query"))   # any Linux (install.sh)
 
 def installed_version():
     if not TARBALL:

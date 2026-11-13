@@ -13,7 +13,7 @@ install -m 644 "$S/api/plat.py" "$S/api/plugins.py" "$S/api/safeio.py" "$S/api/n
 install -m 755 "$S/api/backups.py" "$S/api/tasks.py" "$S/api/labs.py" "$S/api/freeup.py" "$S/api/gate.py" "$P$L/"
 install -m 755 "$S/api/helper-sock.py" "$P$L/helper-sock"
 install -m 755 "$S/monitor/nova_alerts.py" "$P$L/monitor/nova_alerts.py"
-ln -s "$L/monitor/nova_alerts.py" "$P/usr/sbin/nova-alert"
+ln -s "../lib/nova-api/monitor/nova_alerts.py" "$P/usr/sbin/nova-alert"     # relative: an updater unpacking the tarball safely refuses absolute links
 install -m 644 "$S"/web/* "$P$L/web/"
 cp -r "$S/store/." "$P$L/store/"
 install -m 755 "$S/api/nova" "$P/usr/bin/nova"
