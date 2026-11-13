@@ -2945,6 +2945,7 @@ def discovery_responder():
 
 def main():
     threading.Thread(target=discovery_responder, daemon=True).start()
+    threading.Thread(target=chassis_type, daemon=True).start()       # (on Windows that's a PowerShell call: not during the first Home)
     port = int(CFG.get("port", 8095))
     binds = list(dict.fromkeys(CFG.get("bind", ["127.0.0.1", LAN_HOST])))
     servers = []
