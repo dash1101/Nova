@@ -7,6 +7,8 @@ import android.hardware.biometrics.BiometricManager.Authenticators
 import android.hardware.biometrics.BiometricPrompt
 import android.os.CancellationSignal
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
@@ -298,6 +300,25 @@ class NovaApi(private val pairing: Pairing) {
         }
         if (pr.method == "GET") rb.get() else rb.method(pr.method, pr.bytes.toRequestBody(json))
         return rb.build()
+    }
+
+    /** Each way in, tried right now and side by side (This phone → Connection → Test): what it is with its address, and
+     *  "42 ms" or why it didn't get through. At home that answers "will Tailscale work when I leave?" before you leave. */
+    suspend fun testRoutes(): List<Pair<String, String>> = withContext(Dispatchers.IO) {
+        val routes = buildList {
+            if (pairing.lanUrl.isNotEmpty()) add("home" to pairing.lanUrl)
+            if (pairing.tailnetUrl.isNotEmpty() && pairing.tailnetUrl != pairing.lanUrl) add("tailnet" to pairing.tailnetUrl)
+            if (pairing.remoteUrl.isNotEmpty()) add("remote" to pairing.remoteUrl)
+        }
+        coroutineScope {
+            routes.map { (name, base) -> async {
+                val t0 = System.nanoTime()
+                val why = try { send(name, base, prepare("GET", "/api/v1/ping", null), null); null }
+                    catch (e: ApiException) { e.message ?: "refused (${e.code})" }
+                    catch (e: IOException) { describe(e) + (if (isTailscale(base) && e !is javax.net.ssl.SSLException) " — is Tailscale on and connected on this ${DeviceForm.noun}?" else "") }
+                routeName(name, base) to (why ?: "OK · ${(System.nanoTime() - t0) / 1_000_000} ms")
+            } }.map { it.await() }
+        }
     }
 
     private fun send(route: String, base: String, pr: Prepared, stepUpSig: String?): String {

@@ -326,11 +326,20 @@ import java.util.*
             Text("The buttons don't ask for your fingerprint, so anyone holding your unlocked phone or watch could tap them. They can only approve or deny something a paired browser is waiting on — nothing else.",
                 color = N.sub, fontSize = 13.sp, modifier = Modifier.padding(start = 22.dp, end = 22.dp, bottom = 14.dp))
             RowDivider()
-            ExpandRow("Connection", when (app.api.via) { "home" -> "Home Wi-Fi (direct)"; "remote" -> "Cloudflare (from anywhere)"; else -> "—" },
+            ExpandRow("Connection", when (app.api.via) {
+                    "home" -> if (isTailscaleUrl(app.pairing.lanUrl)) "Tailscale" else "Home network (direct)"; "tailnet" -> "Tailscale"
+                    "remote" -> "Cloudflare (from anywhere)"; else -> "—" },
                 true, Icons.Rounded.Wifi) {
-                Detail("At home Nova talks to the server directly. Elsewhere it goes through Cloudflare Access, which turns away anyone without this app's access token before they ever reach the server.")
-                DetailLine("Home address", app.pairing.lanUrl.ifEmpty { "—" })
-                DetailLine("Remote address", app.pairing.remoteUrl.ifEmpty { "not set up" })
+                Detail("At home Nova talks to the server directly. Away, it goes over Tailscale (a private network between your own devices) or through Cloudflare Access, which turns away anyone without this app's access key — whichever the server has set up.")
+                DetailLine("Home address", app.pairing.lanUrl.substringAfter("://").ifEmpty { "—" })
+                DetailLine("Tailscale", app.pairing.tailnetUrl.substringAfter("://").ifEmpty { "not set up" })
+                DetailLine("Cloudflare", app.pairing.remoteUrl.substringAfter("://").ifEmpty { "not set up" })
+                var testing by remember { mutableStateOf(false) }
+                var results by remember { mutableStateOf<List<Pair<String, String>>?>(null) }
+                results?.forEach { (what, how) ->
+                    Column { Text(what, color = N.text, fontSize = 14.sp); Text(how, color = if (how.startsWith("OK")) N.green else N.amber, fontSize = 13.sp) } }
+                PillButton(if (testing) "Testing…" else "Test each way in", !testing) {
+                    testing = true; app.act { try { results = app.api.testRoutes() } finally { testing = false } } }
             }
         }
         Group { Row1("Users & devices", (if (app.isAdmin) "You're an admin" else "You have view-only access") +
