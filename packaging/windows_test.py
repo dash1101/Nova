@@ -219,9 +219,20 @@ rc, so, se = nova("doctor"); check("nova doctor", rc in (0, 1) and "Nova is runn
 
 print("\nThe Nova Server window")
 import tempfile
+# From the Start menu it runs under pythonw.exe, with no console: sys.stdout is None. The `nova` module it loads must cope —
+# it didn't (every request failed and the window said "Nova Server has closed"), and starting it with python.exe hid that.
+vf = os.path.join(tempfile.gettempdir(), "nova-cli-noconsole.txt")
+r = subprocess.run([NOVA[0], "-c", "import sys, importlib.machinery, importlib.util; sys.stdout = sys.stderr = None; "
+                    f"l = importlib.machinery.SourceFileLoader('nova_cli', r'{NOVA[1]}'); m = importlib.util.module_from_spec(importlib.util.spec_from_loader('nova_cli', l)); "
+                    f"l.exec_module(m); open(r'{vf}', 'w').write(m.version())"], capture_output=True, text=True, timeout=60)
+check("the nova command loads with no console (as the Start-menu window needs)", r.returncode == 0 and os.path.exists(vf), (r.returncode, r.stderr[-400:]))
+lnk = os.path.join(os.environ.get("ProgramData", r"C:\ProgramData"), r"Microsoft\Windows\Start Menu\Programs\Nova Server.lnk")
+check("the Start menu has Nova Server", os.path.exists(lnk), lnk)
+PYW = os.path.join(APP, "venv", "Scripts", "pythonw.exe")
 uf = os.path.join(tempfile.gettempdir(), "nova-gui-test.url")
 if os.path.exists(uf): os.remove(uf)
-gui = subprocess.Popen([NOVA[0], os.path.join(APP, "lib", "nova-gui"), "--serve", "--url-file", uf], stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+# like the shortcut: pythonw, no console, nothing redirected (DETACHED_PROCESS)
+gui = subprocess.Popen([PYW, os.path.join(APP, "lib", "nova-gui"), "--serve", "--url-file", uf], creationflags=0x00000008, close_fds=True)
 url = ""; end = time.time() + 30
 while time.time() < end and not url.startswith("http://localhost:"):
     time.sleep(.3)
@@ -268,8 +279,9 @@ while time.time() < end and not up: time.sleep(1); up = raw("GET", "/api/v1/ping
 check("looks at the network again and restarts", r.get("ok") and r.get("found", {}).get("lan_host") and up, r)
 s, r = g("/api/quit", {}); time.sleep(1.5); check("closes when asked", gui.poll() is not None, gui.poll())
 if gui.poll() is None: gui.kill()
-err = gui.stderr.read().decode("utf-8", "replace").strip()
-if err: print("      gui stderr:", err[-600:])
+try: err = open(os.path.join(os.environ.get("ProgramData", r"C:\ProgramData"), "Nova", "log", "nova-gui.log"), encoding="utf-8", errors="replace").read().strip()
+except OSError: err = ""
+if err: print("      nova-gui.log:", err[-600:])
 
 print("\nRemoving a device")
 rc, so, se = nova("remove", "CI test device"); check("nova remove", rc == 0, (rc, so[-200:], se[-300:]))

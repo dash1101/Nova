@@ -56,7 +56,7 @@ if WIN:                                                   # a Windows terminal: 
     import builtins
     def print(*a, **k): builtins.print(*[x.replace("sudo nova", "nova") if isinstance(x, str) else x for x in a], **k)   # noqa: A001
 B, D, G, Y, R, X = "\033[1m", "\033[2m", "\033[32m", "\033[33m", "\033[31m", "\033[0m"
-if not sys.stdout.isatty(): B = D = G = Y = R = X = ""
+if not (sys.stdout and sys.stdout.isatty()): B = D = G = Y = R = X = ""     # (no console at all under pythonw: the Nova Server window loads this file)
 
 def load(p, d):
     try: return json.load(open(p))

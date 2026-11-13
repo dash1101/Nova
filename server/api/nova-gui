@@ -24,6 +24,15 @@ sys.path[:0] = [LIB, HERE]
 import plat  # noqa: E402
 
 WIN = plat.WINDOWS
+# Started from the Start menu it runs under pythonw, which has no console: sys.stdout and sys.stderr are None, and anything
+# that touches them (a library printing a warning, the `nova` module checking for a terminal) would fail every request.
+for _n in ("stdout", "stderr"):
+    if getattr(sys, _n) is None:
+        _f = None
+        if _n == "stderr" and "--serve" in sys.argv:          # the working part keeps its errors where `nova doctor` users can find them
+            try: _f = open(plat.p("/var/log/nova-api/nova-gui.log"), "a", encoding="utf-8")
+            except OSError: _f = None
+        setattr(sys, _n, _f or open(os.devnull, "w", encoding="utf-8"))
 NOVA = next((p for p in (os.path.join(HERE, "nova"), shutil.which("nova") or "", "/usr/bin/nova") if p and os.path.isfile(p)), "nova")
 KEY = secrets.token_urlsafe(24)
 LAST = {"t": time.time()}                       # when the window last asked for something
@@ -368,7 +377,7 @@ async function api(path, body) {
   const r = await fetch(path, { method: body === undefined ? "GET" : "POST", headers: { "X-Nova-Key": KEY, "Content-Type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) });
   return r.json();
 }
-let S = null, pair = null, pairedName = "", known = null, busy = {}, note = {}, doc = null, act = null, confirmRm = "", gone = false, typed = "", opts = { viewer: false, remote: false };
+let S = null, pair = null, pairedName = "", known = null, busy = {}, note = {}, doc = null, act = null, confirmRm = "", gone = false, fail = "", typed = "", opts = { viewer: false, remote: false };
 
 function header() {
   const st = !S.configured ? ["warn", "Not set up yet"] : S.running ? ["ok", "Running"] : ["bad", "Stopped"];
@@ -448,7 +457,13 @@ function more() {
     ${act ? `<div style="margin-top:10px" class="fade">${act.map(l => `<div class="row"><span class="dot ${l.ok ? "ok" : "warn"}"></span><div class="grow"><div class="t mono">${esc(l.what)}</div><div class="s">${esc(l.who)}</div></div><span class="sub">${esc(l.t)}</span></div>`).join("") || `<div class="empty">Nothing has been done from the app yet.</div>`}</div>` : ""}</div>`;
 }
 function paint() {
-  if (gone) { $("#app").innerHTML = `<div class="card"><h2>Nova Server has closed</h2><div class="sub">Open it again from the ${S && S.windows ? "Start menu" : "app menu"}.</div></div>`; return; }
+  const where = (S && S.windows) || /Windows/.test(navigator.userAgent) ? "Start menu" : "app menu";
+  if (gone) { $("#app").innerHTML = `<div class="card"><h2>Nova Server has closed</h2><div class="sub">It stops by itself a little after its window is closed or the computer sleeps. Open it again from the ${where}.</div></div>`; return; }
+  if (fail && !S) { $("#app").innerHTML = `<div class="card"><h2>Nova Server couldn't load</h2>
+      <div class="msg err mono" style="word-break:break-word">${esc(fail)}</div>
+      <div class="sub" style="margin-top:10px">Try again; if it keeps happening, close this window and open Nova Server again from the ${where}. In an administrator terminal, <span class="mono">nova doctor</span> checks the rest.</div>
+      <div class="btns" style="margin-top:12px"><button class="pri" data-do="retry">Try again</button></div></div>`; return; }
+  if (!S) { $("#app").innerHTML = `<div class="card"><h2>Nova Server</h2><div class="sub">Opening…</div></div>`; return; }
   const sc = $(".scroll") ? $(".scroll").scrollTop : 0;
   const keep = document.activeElement && document.activeElement.id === "code" ? [document.activeElement.selectionStart, document.activeElement.selectionEnd] : null;
   $("#app").innerHTML = header() + health() + `<div class="cols"><div class="col">${pairing()}${waiting()}</div><div class="col">${devices()}</div></div>` + addresses() + checkup() + more() +
@@ -457,7 +472,11 @@ function paint() {
   if (sc && $(".scroll")) $(".scroll").scrollTop = sc;
 }
 async function refresh() {
-  try { S = await api("/api/state"); if (S.error) throw 0; } catch (e) { if (S) { gone = true; paint(); } return; }
+  let r;
+  try { r = await api("/api/state"); }
+  catch (e) { if (S) gone = true; else fail = "The part of Nova Server that does the work didn't answer."; paint(); return; }  // (it stopped, or never started)
+  if (!r || r.error) { fail = (r && r.error) || "No answer."; if (!S) paint(); return; }          // a real error: say it, keep the last good view if there is one
+  fail = ""; S = r;
   if (known && pair && !pairedName) {                       // a device that wasn't there when the code was made: that's the one
     const nu = S.devices.find(d => !known.has(d.id));
     if (nu && !S.pairing.active) { pairedName = nu.name; pair = null; }
@@ -478,6 +497,7 @@ document.addEventListener("click", async e => {
     const r = await api("/api/pair", { viewer: opts.viewer, remote: opts.remote }); if (r.ok) pair = { ...r, total: r.expires - Date.now() / 1000 }; else note.pair = r.error; });
   if (d.do === "pair-cancel") run("pair", async () => { await api("/api/pair/cancel", {}); pair = null; });
   if (d.do === "pair-done") { pairedName = ""; pair = null; paint(); }
+  if (d.do === "retry") { fail = ""; paint(); refresh(); }
   if (d.do === "approve" || d.do === "approve-typed") { const code = d.do === "approve" ? d.code : typed.trim(); const k = d.do === "approve" ? "ap" + code : "aptyped";
     run(k, async () => { note.approve = ""; const r = await api("/api/approve", { code, viewer: !!d.viewer }); note.approveOk = r.ok; note.approve = r.ok ? "Approved." : r.error; if (r.ok) typed = ""; }); }
   if (d.do === "rm") { confirmRm = d.id; paint(); } if (d.do === "rm-no") { confirmRm = ""; paint(); }
