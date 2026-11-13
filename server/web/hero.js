@@ -171,25 +171,26 @@ function layout(model, w, h, n) {
 }
 
 const shade = (c, x0, y0, x1, y1, stops) => { const g = c.createLinearGradient(x0, y0, x1, y1); stops.forEach(([o, col]) => g.addColorStop(o, col)); return g; };
-function body(c, L, isDark) {
-  const { left, top, bw, bh } = L;
+function body(c, L, isDark, finish) {
+  const { left, top, bw, bh } = L, lt = finish === "light", F = (d, l) => lt ? l : d;     // F: the dark case's color, or the light (white/silver) one's
+  const edge = lt ? "rgba(0,0,0,.16)" : null;
   c.fillStyle = `rgba(0,0,0,${isDark ? .6 : .18})`; c.beginPath(); c.ellipse(left + bw / 2, top + bh, bw * .46, Math.max(4, bh * .03), 0, 0, 7); c.fill();
   if (L.model === "mini") {
     const { th, fy, fh } = L, inset = bw * .05;
-    c.fillStyle = shade(c, 0, top, 0, fy, [[0, "#55555e"], [1, "#3a3a42"]]);       // the lid, seen from a little above
+    c.fillStyle = shade(c, 0, top, 0, fy, [[0, F("#55555e", "#f4f4f6")], [1, F("#3a3a42", "#d9d9df")]]);       // the lid, seen from a little above
     c.beginPath(); c.moveTo(left + inset, top); c.lineTo(left + bw - inset, top); c.lineTo(left + bw, fy); c.lineTo(left, fy); c.closePath(); c.fill();
-    c.strokeStyle = "rgba(255,255,255,.12)"; c.lineWidth = 1.5; c.stroke();
+    c.strokeStyle = edge || "rgba(255,255,255,.12)"; c.lineWidth = 1.5; c.stroke();
     c.fillStyle = "rgba(0,0,0,.35)"; c.beginPath(); c.ellipse(L.fan.x, L.fan.y, L.fan.r * 1.18, L.fan.r * 1.18 * L.fan.squash, 0, 0, 7); c.fill();   // the vent the fan sits in
-    c.fillStyle = shade(c, 0, fy, 0, fy + fh, [[0, "#2c2c33"], [1, "#1b1b20"]]); rr(c, left, fy, bw, fh, [0, 0, bw * .035, bw * .035]); c.fill();
-    c.strokeStyle = "rgba(255,255,255,.08)"; c.stroke();
+    c.fillStyle = shade(c, 0, fy, 0, fy + fh, [[0, F("#2c2c33", "#e6e6eb")], [1, F("#1b1b20", "#c6c6ce")]]); rr(c, left, fy, bw, fh, [0, 0, bw * .035, bw * .035]); c.fill();
+    c.strokeStyle = edge || "rgba(255,255,255,.08)"; c.stroke();
     c.fillStyle = "#0d0d10";                                                             // ports: two USB, a USB-C, a headphone jack
     [[.52, .07], [.6, .07], [.68, .045]].forEach(([x, wd]) => { rr(c, left + bw * x, fy + fh * .38, bw * wd, fh * .17, 2); c.fill(); });
     c.beginPath(); c.arc(left + bw * .77, fy + fh * .465, fh * .07, 0, 7); c.fill();
     return;
   }
   if (L.model === "nas") {
-    c.fillStyle = shade(c, 0, top, 0, top + bh, [[0, "#3c3c44"], [1, "#1c1c21"]]); rr(c, left, top, bw, bh, bw * .05); c.fill();
-    c.strokeStyle = "rgba(255,255,255,.10)"; c.lineWidth = 2; c.stroke();
+    c.fillStyle = shade(c, 0, top, 0, top + bh, [[0, F("#3c3c44", "#eeeef1")], [1, F("#1c1c21", "#cacad1")]]); rr(c, left, top, bw, bh, bw * .05); c.fill();
+    c.strokeStyle = edge || "rgba(255,255,255,.10)"; c.lineWidth = 2; c.stroke();
     c.fillStyle = "#121216"; rr(c, L.bar.x - bw * .02, L.bar.y - bh * .02, L.bar.w + bw * .04, L.bar.h + bh * .04, bh * .03); c.fill();
     for (let i = 0; i < L.bays; i++) {                                                  // drive trays: a front with a grip
       const x = L.ax + i * (L.bayW + L.gap);
@@ -202,15 +203,15 @@ function body(c, L, isDark) {
   }
   if (L.model === "rack") {
     const { ear, lid } = L, inset = bw * .04;
-    c.fillStyle = shade(c, 0, top - lid, 0, top, [[0, "#4c4c55"], [1, "#34343c"]]);          // the lid, seen from a little above
+    c.fillStyle = shade(c, 0, top - lid, 0, top, [[0, F("#4c4c55", "#ececf0")], [1, F("#34343c", "#d0d0d7")]]);          // the lid, seen from a little above
     c.beginPath(); c.moveTo(left + ear + inset, top - lid); c.lineTo(left + bw - ear - inset, top - lid); c.lineTo(left + bw - ear, top); c.lineTo(left + ear, top); c.closePath(); c.fill();
-    c.strokeStyle = "rgba(255,255,255,.10)"; c.lineWidth = 1; c.stroke();
-    c.strokeStyle = "rgba(0,0,0,.25)"; for (let k = 1; k < 6; k++) { const yy = top - lid + lid * k / 6, ins = inset * (1 - k / 6);
+    c.strokeStyle = edge || "rgba(255,255,255,.10)"; c.lineWidth = 1; c.stroke();
+    c.strokeStyle = lt ? "rgba(0,0,0,.12)" : "rgba(0,0,0,.25)"; for (let k = 1; k < 6; k++) { const yy = top - lid + lid * k / 6, ins = inset * (1 - k / 6);
       c.beginPath(); c.moveTo(left + ear + ins + bw * .02, yy); c.lineTo(left + bw - ear - ins - bw * .02, yy); c.stroke(); }   // vent lines
-    c.fillStyle = "#2e2e35"; [left, left + bw - ear].forEach(x => { rr(c, x, top - bh * .04, ear, bh * 1.08, 3); c.fill(); });
+    c.fillStyle = F("#2e2e35", "#bfc0c7"); [left, left + bw - ear].forEach(x => { rr(c, x, top - bh * .04, ear, bh * 1.08, 3); c.fill(); });
     c.fillStyle = "#121216"; [left, left + bw - ear].forEach(x => [.12, .88].forEach(y => { c.beginPath(); c.arc(x + ear / 2, top + bh * y, ear * .18, 0, 7); c.fill(); }));
-    c.fillStyle = shade(c, 0, top, 0, top + bh, [[0, "#404049"], [1, "#1e1e23"]]); rr(c, left + ear, top, bw - 2 * ear, bh, 4); c.fill();
-    c.strokeStyle = "rgba(255,255,255,.10)"; c.lineWidth = 1.5; c.stroke();
+    c.fillStyle = shade(c, 0, top, 0, top + bh, [[0, F("#404049", "#e4e4e9")], [1, F("#1e1e23", "#bfbfc7")]]); rr(c, left + ear, top, bw - 2 * ear, bh, 4); c.fill();
+    c.strokeStyle = edge || "rgba(255,255,255,.10)"; c.lineWidth = 1.5; c.stroke();
     for (let i = 0; i < L.bays; i++) {
       const col = i % L.cols, row = Math.floor(i / L.cols), x = L.ax + col * (L.bayW + L.gap), y = L.ay + row * (L.rowH + bh * .05);
       c.fillStyle = "#24242a"; rr(c, x, y, L.bayW, L.rowH, 3); c.fill();
@@ -223,13 +224,13 @@ function body(c, L, isDark) {
   }
   if (L.model === "laptop") {
     const { lw, lh, by, dh, ex } = L;
-    c.fillStyle = shade(c, left, by, left, by + dh, [[0, "#5a5a63"], [1, "#2a2a30"]]);   // the deck, seen from a little above
+    c.fillStyle = shade(c, left, by, left, by + dh, [[0, F("#5a5a63", "#ececf0")], [1, F("#2a2a30", "#c6c6ce")]]);   // the deck, seen from a little above
     c.beginPath(); c.moveTo(left, by); c.lineTo(left + lw, by); c.lineTo(left + lw + ex, by + dh * .82); c.lineTo(left - ex, by + dh * .82); c.closePath(); c.fill();
-    c.fillStyle = "#1e1e23"; c.beginPath(); c.moveTo(left - ex, by + dh * .82); c.lineTo(left + lw + ex, by + dh * .82);
+    c.fillStyle = F("#1e1e23", "#a4a5ae"); c.beginPath(); c.moveTo(left - ex, by + dh * .82); c.lineTo(left + lw + ex, by + dh * .82);
     c.lineTo(left + lw + ex * .96, by + dh); c.lineTo(left - ex * .96, by + dh); c.closePath(); c.fill();                  // the front edge
-    c.fillStyle = "rgba(255,255,255,.12)"; rr(c, left + lw * .4, by + dh * .6, lw * .2, dh * .14, 3); c.fill();       // trackpad
-    c.fillStyle = shade(c, 0, top, 0, by, [[0, "#3a3a42"], [1, "#24242a"]]); rr(c, left, top, lw, lh, lw * .03); c.fill();   // the lid
-    c.strokeStyle = "rgba(255,255,255,.10)"; c.lineWidth = 1.5; c.stroke();
+    c.fillStyle = lt ? "rgba(0,0,0,.08)" : "rgba(255,255,255,.12)"; rr(c, left + lw * .4, by + dh * .6, lw * .2, dh * .14, 3); c.fill();       // trackpad
+    c.fillStyle = shade(c, 0, top, 0, by, [[0, F("#3a3a42", "#e0e0e6")], [1, F("#24242a", "#c4c4cc")]]); rr(c, left, top, lw, lh, lw * .03); c.fill();   // the lid
+    c.strokeStyle = edge || "rgba(255,255,255,.10)"; c.lineWidth = 1.5; c.stroke();
     const b = lw * .03; c.fillStyle = shade(c, left, top, left + lw, by, [[0, "#0c1020"], [1, "#141a2a"]]); rr(c, left + b, top + b, lw - 2 * b, lh - 2 * b, lw * .012); c.fill();
     c.fillStyle = "#0a0a0c"; c.beginPath(); c.arc(left + lw / 2, top + b / 2, b * .18, 0, 7); c.fill();               // camera
     return;
@@ -251,8 +252,8 @@ function body(c, L, isDark) {
     return;
   }
   const { cw, ch } = L;                                                                   // tower
-  c.fillStyle = shade(c, 0, top, 0, top + ch, [[0, "#4a4a52"], [.5, "#26262b"], [1, "#1b1b1f"]]); rr(c, left, top, cw, ch, cw * .07); c.fill();
-  c.strokeStyle = "rgba(255,255,255,.10)"; c.lineWidth = 2.5; c.stroke();
+  c.fillStyle = shade(c, 0, top, 0, top + ch, [[0, F("#4a4a52", "#f6f6f8")], [.5, F("#26262b", "#e2e2e7")], [1, F("#1b1b1f", "#cdcdd4")]]); rr(c, left, top, cw, ch, cw * .07); c.fill();
+  c.strokeStyle = edge || "rgba(255,255,255,.10)"; c.lineWidth = 2.5; c.stroke();
   const gp = cw * .07;
   c.fillStyle = shade(c, left, top, left + cw, top + ch, [[0, "#101014"], [1, "#17171c"]]); rr(c, left + gp, top + gp, cw - 2 * gp, ch - 2 * gp * 1.6, cw * .04); c.fill();
 }
@@ -266,10 +267,10 @@ function glare(c, L) {
     rr(c, left + b, top + b, lw - 2 * b, lh - 2 * b, lw * .012); c.fill(); }
 }
 
-function drawServer(c, w, h, look, t, spin, status, drives, reverse, model) {
+function drawServer(c, w, h, look, t, spin, status, drives, reverse, model, finish) {
   const isDark = dark(), list = drives && drives.length ? drives : null, n = list ? list.length : 6;
   const L = layout(model, w, h, n);
-  body(c, L, isDark);
+  body(c, L, isDark, finish);
   if (L.fan) {
     const { x, y, r } = L.fan, sq = L.fan.squash || 1;
     if (look.on) { const g0 = glow(look, t, reverse), rg = c.createRadialGradient(x, y, 0, x, y, r * 2.05); rg.addColorStop(0, rgbA(g0, .18 + .22 * look.brightness)); rg.addColorStop(1, rgbA(g0, 0));
@@ -311,12 +312,13 @@ function drawServer(c, w, h, look, t, spin, status, drives, reverse, model) {
   });
   glare(c, L);
   const p = L.power;
-  if (L.model !== "tower") { c.strokeStyle = "rgba(255,255,255,.18)"; c.lineWidth = 1.2; c.beginPath(); c.arc(p.x, p.y, p.r * 2.1, 0, 7); c.stroke(); }   // the button around the light
+  if (L.model !== "tower") { c.strokeStyle = finish === "light" && L.model !== "sbc" ? "rgba(0,0,0,.22)" : "rgba(255,255,255,.18)"; c.lineWidth = 1.2; c.beginPath(); c.arc(p.x, p.y, p.r * 2.1, 0, 7); c.stroke(); }   // the button around the light
   c.fillStyle = status; c.globalAlpha = .35; c.beginPath(); c.arc(p.x, p.y, p.r * 1.9, 0, 7); c.fill();
   c.globalAlpha = 1; c.beginPath(); c.arc(p.x, p.y, p.r, 0, 7); c.fill();
 }
 
 export const heroLook = () => { const v = S.overview?.server?.look; return LOOKS.some(([k]) => k === v) ? v : "tower"; };
+export const heroFinish = () => S.overview?.server?.finish === "light" ? "light" : "dark";
 /** What's under a click on the home picture: "drives" (the drive lights), "power" (the power button), "fan", or null. */
 export function heroHit(canvas, ev) {
   const r = canvas.getBoundingClientRect(), x = ev.clientX - r.left, y = ev.clientY - r.top;
@@ -343,17 +345,18 @@ export function animate(canvas, kind, statusColor = () => "#3ecf6e", still = fal
   const frame = now => {
     if (!canvas.isConnected) return;
     const dpr = devicePixelRatio || 1, w = canvas.clientWidth, h = canvas.clientHeight;
-    if (still && canvas._drawn === `${w}x${h}`) return void setTimeout(() => requestAnimationFrame(frame), 500);
+    const key = `${w}x${h}/${canvas.dataset.look || heroLook()}/${canvas.dataset.finish || heroFinish()}`;
+    if (still && canvas._drawn === key) return void setTimeout(() => requestAnimationFrame(frame), 500);
     requestAnimationFrame(frame);           // first: one bad frame (lights half-loaded, say) must never stop the picture for good
     if (!w || !h) return;
-    if (still) canvas._drawn = `${w}x${h}`;
+    if (still) canvas._drawn = key;
     if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(h * dpr)) { canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr); }
     const c = canvas.getContext("2d"); c.setTransform(dpr, 0, 0, dpr, 0, 0);
     const look = fanLook(S.fan), t = Date.now() + (S.skew || 0);     // server time: the wave lines up with the real fan
     const spin = reduce() || still ? 0 : (t % 2200) / 2200 * 360, reverse = localStorage.getItem("nova.fanReverse") === "true";
     c.clearRect(0, 0, w, h);
     try {
-      if (kind === "server") drawServer(c, w, h, look, t, spin, statusColor(), S.overview?.status?.metrics?.drive_states, reverse, canvas.dataset.look || heroLook());
+      if (kind === "server") drawServer(c, w, h, look, t, spin, statusColor(), S.overview?.status?.metrics?.drive_states, reverse, canvas.dataset.look || heroLook(), canvas.dataset.finish || heroFinish());
       else drawFan(c, w, h, look, t, spin, reverse);
     } catch (e) { if (!canvas._warned) { canvas._warned = true; console.warn("illustration:", e); } }
   };

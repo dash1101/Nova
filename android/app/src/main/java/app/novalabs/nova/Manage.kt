@@ -97,6 +97,7 @@ private val ACCENTS = listOf("", "#3e91ff", "#5e5ce6", "#bf5af2", "#ff2d55", "#f
             if (patch.has("display_name")) srv.put("display_name", patch.getString("display_name"))
             if (patch.has("accent")) srv.put("accent", patch.getString("accent"))
             if (patch.has("look")) srv.put("look", patch.getString("look"))
+            if (patch.has("finish")) srv.put("finish", patch.getString("finish"))
         }
         if (patch.has("display_name")) app.pairing.label = patch.getString("display_name").ifEmpty { st?.optString("hostname") ?: "" }
         app.act { try { st = app.api.post("/api/v1/settings", patch) } catch (e: Exception) { st = before; throw e } }
@@ -140,8 +141,9 @@ private val ACCENTS = listOf("", "#3e91ff", "#5e5ce6", "#bf5af2", "#ff2d55", "#f
         if (app.overview?.optJSONObject("server")?.has("look") == true) {     // (a server from before 0.9.21 doesn't know about it)
             SectionLabel("Looks like")
             val cur = st?.optString("look")?.ifEmpty { null } ?: heroLook(app)
+            val fin = st?.optString("finish")?.ifEmpty { null } ?: heroFinish(app)
             val drives = app.overview?.optJSONObject("status")?.optJSONObject("metrics")?.optJSONArray("drive_states")?.let { a -> (0 until a.length()).map { a.getJSONObject(it) } }
-            // the five shapes, live, three to a row; the chosen one outlined
+            // the shapes, still pictures, three to a row; the chosen one outlined
             LOOKS.chunked(3).forEach { row ->
                 Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min).padding(horizontal = Space.gutter, vertical = 5.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     row.forEach { (k, label) ->
@@ -149,7 +151,7 @@ private val ACCENTS = listOf("", "#3e91ff", "#5e5ce6", "#bf5af2", "#ff2d55", "#f
                         Column(Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(smallCorner(20.dp))).background(N.card)
                             .border(2.dp, if (sel) N.blue else Color.Transparent, RoundedCornerShape(smallCorner(20.dp)))
                             .clickable(enabled = app.isAdmin) { save(JSONObject().put("look", k)) }.padding(vertical = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                            ServerHero(app.fan, N.green, drives, app.clockSkew, Modifier.fillMaxWidth().height(96.dp), model = k, still = true)
+                            ServerHero(app.fan, N.green, drives, app.clockSkew, Modifier.fillMaxWidth().height(96.dp), model = k, still = true, finish = fin)
                             Text(label, Modifier.padding(horizontal = 6.dp), color = N.text, fontSize = 15.sp, lineHeight = 18.sp, fontWeight = FontWeight.SemiBold,
                                 textAlign = androidx.compose.ui.text.style.TextAlign.Center)
                         }
@@ -157,6 +159,9 @@ private val ACCENTS = listOf("", "#3e91ff", "#5e5ce6", "#bf5af2", "#ff2d55", "#f
                     repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
                 }
             }
+            // the case's color (a server from before 0.9.22 doesn't have one)
+            if (app.isAdmin && app.overview?.optJSONObject("server")?.has("finish") == true)
+                Segmented(listOf("Dark case", "Light case"), if (fin == "light") 1 else 0) { i -> save(JSONObject().put("finish", if (i == 1) "light" else "dark")) }
             Note(if (st?.optBoolean("look_set") == true) "The picture on Home, for every phone and browser of this server."
                 else "Picked from what the server says it is — choose the one that looks most like yours. It's the picture on Home, for every phone and browser.", 13.sp, 4.dp)
         }

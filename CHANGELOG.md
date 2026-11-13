@@ -2,6 +2,9 @@
 
 ## 0.9.22-alpha (server and app)
 - **A sixth shape: a single-board computer** (a Raspberry Pi and the like) — the board from above with its pin header, ports and a fan on its chip. A board with no firmware chassis type but a device tree (most Pis) shows it until you pick.
+- **Dark or light case.** Under the shapes, pick the case's color — black/gunmetal or white/silver — for every shape but the board. Every phone and browser of that server shows it.
+- **Pairing over Tailscale is more patient:** a phone pairing at a Tailscale address waits as long as Tailscale needs (8 s instead of 3–4), tries that address once instead of twice, and if it can't get through, says to check that Tailscale is running on the phone. "Can't reach your server" calls a Tailscale address Tailscale (even when it's the server's "home" one), with the same hint, and only says Nova works at home only when there's really no other way in.
+- `sudo nova help troubleshoot`: what to do when Nova works at home but not away.
 - **Pairing a phone to a server whose "home" address is its Tailscale one:** `sudo nova add --remote` works there now (it was refused — the Tailscale address *is* the way in), and once you run `sudo nova setup` → Network and pick the real home address, a phone paired before moves to it by itself and keeps Tailscale for when you're away.
 - **Changing only setup's Network (or Away from home) also opens the firewall** for the new network and for Tailscale devices (ufw/firewalld) — before, only a full setup did.
 - **Settings → Server → Looks like:** still previews instead of six live ones (they were heavy on slow tablets); on the web they're cards; a view-only device sees them without being offered to change them. Windows reads its chassis type too, so a Windows laptop shows the laptop.

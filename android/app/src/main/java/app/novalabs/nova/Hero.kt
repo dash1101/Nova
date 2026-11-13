@@ -223,8 +223,10 @@ private fun heroLayout(model: String, w: Float, h: Float, n: Int): HeroLayout = 
 private class LayoutCache { private var key = ""; private var last: HeroLayout? = null
     fun get(model: String, w: Float, h: Float, n: Int): HeroLayout { val k = "$model/$w/$h/$n"; if (k != key || last == null) { last = heroLayout(model, w, h, n); key = k }; return last!! } }
 
-private fun DrawScope.heroBody(L: HeroLayout, dark: Boolean) {
+private fun DrawScope.heroBody(L: HeroLayout, dark: Boolean, light: Boolean = false) {
     val left = L.left; val top = L.top; val bw = L.bw; val bh = L.bh
+    fun F(d: Long, l: Long) = if (light) l else d                       // the dark case's color, or the light (white/silver) one's
+    val edge = if (light) Color.Black.copy(alpha = .16f) else null
     drawOval(Color.Black.copy(alpha = if (dark) 0.6f else 0.18f), Offset(left + bw * .04f, top + bh - max(4f, bh * .03f)), Size(bw * .92f, max(8f, bh * .06f)))
     fun poly(vararg p: Pair<Float, Float>) = Path().apply { moveTo(p[0].first, p[0].second); for (q in p.drop(1)) lineTo(q.first, q.second); close() }
     fun vgrad(y0: Float, y1: Float, vararg c: Long) = Brush.verticalGradient(c.map { Color(it) }, y0, y1)
@@ -232,16 +234,16 @@ private fun DrawScope.heroBody(L: HeroLayout, dark: Boolean) {
         "mini" -> {
             val th = L.x["th"]!!; val fy = L.x["fy"]!!; val fh = L.x["fh"]!!; val inset = bw * .05f
             val lid = poly((left + inset) to (top), (left + bw - inset) to (top), (left + bw) to (fy), (left) to (fy))
-            drawPath(lid, vgrad(top, fy, 0xFF55555E, 0xFF3A3A42)); drawPath(lid, Color.White.copy(alpha = .12f), style = Stroke(1.5f))
+            drawPath(lid, vgrad(top, fy, F(0xFF55555E, 0xFFF4F4F6), F(0xFF3A3A42, 0xFFD9D9DF))); drawPath(lid, edge ?: Color.White.copy(alpha = .12f), style = Stroke(1.5f))
             val f = L.fan!!; drawOval(Color.Black.copy(alpha = .35f), Offset(f.c.x - f.r * 1.18f, f.c.y - f.r * 1.18f * f.squash), Size(f.r * 2.36f, f.r * 2.36f * f.squash))
             val front = Path().apply { addRoundRect(androidx.compose.ui.geometry.RoundRect(left, fy, left + bw, fy + fh, CornerRadius.Zero, CornerRadius.Zero, CornerRadius(bw * .035f), CornerRadius(bw * .035f))) }
-            drawPath(front, vgrad(fy, fy + fh, 0xFF2C2C33, 0xFF1B1B20)); drawPath(front, Color.White.copy(alpha = .08f), style = Stroke(1.5f))
+            drawPath(front, vgrad(fy, fy + fh, F(0xFF2C2C33, 0xFFE6E6EB), F(0xFF1B1B20, 0xFFC6C6CE))); drawPath(front, edge ?: Color.White.copy(alpha = .08f), style = Stroke(1.5f))
             listOf(.52f to .07f, .6f to .07f, .68f to .045f).forEach { (x, wd) -> drawRoundRect(Color(0xFF0D0D10), Offset(left + bw * x, fy + fh * .38f), Size(bw * wd, fh * .17f), CornerRadius(2f)) }
             drawCircle(Color(0xFF0D0D10), fh * .07f, Offset(left + bw * .77f, fy + fh * .465f))
         }
         "nas" -> {
-            drawRoundRect(vgrad(top, top + bh, 0xFF3C3C44, 0xFF1C1C21), Offset(left, top), Size(bw, bh), CornerRadius(bw * .05f))
-            drawRoundRect(Color.White.copy(alpha = .10f), Offset(left, top), Size(bw, bh), CornerRadius(bw * .05f), style = Stroke(2f))
+            drawRoundRect(vgrad(top, top + bh, F(0xFF3C3C44, 0xFFEEEEF1), F(0xFF1C1C21, 0xFFCACAD1)), Offset(left, top), Size(bw, bh), CornerRadius(bw * .05f))
+            drawRoundRect(edge ?: Color.White.copy(alpha = .10f), Offset(left, top), Size(bw, bh), CornerRadius(bw * .05f), style = Stroke(2f))
             val b = L.bar!!; drawRoundRect(Color(0xFF121216), Offset(b.x - bw * .02f, b.y - bh * .02f), Size(b.w + bw * .04f, b.h + bh * .04f), CornerRadius(bh * .03f))
             val bays = L.x["bays"]!!.toInt(); val ax = L.x["ax"]!!; val gap = L.x["gap"]!!; val bayW = L.x["bayW"]!!; val ay = L.x["ay"]!!; val ah = L.x["ah"]!!
             for (i in 0 until bays) {
@@ -255,13 +257,13 @@ private fun DrawScope.heroBody(L: HeroLayout, dark: Boolean) {
         "rack" -> {
             val lid = L.x["lid"]!!; val ear = L.x["ear"]!!; val inset = bw * .04f
             val top2 = poly((left + ear + inset) to (top - lid), (left + bw - ear - inset) to (top - lid), (left + bw - ear) to (top), (left + ear) to (top))
-            drawPath(top2, vgrad(top - lid, top, 0xFF4C4C55, 0xFF34343C)); drawPath(top2, Color.White.copy(alpha = .10f), style = Stroke(1f))
+            drawPath(top2, vgrad(top - lid, top, F(0xFF4C4C55, 0xFFECECF0), F(0xFF34343C, 0xFFD0D0D7))); drawPath(top2, edge ?: Color.White.copy(alpha = .10f), style = Stroke(1f))
             for (k in 1 until 6) { val yy = top - lid + lid * k / 6; val ins = inset * (1 - k / 6f)
-                drawLine(Color.Black.copy(alpha = .25f), Offset(left + ear + ins + bw * .02f, yy), Offset(left + bw - ear - ins - bw * .02f, yy), 1f) }
-            listOf(left, left + bw - ear).forEach { x -> drawRoundRect(Color(0xFF2E2E35), Offset(x, top - bh * .04f), Size(ear, bh * 1.08f), CornerRadius(3f))
+                drawLine(Color.Black.copy(alpha = if (light) .12f else .25f), Offset(left + ear + ins + bw * .02f, yy), Offset(left + bw - ear - ins - bw * .02f, yy), 1f) }
+            listOf(left, left + bw - ear).forEach { x -> drawRoundRect(Color(F(0xFF2E2E35, 0xFFBFC0C7)), Offset(x, top - bh * .04f), Size(ear, bh * 1.08f), CornerRadius(3f))
                 listOf(.12f, .88f).forEach { y -> drawCircle(Color(0xFF121216), ear * .18f, Offset(x + ear / 2, top + bh * y)) } }
-            drawRoundRect(vgrad(top, top + bh, 0xFF404049, 0xFF1E1E23), Offset(left + ear, top), Size(bw - 2 * ear, bh), CornerRadius(4f))
-            drawRoundRect(Color.White.copy(alpha = .10f), Offset(left + ear, top), Size(bw - 2 * ear, bh), CornerRadius(4f), style = Stroke(1.5f))
+            drawRoundRect(vgrad(top, top + bh, F(0xFF404049, 0xFFE4E4E9), F(0xFF1E1E23, 0xFFBFBFC7)), Offset(left + ear, top), Size(bw - 2 * ear, bh), CornerRadius(4f))
+            drawRoundRect(edge ?: Color.White.copy(alpha = .10f), Offset(left + ear, top), Size(bw - 2 * ear, bh), CornerRadius(4f), style = Stroke(1.5f))
             val bays = L.x["bays"]!!.toInt(); val cols = L.x["cols"]!!.toInt(); val ax = L.x["ax"]!!; val gap = L.x["gap"]!!; val bayW = L.x["bayW"]!!; val rowH = L.x["rowH"]!!; val ay = L.x["ay"]!!
             for (i in 0 until bays) { val x = ax + (i % cols) * (bayW + gap); val y = ay + (i / cols) * (rowH + bh * .05f)
                 drawRoundRect(Color(0xFF24242A), Offset(x, y), Size(bayW, rowH), CornerRadius(3f))
@@ -271,11 +273,11 @@ private fun DrawScope.heroBody(L: HeroLayout, dark: Boolean) {
         }
         "laptop" -> {
             val lw = bw; val lh = L.x["lh"]!!; val by = L.x["by"]!!; val dh = L.x["dh"]!!; val ex = L.x["ex"]!!
-            drawPath(poly((left) to (by), (left + lw) to (by), (left + lw + ex) to (by + dh * .82f), (left - ex) to (by + dh * .82f)), vgrad(by, by + dh, 0xFF5A5A63, 0xFF2A2A30))
-            drawPath(poly((left - ex) to (by + dh * .82f), (left + lw + ex) to (by + dh * .82f), (left + lw + ex * .96f) to (by + dh), (left - ex * .96f) to (by + dh)), Color(0xFF1E1E23))
-            drawRoundRect(Color.White.copy(alpha = .12f), Offset(left + lw * .4f, by + dh * .6f), Size(lw * .2f, dh * .14f), CornerRadius(3f))
-            drawRoundRect(vgrad(top, by, 0xFF3A3A42, 0xFF24242A), Offset(left, top), Size(lw, lh), CornerRadius(lw * .03f))
-            drawRoundRect(Color.White.copy(alpha = .10f), Offset(left, top), Size(lw, lh), CornerRadius(lw * .03f), style = Stroke(1.5f))
+            drawPath(poly((left) to (by), (left + lw) to (by), (left + lw + ex) to (by + dh * .82f), (left - ex) to (by + dh * .82f)), vgrad(by, by + dh, F(0xFF5A5A63, 0xFFECECF0), F(0xFF2A2A30, 0xFFC6C6CE)))
+            drawPath(poly((left - ex) to (by + dh * .82f), (left + lw + ex) to (by + dh * .82f), (left + lw + ex * .96f) to (by + dh), (left - ex * .96f) to (by + dh)), Color(F(0xFF1E1E23, 0xFFA4A5AE)))
+            drawRoundRect(if (light) Color.Black.copy(alpha = .08f) else Color.White.copy(alpha = .12f), Offset(left + lw * .4f, by + dh * .6f), Size(lw * .2f, dh * .14f), CornerRadius(3f))
+            drawRoundRect(vgrad(top, by, F(0xFF3A3A42, 0xFFE0E0E6), F(0xFF24242A, 0xFFC4C4CC)), Offset(left, top), Size(lw, lh), CornerRadius(lw * .03f))
+            drawRoundRect(edge ?: Color.White.copy(alpha = .10f), Offset(left, top), Size(lw, lh), CornerRadius(lw * .03f), style = Stroke(1.5f))
             val b = lw * .03f
             drawRoundRect(Brush.linearGradient(listOf(Color(0xFF0C1020), Color(0xFF141A2A)), Offset(left, top), Offset(left + lw, by)), Offset(left + b, top + b), Size(lw - 2 * b, lh - 2 * b), CornerRadius(lw * .012f))
             drawCircle(Color(0xFF0A0A0C), b * .18f, Offset(left + lw / 2, top + b / 2))
@@ -296,8 +298,8 @@ private fun DrawScope.heroBody(L: HeroLayout, dark: Boolean) {
             listOf(-1 to -1, 1 to -1, -1 to 1, 1 to 1).forEach { (a, b) -> drawCircle(Color(0xFF18181C), f.r * .09f, Offset(f.c.x + a * f.r * 1.12f, f.c.y + b * f.r * 1.12f)) }
         }
         else -> {
-            drawRoundRect(vgrad(top, top + bh, 0xFF4A4A52, 0xFF26262B, 0xFF1B1B1F), Offset(left, top), Size(bw, bh), CornerRadius(bw * 0.07f))
-            drawRoundRect(Color.White.copy(alpha = 0.10f), Offset(left, top), Size(bw, bh), CornerRadius(bw * 0.07f), style = Stroke(2.5f))
+            drawRoundRect(vgrad(top, top + bh, F(0xFF4A4A52, 0xFFF6F6F8), F(0xFF26262B, 0xFFE2E2E7), F(0xFF1B1B1F, 0xFFCDCDD4)), Offset(left, top), Size(bw, bh), CornerRadius(bw * 0.07f))
+            drawRoundRect(edge ?: Color.White.copy(alpha = 0.10f), Offset(left, top), Size(bw, bh), CornerRadius(bw * 0.07f), style = Stroke(2.5f))
             val gp = bw * 0.07f
             drawRoundRect(Brush.linearGradient(listOf(Color(0xFF101014), Color(0xFF17171C)), Offset(left, top), Offset(left + bw, top + bh)),
                 Offset(left + gp, top + gp), Size(bw - 2 * gp, bh - 2 * gp * 1.6f), CornerRadius(bw * 0.04f))
@@ -311,13 +313,13 @@ private fun DrawScope.heroBody(L: HeroLayout, dark: Boolean) {
  * status color. Drive LEDs: green with activity when healthy, amber when worn or hot, red (pulsing) when missing or failing.
  */
 @Composable fun ServerHero(fan: JSONObject?, statusColor: Color, drives: List<JSONObject>?, skewMs: Long, modifier: Modifier = Modifier, io: JSONObject? = null, model: String = "tower",
-                          still: Boolean = false) {        // still: one frame, no clock (the picker's five previews would otherwise all animate)
+                          still: Boolean = false, finish: String = "dark") {        // still: one frame, no clock (the picker's five previews would otherwise all animate)
     val look = fanLook(fan); val dark = N.dark; val reverse = AppPrefs.fanReverse; val slow = lite()
     val t by serverClock(skewMs, still); val blade = remember { BladeCache() }; val layouts = remember { LayoutCache() }
     val list = drives?.takeIf { it.isNotEmpty() }; val n = list?.size ?: 6
     Box(modifier) {
     // the body never changes: drawn once in a layer of its own, so each tick of the light doesn't redraw it
-    Canvas(Modifier.fillMaxSize().graphicsLayer {}) { heroBody(heroLayout(model, size.width, size.height, n), dark) }
+    Canvas(Modifier.fillMaxSize().graphicsLayer {}) { heroBody(heroLayout(model, size.width, size.height, n), dark, finish == "light") }
     Canvas(Modifier.fillMaxSize().graphicsLayer {}) {
         val L = layouts.get(model, size.width, size.height, n)
         val spin = if (still || reduceMotion()) 0f else ((t % 2200.0) / 2200.0 * 360).toFloat()
@@ -370,7 +372,7 @@ private fun DrawScope.heroBody(L: HeroLayout, dark: Boolean) {
         if (L.model == "laptop") { val b = L.bw * .03f; val lh = L.x["lh"]!!
             drawRoundRect(Brush.linearGradient(listOf(Color.White.copy(alpha = 0.06f), Color.Transparent), Offset(L.left, L.top), Offset(L.left + L.bw * .5f, L.top + lh * .6f)),
                 Offset(L.left + b, L.top + b), Size(L.bw - 2 * b, lh - 2 * b), CornerRadius(L.bw * .012f)) }
-        if (L.model != "tower") drawCircle(Color.White.copy(alpha = .18f), L.pr * 2.1f, L.power, style = Stroke(1.2f))     // the button around the light
+        if (L.model != "tower") drawCircle(if (finish == "light" && L.model != "sbc") Color.Black.copy(alpha = .22f) else Color.White.copy(alpha = .18f), L.pr * 2.1f, L.power, style = Stroke(1.2f))     // the button around the light
         drawCircle(statusColor.copy(alpha = 0.35f), L.pr * 1.9f, L.power)
         drawCircle(statusColor, L.pr, L.power)
     }
@@ -392,6 +394,8 @@ private fun DrawScope.heroBody(L: HeroLayout, dark: Boolean) {
 
 /** Which shape this server's picture has (its setting, else what its firmware says it is; an older server: the tower). */
 fun heroLook(app: AppState): String = app.overview?.optJSONObject("server")?.optString("look")?.takeIf { v -> LOOKS.any { it.first == v } } ?: "tower"
+/** The case's color: "dark" (black/gunmetal) or "light" (white/silver). */
+fun heroFinish(app: AppState): String = if (app.overview?.optJSONObject("server")?.optString("finish") == "light") "light" else "dark"
 
 /** What's under a tap on the home picture: "drives" (the drive lights), "power" (the power button), "fan", or null. */
 fun heroHit(w: Float, h: Float, x: Float, y: Float, model: String = "tower", drives: Int = 6): String? {

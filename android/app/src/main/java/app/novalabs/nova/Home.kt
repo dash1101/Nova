@@ -146,7 +146,7 @@ import org.json.JSONObject
             }
         }) {
             val drives = st?.optJSONObject("metrics")?.optJSONArray("drive_states")?.let { a -> (0 until a.length()).map { a.getJSONObject(it) } }
-            ServerHero(app.fan, levelColor(level, N), drives, app.clockSkew, Modifier.fillMaxSize(), io = app.lastNow?.optJSONObject("disks"), model = heroLook(app))
+            ServerHero(app.fan, levelColor(level, N), drives, app.clockSkew, Modifier.fillMaxSize(), io = app.lastNow?.optJSONObject("disks"), model = heroLook(app), finish = heroFinish(app))
         }
     }
     val pills: @Composable () -> Unit = {

@@ -401,6 +401,7 @@ SSH_HOSTS = CFG.get("ssh_hosts", [{"name": "Home network", "host": LAN_HOST, "po
 def board_name(): return plat.board()
 
 LOOKS = ("tower", "mini", "nas", "rack", "laptop", "sbc")
+FINISHES = ("dark", "light")                                   # the case's color: black/gunmetal, or white/silver
 _chassis = []
 def chassis_type():
     """The firmware's SMBIOS chassis type (3 desktop, 9 laptop, 23 rack…), read once: /sys on Linux, CIM on Windows."""
@@ -631,7 +632,7 @@ def der_sig(raw):
 # the name instead of guessing from version numbers; a server that doesn't list one doesn't have it.
 CAPABILITIES = {"devices": 1, "approvals": 1, "containers": 1, "apps": 1, "store": 1, "storage": 1, "storage-wizard": 1, "backups": 1, "lights": 1,
                 "cloudflare": 1, "access-codes": 1, "nodes": 1, "tasks": 1, "events": 1, "stats": 1, "terminal": 1, "files": 1, "updates": 1, "freeup": 1, "diag": 1,
-                "assistant": 1, "power-schedule": 1, "keep-awake": 1, "looks": 1, "totp": 2, "passkeys": 2, "partitions": 2, "mount-points": 2, "swap-setup": 2, "recommendations": 2, "security-activity": 2, "capabilities": 2,
+                "assistant": 1, "power-schedule": 1, "keep-awake": 1, "looks": 1, "look-finish": 1, "totp": 2, "passkeys": 2, "partitions": 2, "mount-points": 2, "swap-setup": 2, "recommendations": 2, "security-activity": 2, "capabilities": 2,
                 "force-unmount": 2, "nova-power": 2}
 REC_CACHE = {}             # recommended actions, worked out at most once a minute
 browser_requests = {}      # id -> {pem, name, code, expires, state, device_id}
@@ -1785,9 +1786,14 @@ class Handler(BaseHTTPRequestHandler):
                     v = str(data["look"])
                     if v and v not in LOOKS: raise ValueError(f"look must be one of {', '.join(LOOKS)}")
                     cfg["look"] = v
+                if "finish" in data:
+                    v = str(data["finish"])
+                    if v and v not in FINISHES: raise ValueError(f"finish must be one of {', '.join(FINISHES)}")
+                    cfg["look_finish"] = v
                 with lock: save_json(SETTINGS, cfg)
             return 200, {"display_name": cfg.get("display_name", ""), "accent": cfg.get("accent", ""), "hostname": plat.node(),
-                         "location": server_location(), "look": cfg.get("look") or detected_look(), "look_set": bool(cfg.get("look"))}
+                         "location": server_location(), "look": cfg.get("look") or detected_look(), "look_set": bool(cfg.get("look")),
+                         "finish": cfg.get("look_finish") or "dark"}
         if method == "DELETE" and len(parts) == 2 and parts[0] == "devices":
             with lock:
                 devs = load_json(DEVICES, {}); gone = devs.pop(parts[1], None)
@@ -1962,7 +1968,7 @@ class Handler(BaseHTTPRequestHandler):
             cfg = load_json(SETTINGS, {})
             return 200, {"time": time.time(),             # lets apps line their fan animation up with the real fan
                          "server": {"name": plat.node(), "display_name": cfg.get("display_name", ""),
-                                    "accent": cfg.get("accent", ""), "look": cfg.get("look") or detected_look(), "board": board_name(), "cpu": cpu,
+                                    "accent": cfg.get("accent", ""), "look": cfg.get("look") or detected_look(), "finish": cfg.get("look_finish") or "dark", "board": board_name(), "cpu": cpu,
                                     "ram_gb": round(mem.get("MemTotal", 0) / 1048576), "kernel": plat.kernel(),
                                     "uptime_s": plat.uptime_s(), "os": plat.OS, "tailnet_host": TAILNET_HOST, "remote_url": CFG.get("remote_url", ""),
                                     "lan_url": f"https://{LAN_HOST}:{TLS_PORT}" if LAN_HOST != "127.0.0.1" else ""},

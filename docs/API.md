@@ -119,7 +119,8 @@ Grouped by area; each is `GET` unless marked. Fields are documented by the apps 
   `settings` (GET/POST) · `features` (POST, step-up) · `server/update` (GET/POST)
   · the home picture's shape (capability `looks`): `settings` POST `{"look": "tower|mini|nas|rack|laptop|sbc"}` (or `""` to go
   back to what the firmware says); `overview.server.look` is the shape to draw, `settings` returns `look` and `look_set`.
-  An app that doesn't know a shape draws its default.
+  An app that doesn't know a shape draws its default. Capability `look-finish`: `{"finish": "dark|light"}` is the case's
+  color (`overview.server.finish`, default `dark`).
 - **Inbox:** `events` · `events/wait` · `events/delete` (POST) · `events/restore` (POST) · `archive` ·
   `alerts/dismiss`, `alerts/undismiss` (POST) · `notify`, `notify/discord` (POST, step-up), `notify/discord/test`
 - **Devices:** `devices` · `devices/<id>` (DELETE, step-up) · `devices/invite`, `devices/watch`,
