@@ -200,6 +200,13 @@ def doctor():
                 except OSError: add("warn", f"Nova isn't answering on its Tailscale address {th} yet", "it picks it up within half a minute; if not, press Restart in the Nova Server window")
             elif now: add("warn", f"Tailscale's address changed: Nova uses {th}, this computer now has {now}", "Nova Server window → Where to find it → Look again")
             else: add("warn", f"Tailscale isn't connected on this computer (its address {th} isn't here), so phones away from home can't reach Nova", "Open Tailscale and connect")
+            ts = os.path.join(os.environ.get("ProgramFiles", r"C:\Program Files"), "Tailscale", "tailscale.exe")
+            if os.path.exists(ts):                                # "Allow incoming connections" off: this PC reaches itself, the phone gets nothing
+                try: prefs = subprocess.run([ts, "debug", "prefs"], capture_output=True, text=True, timeout=15, creationflags=0x08000000).stdout
+                except (OSError, subprocess.SubprocessError): prefs = ""
+                if '"ShieldsUp": true' in prefs:
+                    add("stop", "Tailscale is blocking incoming connections, so your phone can't reach Nova over Tailscale — even though this PC can",
+                        "Tailscale in the system tray → Preferences → turn on Allow incoming connections")
     rc, so, se = ps("(Get-NetFirewallRule -Group 'Nova' -ErrorAction SilentlyContinue | Where-Object Enabled -eq 'True' | Measure-Object).Count", 40)
     if so.strip().isdigit() and int(so.strip()) >= 1: add("ok", "Windows Firewall lets your home network in")
     else: add("warn", "Windows Firewall has no rule for Nova, so phones may not reach it", "Run the Nova installer again, or allow TCP ports 8095 and 8495 from your local subnet")

@@ -202,6 +202,12 @@ def doctor():
             elif active and f"{th}:{port}" not in _sh("ss", "-H", "-ltn", f"sport = :{port}")[1]:
                 add("warn", f"Nova isn't answering on its Tailscale address {th} yet", "it picks it up within half a minute; if not: sudo systemctl restart nova-api")
             else: add("ok", f"Tailscale address {th} is this machine's, and Nova answers there")
+        if th or _in_tailnet(host):
+            # "shields up" (Tailscale's "Allow incoming connections" off): this computer reaches its own address, nothing else does
+            rc, prefs = _sh("tailscale", "debug", "prefs")
+            if rc == 0 and re.search(r'"ShieldsUp"\s*:\s*true', prefs):
+                add("stop", "Tailscale is blocking incoming connections (shields up), so your phone can't reach Nova over Tailscale — even though this computer can",
+                    "sudo tailscale set --shields-up=false")
     # firewall
     rc, ufw = _sh("ufw", "status")
     if rc == 0 and ufw.startswith("Status: active"):

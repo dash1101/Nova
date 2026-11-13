@@ -23,8 +23,8 @@ the same way: `https://<the server's Tailscale address>:8495` in a browser on a 
 like any browser).
 
 **If it doesn't connect:** `sudo nova doctor` checks that Tailscale is connected on the server, that its
-address hasn't changed since setup (reinstalling Tailscale can change it), that Nova answers there and that
-the firewall lets Tailscale devices in. In the app, tap **Disconnected** to see what each way in answered.
+address hasn't changed since setup (reinstalling Tailscale can change it), that Nova answers there, that
+Tailscale isn't blocking incoming connections ("shields up") and that the firewall lets Tailscale devices in. In the app, tap **Disconnected** to see what each way in answered.
 
 ## Cloudflare Tunnel
 

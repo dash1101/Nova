@@ -178,7 +178,16 @@ def s_remote(cfg, st):
     rc, ts = sh("tailscale", "ip", "-4")
     if rc == 0 and ts:
         tip = ts.splitlines()[0]
-        if yes(f"Let your Tailscale devices use Nova ({tip})?", True, key="use_tailscale"): cfg.update(tailnet_subnet="100.64.0.0/10", tailnet_host=tip); ok("Tailscale devices can use Nova")
+        if yes(f"Let your Tailscale devices use Nova ({tip})?", True, key="use_tailscale"):
+            cfg.update(tailnet_subnet="100.64.0.0/10", tailnet_host=tip); ok("Tailscale devices can use Nova")
+            # "shields up" (Tailscale's "Allow incoming connections" off): this computer reaches itself, your phone gets nothing
+            prc, prefs = sh("tailscale", "debug", "prefs")
+            if prc == 0 and re.search(r'"ShieldsUp"\s*:\s*true', prefs):
+                warn("Tailscale blocks incoming connections on this computer (shields up) — your phone couldn't reach Nova over Tailscale.")
+                if yes("Let Tailscale devices connect to this computer (tailscale set --shields-up=false)?", not YES, key="tailscale_shields_down"):
+                    if sh("tailscale", "set", "--shields-up=false")[0] == 0: ok("Tailscale lets your devices in now")
+                    else: warn("That didn't work — run: sudo tailscale set --shields-up=false")
+                else: info("To let your phone in later: sudo tailscale set --shields-up=false")
         else: cfg.update(tailnet_subnet="", tailnet_host="")
     elif shutil.which("tailscale"): info("Tailscale is installed but not signed in — run: sudo tailscale up, then sudo nova setup again.")
     else: info("Skipped.")
