@@ -183,17 +183,18 @@ def doctor():
                 add("warn", f"The home address is set to {host}, a Tailscale address — phones and browsers at home that aren't on Tailscale can't reach Nova",
                     "sudo nova setup → Network, and pick this machine's address on your home Wi-Fi or Ethernet (Tailscale keeps working)")
         except ValueError: pass
-        if host in addrs: add("ok", f"Home address {host} is this machine's")
+        mine = lambda ip: f"inet {ip}/" in addrs or f"inet6 {ip}/" in addrs
+        if mine(host): add("ok", f"Home address {host} is this machine's")
         else: add("stop", f"Phones look for this server at {host}, but that's no longer its address",
                   "sudo nova setup → Network (then the app finds it again; pairing stays)")
         # Tailscale: this computer has its address, and Nova answers there (it waits for an address that comes up after it starts)
         th = cfg.get("tailnet_host", "")
         if th and th != host:
             now = [w.split("/")[0] for w in addrs.split() if "/" in w and w.count(".") == 3 and _in_tailnet(w.split("/")[0])]
-            if th not in addrs and now:
+            if not mine(th) and now:
                 add("warn", f"Tailscale's address changed: Nova uses {th}, this computer now has {now[0]} — phones away from home can't reach Nova",
                     "sudo nova setup → Away from home → Tailscale (phones learn the new address next time they're home)")
-            elif th not in addrs:
+            elif not mine(th):
                 add("warn", f"Tailscale isn't connected on this computer (its address {th} isn't here), so phones away from home can't reach Nova",
                     "sudo tailscale up   (or check: tailscale status)")
             elif active and f"{th}:{port}" not in _sh("ss", "-H", "-ltn", f"sport = :{port}")[1]:
