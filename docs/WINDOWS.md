@@ -11,17 +11,30 @@ unchanged. This page says how to install it, what works today, and how the two s
 
 1. Download **nova-windows.zip** from the [newest release](https://github.com/dash1101/Nova/releases/latest) and unzip it.
 2. Double-click **Install Nova.cmd** (Windows asks for permission once).
-3. Open **Nova Server** from the Start menu, press **Pair a phone or tablet**, and scan the code with the Nova app.
+3. **Nova Server** opens by itself: get the app on your phone (the QR code on the page), then press
+   **Pair a phone or tablet** and scan the code with the app. Later, it's in the Start menu.
 
-Or, in an administrator PowerShell, in one line:
+Or in PowerShell, in one line (it asks for administrator permission):
 
 ```powershell
 irm https://raw.githubusercontent.com/dash1101/Nova/main/get.ps1 | iex
 ```
 
 It needs Python 3.9 or newer installed for all users; the installer gets Python with `winget` if it's missing.
-**Updating** is the same steps again with the newer zip — settings, paired devices and the server's certificate
-are kept. **Removing:** `C:\Program Files\Nova\uninstall.ps1` (add `-Purge` to delete settings and devices too).
+
+**Updating:** Nova Server → **Check for updates** → **Update now**, or `nova update` in an administrator terminal.
+Either downloads the newest release, checks its signature against Nova's release key (as Linux does) and runs its
+installer in a window of its own. Settings, paired devices and the server's certificate are kept. Installing a
+newer zip by hand works too.
+**Removing:** `C:\Program Files\Nova\uninstall.ps1` (add `-Purge` to delete settings and devices too).
+
+**For programs that install Nova** (hub apps such as Orbit): `install.ps1` and `uninstall.ps1` never wait for a key
+when their output is captured, exit with 0 or 1, and end with one line to parse:
+`NOVA-RESULT {"ok":true,"version":…,"previous":…,"firstRun":…,"running":…,"devices":…,"ports":{"https":…,"http":…},"urls":{"local":…,"home":…,"plain":…,"tailnet":…}}`
+(on failure `{"ok":false,"error":…}`). `-NoFirewall` leaves Windows Firewall alone; `-NoWindow` never opens Nova Server.
+While Nova runs, `C:\ProgramData\Nova\alerts\www\status.json` (readable by every user) has its health, what waits
+for approval, `setup`, `ports`, `urls` and the check-up's findings (`doctor`); `nova status --json` and
+`nova doctor --json` give the same as data.
 
 ## What works
 
@@ -50,7 +63,8 @@ are kept. **Removing:** `C:\Program Files\Nova\uninstall.ps1` (add `-Purge` to d
 | Files, terminal | ❌ | planned (terminal needs Windows' ConPTY) |
 | Backups | ❌ | planned |
 | Storage wizard, partitions, RAID, SMART self-tests, unmounting | ❌ | Windows' own tools for now |
-| Lighting module, assistant brain, Labs, in-app server update | ❌ | Linux only for now |
+| Updating Nova itself | ◐ | from the Nova Server window or `nova update` (signature checked); not yet from the phone app |
+| Lighting module, assistant brain, Labs | ❌ | Linux only for now |
 
 ## How it's put together
 

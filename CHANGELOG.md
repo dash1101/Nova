@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.9.23-alpha (server)
+Windows' Nova Server window works again, and installing and updating Nova on Windows is smoother.
+
+**Windows**
+- **Fix: Nova Server closed as soon as it opened** ("Nova Server has closed — open it again"). Started from the Start menu it runs without a console, and the `nova` command it loads asked that missing console whether it was a terminal — so every request failed, and the window took that for having closed. It works now; the test on real Windows starts it exactly the way the Start menu does; and a real problem shows as one (the error, with **Try again**), not as "closed".
+- **After installing, Nova Server opens by itself** with a **Get started** card: a QR code to get the app on your phone, then **Pair a phone or tablet**. The installer also says whether it installs or updates (from which version), points to Nova web's real address (https, port 8495, and https://localhost:8495 on the PC), and keeps its window open until you've read it.
+- **Update Nova from Windows:** Nova Server → **Check for updates** → **Update now**, or `nova update` in an administrator terminal. It downloads the newest release, checks its signature against Nova's release key (as Linux always has) and runs its installer in a window of its own, which opens Nova Server again when it's done.
+- **The one-line install asks for administrator permission itself** instead of telling you to start over in an administrator PowerShell; removing Nova (`uninstall.ps1`) does the same.
+- **Nothing of Nova's opens a console window**: its three background parts run as services, and everything the Nova Server window starts runs hidden. Its one-time key now travels in the address's query (some ways Windows opens an address drop the part after "#").
+
+**For hub apps (Orbit) and scripts**
+- `install.ps1` and `uninstall.ps1` never wait for a key when a program runs them, exit with 0 or 1, and end with a line to parse: `NOVA-RESULT {"ok":…,"version":…,"previous":…,"firstRun":…,"running":…,"devices":…,"ports":…,"urls":…}`.
+- `status.json` also says whether setup is done, which ports and addresses Nova answers on, and the check-up's latest findings (refreshed at most every 10 minutes); on Windows every user can read it, as on Linux (`C:\ProgramData\Nova\alerts\www\status.json`).
+- `nova status --json` and `nova doctor --json`.
+
+**Linux**
+- **Fix: "the last update check failed" after a restart.** The daily check catches up right after boot, often before Wi-Fi is connected; it failed and stayed failed. Now it waits a few minutes for the network and, if it's still offline, says so and looks again the next day. A check you start yourself still reports the problem.
+- `sudo nova status` shows the address phones use and says when nothing is paired yet; running `sudo nova setup` again offers to pair *another* device instead of "your phone".
+
 ## 0.9.22-alpha (server and app)
 Phones that couldn't reach a computer over Tailscale, and more ways for the Home picture to look like yours.
 

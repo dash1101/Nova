@@ -27,6 +27,11 @@ Nova's own monitor also adds `"waiting": {"browsers": 0, "actions": 0}` to `stat
 browsers (or other servers, or the app signing in from away) wait to be paired, and how many actions a browser holds
 for an admin's OK. Counts only, never the codes — a hub app such as Orbit can say "a browser is waiting" and offer
 `sudo nova approve CODE`, with the code read off the browser that asked. The file is world-readable on purpose.
+Since 0.9.23 it also says, for hub apps and dashboards: `"setup": {"done": true}` (Nova has its settings),
+`"ports": {"https": 8495, "http": 8095}`, `"urls": {"local", "home", "tailnet", "plain"}` (where Nova answers — no
+remote address, nothing secret) and `"doctor"`: the check-up's findings `[{"level": "ok|warn|stop", "title", "fix"}]`,
+refreshed at most every 10 minutes (`"doctor_updated"` says when). On Windows the file is
+`C:\ProgramData\Nova\alerts\www\status.json`, readable by every user there too.
 Metric keys the app knows how to display: `cpu_temp`, `memory`, `swap`, `uptime`, `root_used`,
 `photo_pool_used`, `cold_storage_used`, `backup_drive_used`, `drives`, `drive_temps`, `containers`,
 `websites`, `data_backup`, `backup_sets`, `backup_verify`, `config_backup`.
