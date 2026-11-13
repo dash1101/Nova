@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.9.21-alpha (server and app)
+- **Your server, as it looks.** The picture on Home now comes in five shapes — a **tower** (as before), a **mini PC**, a **NAS** with one tray per drive, a **rack server** and a **laptop**. Pick it in Settings → Server → Looks like, and every phone and browser of that server shows it. Until you pick, Nova goes by what the computer's firmware says it is (a laptop shows the laptop, a rack server the rack). Each one keeps what the tower has: the live light (on a laptop, its screen shows the ring and the keyboard glows), your LED strips, one LED per drive that blinks with real activity, the power LED in the status color — and tapping them still opens Lighting, Storage and the power menu.
+
 ## 0.9.20-alpha (server and app)
 A phone that couldn't connect to a desktop running Nova and Tailscale, Nova web on the server itself, and approvals for hub apps.
 - **Fix: a phone on Tailscale couldn't use Nova on a computer whose setup picked its Tailscale address as "home"** — the usual case on a desktop whose internet goes through Tailscale or a public Ethernet port. Nova counted only that one address as home, so every other device was turned away (it could even pair with `sudo nova add --remote` and then never connect). Now such a server accepts its tailnet's devices; the app gives that address Tailscale's patience (a relayed connection can take longer than the 1.5 s a home network gets); setup opens the firewall for Tailscale devices too (ufw/firewalld), and `sudo nova doctor` says when it isn't open.
