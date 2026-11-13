@@ -185,9 +185,15 @@ def doctor():
     if rc == 0 and ufw.startswith("Status: active"):
         if str(port) in ufw: add("ok", "The firewall lets your home network in")
         else: add("warn", f"The firewall (ufw) is on and doesn't allow port {port}", "sudo nova setup → Start Nova opens it for your home network only")
+        if cfg.get("tailnet_host") and "tailscale0" not in ufw and "100.64.0.0/10" not in ufw:
+            add("warn", "The firewall (ufw) doesn't let your Tailscale devices reach Nova", f"sudo ufw allow in on tailscale0 to any port {port} proto tcp")
     elif shutil.which("firewall-cmd") and _sh("firewall-cmd", "--state")[0] == 0:
         _, fw = _sh("firewall-cmd", "--list-all")
         if str(port) not in fw: add("warn", f"The firewall (firewalld) doesn't allow port {port}", "sudo nova setup → Start Nova opens it for your home network only")
+        if cfg.get("tailnet_host") and "100.64.0.0/10" not in fw and "tailscale0" not in fw \
+                and _sh("firewall-cmd", "--get-zone-of-interface=tailscale0")[1].strip() != "trusted":
+            add("warn", "The firewall (firewalld) doesn't let your Tailscale devices reach Nova",
+                f"sudo firewall-cmd --permanent --add-rich-rule='rule family=ipv4 source address=100.64.0.0/10 port port={port} protocol=tcp accept' && sudo firewall-cmd --reload")
     # time: every request is signed with a timestamp
     _, sync = _sh("timedatectl", "show", "-p", "NTPSynchronized", "--value")
     if sync == "no": add("warn", "The clock isn't synced — authenticator codes, schedules and alert times can be off", "sudo timedatectl set-ntp true")

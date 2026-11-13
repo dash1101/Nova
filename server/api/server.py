@@ -391,6 +391,11 @@ LAN_HOST = CFG.get("lan_host") or "127.0.0.1"
 # Optional: a Tailscale/VPN network whose devices may use Nova (signed requests only — never pairing).
 TAILNET = ipaddress.ip_network(CFG["tailnet_subnet"]) if CFG.get("tailnet_subnet") else None
 TAILNET_HOST = CFG.get("tailnet_host", "")
+# Set up with its own Tailscale address as the "home" one (setups before 0.9.20 could pick it): the only devices that can reach
+# that address are the tailnet's, so they count as Tailscale devices — otherwise no phone could ever use Nova there.
+try:
+    if TAILNET is None and ipaddress.ip_address(LAN_HOST) in ipaddress.ip_network("100.64.0.0/10"): TAILNET = ipaddress.ip_network("100.64.0.0/10")
+except ValueError: pass
 SSH_USER = CFG.get("ssh_user", "")
 SSH_HOSTS = CFG.get("ssh_hosts", [{"name": "Home network", "host": LAN_HOST, "port": 22}])
 def board_name(): return plat.board()

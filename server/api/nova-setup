@@ -331,19 +331,23 @@ def s_start(cfg, st):
     step(6, "Start Nova", "Saving your settings, opening the firewall for your home network, and starting Nova.")
     subnet, host = cfg["lan_subnet"], cfg["lan_host"]
     save(cfg); ok(f"Settings saved {D}({CONF}){X}")
+    ts = bool(cfg.get("tailnet_host"))                 # Tailscale devices may use Nova: they need the way in too (port 8495 only)
+    who = subnet + (" and your Tailscale devices" if ts else "")
     rc, fw = sh("ufw", "status")
     if rc == 0 and "Status: active" in fw:
-        if yes(f"Let {subnet} through the firewall to Nova?", True, key="firewall"):
+        if yes(f"Let {who} through the firewall to Nova?", True, key="firewall"):
             sh("ufw", "allow", "from", subnet, "to", "any", "port", "8495", "proto", "tcp", "comment", "Nova (home network)")
             sh("ufw", "allow", "from", subnet, "to", "any", "port", "8496", "proto", "udp", "comment", "Nova discovery (home network)")
+            if ts: sh("ufw", "allow", "in", "on", "tailscale0", "to", "any", "port", "8495", "proto", "tcp", "comment", "Nova (Tailscale)")
             ok("Firewall rules added")
     elif shutil.which("firewall-cmd") and sh("firewall-cmd", "--state")[1].strip() == "running":       # Fedora, openSUSE, RHEL
-        if yes(f"Let {subnet} through the firewall to Nova?", True, key="firewall"):
+        if yes(f"Let {who} through the firewall to Nova?", True, key="firewall"):
             for port in ("8495/tcp", "8496/udp"):
                 p, proto = port.split("/")
                 sh("firewall-cmd", "--permanent", f"--add-rich-rule=rule family=ipv4 source address={subnet} port port={p} protocol={proto} accept")
+            if ts: sh("firewall-cmd", "--permanent", "--add-rich-rule=rule family=ipv4 source address=100.64.0.0/10 port port=8495 protocol=tcp accept")
             sh("firewall-cmd", "--reload"); ok("Firewall rules added")
-    else: info(f"Firewall: make sure {subnet} can reach tcp 8495 (and udp 8496 to find the server).")
+    else: info(f"Firewall: make sure {who} can reach tcp 8495 (and the home network udp 8496, to find the server).")
     sh("systemctl", "daemon-reload")
     sh("systemctl", "enable", "--now", "nova-helper.socket")
     sh("systemctl", "enable", "nova-api.service"); sh("systemctl", "restart", "nova-api.service")
