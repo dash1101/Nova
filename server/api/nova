@@ -318,7 +318,12 @@ def status(args):
         st = subprocess.run(["systemctl", "is-active", u], capture_output=True, text=True).stdout.strip()
         if st != "inactive" or u.startswith("nova-api"): print(f"  {(G + '●') if st == 'active' else (R + '●')}{X} {u:26} {st}")
     print(f"  Home network   {cfg.get('lan_url', '—')}")
-    if cfg.get("tailnet_host"): print(f"  Tailscale      https://{cfg['tailnet_host']}:{cfg.get('tls_port', 8495)}")
+    if cfg.get("tailnet_host"):
+        here = True                                           # is Tailscale connected on this computer (its address here)?
+        if not WIN:
+            try: here = f"inet {cfg['tailnet_host']}/" in subprocess.run(["ip", "-o", "addr", "show"], capture_output=True, text=True, timeout=5).stdout
+            except (OSError, subprocess.SubprocessError): pass
+        print(f"  Tailscale      https://{cfg['tailnet_host']}:{cfg.get('tls_port', 8495)}" + ("" if here else f"   {Y}not connected on this computer (sudo nova doctor){X}"))
     print(f"  This computer  https://localhost:{cfg.get('tls_port', 8495)}")
     if cfg.get("remote_url"): print(f"  Remote         {cfg['remote_url']}")
     print(f"  Certificate    {short_pin(my_pin())}   (what phones and other servers check when they pair)")
