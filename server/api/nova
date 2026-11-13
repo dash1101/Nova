@@ -167,6 +167,9 @@ def doctor(args):
         import preflight
         found += [{"level": c["level"], "title": c["title"], "fix": c["fix"]} for c in preflight.checks() if c["level"] != "ok"]
     except Exception: pass
+    if "--json" in args:                                   # for hub apps and scripts: [{level ok|warn|stop, title, fix}]
+        print(json.dumps({"ok": not any(c["level"] == "stop" for c in found), "checks": found}))
+        sys.exit(1 if any(c["level"] == "stop" for c in found) else 0)
     mark = {"ok": f"{G}✓{X}", "warn": f"{Y}!{X}", "stop": f"{R}✗{X}"}
     print(f"\n  {B}Nova doctor{X}\n")
     for c in found:
@@ -307,28 +310,40 @@ def remove(args):
     print(f"{G}✓ Removed{X} {', '.join(hit)}")
 
 
-def status(args):
-    cfg = load(CONFIG, {})
-    print(f"{B}Nova {version()}{X}")
+def status_info():
+    """What `nova status` shows, as data (also `nova status --json`, for hub apps and scripts)."""
+    cfg = load(CONFIG, {}); tls = cfg.get("tls_port", 8495); host = cfg.get("lan_host", "")
+    parts = []
     if WIN:
         import winhost
-        for t in ("Api", "Helper", "Alerts"):
-            st = winhost.task_state(t); print(f"  {(G + '●') if st == 'active' else (R + '●')}{X} {'Nova ' + t:26} {st}")
-    for u in () if WIN else ("nova-api", "nova-helper.socket", "nova-alerts.timer", "nova-backups.timer", "nova-update-check.timer", "nova-rgb-anim", "nova-rgb-tick.timer"):
-        st = subprocess.run(["systemctl", "is-active", u], capture_output=True, text=True).stdout.strip()
-        if st != "inactive" or u.startswith("nova-api"): print(f"  {(G + '●') if st == 'active' else (R + '●')}{X} {u:26} {st}")
-    print(f"  Home network   {cfg.get('lan_url', '—')}")
+        parts = [{"name": "Nova " + t, "state": winhost.task_state(t)} for t in ("Api", "Helper", "Alerts")]
+    else:
+        for u in ("nova-api", "nova-helper.socket", "nova-alerts.timer", "nova-backups.timer", "nova-update-check.timer", "nova-rgb-anim", "nova-rgb-tick.timer"):
+            st = subprocess.run(["systemctl", "is-active", u], capture_output=True, text=True).stdout.strip()
+            if st != "inactive" or u.startswith("nova-api"): parts.append({"name": u, "state": st})
+    tail = None
     if cfg.get("tailnet_host"):
         here = True                                           # is Tailscale connected on this computer (its address here)?
         if not WIN:
             try: here = f"inet {cfg['tailnet_host']}/" in subprocess.run(["ip", "-o", "addr", "show"], capture_output=True, text=True, timeout=5).stdout
             except (OSError, subprocess.SubprocessError): pass
-        print(f"  Tailscale      https://{cfg['tailnet_host']}:{cfg.get('tls_port', 8495)}" + ("" if here else f"   {Y}not connected on this computer (sudo nova doctor){X}"))
-    print(f"  This computer  https://localhost:{cfg.get('tls_port', 8495)}")
-    if cfg.get("remote_url"): print(f"  Remote         {cfg['remote_url']}")
-    print(f"  Certificate    {short_pin(my_pin())}   (what phones and other servers check when they pair)")
-    print(f"  Devices        {len(load(DEVICES, {}))}   (sudo nova devices)")
-    print(f"\n  {D}Something wrong?  sudo nova doctor{X}")
+        tail = {"url": f"https://{cfg['tailnet_host']}:{tls}", "connected": here}
+    return {"version": version().replace("~", "-"), "running": any(p["state"] == "active" for p in parts[:1]), "parts": parts,
+            "home": f"https://{host}:{tls}" if host else "", "tailscale": tail, "local": f"https://localhost:{tls}",
+            "remote": cfg.get("remote_url", ""), "pin": short_pin(my_pin()), "devices": len(load(DEVICES, {})), "configured": bool(host)}
+
+def status(args):
+    i = status_info()
+    if "--json" in args: print(json.dumps(i)); return
+    print(f"{B}Nova {i['version']}{X}")
+    for p in i["parts"]: print(f"  {(G + '●') if p['state'] == 'active' else (R + '●')}{X} {p['name']:26} {p['state']}")
+    print(f"  Home network   {i['home'] or '— (not set up: ' + ('run the installer again' if WIN else 'sudo nova setup') + ')'}")
+    if i["tailscale"]: print(f"  Tailscale      {i['tailscale']['url']}" + ("" if i["tailscale"]["connected"] else f"   {Y}not connected on this computer ({'' if WIN else 'sudo '}nova doctor){X}"))
+    print(f"  This computer  {i['local']}")
+    if i["remote"]: print(f"  Remote         {i['remote']}")
+    print(f"  Certificate    {i['pin']}   (what phones and other servers check when they pair)")
+    print(f"  Devices        {i['devices']}   ({'' if WIN else 'sudo '}nova devices)" + ("" if i["devices"] else f"   {Y}none yet — pair one: {'' if WIN else 'sudo '}nova add{X}"))
+    print(f"\n  {D}Something wrong?  {'' if WIN else 'sudo '}nova doctor{X}")
 
 
 def my_pin():
