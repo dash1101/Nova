@@ -88,7 +88,7 @@ def state():
         "addresses": [a for a in (
             {"label": "On your home network", "url": f"https://{host}:{tls}", "note": "encrypted; what the Nova app uses"} if host else None,
             {"label": "On this computer", "url": f"https://localhost:{tls}", "note": "a browser on this machine"} if host else None,
-            {"label": "Over Tailscale", "url": f"https://{cfg['tailnet_host']}:{tls}", "note": ""} if cfg.get("tailnet_host") else None,
+            {"label": "Over Tailscale", "url": f"https://{cfg['tailnet_host']}:{tls}", "note": "from anywhere, on your devices with Tailscale"} if cfg.get("tailnet_host") else None,
             {"label": "From anywhere", "url": cfg["remote_url"], "note": "through your Cloudflare tunnel"} if cfg.get("remote_url") else None) if a],
         "host_ip": host, "pin": c.short_pin(c.my_pin()),
         "devices": [{"id": k, "name": d.get("name", "?"), "kind": kinds(d), "role": "Admin" if d.get("role", "admin") == "admin" else "View only",
