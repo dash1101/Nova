@@ -237,6 +237,13 @@ try: dj = json.loads(so)
 except ValueError: dj = {}
 check("nova doctor --json", rc in (0, 1) and isinstance(dj.get("checks"), list), so[-300:])
 
+print("\nUpdates on Windows")
+check("the release key is installed (updates can be verified)", os.path.exists(os.path.join(APP, "lib", "release-key.pub")), os.listdir(os.path.join(APP, "lib"))[:40])
+rc, so, se = nova("update", "--check"); check("nova update --check", rc == 0 and ("newest Nova" in so or "is out" in so), (rc, so[-300:], se[-300:]))
+r = subprocess.run([NOVA[0], "-c", "import sys, os, shutil; sys.path.insert(0, r'" + os.path.join(APP, "lib") + "'); import winupdate as w; v, i = w.prepare(); print(v, os.path.exists(i)); "
+                    "shutil.rmtree(os.path.dirname(os.path.dirname(os.path.dirname(i))))"], capture_output=True, text=True, timeout=300)
+check("downloads the newest release and checks its signature (not installed here)", r.returncode == 0 and r.stdout.strip().endswith("True"), (r.stdout[-200:], r.stderr[-400:]))
+
 print("\nThe Nova Server window")
 import tempfile
 # From the Start menu it runs under pythonw.exe, with no console: sys.stdout is None. The `nova` module it loads must cope —
@@ -287,6 +294,8 @@ check("…which then shows in the list", bool(gid) and not gs["pairing"]["active
 s, r = g("/api/remove", {"id": gid}); s2, gs = g("/api/state"); check("removes a device", r.get("ok") and not any(x["name"] == "GUI paired" for x in gs.get("devices", [])), (r, gs.get("devices")))
 s, r = g("/api/doctor"); check("runs the check-up", s == 200 and any(c["title"] == "Nova is running" for c in r.get("checks", [])), (s, str(r)[:300]))
 s, r = g("/api/activity"); check("shows recent activity", s == 200 and isinstance(r.get("lines"), list), (s, str(r)[:200]))
+s, r = g("/api/update-check", {}); check("checks for a newer Nova", s == 200 and r.get("ok") and ("newest Nova" in r.get("message", "") or r.get("update")), (s, str(r)[:300]))
+s, gs = g("/api/state"); check("…and offers the app's download while nothing is paired, as a QR code", (gs.get("app", {}).get("qr", "").startswith("<svg")) == (not gs.get("devices")), str(gs.get("app"))[:120])
 s, r = g("/api/service", {"action": "stop"}); time.sleep(3); ps_, _ = raw("GET", "/api/v1/ping", timeout=5)
 check("stops Nova", r.get("ok") and ps_ != 200, (r, ps_))
 s, gs = g("/api/state"); check("…and shows it stopped", gs.get("running") is False, gs.get("parts"))

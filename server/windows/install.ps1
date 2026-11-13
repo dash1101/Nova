@@ -22,7 +22,9 @@
   and the exit code is 0 when it worked, 1 when it didn't (then the line has "ok":false and "error").
 #>
 [CmdletBinding()]
-param([switch]$NoStart, [switch]$NoFirewall, [switch]$NoWindow, [string]$Python = "")
+param([switch]$NoStart, [switch]$NoFirewall, [switch]$NoWindow, [switch]$OpenWindow, [switch]$Relaunched, [string]$Python = "")
+# (-Relaunched: this is the administrator window it opened for itself, or an update started from Nova Server - it waits for
+#  Enter at the end so the result can be read. -OpenWindow: open Nova Server at the end even after an update.)
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 
@@ -30,13 +32,14 @@ $Version = ''; $Prev = ''
 function Say($t)  { Write-Host "  $t" }
 function Step($t) { Write-Host "`n$t" -ForegroundColor Cyan }
 function Result($o) { [Console]::Out.WriteLine("NOVA-RESULT " + ($o | ConvertTo-Json -Compress -Depth 4)) }
-function Die($t)  { Write-Host "`n  $t`n" -ForegroundColor Red; Result ([ordered]@{ ok = $false; error = "$t"; version = $Version; previous = $Prev }); exit 1 }
+function Wait-Close { if ($Relaunched) { Read-Host "`n  Press Enter to close this window" | Out-Null } }
+function Die($t)  { Write-Host "`n  $t`n" -ForegroundColor Red; Result ([ordered]@{ ok = $false; error = "$t"; version = $Version; previous = $Prev }); Wait-Close; exit 1 }
 
 $admin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 if (-not $admin) {
     # ask Windows for permission and carry on in a new window (declined: nothing happens)
-    $a = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-NoExit', '-File', "`"$($MyInvocation.MyCommand.Path)`"")
-    if ($NoStart) { $a += '-NoStart' }; if ($NoFirewall) { $a += '-NoFirewall' }; if ($NoWindow) { $a += '-NoWindow' }; if ($Python) { $a += @('-Python', "`"$Python`"") }
+    $a = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "`"$($MyInvocation.MyCommand.Path)`"", '-Relaunched')
+    if ($NoStart) { $a += '-NoStart' }; if ($NoFirewall) { $a += '-NoFirewall' }; if ($NoWindow) { $a += '-NoWindow' }; if ($OpenWindow) { $a += '-OpenWindow' }; if ($Python) { $a += @('-Python', "`"$Python`"") }
     try { Start-Process powershell.exe -Verb RunAs -ArgumentList $a | Out-Null; exit 0 }
     catch { Die "Nova needs administrator permission to install. Run this again and choose Yes when Windows asks." }
 }
@@ -190,11 +193,13 @@ Write-Host "  Nova web:     https://$($cfg.lan_host):$tls   (on this PC: https:/
 if ($cfg.tailnet_host) { Write-Host "  Tailscale:    https://$($cfg.tailnet_host):$tls" }
 Write-Host "  Check-up:     nova doctor      Remove:  powershell -ExecutionPolicy Bypass -File `"$App\uninstall.ps1`"`n"
 # a person installing for the first time goes straight on to pairing (not when a program runs this and reads its output)
-if (-not $NoStart -and -not $NoWindow -and $ok -and $devices -eq 0 -and -not [Console]::IsOutputRedirected) {
-    try { Start-Process -FilePath $PyW -ArgumentList "`"$(Join-Path $Lib 'nova-gui')`" --pair" -WorkingDirectory $Lib; Say "Opening Nova Server to pair your phone..." } catch {}
+if (-not $NoStart -and -not $NoWindow -and $ok -and ($devices -eq 0 -or $OpenWindow) -and -not [Console]::IsOutputRedirected) {
+    $ga = if ($devices -eq 0) { "`"$(Join-Path $Lib 'nova-gui')`" --pair" } else { "`"$(Join-Path $Lib 'nova-gui')`"" }
+    try { Start-Process -FilePath $PyW -ArgumentList $ga -WorkingDirectory $Lib; Say $(if ($devices -eq 0) { "Opening Nova Server to pair your phone..." } else { "Opening Nova Server..." }) } catch {}
 }
 $urls = [ordered]@{ local = "https://127.0.0.1:$tls"; home = "https://$($cfg.lan_host):$tls"; plain = "http://127.0.0.1:$($cfg.port)" }
 if ($cfg.tailnet_host) { $urls.tailnet = "https://$($cfg.tailnet_host):$tls" }
 Result ([ordered]@{ ok = $true; version = $Version; previous = $Prev; firstRun = $First; running = [bool]$ok; devices = $devices
                     ports = [ordered]@{ https = $tls; http = $cfg.port }; urls = $urls })
+Wait-Close
 exit 0

@@ -241,9 +241,21 @@ class H(http.server.BaseHTTPRequestHandler):
                 rc, out = nova("alert", "info", "Test from the Nova Server window", "If you can read this on your phone, alerts work.")
                 return self.reply(200, {"ok": rc == 0, "error": "" if rc == 0 else out[-300:]})
             if path == "/api/update-check":
-                if WIN: return self.reply(200, {"ok": True, "message": "To update Nova on Windows, download the newest release and run its installer again — your settings and paired devices stay."})
+                if WIN:
+                    import winupdate
+                    try: r = winupdate.check()
+                    except winupdate.UpdateError as e: return self.reply(200, {"ok": False, "message": f"Couldn't check: {e}"})
+                    return self.reply(200, {"ok": True, "update": r["update"], "available": r["available"],
+                                            "message": f"Nova {r['available']} is out — this server has {r['installed'] or 'an unknown version'}. Updating keeps your settings and paired devices."
+                                            if r["update"] else f"This is the newest Nova ({r['installed']})."})
                 rc, out = nova("update", "--check", timeout=200)
                 return self.reply(200, {"ok": rc == 0, "message": out[-600:]})
+            if path == "/api/update-now":                    # Windows: download, verify against the release key, run its installer
+                if not WIN: return self.reply(200, {"ok": False, "message": "On Linux: sudo nova update (or from the Nova app: Settings → Software update)."})
+                import winupdate
+                try: ver, inst = winupdate.prepare(); winupdate.launch(inst)
+                except winupdate.UpdateError as e: return self.reply(200, {"ok": False, "message": f"Not updated: {e}"})
+                return self.reply(200, {"ok": True, "message": f"Installing Nova {ver} in its own window. This window closes while Nova updates, and opens again when it's done."})
             if path == "/api/network":                       # the server's address changed (new router): look again, then restart Nova
                 if not WIN: return self.reply(200, {"ok": False, "error": "On Linux this is part of setup: Set up Nova in the app menu, or sudo nova setup."})
                 r = subprocess.run([sys.executable, os.path.join(HERE, "winsetup.py"), "--refresh"], capture_output=True, text=True, creationflags=NO_WINDOW, timeout=60)
@@ -473,6 +485,7 @@ function checkup() {
 }
 function more() {
   return `<div class="card"><h2>More</h2><div class="btns" style="margin-top:10px">
+      ${note.updateReady ? `<button class="pri" data-do="update-now" ${busy.updnow ? "disabled" : ""}>${busy.updnow ? "Downloading and checking…" : "Update now"}</button>` : ""}
       <button data-do="update" ${busy.update ? "disabled" : ""}>${busy.update ? "Checking…" : "Check for updates"}</button>
       <button data-do="test" ${busy.test || !S.running ? "disabled" : ""}>Send a test alert</button>
       <button data-do="activity">${act ? "Hide recent activity" : "Recent activity"}</button></div>
@@ -526,7 +539,8 @@ document.addEventListener("click", async e => {
   if (d.do === "rm") { confirmRm = d.id; paint(); } if (d.do === "rm-no") { confirmRm = ""; paint(); }
   if (d.do === "rm-yes") run("rm", async () => { note.rm = ""; const r = await api("/api/remove", { id: d.id }); if (!r.ok) note.rm = r.error; confirmRm = ""; });
   if (d.do === "doctor") run("doctor", async () => { const r = await api("/api/doctor"); doc = r.checks || []; });
-  if (d.do === "update") run("update", async () => { const r = await api("/api/update-check", {}); note.more = r.message || r.error || ""; });
+  if (d.do === "update") run("update", async () => { const r = await api("/api/update-check", {}); note.more = r.message || r.error || ""; note.updateReady = !!r.update; });
+  if (d.do === "update-now") run("updnow", async () => { const r = await api("/api/update-now", {}); note.more = r.message || r.error || ""; if (r.ok) note.updateReady = false; });
   if (d.do === "test") run("test", async () => { const r = await api("/api/test-alert", {}); note.more = r.ok ? "Sent. It shows in the app's Inbox within a minute (and in Discord, if that's set up)." : r.error; });
   if (d.do === "activity") { if (act) { act = null; paint(); } else run("act", async () => { act = (await api("/api/activity")).lines || []; }); }
   if (d.do === "network") run("network", async () => { const r = await api("/api/network", {}); note.networkOk = r.ok; note.network = r.ok ? `This server's address is ${r.found.lan_host}. Nova was restarted.` : r.error; });

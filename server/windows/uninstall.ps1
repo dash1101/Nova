@@ -5,12 +5,12 @@
       powershell -ExecutionPolicy Bypass -File "C:\Program Files\Nova\uninstall.ps1" -Purge     removes those too
 #>
 [CmdletBinding()]
-param([switch]$Purge)
+param([switch]$Purge, [switch]$Relaunched)
 $ErrorActionPreference = 'Continue'
 $admin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 function Result($o) { [Console]::Out.WriteLine("NOVA-RESULT " + ($o | ConvertTo-Json -Compress)) }      # the last line, for programs that run this
 if (-not $admin) {
-    $a = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-NoExit', '-File', "`"$($MyInvocation.MyCommand.Path)`""); if ($Purge) { $a += '-Purge' }
+    $a = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "`"$($MyInvocation.MyCommand.Path)`"", '-Relaunched'); if ($Purge) { $a += '-Purge' }
     try { Start-Process powershell.exe -Verb RunAs -ArgumentList $a | Out-Null; exit 0 }
     catch { Write-Host "Removing Nova needs administrator permission. Run this again and choose Yes when Windows asks." -ForegroundColor Red; Result ([ordered]@{ ok = $false; error = "not an administrator" }); exit 1 }
 }
@@ -36,4 +36,5 @@ if (Test-Path $App) { Write-Host "Couldn't remove everything in $App (something 
 if ($Purge) { Remove-Item -Recurse -Force $Data -ErrorAction SilentlyContinue; Write-Host "Nova and its data are removed." }
 else { Write-Host "Nova is removed. Your settings and paired devices are kept in $Data (add -Purge to remove them too)." }
 Result ([ordered]@{ ok = $true; purged = [bool]$Purge; leftovers = [bool](Test-Path $App) })
+if ($Relaunched) { Read-Host "`n  Press Enter to close this window" | Out-Null }
 exit 0

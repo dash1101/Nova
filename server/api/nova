@@ -310,6 +310,21 @@ def remove(args):
     print(f"{G}✓ Removed{X} {', '.join(hit)}")
 
 
+def win_update(args):
+    """`nova update` on Windows: the newest signed release, verified like on Linux, installed by its own installer in a new window."""
+    import winupdate
+    try:
+        r = winupdate.check()
+        if not r["update"]: print(f"{G}✓{X} This is the newest Nova ({r['installed']})."); return
+        print(f"Nova {B}{r['available']}{X} is out — this server has {r['installed'] or 'an unknown version'}.")
+        if "--check" in args: print(f"  {D}nova update installs it (settings and paired devices stay){X}"); return
+        print("  downloading and checking its signature…")
+        ver, inst = winupdate.prepare()
+        winupdate.launch(inst, reopen=False)
+        print(f"{G}✓{X} Verified. Installing Nova {ver} in its own window — Nova restarts there; this terminal can be closed.")
+    except winupdate.UpdateError as e: sys.exit(f"{R}✗{X} Not updated: {e}")
+
+
 def status_info():
     """What `nova status` shows, as data (also `nova status --json`, for hub apps and scripts)."""
     cfg = load(CONFIG, {}); tls = cfg.get("tls_port", 8495); host = cfg.get("lan_host", "")
@@ -533,7 +548,7 @@ if __name__ == "__main__":
     elif cmd == "status": status(rest)
     elif cmd == "gui": run("/usr/sbin/nova-gui", *rest)
     elif cmd == "setup": run("/usr/sbin/nova-setup", *rest)
-    elif cmd == "update": run("/usr/sbin/nova-update", *rest)
+    elif cmd == "update": win_update(rest) if WIN else run("/usr/sbin/nova-update", *rest)
     elif cmd == "uninstall": uninstall(rest)
     elif cmd == "lighting": run("/usr/sbin/nova-setup-lighting", *rest)
     elif cmd == "backup": backup(rest)
