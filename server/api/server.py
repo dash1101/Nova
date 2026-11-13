@@ -19,7 +19,7 @@ against your team's public keys — so the edge rejects strangers before they re
 and if Access is ever switched off by mistake, remote access fails closed.
 Pairing is only possible from the home LAN, with a one-time code shown by `sudo nova add`.
 """
-import base64, hashlib, hmac, ipaddress, json, os, re, secrets, socket, subprocess, sys, threading, time, urllib.error, urllib.parse, urllib.request
+import base64, errno, hashlib, hmac, ipaddress, json, os, re, secrets, socket, subprocess, sys, threading, time, urllib.error, urllib.parse, urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 import plat
@@ -2967,9 +2967,10 @@ def main():
             s = make((addr, port)); servers.append(s); threading.Thread(target=s.serve_forever, daemon=True).start()
             print(f"nova-api {what} on {addr}:{port}", flush=True)
         try: attempt(); return
-        except OSError as e:
-            print(f"cannot listen on {addr}:{port} ({what}): {e}" + ("" if addr in ("127.0.0.1", "", "0.0.0.0") else " — trying again until it's there"), flush=True)
-            if addr in ("127.0.0.1", "", "0.0.0.0"): return
+        except OSError as e:          # only "this computer doesn't have that address (yet)" is worth waiting for; a taken port isn't
+            later = addr not in ("127.0.0.1", "", "0.0.0.0") and (e.errno in (errno.EADDRNOTAVAIL, 10049) or getattr(e, "winerror", None) == 10049)
+            print(f"cannot listen on {addr}:{port} ({what}): {e}" + (" — trying again until it's there" if later else ""), flush=True)
+            if not later: return
         waiting.append(addr)
         def again():
             delay = 2
