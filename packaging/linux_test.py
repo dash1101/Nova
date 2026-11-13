@@ -67,6 +67,10 @@ while time.time() < end:
 s, u = d.call("GET", "/api/v1/updates"); nv = u.get("nova", {}); ver = open("/usr/lib/nova-api/VERSION").read().strip().replace("~", "-")
 check("the update check sees which Nova is installed (the Updates page's Nova row)", tj.get("state") == "done" and nv.get("installed") == ver and "error" not in nv, (tj.get("state"), nv, ver))
 s, r = d.call("GET", "/api/v1/whoami", ts=str(int(time.time() * 1000) - 300_000)); check("a late request says 'clock' with the server's time", s == 401 and r.get("reason") == "clock", (s, r))
+try:
+    with urllib.request.urlopen("https://127.0.0.1:8495/api/v1/ping", timeout=15, context=CTX) as r_: lp = json.loads(r_.read())
+except Exception as e: lp = {"error": str(e)}
+check("Nova answers on this computer too: https://localhost:8495", lp.get("ok") is True, lp)
 
 print("\nKeep awake")
 s, r = d.call("POST", "/api/v1/power/keep-awake", {"hours": 1}); check("keep awake for an hour (no fingerprint needed)", s == 200 and r.get("on") and r.get("until", 0) > time.time() + 3000, (s, r))
@@ -79,6 +83,9 @@ print("\nThe monitor and the nova command")
 end = time.time() + 120
 while time.time() < end and not os.path.exists("/var/lib/nova-alerts/www/status.json"): time.sleep(2)
 s, r = d.call("GET", "/api/v1/status"); check("the monitor writes the status", s == 200 and r.get("level") in ("ok", "warning", "critical") and "storage" in r.get("metrics", {}), (s, str(r)[:300]))
+try: wt = json.load(open("/var/lib/nova-alerts/www/status.json")).get("waiting")
+except (OSError, ValueError) as e: wt = str(e)
+check("…with how many approvals wait (counts only, for hub apps)", isinstance(wt, dict) and set(wt) == {"browsers", "actions"}, wt)
 rc, so, se = sh("sudo", "nova", "status"); check("nova status", rc == 0 and "nova-api" in so and "~" not in so.splitlines()[0], so[-400:])
 rc, so, se = sh("sudo", "nova", "devices"); check("nova devices", rc == 0 and "CI test device" in so, so[-300:])
 rc, so, se = sh("sudo", "nova", "log", "5"); check("nova log reads like sentences", rc == 0 and "/api/v1/" in so and '{"' not in so, so[-300:])

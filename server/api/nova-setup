@@ -87,13 +87,36 @@ def info(msg): print(f"  {D}{msg}{X}")
 
 
 def lan_guess():
+    """This server's address on the home network, and that network: the address the default route leaves from, unless that's
+    a VPN (Tailscale's 100.64.0.0/10, a wg/tun interface) or a public address — then the first private (192.168/10/172.16)
+    address on a real interface. Phones at home that aren't on Tailscale can't reach a Tailscale address."""
+    def ok(ip, dev):
+        try: a = ipaddress.ip_address(ip)
+        except ValueError: return False
+        home = any(a in ipaddress.ip_network(n) for n in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"))
+        return home and not re.match(r"(tailscale|wg|tun|tap|docker|br-|veth|virbr|lxc|zt)", dev)
     _, out = sh("ip", "-4", "route", "get", "1.1.1.1")
     ip = re.search(r"src (\S+)", out); dev = re.search(r"dev (\S+)", out)
-    if not ip: return "", ""
-    _, a = sh("ip", "-4", "-o", "addr", "show", "dev", dev.group(1))
-    cidr = re.search(r"inet (\S+)", a)
-    net = str(ipaddress.ip_interface(cidr.group(1)).network) if cidr else ip.group(1) + "/32"
-    return ip.group(1), net
+    cands = [(ip.group(1), dev.group(1))] if ip and dev else []
+    _, a = sh("ip", "-4", "-o", "addr", "show")
+    for m in re.finditer(r"^\d+:\s+(\S+)\s+inet\s+(\S+)", a, re.M):
+        cands.append((m.group(2).split("/")[0], m.group(1)))
+    for host, d in cands:
+        if not ok(host, d): continue
+        cidr = re.search(rf"inet ({re.escape(host)}/\d+)", a)
+        return host, str(ipaddress.ip_interface(cidr.group(1)).network) if cidr else host + "/32"
+    if ip: return ip.group(1), ip.group(1) + "/32"
+    return "", ""
+
+
+def not_home(addr):
+    """Why an address can't be the home-network one ("" if it can): phones at home that aren't on Tailscale can't reach these."""
+    try: a = ipaddress.ip_address(addr)
+    except ValueError: return ""
+    if a in ipaddress.ip_network("100.64.0.0/10"): return "a Tailscale address"
+    if a.is_loopback: return "this computer only"
+    if not any(a in ipaddress.ip_network(n) for n in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16")): return "not a home-network address"
+    return ""
 
 
 sys.path[:0] = ["/usr/lib/nova-api", os.path.dirname(os.path.realpath(__file__))]
@@ -123,9 +146,16 @@ def apt_install(pkgs, recommends=True):
 def s_network(cfg, st):
     step(1, "Network", "How phones and browsers at home find this server. Only devices on this network can pair.")
     ip, net = lan_guess()
+    dh, dn = cfg.get("lan_host") or ip, cfg.get("lan_subnet") or net
+    why = not_home(dh) if dh else ""
+    if why and ip and not not_home(ip):              # set up earlier with a Tailscale (or public) address: suggest the home one
+        warn(f"{dh} is {why} — devices at home that aren't on Tailscale can't reach Nova there. Suggesting {ip} (your home network).")
+        if why == "a Tailscale address" and not cfg.get("tailnet_host"):     # keep Tailscale devices working, on their own listener
+            cfg.update(tailnet_subnet="100.64.0.0/10", tailnet_host=dh)
+        dh, dn = ip, net
     while True:
-        host = ask("This server's address at home", cfg.get("lan_host") or ip, key="lan_host")
-        subnet = ask("Your home network", cfg.get("lan_subnet") or net, key="lan_subnet")
+        host = ask("This server's address at home", dh, key="lan_host")
+        subnet = ask("Your home network", dn, key="lan_subnet")
         try: ipaddress.ip_address(host); ipaddress.ip_network(subnet, strict=False); break
         except ValueError:
             if YES: sys.exit(f"{R}That address or network doesn't look right.{X}")

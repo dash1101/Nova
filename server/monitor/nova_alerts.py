@@ -49,7 +49,18 @@ STATE_FILE  = f"{_DIR}/state.json"
 STATUS_FILE = f"{_DIR}/www/status.json"
 SPOOL_DIR   = f"{_DIR}/spool"
 ARCHIVE     = f"{_DIR}/www/archive.jsonl"        # permanent history: archived + aged-out events, one JSON per line          # nova-alert drops messages here
+PENDING_FILE = os.environ.get("NOVA_PENDING_FILE", _p("/var/lib/nova-api/pending.json"))   # written by nova-api (what waits for approval)
 LOCK_FILE   = os.environ.get("NOVA_ALERTS_LOCK", _p("/run/nova/alerts.lock") if WINDOWS else "/run/nova-alerts.lock")
+
+def waiting_counts():
+    """How many requests wait for approval right now: browsers (and other servers, or the app signing in from away) asking to
+    pair, and actions a browser is holding for an admin's OK. Counts only, never the codes — a code is read off the browser
+    that asked, so a notification can't get anyone approved by accident. (A watch is approved on its phone, so it isn't counted.)"""
+    try: p = json.load(open(PENDING_FILE))
+    except (OSError, ValueError): return {"browsers": 0, "actions": 0}
+    t = time.time()
+    return {"browsers": sum(1 for b in p.get("browsers", []) if b.get("expires", 0) > t and b.get("kind", "browser") != "wear"),
+            "actions": sum(1 for a in p.get("approvals", []) if a.get("expires", 0) > t)}
 
 def _lock(lf):
     """Take the one-pass-at-a-time lock without waiting (OSError when another pass holds it)."""
@@ -858,6 +869,7 @@ class Monitor:
 
     # ── 4. Homepage status ───────────────────────────────────────────────────
     def write_status(self):
+        """status.json: for the app, Homepage-style dashboards and hub apps such as Orbit (world-readable, so nothing secret in it)."""
         conds = sorted(self.st["conditions"].values(), key=lambda c: (-LEVELS[c["level"]], c["since"]))
         worst = max((LEVELS[c["level"]] for c in conds), default=-1)
         level = {-1: "ok", 0: "ok", 1: "warning", 2: "critical"}[worst]
@@ -883,6 +895,7 @@ class Monitor:
                         "level": r["level"], "detail": r.get("detail", "")} for r in self.st["recent"][:30]],
             "metrics": self.metrics,
             "delivery": {"discord": bool(self.cfg.get("discord_webhook")), "queued": len(self.st["outbox"])},
+            "waiting": waiting_counts(),
         }
         os.makedirs(os.path.dirname(STATUS_FILE), exist_ok=True)
         write_json_atomic(STATUS_FILE, status, 0o644)

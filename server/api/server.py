@@ -2834,7 +2834,8 @@ def tls_material():
         c = (x509.CertificateBuilder().subject_name(name).issuer_name(name).public_key(k.public_key())
              .serial_number(x509.random_serial_number()).not_valid_before(now - datetime.timedelta(days=1))
              .not_valid_after(now + datetime.timedelta(days=3650))
-             .add_extension(x509.SubjectAlternativeName([x509.IPAddress(ipaddress.ip_address(LAN_HOST))]), critical=False)
+             .add_extension(x509.SubjectAlternativeName([x509.IPAddress(i) for i in dict.fromkeys([ipaddress.ip_address(LAN_HOST), ipaddress.ip_address("127.0.0.1")])]
+                                                        + [x509.DNSName("localhost")]), critical=False)
              .sign(k, hashes.SHA256()))
         with open(key, "wb") as f:
             if hasattr(os, "fchmod"): os.fchmod(f.fileno(), 0o600)
@@ -2932,7 +2933,9 @@ def main():
                 request.settimeout(15); request.do_handshake()
                 super().finish_request(request, client_address)
             def handle_error(self, request, client_address): pass    # failed handshakes are noise
-        for host in [LAN_HOST] + ([TAILNET_HOST] if TAILNET_HOST else []):
+        # the home address, Tailscale's, and this computer itself (https://localhost:8495 — a browser on the server, a hub app):
+        # requests on 127.0.0.1 count as home, like the network's (a forged Cloudflare header only makes them "remote", stricter)
+        for host in dict.fromkeys([LAN_HOST] + ([TAILNET_HOST] if TAILNET_HOST else []) + ["127.0.0.1"]):
             try:
                 s = TLSServer((host, TLS_PORT), Handler)
                 s.socket = ctx.wrap_socket(s.socket, server_side=True, do_handshake_on_connect=False)

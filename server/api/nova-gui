@@ -87,7 +87,7 @@ def state():
         "parts": ps, "running": any(p["id"] == "api" and p["state"] == "active" for p in ps),
         "addresses": [a for a in (
             {"label": "On your home network", "url": f"https://{host}:{tls}", "note": "encrypted; what the Nova app uses"} if host else None,
-            {"label": "On this computer", "url": f"http://127.0.0.1:{cfg.get('port', 8095)}", "note": ""} if host else None,
+            {"label": "On this computer", "url": f"https://localhost:{tls}", "note": "a browser on this machine"} if host else None,
             {"label": "Over Tailscale", "url": f"https://{cfg['tailnet_host']}:{tls}", "note": ""} if cfg.get("tailnet_host") else None,
             {"label": "From anywhere", "url": cfg["remote_url"], "note": "through your Cloudflare tunnel"} if cfg.get("remote_url") else None) if a],
         "host_ip": host, "pin": c.short_pin(c.my_pin()),

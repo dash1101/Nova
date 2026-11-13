@@ -314,6 +314,7 @@ def status(args):
         if st != "inactive" or u.startswith("nova-api"): print(f"  {(G + '●') if st == 'active' else (R + '●')}{X} {u:26} {st}")
     print(f"  Home network   {cfg.get('lan_url', '—')}")
     if cfg.get("tailnet_host"): print(f"  Tailscale      https://{cfg['tailnet_host']}:{cfg.get('tls_port', 8495)}")
+    print(f"  This computer  https://localhost:{cfg.get('tls_port', 8495)}")
     if cfg.get("remote_url"): print(f"  Remote         {cfg['remote_url']}")
     print(f"  Certificate    {short_pin(my_pin())}   (what phones and other servers check when they pair)")
     print(f"  Devices        {len(load(DEVICES, {}))}   (sudo nova devices)")

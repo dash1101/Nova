@@ -23,6 +23,10 @@ script write two JSON files that nova-api can read:
   `{"events": [{"t": 1791440000.0, "level": "warning", "title": "…", "detail": "…", "category": "login|disk|…"}]}` (newest first)
 
 The app's inbox, the instant notifications, the status light and the status page all read these.
+Nova's own monitor also adds `"waiting": {"browsers": 0, "actions": 0}` to `status.json` (since 0.9.20): how many
+browsers (or other servers, or the app signing in from away) wait to be paired, and how many actions a browser holds
+for an admin's OK. Counts only, never the codes — a hub app such as Orbit can say "a browser is waiting" and offer
+`sudo nova approve CODE`, with the code read off the browser that asked. The file is world-readable on purpose.
 Metric keys the app knows how to display: `cpu_temp`, `memory`, `swap`, `uptime`, `root_used`,
 `photo_pool_used`, `cold_storage_used`, `backup_drive_used`, `drives`, `drive_temps`, `containers`,
 `websites`, `data_backup`, `backup_sets`, `backup_verify`, `config_backup`.

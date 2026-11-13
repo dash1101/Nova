@@ -73,7 +73,7 @@ answers are the defaults. For unattended installs: `sudo nova setup --yes`, or `
 |---|---|
 | **Use Nova away from home** | [REMOTE.md](REMOTE.md) (Cloudflare Access, free), then `sudo nova setup` |
 | **Family or a wall tablet** | App → Menu → Users & devices → *Invite a phone* → **View only** |
-| **Use it from a computer** | Open `https://<server>:8495/`, choose *Get a code*, then approve it in the app (*Approve a browser*) |
+| **Use it from a computer** | Open `https://<server>:8495/` (on the server itself: `https://localhost:8495/`), choose *Get a code*, then approve it in the app (*Approve a browser*) |
 | **Always-on screen** | App → Menu → *Dashboard mode*. Pair a spare tablet as View only and pin the screen |
 | **Fan / case lighting** (Gigabyte RGB Fusion 2) | `sudo nova lighting` |
 | **Alerts, Discord, what's watched** | Built in — see [MONITOR.md](MONITOR.md) |

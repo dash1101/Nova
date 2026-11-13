@@ -35,7 +35,7 @@ middle out.
 Didn't work? nova help troubleshoot"""),
 
     "browser": ("Using Nova in a browser (and on iPhone)", """
-Open https://<this server>:8495/ — the browser warns once about Nova's own certificate; that's
+Open https://<this server>:8495/ (on the server itself: https://localhost:8495/) — the browser warns once about Nova's own certificate; that's
 expected. Choose "Get a code", then any one of:
 
   • the Nova app: Menu → Users & devices → Approve a browser (scan the QR, or type the code)
@@ -171,6 +171,12 @@ def doctor():
     host = cfg.get("lan_host", "")
     if host and host not in ("0.0.0.0", "::"):
         _, addrs = _sh("ip", "-o", "addr", "show")
+        try:
+            a_ = __import__("ipaddress").ip_address(host); ipn = __import__("ipaddress").ip_network
+            if a_ in ipn("100.64.0.0/10"):
+                add("warn", f"The home address is set to {host}, a Tailscale address — phones and browsers at home that aren't on Tailscale can't reach Nova",
+                    "sudo nova setup → Network, and pick this machine's address on your home Wi-Fi or Ethernet (Tailscale keeps working)")
+        except ValueError: pass
         if host in addrs: add("ok", f"Home address {host} is this machine's")
         else: add("stop", f"Phones look for this server at {host}, but that's no longer its address",
                   "sudo nova setup → Network (then the app finds it again; pairing stays)")
