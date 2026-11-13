@@ -400,7 +400,7 @@ SSH_USER = CFG.get("ssh_user", "")
 SSH_HOSTS = CFG.get("ssh_hosts", [{"name": "Home network", "host": LAN_HOST, "port": 22}])
 def board_name(): return plat.board()
 
-LOOKS = ("tower", "mini", "nas", "rack", "laptop")
+LOOKS = ("tower", "mini", "nas", "rack", "laptop", "sbc")
 _chassis = []
 def chassis_type():
     """The firmware's SMBIOS chassis type (3 desktop, 9 laptop, 23 rack…), read once: /sys on Linux, CIM on Windows."""
@@ -418,6 +418,9 @@ def chassis_type():
 
 def detected_look():
     """What the home picture shows until someone picks: from the firmware's chassis type (SMBIOS), else a tower."""
+    try:                                                       # a board with no SMBIOS (a Raspberry Pi and the like): its device tree says so
+        if not plat.WINDOWS and not os.path.exists("/sys/class/dmi/id/chassis_type") and any(os.path.exists(p) for p in ("/proc/device-tree/model", "/sys/firmware/devicetree/base/model")): return "sbc"
+    except OSError: pass
     ct = chassis_type()
     if ct in (8, 9, 10, 14, 31, 32): return "laptop"          # portable, laptop, notebook, sub-notebook, convertible, detachable
     if ct in (35, 36, 4): return "mini"                       # mini PC, stick PC, low-profile desktop

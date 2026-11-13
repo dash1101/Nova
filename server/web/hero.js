@@ -104,7 +104,7 @@ function rr(c, x, y, w, h, r) { c.beginPath(); c.roundRect(x, y, w, h, r); }
  *  server looks like"): each one is a layout — where its light, its LED strips, one LED per drive and the power LED sit —
  *  plus a body. The live parts (the light, the strips, the drive LEDs, the power LED) are drawn the same way on all of them,
  *  and taps land by the same layout. Same shapes and numbers as the app's Hero.kt. */
-export const LOOKS = [["tower", "Tower"], ["mini", "Mini PC"], ["nas", "NAS"], ["rack", "Rack server"], ["laptop", "Laptop"]];
+export const LOOKS = [["tower", "Tower"], ["mini", "Mini PC"], ["nas", "NAS"], ["rack", "Rack server"], ["laptop", "Laptop"], ["sbc", "Single-board PC"]];
 function rowLeds(n, cx, y, span, maxStep) {
   const step = n > 1 ? Math.min(maxStep, span / (n - 1)) : 0, x0 = cx - step * (n - 1) / 2;
   return { leds: [...Array(n).keys()].map(i => [x0 + i * step, y]), step };
@@ -152,6 +152,13 @@ function layout(model, w, h, n) {
       leds, lr: Math.max(lw * .004, Math.min(lw * .008, step * .3)), power: { x: left + lw * .97, y: by + bh * .86, r: lw * .008 },
       hit: { power: [left + lw * .97, by + bh * .86, lw * .04], drives: [left - ex * .3, by + bh * .7, left + lw * .24, by + bh * 1.05],
         fan: [[left, top, left + lw, top + lh], [left + lw * .1, by, left + lw * .9, by + bh * .62]] } };
+  }
+  if (model === "sbc") {                                                                    // a single-board computer, from above, a fan on its chip
+    const bw = Math.min(w * .74, h * 1.02), bh = bw * .66, left = (w - bw * 1.06) / 2, top = (h - bh) / 2, fx = left + bw * .42, fy = top + bh * .56;
+    const { leds, step } = rowLeds(n, left + bw * .3, top + bh * .87, bw * .2, bw * .036);
+    return { model, left, top, bw, bh, fan: { x: fx, y: fy, r: bh * .22, blades: true }, strips: [],
+      leds, lr: Math.max(bw * .006, Math.min(bw * .011, step * .3)), power: { x: left + bw * .1, y: top + bh * .87, r: bw * .011 },
+      hit: { power: [left + bw * .1, top + bh * .87, bw * .05], drives: [left + bw * .17, top + bh * .8, left + bw * .43, top + bh * .94], fan: [[fx - bh * .32, fy - bh * .32, fx + bh * .32, fy + bh * .32]] } };
   }
   const cw = Math.min(w * .56, h * .62), ch = cw * 1.42, left = (w - cw) / 2, top = (h - ch) / 2;     // tower (the original)
   const { leds, step } = rowLeds(n, left + cw / 2, top + ch * .83, cw * .62, cw * .09);
@@ -225,6 +232,22 @@ function body(c, L, isDark) {
     c.strokeStyle = "rgba(255,255,255,.10)"; c.lineWidth = 1.5; c.stroke();
     const b = lw * .03; c.fillStyle = shade(c, left, top, left + lw, by, [[0, "#0c1020"], [1, "#141a2a"]]); rr(c, left + b, top + b, lw - 2 * b, lh - 2 * b, lw * .012); c.fill();
     c.fillStyle = "#0a0a0c"; c.beginPath(); c.arc(left + lw / 2, top + b / 2, b * .18, 0, 7); c.fill();               // camera
+    return;
+  }
+  if (L.model === "sbc") {
+    c.fillStyle = shade(c, left, top, left + bw, top + bh, [[0, "#1f7a4a"], [1, "#145234"]]); rr(c, left, top, bw, bh, bw * .03); c.fill();   // the board
+    c.strokeStyle = "rgba(255,255,255,.12)"; c.lineWidth = 1.5; c.stroke();
+    [[.04, .07], [.04, .93], [.8, .07], [.8, .93]].forEach(([x, y]) => { c.fillStyle = "#c9a24a"; c.beginPath(); c.arc(left + bw * x, top + bh * y, bw * .022, 0, 7); c.fill();
+      c.fillStyle = "#0d2a1a"; c.beginPath(); c.arc(left + bw * x, top + bh * y, bw * .012, 0, 7); c.fill(); });                              // mounting holes
+    c.fillStyle = "#121216"; rr(c, left + bw * .12, top + bh * .05, bw * .62, bh * .1, 2); c.fill();                                                   // the pin header
+    c.fillStyle = "#d8b45a"; for (let r = 0; r < 2; r++) for (let q = 0; q < 20; q++) c.fillRect(left + bw * (.135 + q * .0298), top + bh * (.072 + r * .042), bw * .012, bw * .012);
+    [[.12, .36, "#b9bdc4"], [.4, .64, "#b9bdc4"], [.68, .93, "#9aa0a8"]].forEach(([y0, y1, col]) => {                                                  // USB and Ethernet
+      c.fillStyle = shade(c, 0, top + bh * y0, 0, top + bh * y1, [[0, col], [1, "#7c828b"]]); rr(c, left + bw * .86, top + bh * y0, bw * .2, bh * (y1 - y0), 2); c.fill();
+      c.fillStyle = "rgba(0,0,0,.45)"; rr(c, left + bw * .9, top + bh * (y0 + .04), bw * .12, bh * (y1 - y0 - .08), 1.5); c.fill(); });
+    c.fillStyle = "#1a1a1e"; rr(c, left + bw * .6, top + bh * .3, bw * .16, bh * .22, 2); c.fill();                                                    // memory
+    rr(c, left + bw * .6, top + bh * .6, bw * .1, bh * .12, 2); c.fill();
+    const f = L.fan; c.fillStyle = "#2a2a30"; rr(c, f.x - f.r * 1.35, f.y - f.r * 1.35, f.r * 2.7, f.r * 2.7, f.r * .25); c.fill();                     // the fan's frame
+    c.fillStyle = "#18181c"; [[-1, -1], [1, -1], [-1, 1], [1, 1]].forEach(([a, b]) => { c.beginPath(); c.arc(f.x + a * f.r * 1.12, f.y + b * f.r * 1.12, f.r * .09, 0, 7); c.fill(); });
     return;
   }
   const { cw, ch } = L;                                                                   // tower

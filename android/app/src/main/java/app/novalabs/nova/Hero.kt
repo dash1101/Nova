@@ -149,7 +149,7 @@ private fun activity(i: Int, tMs: Double, pct: Int = 9): Float {
 }
 
 /** The shapes the home picture comes in (Settings → Server → Looks like) — the same as Nova web's hero.js. */
-val LOOKS = listOf("tower" to "Tower", "mini" to "Mini PC", "nas" to "NAS", "rack" to "Rack server", "laptop" to "Laptop")
+val LOOKS = listOf("tower" to "Tower", "mini" to "Mini PC", "nas" to "NAS", "rack" to "Rack server", "laptop" to "Laptop", "sbc" to "Single-board PC")
 
 private class Bar(val x: Float, val y: Float, val w: Float, val h: Float, val base: Color = Color(0xFF202026), val keys: Boolean = false)
 private class FanSpot(val c: Offset, val r: Float, val blades: Boolean = true, val squash: Float = 1f)
@@ -201,6 +201,13 @@ private fun heroLayout(model: String, w: Float, h: Float, n: Int): HeroLayout = 
             Offset(left + lw * .97f, by + dh * .86f), lw * .008f,
             lw * .04f, rectOf(left - ex * .3f, by + dh * .7f, left + lw * .24f, by + dh * 1.05f), listOf(rectOf(left, top, left + lw, top + lh), rectOf(left + lw * .1f, by, left + lw * .9f, by + dh * .62f)),
             x = mapOf("lh" to lh, "by" to by, "dh" to dh, "ex" to ex))
+    }
+    "sbc" -> {                                                          // a single-board computer, from above, a fan on its chip
+        val bw = min(w * .74f, h * 1.02f); val bh = bw * .66f; val left = (w - bw * 1.06f) / 2; val top = (h - bh) / 2; val fx = left + bw * .42f; val fy = top + bh * .56f
+        val (leds, step) = rowLeds(n, left + bw * .3f, top + bh * .87f, bw * .2f, bw * .036f)
+        HeroLayout(model, left, top, bw, bh, FanSpot(Offset(fx, fy), bh * .22f), null, emptyList(), leds, max(bw * .006f, min(bw * .011f, step * .3f)),
+            Offset(left + bw * .1f, top + bh * .87f), bw * .011f,
+            bw * .05f, rectOf(left + bw * .17f, top + bh * .8f, left + bw * .43f, top + bh * .94f), listOf(rectOf(fx - bh * .32f, fy - bh * .32f, fx + bh * .32f, fy + bh * .32f)))
     }
     else -> {
         val cw = min(w * .56f, h * .62f); val ch = cw * 1.42f; val left = (w - cw) / 2; val top = (h - ch) / 2
@@ -273,6 +280,21 @@ private fun DrawScope.heroBody(L: HeroLayout, dark: Boolean) {
             drawRoundRect(Brush.linearGradient(listOf(Color(0xFF0C1020), Color(0xFF141A2A)), Offset(left, top), Offset(left + lw, by)), Offset(left + b, top + b), Size(lw - 2 * b, lh - 2 * b), CornerRadius(lw * .012f))
             drawCircle(Color(0xFF0A0A0C), b * .18f, Offset(left + lw / 2, top + b / 2))
         }
+        "sbc" -> {
+            drawRoundRect(vgrad(top, top + bh, 0xFF1F7A4A, 0xFF145234), Offset(left, top), Size(bw, bh), CornerRadius(bw * .03f))           // the board
+            drawRoundRect(Color.White.copy(alpha = .12f), Offset(left, top), Size(bw, bh), CornerRadius(bw * .03f), style = Stroke(1.5f))
+            listOf(.04f to .07f, .04f to .93f, .8f to .07f, .8f to .93f).forEach { (x, y) ->                                              // mounting holes
+                drawCircle(Color(0xFFC9A24A), bw * .022f, Offset(left + bw * x, top + bh * y)); drawCircle(Color(0xFF0D2A1A), bw * .012f, Offset(left + bw * x, top + bh * y)) }
+            drawRoundRect(Color(0xFF121216), Offset(left + bw * .12f, top + bh * .05f), Size(bw * .62f, bh * .1f), CornerRadius(2f))       // the pin header
+            for (r in 0 until 2) for (q in 0 until 20) drawRect(Color(0xFFD8B45A), Offset(left + bw * (.135f + q * .0298f), top + bh * (.072f + r * .042f)), Size(bw * .012f, bw * .012f))
+            listOf(Triple(.12f, .36f, 0xFFB9BDC4), Triple(.4f, .64f, 0xFFB9BDC4), Triple(.68f, .93f, 0xFF9AA0A8)).forEach { (y0, y1, col) ->   // USB and Ethernet
+                drawRoundRect(vgrad(top + bh * y0, top + bh * y1, col, 0xFF7C828B), Offset(left + bw * .86f, top + bh * y0), Size(bw * .2f, bh * (y1 - y0)), CornerRadius(2f))
+                drawRoundRect(Color.Black.copy(alpha = .45f), Offset(left + bw * .9f, top + bh * (y0 + .04f)), Size(bw * .12f, bh * (y1 - y0 - .08f)), CornerRadius(1.5f)) }
+            drawRoundRect(Color(0xFF1A1A1E), Offset(left + bw * .6f, top + bh * .3f), Size(bw * .16f, bh * .22f), CornerRadius(2f))         // memory
+            drawRoundRect(Color(0xFF1A1A1E), Offset(left + bw * .6f, top + bh * .6f), Size(bw * .1f, bh * .12f), CornerRadius(2f))
+            val f = L.fan!!; drawRoundRect(Color(0xFF2A2A30), Offset(f.c.x - f.r * 1.35f, f.c.y - f.r * 1.35f), Size(f.r * 2.7f, f.r * 2.7f), CornerRadius(f.r * .25f))   // the fan's frame
+            listOf(-1 to -1, 1 to -1, -1 to 1, 1 to 1).forEach { (a, b) -> drawCircle(Color(0xFF18181C), f.r * .09f, Offset(f.c.x + a * f.r * 1.12f, f.c.y + b * f.r * 1.12f)) }
+        }
         else -> {
             drawRoundRect(vgrad(top, top + bh, 0xFF4A4A52, 0xFF26262B, 0xFF1B1B1F), Offset(left, top), Size(bw, bh), CornerRadius(bw * 0.07f))
             drawRoundRect(Color.White.copy(alpha = 0.10f), Offset(left, top), Size(bw, bh), CornerRadius(bw * 0.07f), style = Stroke(2.5f))
@@ -285,7 +307,7 @@ private fun DrawScope.heroBody(L: HeroLayout, dark: Boolean) {
 
 /**
  * The home-screen picture: the machine Nova runs on (Settings → Server → Looks like: a tower, a mini PC, a NAS, a rack
- * server or a laptop), with its live light, its LED strips, one LED per drive (boot drive included) and the power LED in the
+ * server, a laptop or a single-board computer), with its live light, its LED strips, one LED per drive (boot drive included) and the power LED in the
  * status color. Drive LEDs: green with activity when healthy, amber when worn or hot, red (pulsing) when missing or failing.
  */
 @Composable fun ServerHero(fan: JSONObject?, statusColor: Color, drives: List<JSONObject>?, skewMs: Long, modifier: Modifier = Modifier, io: JSONObject? = null, model: String = "tower",

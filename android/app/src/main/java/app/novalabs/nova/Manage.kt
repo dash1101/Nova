@@ -143,14 +143,15 @@ private val ACCENTS = listOf("", "#3e91ff", "#5e5ce6", "#bf5af2", "#ff2d55", "#f
             val drives = app.overview?.optJSONObject("status")?.optJSONObject("metrics")?.optJSONArray("drive_states")?.let { a -> (0 until a.length()).map { a.getJSONObject(it) } }
             // the five shapes, live, three to a row; the chosen one outlined
             LOOKS.chunked(3).forEach { row ->
-                Row(Modifier.fillMaxWidth().padding(horizontal = Space.gutter, vertical = 5.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min).padding(horizontal = Space.gutter, vertical = 5.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     row.forEach { (k, label) ->
                         val sel = cur == k
-                        Column(Modifier.weight(1f).clip(RoundedCornerShape(smallCorner(20.dp))).background(N.card)
+                        Column(Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(smallCorner(20.dp))).background(N.card)
                             .border(2.dp, if (sel) N.blue else Color.Transparent, RoundedCornerShape(smallCorner(20.dp)))
                             .clickable(enabled = app.isAdmin) { save(JSONObject().put("look", k)) }.padding(vertical = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                             ServerHero(app.fan, N.green, drives, app.clockSkew, Modifier.fillMaxWidth().height(96.dp), model = k, still = true)
-                            Text(label, color = N.text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                            Text(label, Modifier.padding(horizontal = 6.dp), color = N.text, fontSize = 15.sp, lineHeight = 18.sp, fontWeight = FontWeight.SemiBold,
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center)
                         }
                     }
                     repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }

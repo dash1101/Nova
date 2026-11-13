@@ -1107,6 +1107,8 @@ if verb == "update-status" and not args:
         try: v, rc = open(os.path.join(os.path.dirname(os.path.realpath(__file__)), "VERSION")).read().strip(), 0
         except OSError: v = ""
     st["installed"] = v.strip().replace("~", "-") if rc == 0 else ""
+    for k in ("available", "current"):                    # as people write versions: 0.9.22-alpha, not the package's 0.9.22~alpha
+        if isinstance(st.get(k), str): st[k] = st[k].replace("~", "-")
     # a failure from before this version was installed (say, "no update source" on 0.9.16) isn't news any more
     stamps = [os.path.getmtime(p) for p in ("/var/lib/dpkg/info/nova-server.list", "/usr/lib/nova-api/INSTALLED_FROM_TARBALL") if os.path.exists(p)]
     if st.get("state") in ("failed", "installing") and stamps and st.get("t", 0) < max(stamps): st.pop("state", None); st.pop("error", None)

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.9.22-alpha (server and app)
+- **A sixth shape: a single-board computer** (a Raspberry Pi and the like) — the board from above with its pin header, ports and a fan on its chip. A board with no firmware chassis type but a device tree (most Pis) shows it until you pick.
+- **Pairing a phone to a server whose "home" address is its Tailscale one:** `sudo nova add --remote` works there now (it was refused — the Tailscale address *is* the way in), and once you run `sudo nova setup` → Network and pick the real home address, a phone paired before moves to it by itself and keeps Tailscale for when you're away.
+- **Changing only setup's Network (or Away from home) also opens the firewall** for the new network and for Tailscale devices (ufw/firewalld) — before, only a full setup did.
+- **Settings → Server → Looks like:** still previews instead of six live ones (they were heavy on slow tablets); on the web they're cards; a view-only device sees them without being offered to change them. Windows reads its chassis type too, so a Windows laptop shows the laptop.
+- The home picture works out its layout once per size and shape instead of on every frame.
+
 ## 0.9.21-alpha (server and app)
 - **Your server, as it looks.** The picture on Home now comes in five shapes — a **tower** (as before), a **mini PC**, a **NAS** with one tray per drive, a **rack server** and a **laptop**. Pick it in Settings → Server → Looks like, and every phone and browser of that server shows it. Until you pick, Nova goes by what the computer's firmware says it is (a laptop shows the laptop, a rack server the rack). Each one keeps what the tower has: the live light (on a laptop, its screen shows the ring and the keyboard glows), your LED strips, one LED per drive that blinks with real activity, the power LED in the status color — and tapping them still opens Lighting, Storage and the power menu.
 
