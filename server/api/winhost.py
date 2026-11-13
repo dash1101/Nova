@@ -192,6 +192,14 @@ def doctor():
         mine = {a.address for addrs in psutil.net_if_addrs().values() for a in addrs}
         if host in mine: add("ok", f"Home address {host} is this machine's")
         else: add("stop", f"Phones look for this server at {host}, but that's no longer its address", "Nova Server window → Where to find it → Look again")
+        th = cfg.get("tailnet_host", "")                     # Tailscale: connected, same address as when Nova was set up, and Nova answers there
+        if th and th != host:
+            now = tailnet()[0]
+            if th in mine:
+                try: socket.create_connection((th, port), timeout=3).close(); add("ok", f"Tailscale address {th} is this machine's, and Nova answers there")
+                except OSError: add("warn", f"Nova isn't answering on its Tailscale address {th} yet", "it picks it up within half a minute; if not, press Restart in the Nova Server window")
+            elif now: add("warn", f"Tailscale's address changed: Nova uses {th}, this computer now has {now}", "Nova Server window → Where to find it → Look again")
+            else: add("warn", f"Tailscale isn't connected on this computer (its address {th} isn't here), so phones away from home can't reach Nova", "Open Tailscale and connect")
     rc, so, se = ps("(Get-NetFirewallRule -Group 'Nova' -ErrorAction SilentlyContinue | Where-Object Enabled -eq 'True' | Measure-Object).Count", 40)
     if so.strip().isdigit() and int(so.strip()) >= 1: add("ok", "Windows Firewall lets your home network in")
     else: add("warn", "Windows Firewall has no rule for Nova, so phones may not reach it", "Run the Nova installer again, or allow TCP ports 8095 and 8495 from your local subnet")
