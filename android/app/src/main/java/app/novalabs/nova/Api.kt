@@ -278,8 +278,7 @@ class NovaApi(private val pairing: Pairing) {
     // A "home" address that's really a Tailscale one (100.64.0.0/10 — a server set up with its Tailscale address) gets Tailscale's
     // patience: a relayed connection can take longer than the 1.5 s a real home network needs, and then it never connected at all.
     private fun client(route: String) = when (route) { "home" -> if (isTailscale(pairing.lanUrl)) tailClient else lanClient; "tailnet" -> tailClient; else -> remoteClient }
-    private fun isTailscale(url: String) = runCatching {
-        val p = (java.net.URI(url).host ?: "").split(".").map { it.toInt() }; p.size == 4 && p[0] == 100 && p[1] in 64..127 }.getOrDefault(false)
+    private fun isTailscale(url: String) = isTailscaleUrl(url)
 
     private fun build(route: String, base: String, pr: Prepared, stepUpSig: String?, quick: Boolean = false): Request {
         val sig = if (quick) pairing.keys.signQuick(pr.message) else pairing.keys.sign(pr.message)
@@ -423,3 +422,7 @@ class NovaApi(private val pairing: Pairing) {
         }.getOrDefault(false)
     }
 }
+
+/** A Tailscale address (100.64.0.0/10) in an https://host:port URL. */
+fun isTailscaleUrl(url: String) = runCatching {
+    val p = (java.net.URI(url).host ?: "").split(".").map { it.toInt() }; p.size == 4 && p[0] == 100 && p[1] in 64..127 }.getOrDefault(false)

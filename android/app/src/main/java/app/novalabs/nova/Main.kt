@@ -159,7 +159,14 @@ class AppState(val activity: Activity, val pairing: Pairing, val scope: Coroutin
                 // Tailscale: the same server at its tailnet address (only https pairings; the port is the home one)
                 val th = srv.optString("tailnet_host"); val lan = android.net.Uri.parse(pairing.lanUrl)
                 val tu = if (th.isNotEmpty() && pairing.lanUrl.startsWith("https://")) "https://${if (':' in th) "[$th]" else th}:${if (lan.port > 0) lan.port else 8495}" else ""
-                if (tu.isNotEmpty() && tu != pairing.tailnetUrl) pairing.tailnetUrl = tu }      // (never erase the address we paired at)
+                if (tu.isNotEmpty() && tu != pairing.tailnetUrl) pairing.tailnetUrl = tu       // (never erase the address we paired at)
+                // Paired when the server's "home" address was its Tailscale one (setups before 0.9.20): once it has a real home
+                // address, use that at home — the Tailscale one stays as the Tailscale route above.
+                val lu = srv.optString("lan_url")
+                if (lu.startsWith("https://") && lu != pairing.lanUrl && isTailscaleUrl(pairing.lanUrl) && !isTailscaleUrl(lu)) {
+                    if (pairing.tailnetUrl.isEmpty()) pairing.tailnetUrl = pairing.lanUrl
+                    pairing.lanUrl = lu
+                } }
             if (fanInFlight == 0) o.optJSONObject("fan")?.let { f -> fan = JSONObject(fan?.toString() ?: "{}").also { m -> f.keys().forEach { k -> m.put(k, f.get(k)) } } }
             error = null; reconnecting = false; failures = 0; notAuthorized = false; lastContact = System.currentTimeMillis()
             if (pairing.lastEventSeen == 0.0) {     // fresh install: history isn't "new"

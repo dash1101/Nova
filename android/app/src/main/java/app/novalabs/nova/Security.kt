@@ -151,7 +151,9 @@ class Pairing(ctx: Context, val profile: String = Servers.active(ctx)) {
     val keys = DeviceKey(profile)
     val paired get() = deviceId.isNotEmpty()
     val deviceId get() = p.getString("device_id", "")!!
-    val lanUrl get() = p.getString("lan_url", "")!!
+    var lanUrl: String
+        get() = p.getString("lan_url", "")!!
+        set(v) { p.edit().putString("lan_url", v).apply() }
     val remoteUrl get() = p.getString("remote_url", "")!!
     val cfClientId get() = p.getString("cf_id", "")!!
     val cfClientSecret get() = runCatching { keys.decrypt(p.getString("cf_secret", "")!!) }.getOrDefault("")

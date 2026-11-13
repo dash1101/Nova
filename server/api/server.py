@@ -1961,7 +1961,8 @@ class Handler(BaseHTTPRequestHandler):
                          "server": {"name": plat.node(), "display_name": cfg.get("display_name", ""),
                                     "accent": cfg.get("accent", ""), "look": cfg.get("look") or detected_look(), "board": board_name(), "cpu": cpu,
                                     "ram_gb": round(mem.get("MemTotal", 0) / 1048576), "kernel": plat.kernel(),
-                                    "uptime_s": plat.uptime_s(), "os": plat.OS, "tailnet_host": TAILNET_HOST, "remote_url": CFG.get("remote_url", "")},
+                                    "uptime_s": plat.uptime_s(), "os": plat.OS, "tailnet_host": TAILNET_HOST, "remote_url": CFG.get("remote_url", ""),
+                                    "lan_url": f"https://{LAN_HOST}:{TLS_PORT}" if LAN_HOST != "127.0.0.1" else ""},
                          "status": {k: st.get(k) for k in ("level", "headline", "status", "active_count", "active", "ignored", "metrics", "updated_local")},
                          "fan": fan, "containers": {"running": sum(1 for c in cl if c["state"] == "running"), "total": sum(1 for c in cl if not c.get("stopped")),
                                         "stopped": sum(1 for c in cl if c.get("stopped"))},      # stopped on purpose: not counted as missing
