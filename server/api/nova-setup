@@ -327,10 +327,9 @@ def save(cfg):
     gid = int(sh("getent", "group", "nova-api")[1].split(":")[2]) if sh("getent", "group", "nova-api")[0] == 0 else 0
     os.chown(tmp, 0, gid); os.chmod(tmp, 0o640); os.replace(tmp, CONF)
 
-def s_start(cfg, st):
-    step(6, "Start Nova", "Saving your settings, opening the firewall for your home network, and starting Nova.")
-    subnet, host = cfg["lan_subnet"], cfg["lan_host"]
-    save(cfg); ok(f"Settings saved {D}({CONF}){X}")
+def firewall(cfg):
+    """Let the home network (and Tailscale devices, when they may use Nova) through an active firewall to Nova's ports."""
+    subnet = cfg["lan_subnet"]
     ts = bool(cfg.get("tailnet_host"))                 # Tailscale devices may use Nova: they need the way in too (port 8495 only)
     who = subnet + (" and your Tailscale devices" if ts else "")
     rc, fw = sh("ufw", "status")
@@ -348,6 +347,13 @@ def s_start(cfg, st):
             if ts: sh("firewall-cmd", "--permanent", "--add-rich-rule=rule family=ipv4 source address=100.64.0.0/10 port port=8495 protocol=tcp accept")
             sh("firewall-cmd", "--reload"); ok("Firewall rules added")
     else: info(f"Firewall: make sure {who} can reach tcp 8495 (and the home network udp 8496, to find the server).")
+
+
+def s_start(cfg, st):
+    step(6, "Start Nova", "Saving your settings, opening the firewall for your home network, and starting Nova.")
+    subnet, host = cfg["lan_subnet"], cfg["lan_host"]
+    save(cfg); ok(f"Settings saved {D}({CONF}){X}")
+    firewall(cfg)
     sh("systemctl", "daemon-reload")
     sh("systemctl", "enable", "--now", "nova-helper.socket")
     sh("systemctl", "enable", "nova-api.service"); sh("systemctl", "restart", "nova-api.service")
@@ -407,6 +413,7 @@ def main():
         if a == "q": return
         if a.isdigit() and 1 <= int(a) <= len(STEPS):
             STEPS[int(a) - 1][1](cfg, st); save(cfg); ok("Saved")
+            if STEPS[int(a) - 1][0] in ("Network", "Away from home"): firewall(cfg)     # a new home network or Tailscale needs its way in too
             sh("systemctl", "restart", "nova-api.service"); ok("Nova restarted with the new settings")
             return
     else:

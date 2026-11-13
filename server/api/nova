@@ -198,7 +198,12 @@ def add(args):
     except Exception: pass
     info = {"nova": 1, "lan": lan, "pin": pin, "remote": cfg.get("remote_url", ""), "code": code}
     if away:                        # the ways in from outside: Tailscale's address, and the key to the Cloudflare door
-        if cfg.get("tailnet_host"): info["tailnet"] = f"https://{cfg['tailnet_host']}:{cfg.get('tls_port', 8495)}"
+        th = cfg.get("tailnet_host")
+        try:                        # set up with its Tailscale address as "home" (setups before 0.9.20): that address is the way in
+            import ipaddress
+            if not th and ipaddress.ip_address(cfg.get("lan_host", "")) in ipaddress.ip_network("100.64.0.0/10"): th = cfg["lan_host"]
+        except ValueError: pass
+        if th: info["tailnet"] = f"https://{th}:{cfg.get('tls_port', 8495)}"
         if cfg.get("cf_client_id") and cfg.get("cf_client_secret"): info["cf"] = {"id": cfg["cf_client_id"], "secret": cfg["cf_client_secret"]}
         if not (info.get("tailnet") or info.get("cf")): sys.exit("This server has no way in from outside yet (Tailscale or a Cloudflare tunnel) — see: nova help remote")
     payload = json.dumps(info, separators=(",", ":"))
