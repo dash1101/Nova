@@ -1968,7 +1968,7 @@ class Handler(BaseHTTPRequestHandler):
             cfg = load_json(SETTINGS, {})
             return 200, {"time": time.time(),             # lets apps line their fan animation up with the real fan
                          "server": {"name": plat.node(), "display_name": cfg.get("display_name", ""),
-                                    "accent": cfg.get("accent", ""), "look": cfg.get("look") or detected_look(), "finish": cfg.get("look_finish") or "dark", "board": board_name(), "cpu": cpu,
+                                    "accent": cfg.get("accent", ""), "look": cfg.get("look") or detected_look(), "look_set": bool(cfg.get("look")), "finish": cfg.get("look_finish") or "dark", "board": board_name(), "cpu": cpu,
                                     "ram_gb": round(mem.get("MemTotal", 0) / 1048576), "kernel": plat.kernel(),
                                     "uptime_s": plat.uptime_s(), "os": plat.OS, "tailnet_host": TAILNET_HOST, "remote_url": CFG.get("remote_url", ""),
                                     "lan_url": f"https://{LAN_HOST}:{TLS_PORT}" if LAN_HOST != "127.0.0.1" else ""},

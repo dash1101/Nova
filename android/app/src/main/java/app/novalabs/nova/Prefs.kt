@@ -41,6 +41,7 @@ object AppPrefs {
     var homeOrder by mutableStateOf(HOME_SECTIONS); private set            // Home sections, top to bottom
     var navTabs by mutableStateOf(DEFAULT_TABS); private set               // bottom bar, left to right
     var fanReverse by mutableStateOf(false); private set                   // the picture's wave runs the other way round
+    var lookHint by mutableStateOf(true); private set                      // "Doesn't look like your computer?" under the picture, until hidden
     var startRoute by mutableStateOf("home"); private set                  // the screen Nova opens on
     var startEngine by mutableStateOf("ddg"); private set                  // start page: web search engine
     var startHidden by mutableStateOf(listOf<String>()); private set       // start page: hidden sections
@@ -136,7 +137,7 @@ object AppPrefs {
         appLock = sp.getBoolean("app_lock", false); hideInRecents = sp.getBoolean("hide_recents", false)
         homeHero = sp.getBoolean("home_hero", true); homeShortcuts = sp.getBoolean("home_shortcuts", true); homeStats = sp.getBoolean("home_stats", true); homeRecs = sp.getBoolean("home_recs", true)
         homeOrder = sp.getString("home_order", null)?.split(",")?.filter { it in HOME_SECTIONS }?.let { it + (HOME_SECTIONS - it.toSet()) } ?: HOME_SECTIONS
-        fanReverse = sp.getBoolean("fan_reverse", false)
+        fanReverse = sp.getBoolean("fan_reverse", false); lookHint = sp.getBoolean("look_hint", true)
         startRoute = sp.getString("start_route", "home")!!; startEngine = sp.getString("start_engine", "ddg")!!
         startHidden = sp.getString("start_hidden", "")!!.split(",").filter { it.isNotBlank() }; startLinks = sp.getString("start_links", "[]")!!
         searchRecent = sp.getString("search_recent", "")!!.split("\n").filter { it.isNotBlank() }; searchPinned = sp.getString("search_pinned", "")!!.split("\n").filter { it.isNotBlank() }
@@ -158,7 +159,7 @@ object AppPrefs {
             "hide_recents" -> hideInRecents = v as Boolean; "home_hero" -> homeHero = v as Boolean
             "home_shortcuts" -> homeShortcuts = v as Boolean; "home_stats" -> homeStats = v as Boolean; "home_recs" -> homeRecs = v as Boolean
             "home_order" -> homeOrder = (v as String).split(",")
-            "fan_reverse" -> fanReverse = v as Boolean
+            "fan_reverse" -> fanReverse = v as Boolean; "look_hint" -> lookHint = v as Boolean
             "start_route" -> startRoute = v as String; "start_engine" -> startEngine = v as String
             "start_hidden" -> startHidden = (v as String).split(",").filter { it.isNotBlank() }; "start_links" -> startLinks = v as String
             "search_recent" -> searchRecent = (v as String).split("\n").filter { it.isNotBlank() }; "search_pinned" -> searchPinned = (v as String).split("\n").filter { it.isNotBlank() }

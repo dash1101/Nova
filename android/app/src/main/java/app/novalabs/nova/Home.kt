@@ -19,6 +19,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -134,7 +136,7 @@ import org.json.JSONObject
     if (awakeAsk) KeepAwakeDialog(app, awake, { awakeAsk = false }) { awake = it }
     powerAsk?.let { PowerConfirm(app, it) { powerAsk = null } }
     if (scheduling) ScheduleDialog(app, { scheduling = false }) {}
-    val hero: @Composable (androidx.compose.ui.unit.Dp) -> Unit = { h ->
+    val hero: @Composable (androidx.compose.ui.unit.Dp) -> Unit = { h -> Column {
         Box(Modifier.fillMaxWidth().height(h).pointerInput(Unit) {
             detectTapGestures { o ->
                 when (heroHit(size.width.toFloat(), size.height.toFloat(), o.x, o.y, heroLook(app),
@@ -148,7 +150,14 @@ import org.json.JSONObject
             val drives = st?.optJSONObject("metrics")?.optJSONArray("drive_states")?.let { a -> (0 until a.length()).map { a.getJSONObject(it) } }
             ServerHero(app.fan, levelColor(level, N), drives, app.clockSkew, Modifier.fillMaxSize(), io = app.lastNow?.optJSONObject("disks"), model = heroLook(app), finish = heroFinish(app))
         }
-    }
+        // until someone picks how this server looks, a quiet way to it under the picture (an admin's; hide it with ×)
+        if (app.isAdmin && AppPrefs.lookHint && app.overview?.optJSONObject("server")?.let { it.has("look_set") && !it.optBoolean("look_set") } == true)
+            Row(Modifier.fillMaxWidth().padding(horizontal = Space.gutter), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+                Text("Doesn't look like your computer? Pick its look", color = N.blue, fontSize = 14.sp,
+                    modifier = Modifier.clip(RoundedCornerShape(14.dp)).clickable { app.go(Route.ServerSettings) }.padding(horizontal = 10.dp, vertical = 8.dp))
+                Icon(Icons.Rounded.Close, "Hide this", tint = N.sub, modifier = Modifier.size(30.dp).clip(CircleShape).clickable { AppPrefs.set("look_hint", false) }.padding(7.dp))
+            }
+    } }
     val pills: @Composable () -> Unit = {
         // Your shortcuts (Settings → Appearance, or hold the bar to change them)
         val edit = { app.go(Route.EditShortcuts) }

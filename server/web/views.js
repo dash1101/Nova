@@ -329,7 +329,10 @@ export async function home(ctx) {
       <div class="statusline" data-act="go:status"><span style="color:${S.error || S.reconnecting ? "var(--sub)" : levelColor(lvl)};display:flex">${I(icon)}</span>${esc(head)}${cs && (cs.total || cs.stopped) ? `<span class="sep"></span>${cs.running}/${cs.total} running${cs.stopped ? ` · ${cs.stopped} stopped` : ""}` : ""}${tasksChip()}</div>
       <div style="height:14px"></div>${topBanner()}${S.serverUpdate && localStorage.getItem("nova.dismissedUpdate") !== S.serverUpdate ? `<div class="upnote glass"><span style="color:var(--blue);display:flex">${I("update")}</span><b data-act="go:updates" style="flex:1;cursor:pointer">Nova ${esc(S.serverUpdate)} is ready to install</b><button class="xbtn" data-act="upx" aria-label="Not now">${I("close")}</button></div>` : ""}`;
     const order = homeOrder().filter(id => prefs[HOME_SECTIONS.find(s => s[0] === id)?.[3]] && (id !== "servers" || serverStrip()));
-    const block = id => id === "hero" ? `<canvas class="hero" id="hero" data-act="herotap" title="Tap the fan, the drive lights or the power button"></canvas>` : id === "shortcuts" ? pills() : id === "servers" ? serverStrip() : id === "recs" ? recsCard() : stats();
+    // until someone picks how this server looks, a quiet way to it under the picture (an admin's; dismissible)
+    let lookHint = false; try { lookHint = isAdmin() && S.overview?.server?.look_set === false && localStorage.getItem("nova.lookHint") !== "off"; } catch {}
+    const block = id => id === "hero" ? `<canvas class="hero" id="hero" data-act="herotap" title="Tap the fan, the drive lights or the power button"></canvas>${lookHint
+      ? `<div class="lookhint"><button class="press" data-act="go:server">Doesn't look like your computer? Pick its look</button><button class="press x" data-act="lookx" aria-label="Hide this">${I("close")}</button></div>` : ""}` : id === "shortcuts" ? pills() : id === "servers" ? serverStrip() : id === "recs" ? recsCard() : stats();
     const wide = innerWidth >= 1100;
     ctx.show(wide
       ? `<div class="home-wide"><div>${top}${prefs.homeHero ? block("hero") : ""}</div><div>${order.filter(x => x !== "hero").map(id => `<div class="block">${block(id)}</div>`).join("")}</div></div>`
@@ -358,6 +361,7 @@ export async function home(ctx) {
     post("/api/v1/server/update/check", { quiet: true }).then(u => { if (u?.state === "available") { S.serverUpdate = String(u.available || "").replace("~", "-"); if (ctx.alive()) draw(); } }).catch(() => {}); }
   ctx.handlers({
     upx: () => { try { localStorage.setItem("nova.dismissedUpdate", S.serverUpdate); } catch {} draw(); },
+    lookx: () => { try { localStorage.setItem("nova.lookHint", "off"); } catch {} draw(); },
     herotap: () => {},                                     // (the picture's own click handler decides; see draw)
     srv: async id => { if (await SV.control(id === "here" ? "" : id) === false) ctx.go("servers"); },
     refresh: async () => { await refresh(); await fetchNow(); draw(); toast("Up to date"); },
