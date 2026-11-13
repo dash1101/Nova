@@ -1,4 +1,32 @@
-# Remote access with Cloudflare (no VPN)
+# Using Nova away from home
+
+Two ways, both optional, and both can be on at once:
+
+- **Tailscale** — a private network between your own devices. Nothing opens to the internet. The easy one.
+- **Cloudflare Tunnel** — an address on your own domain, behind Cloudflare's login. More steps; works on
+  devices without Tailscale.
+
+Either way every request is still signed by your phone, so knowing the address alone gets nobody in.
+
+## Tailscale
+
+1. **On the server:** `sudo nova setup` → **Away from home** → Tailscale. It offers to install Tailscale
+   (then shows a link to sign this computer in), tells Nova the computer's Tailscale address, and lets
+   Tailscale devices through the firewall (ufw or firewalld) to Nova's port.
+2. **On your phone:** install the Tailscale app and sign in to the same account.
+3. **Pairing:** a phone that's already paired learns the Tailscale address the next time it opens Nova at
+   home. To pair a phone that's away: `sudo nova add --remote` and scan the code — the app tries home,
+   then Tailscale.
+
+From then on the app uses your home network when it's there and Tailscale everywhere else. Nova web works
+the same way: `https://<the server's Tailscale address>:8495` in a browser on a Tailscale device (approve it
+like any browser).
+
+**If it doesn't connect:** `sudo nova doctor` checks that Tailscale is connected on the server, that its
+address hasn't changed since setup (reinstalling Tailscale can change it), that Nova answers there and that
+the firewall lets Tailscale devices in. In the app, tap **Disconnected** to see what each way in answered.
+
+## Cloudflare Tunnel
 
 You need a domain on Cloudflare and `cloudflared` on the server.
 
@@ -23,7 +51,7 @@ You need a domain on Cloudflare and `cloudflared` on the server.
 
 From then on the app uses the LAN when it's home and the tunnel everywhere else.
 
-## Using Nova web remotely
+### Using Nova web remotely
 
 The service-token policy only lets the app through; a browser gets **403** from Cloudflare. To open
 Nova web from anywhere, let *you* log in to Cloudflare as well:
@@ -41,7 +69,7 @@ Nova web from anywhere, let *you* log in to Cloudflare as well:
 Nova still needs the browser's own signing key on top of the Cloudflare login, and risky actions
 from a browser are always approved on your phone.
 
-## Putting your apps online (Labs → Cloudflare auto-setup)
+### Putting your apps online (Labs → Cloudflare auto-setup)
 
 With an API token (steps in Labs → Cloudflare), hold an app → *Open it from anywhere* → **Set it up
 for me**. Nova shows what it will change and asks for your fingerprint first.
@@ -58,7 +86,7 @@ for me**. Nova shows what it will change and asks for your fingerprint first.
   it will remove and asks. Addresses that were yours before keep their login unless you add
   `--unprotect`.
 
-## Who can open an address
+### Who can open an address
 
 Labs → Cloudflare → tap an address (or an app's *Open it from anywhere* → **Who can open it**):
 
@@ -68,7 +96,7 @@ Labs → Cloudflare → tap an address (or an app's *Open it from anywhere* → 
 
 Switching between *Only you* and *You and guests* takes the address off the tunnel for the few seconds the switch takes, so it's never reachable without a login in between. If anything fails it stays off (safe) and the page says so; picking again puts it back.
 
-## Share links (Immich)
+### Share links (Immich)
 
 Keep Immich behind the login and still send albums to anyone: **Share links** installs
 [immich-public-proxy](https://github.com/alangrainger/immich-public-proxy) (read-only; it serves only

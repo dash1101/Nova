@@ -180,7 +180,7 @@ def s_remote(cfg, st):
         tip = ts.splitlines()[0]
         if yes(f"Let your Tailscale devices use Nova ({tip})?", True, key="use_tailscale"): cfg.update(tailnet_subnet="100.64.0.0/10", tailnet_host=tip); ok("Tailscale devices can use Nova")
         else: cfg.update(tailnet_subnet="", tailnet_host="")
-    elif shutil.which("tailscale"): info("Tailscale is installed but not signed in — run: sudo tailscale up, then nova-setup again.")
+    elif shutil.which("tailscale"): info("Tailscale is installed but not signed in — run: sudo tailscale up, then sudo nova setup again.")
     else: info("Skipped.")
 
     print(f"\n  {B}Cloudflare Tunnel{X} {D}— Nova and your apps on your own domain, behind a login. No open ports.{X}")
