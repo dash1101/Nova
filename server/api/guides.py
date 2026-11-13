@@ -185,6 +185,8 @@ def doctor():
         except ValueError: pass
         mine = lambda ip: f"inet {ip}/" in addrs or f"inet6 {ip}/" in addrs
         if mine(host): add("ok", f"Home address {host} is this machine's")
+        elif _in_tailnet(host): add("stop", f"Nova's home address is its Tailscale one ({host}), and Tailscale isn't connected on this computer",
+                                    "sudo tailscale up — or sudo nova setup → Network to use this machine's home Wi-Fi or Ethernet address")
         else: add("stop", f"Phones look for this server at {host}, but that's no longer its address",
                   "sudo nova setup → Network (then the app finds it again; pairing stays)")
         # Tailscale: this computer has its address, and Nova answers there (it waits for an address that comes up after it starts)
