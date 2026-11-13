@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.9.20-alpha (server and app)
+A phone that couldn't connect to a desktop running Nova and Tailscale, Nova web on the server itself, and approvals for hub apps.
+- **Fix: a phone on Tailscale couldn't use Nova on a computer whose setup picked its Tailscale address as "home"** — the usual case on a desktop whose internet goes through Tailscale or a public Ethernet port. Nova counted only that one address as home, so every other device was turned away (it could even pair with `sudo nova add --remote` and then never connect). Now such a server accepts its tailnet's devices; the app gives that address Tailscale's patience (a relayed connection can take longer than the 1.5 s a home network gets); setup opens the firewall for Tailscale devices too (ufw/firewalld), and `sudo nova doctor` says when it isn't open.
+- **Setup picks the right home address**: it looks past Tailscale, VPN, Docker and public interfaces for the computer's address on your Wi-Fi or Ethernet (10.x, 172.16–31.x, 192.168.x). Run again on a server that has a Tailscale address saved, `sudo nova setup` → Network says so and suggests the home one (Tailscale devices keep working).
+- **Nova web on the server itself: https://localhost:8495.** It only answered at the network addresses before. `sudo nova status` and the Nova Server window list it.
+- **For hub apps (Orbit):** the monitor's status file says how many browsers and actions wait for approval — counts only, never the codes.
+- Updating a server set up before 0.9.17 that never hears about updates: `sudo nova update github:dash1101/Nova` once.
+
 ## 0.9.19-alpha (server and app)
 A fix for something 0.9.18 broke, and what a brand-new phone and server showed when tried from scratch.
 - **Fix: the Updates page always said "Nova is up to date · Installed: ?"** (since 0.9.18). It read Nova's version from the updater's printed line, which 0.9.18 reworded — so it also missed a new Nova release. It reads the updater's status file now, and a test on a fresh Ubuntu machine checks it. (Settings → Software update, the daily check and the Inbox notice weren't affected.)
