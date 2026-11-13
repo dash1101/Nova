@@ -148,6 +148,10 @@ def _sh(*cmd, timeout=10):
     try: r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout); return r.returncode, r.stdout.strip()
     except (FileNotFoundError, subprocess.TimeoutExpired): return 127, ""
 
+def _in_tailnet(ip):
+    try: return __import__("ipaddress").ip_address(ip) in __import__("ipaddress").ip_network("100.64.0.0/10")
+    except ValueError: return False
+
 def doctor():
     """What's wrong with this Nova, each with the fix in plain words: [{"level": ok|warn|stop, "title", "fix"}]."""
     if os.name == "nt":                                    # Windows has its own checks (tasks instead of systemd units, its own firewall)
@@ -185,7 +189,11 @@ def doctor():
         # Tailscale: this computer has its address, and Nova answers there (it waits for an address that comes up after it starts)
         th = cfg.get("tailnet_host", "")
         if th and th != host:
-            if th not in addrs:
+            now = [w.split("/")[0] for w in addrs.split() if "/" in w and w.count(".") == 3 and _in_tailnet(w.split("/")[0])]
+            if th not in addrs and now:
+                add("warn", f"Tailscale's address changed: Nova uses {th}, this computer now has {now[0]} — phones away from home can't reach Nova",
+                    "sudo nova setup → Away from home → Tailscale (phones learn the new address next time they're home)")
+            elif th not in addrs:
                 add("warn", f"Tailscale isn't connected on this computer (its address {th} isn't here), so phones away from home can't reach Nova",
                     "sudo tailscale up   (or check: tailscale status)")
             elif active and f"{th}:{port}" not in _sh("ss", "-H", "-ltn", f"sport = :{port}")[1]:
