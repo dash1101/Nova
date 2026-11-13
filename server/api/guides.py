@@ -227,10 +227,7 @@ def doctor():
     try: n = len(json.load(open("/var/lib/nova-api/devices.json")))
     except (OSError, ValueError): n = 0
     add("ok", f"{n} paired device{'s' if n != 1 else ''}") if n else add("warn", "No phone or browser is paired yet", "sudo nova add   (nova help pair)")
-    # Tailscale chosen but not signed in
-    if cfg.get("tailnet_host"):
-        rc, ip = _sh("tailscale", "ip", "-4")
-        if rc != 0 or cfg["tailnet_host"] not in ip: add("warn", "Tailscale is set up for Nova but isn't connected", "sudo tailscale up")
+    # (Tailscale: checked with the addresses above)
     # went off without shutting down lately? (the monitor notes each time, and why, in the Inbox)
     try:
         import time
