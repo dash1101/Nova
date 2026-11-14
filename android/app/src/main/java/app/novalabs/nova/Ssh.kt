@@ -244,19 +244,32 @@ object SshSession {
         cont.invokeOnCancellation { cancel.cancel() }
     }
 
-    fun connect(name: String, host: String, port: Int, user: String, pinned: List<String>, key: SshKey) {
-        disconnect(); state = "connecting"; error = null; hostName = name; term.clear()
-        term.feed("Connecting to $user@$host…\r\n")
+    class Target(val name: String, val host: String, val port: Int)
+
+    /** Tries each address in turn (one that can't be reached → the next); a refused key or a wrong host key stops at once. */
+    fun connect(targets: List<Target>, user: String, pinned: List<String>, key: SshKey) {
+        disconnect(); state = "connecting"; error = null; hostName = targets.firstOrNull()?.name.orEmpty(); term.clear()
         scope.launch {
             try {
                 val jsch = JSch()
                 jsch.addIdentity(PhoneIdentity(key), null)
                 jsch.hostKeyRepository = PinnedHosts(pinned)
-                val s = jsch.getSession(user, host, port)
-                s.setConfig("PreferredAuthentications", "publickey")
-                s.setConfig("server_host_key", "ecdsa-sha2-nistp256,rsa-sha2-512,rsa-sha2-256")
-                s.setServerAliveInterval(20_000)
-                s.connect(8000)
+                var s: Session? = null; var last: Exception = java.io.IOException("connect: no address to try")
+                for (t in targets) {
+                    term.feed("Connecting to $user@${t.host}${if (t.port != 22) ":${t.port}" else ""} (${t.name})…\r\n")
+                    val c = jsch.getSession(user, t.host, t.port)
+                    c.setConfig("PreferredAuthentications", "publickey")
+                    c.setConfig("server_host_key", "ecdsa-sha2-nistp256,rsa-sha2-512,rsa-sha2-256")
+                    c.setServerAliveInterval(20_000)
+                    try { c.connect(6000); s = c; hostName = t.name; break }
+                    catch (e: Exception) {
+                        last = e
+                        val m = e.message.orEmpty()
+                        if (!(m.contains("timeout", true) || m.contains("connect", true) || m.contains("UnknownHost", true) || m.contains("route", true))) throw e
+                        term.feed("  not reachable there\r\n")
+                    }
+                }
+                if (s == null) throw last
                 val ch = s.openChannel("shell") as ChannelShell
                 ch.setPtyType("xterm-256color"); ch.setPtySize(term.cols, term.rows, 0, 0); channel = ch
                 val input: InputStream = ch.inputStream

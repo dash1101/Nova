@@ -36,6 +36,8 @@ import org.json.JSONObject
 private fun copy(ctx: Context, label: String, text: String) =
     (ctx.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText(label, text))
 
+private fun hostOf(url: String): String? = runCatching { java.net.URI(normUrl(url)).host }.getOrNull()?.trim('[', ']')?.ifEmpty { null }
+
 /** The Terminal menu: connect to the server over SSH, pick the route, manage this phone's key. */
 @Composable fun SshScreen(app: AppState) {
     val ctx = LocalContext.current
@@ -63,15 +65,29 @@ private fun copy(ctx: Context, label: String, text: String) =
 
     fun connect() {
         val pinned = info?.optJSONArray("keys")?.let { a -> (0 until a.length()).map { a.getString(it) } }
-        if (pinned.isNullOrEmpty() || hosts.isEmpty()) { app.toast("Couldn't load the server's details yet — try again in a moment"); return }
-        val pick = when (route) {
-            "auto" -> if (app.api.via == "home") hosts.first() else hosts.getOrElse(1) { hosts.first() }
-            else -> hosts.firstOrNull { it.optString("name") == route } ?: hosts.first()
+        if (info == null) { app.toast("Couldn't load the server's SSH details yet — try again in a moment"); return }
+        if (pinned.isNullOrEmpty()) { app.toast("SSH isn't running on the server — install it there: sudo apt install openssh-server"); return }
+        if (hosts.isEmpty()) { app.toast("The server has no SSH address to offer — run sudo nova setup on it"); return }
+        val listed = hosts.map { SshSession.Target(it.optString("name"), it.optString("host"), it.optInt("port", 22)) }.filter { it.host.isNotEmpty() }
+        // Automatic: first the address Nova itself is reaching the server on right now (it's the same computer), then the rest —
+        // so a list saved by an older setup (no Tailscale, an old home address) can't send you to an address that's gone.
+        val targets = when (route) {
+            "auto" -> {
+                val now = when (app.api.via) {
+                    "home" -> app.pairing.lanUrl.let { u -> hostOf(u)?.let { SshSession.Target(if (isTailscaleUrl(u)) "Tailscale" else "Home network", it, 22) } }
+                    "tailnet" -> hostOf(app.pairing.tailnetUrl)?.let { SshSession.Target("Tailscale", it, 22) }
+                    else -> null
+                }
+                val order = if (app.api.via == "home") listed else listed.sortedBy { if (it.name == "Tailscale") 0 else 1 }
+                val known = now?.let { n -> order.firstOrNull { it.host == n.host } }
+                (listOfNotNull(known ?: now) + order).distinctBy { it.host }
+            }
+            else -> listOf(listed.firstOrNull { it.name == route } ?: listed.first())
         }
         app.act {
             sshKey.ensure(); hasKey = true
             SshSession.unlock(app.activity)
-            SshSession.connect(pick.optString("name"), pick.optString("host"), pick.optInt("port", 22), user, pinned, sshKey)
+            SshSession.connect(targets, user, pinned, sshKey)
             app.go(Route.SshTerm)
         }
     }
@@ -98,7 +114,7 @@ private fun copy(ctx: Context, label: String, text: String) =
         if (installed == false) Note("The server doesn't know this ${DeviceForm.noun}'s key yet. Nova adds it for you after your fingerprint.", 13.sp, 0.dp)
         SectionLabel("Connect through")
         Group {
-            (listOf("auto" to ("Automatic" to "Home network when you're home, otherwise the next route")) +
+            (listOf("auto" to ("Automatic" to "The way Nova reaches the server right now, then the others")) +
                 hosts.map { h -> h.optString("name") to (h.optString("name") to h.optString("host") + if (h.optString("host").startsWith("100.")) " · needs Tailscale on this ${DeviceForm.noun}" else "") }
             ).forEachIndexed { i, (k, v) ->
                 if (i > 0) RowDivider()

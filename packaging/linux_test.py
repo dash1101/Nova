@@ -124,6 +124,14 @@ s, r = g("/api/pair", {}); check("pairs with a QR", r.get("ok") and r.get("svg",
 s, r = g("/api/doctor"); check("runs the check-up", s == 200 and any(c["title"] == "Nova is running" for c in r.get("checks", [])), str(r)[:300])
 g("/api/quit", {})
 
+print("\nFingerprint confirmation and the Terminal")
+s, r = d.call("GET", "/api/v1/ssh-hostkeys")
+check("the Terminal gets the server's SSH addresses", s == 200 and r.get("hosts") and all(h.get("host") for h in r["hosts"]), (s, str(r)[:300]))
+suk = ec.generate_private_key(ec.SECP256R1()); supem = suk.public_key().public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo).decode()
+s, r = d.call("POST", "/api/v1/device/stepup-key", {"public_key": supem}); check("from home, a phone turns on fingerprint confirmation at once", s == 200, (s, r))
+s, r = d.call("GET", "/api/v1/whoami"); check("whoami says it's on", r.get("stepup") is True, r)
+s, r = d.call("POST", "/api/v1/device/stepup-key", {"public_key": supem}); check("a second key is refused (re-pair to replace it)", s == 409, (s, r))
+
 rc, so, se = sh("sudo", "nova", "remove", "CI test device"); s, r = d.call("GET", "/api/v1/whoami")
 check("a removed device is locked out", rc == 0 and s == 401, (rc, s))
 print(f"\n{'ALL PASSED' if not fails else str(len(fails)) + ' FAILED: ' + '; '.join(fails)}")

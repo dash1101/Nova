@@ -400,7 +400,22 @@ try:
     if TAILNET is None and ipaddress.ip_address(LAN_HOST) in ipaddress.ip_network("100.64.0.0/10"): TAILNET = ipaddress.ip_network("100.64.0.0/10")
 except ValueError: pass
 SSH_USER = CFG.get("ssh_user", "")
-SSH_HOSTS = CFG.get("ssh_hosts", [{"name": "Home network", "host": LAN_HOST, "port": 22}])
+def ssh_hosts():
+    """Where the app's Terminal finds SSH: the addresses Nova itself listens on, worked out now — a list saved by an older
+    setup could miss Tailscale (turned on later) or carry an old home address — plus any others added to ssh_hosts by hand."""
+    saved = [h for h in (CFG.get("ssh_hosts") or []) if isinstance(h, dict) and h.get("host")]
+    port = lambda name: next((int(h.get("port") or 22) for h in saved if h.get("name") == name), 22)
+    def tail(a):
+        try: return ipaddress.ip_address(a) in ipaddress.ip_network("100.64.0.0/10")
+        except ValueError: return False
+    out = []
+    if LAN_HOST != "127.0.0.1" or not TAILNET_HOST:
+        out.append({"name": "Tailscale" if tail(LAN_HOST) else "Home network", "host": LAN_HOST, "port": port("Tailscale" if tail(LAN_HOST) else "Home network")})
+    if TAILNET_HOST and TAILNET_HOST != LAN_HOST: out.append({"name": "Tailscale", "host": TAILNET_HOST, "port": port("Tailscale")})
+    have = {h["host"] for h in out}
+    out += [h for h in saved if h.get("name") not in ("Home network", "Tailscale") and h["host"] not in have]
+    return out
+SSH_HOSTS = ssh_hosts()
 def board_name(): return plat.board()
 
 LOOKS = ("tower", "mini", "nas", "rack", "laptop", "sbc")
@@ -2616,7 +2631,7 @@ class Handler(BaseHTTPRequestHandler):
         if method == "GET" and parts == ["ssh-hostkeys"]:
             # Lets the app pin the server's SSH host keys (no trust-on-first-use).
             keys = []
-            for f in sorted(os.listdir("/etc/ssh")):
+            for f in sorted(os.listdir("/etc/ssh") if os.path.isdir("/etc/ssh") else []):
                 if f.startswith("ssh_host_") and f.endswith("_key.pub"):
                     try: keys.append(" ".join(open(f"/etc/ssh/{f}").read().split()[:2]))
                     except OSError: pass
