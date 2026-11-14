@@ -260,8 +260,11 @@ def ssh_account(site):
     if want and not re.fullmatch(r"[A-Za-z0-9 ._@\\-]{1,64}", want): return None
     script = (f"$n={psq(want)};if(-not $n){{$n=(Get-CimInstance Win32_ComputerSystem).UserName}};if(-not $n){{exit 3}};"
               "$sid=(New-Object Security.Principal.NTAccount($n)).Translate([Security.Principal.SecurityIdentifier]).Value;"
+              # members of Administrators (by SID: the group's name depends on Windows' language); Get-LocalGroupMember can trip
+              # over a member that no longer exists, so ADSI is the fallback, one member at a time
+              "$m=@();try{$m=@(Get-LocalGroupMember -SID S-1-5-32-544|%{$_.SID.Value})}catch{try{"
               "$g=(New-Object Security.Principal.SecurityIdentifier('S-1-5-32-544')).Translate([Security.Principal.NTAccount]).Value.Split('\\')[-1];"
-              "$m=@(([ADSI]\"WinNT://./$g,group\").psbase.Invoke('Members')|%{(New-Object Security.Principal.SecurityIdentifier([byte[]]$_.GetType().InvokeMember('objectSid','GetProperty',$null,$_,$null),0)).Value});"
+              "$m=@(([ADSI]\"WinNT://./$g,group\").psbase.Invoke('Members')|%{try{(New-Object Security.Principal.SecurityIdentifier([byte[]]$_.GetType().InvokeMember('objectSid','GetProperty',$null,$_,$null),0)).Value}catch{}})}catch{}};"
               "$h=(Get-CimInstance Win32_UserProfile -Filter \"SID='$sid'\").LocalPath;"
               "[pscustomobject]@{user=$n.Split('\\')[-1];sid=$sid;admin=($m -contains $sid);home=$h}|ConvertTo-Json -Compress")
     rc, so, _ = ps(script, 40)
