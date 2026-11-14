@@ -15,6 +15,9 @@ ls nova-*.apk >/dev/null 2>&1 || echo "note: no APKs in dist/ — this release o
 rm -f SHA256SUMS SHA256SUMS.sig
 # a stable name too, so a link can always point at the newest: releases/latest/download/nova-server.deb
 cp "nova-server_$(echo "$VER" | sed 's/-/~/')_all.deb" nova-server.deb
+# the app's stable names (Orbit and the website download these) always come from THIS version's builds — never a leftover
+[[ -f "nova-$VER-universal.apk" ]] && cp "nova-$VER-universal.apk" nova-universal.apk
+[[ -f "nova-wear-$VER.apk" ]] && cp "nova-wear-$VER.apk" nova-wear.apk
 sha256sum nova-server_*.deb nova-server.deb nova-server_*.tar.gz nova-installer.run nova-server_*_windows.zip nova-windows.zip $(ls nova-*.apk 2>/dev/null) > SHA256SUMS
 python3 - "$KEY" <<'PY'
 import base64, sys
