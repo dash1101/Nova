@@ -233,6 +233,21 @@ class AppState(val activity: Activity, val pairing: Pairing, val scope: Coroutin
         if (!r.has("approval")) return r
         // No fingerprint here: the server is holding the action until another admin device (fingerprint), the server shell
         // (`sudo nova approve CODE`) or an authenticator code approves it. Show the code and wait for the answer.
+        return waitApproval(r, title)
+    }
+
+    /** Turn on fingerprint confirmation now: straight away at home or over Tailscale; from anywhere else the server holds it
+     *  until it's approved there (sudo nova approve CODE), from another admin phone or with an authenticator code. */
+    suspend fun registerStepUp() {
+        pairing.keys.ensureStepUp()
+        val r = try { api.post("/api/v1/device/stepup-key", JSONObject().put("public_key", pairing.keys.stepUpPublicKeyPem())) }
+            catch (e: ApiException) { if (e.code == 409 && pairing.keys.hasStepUp()) JSONObject() else throw e }   // (already there)
+        if (r.has("approval")) waitApproval(r, "Turn on fingerprint confirmation")
+        pairing.stepUpRegistered = true
+    }
+
+    /** A request the server is holding for approval: show its code and wait for the answer. */
+    private suspend fun waitApproval(r: JSONObject, title: String): JSONObject {
         val ap = Approving(r.getString("approval"), r.optString("code"), title, r.optBoolean("totp")); approving = ap
         try {
             val until = System.currentTimeMillis() + 10 * 60_000L
@@ -292,12 +307,14 @@ class AppState(val activity: Activity, val pairing: Pairing, val scope: Coroutin
                 val t = api.get("/api/v1/lan-tls")
                 if (t.optString("url").startsWith("https") && t.optString("pin").length == 64) pairing.updateLan(t.getString("url"), t.getString("pin"))
             }
-            if (api.via == "home") {
-                if (!who.optBoolean("stepup")) {
-                    pairing.keys.ensureStepUp()
-                    api.post("/api/v1/device/stepup-key", JSONObject().put("public_key", pairing.keys.stepUpPublicKeyPem()))
-                }
+            // the fingerprint key registers by itself at home and over Tailscale (a server with no home network has only that)
+            if ((api.via == "home" || api.via == "tailnet") && !who.optBoolean("stepup")) runCatching {
+                pairing.keys.ensureStepUp()
+                api.post("/api/v1/device/stepup-key", JSONObject().put("public_key", pairing.keys.stepUpPublicKeyPem()))
                 pairing.stepUpRegistered = true
+            }
+            if (api.via == "home") {
+                if (who.optBoolean("stepup")) pairing.stepUpRegistered = true
                 val rc = api.get("/api/v1/remote-config")
                 if (rc.optString("remote_url").isNotEmpty() && rc.optString("remote_url") != pairing.remoteUrl)
                     pairing.updateRemote(rc.optString("remote_url"), rc.optString("cf_client_id"), rc.optString("cf_client_secret"))

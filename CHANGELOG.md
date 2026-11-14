@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.25-alpha (server and app)
+- **Fingerprint confirmation without a home network.** It could only be set up on home Wi-Fi (or in a phone's first 30 minutes after pairing from away), so a phone paired with a computer that's wired straight to the internet — no router, no home network — never got it, and every risky action waited for some other approval. Now Tailscale counts as home for this (it's your own private network): the app sets it up by itself there. From anywhere else, **Settings → This phone → Fingerprint confirmation → Set it up now** asks the server to approve it, with a code — `sudo nova approve CODE` there, **Nova Server → Waiting for approval**, another admin phone, or an authenticator code — so a stolen phone away from home still can't give itself a fingerprint key.
+- **Fix: the frame-rate meter (Developer options) could say "idle" while the app was drawing.** When the meter was recreated (turning the screen, coming back to the app), the old one switched the counter off under the new one. It counts who's watching now, and checks itself every couple of seconds.
+
 ## 0.9.24-alpha (server and app)
 A phone that stayed "Disconnected" from a desktop it had paired with over Tailscale, and two bugs that stopped `sudo nova update` there.
 

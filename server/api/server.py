@@ -47,7 +47,7 @@ def lights_ready():
     (sudo nova lighting makes /var/lib/nova-rgb) or OpenRGB is on in Labs — not on a server without that hardware."""
     return nova_rgb is not None and (os.path.isdir("/var/lib/nova-rgb") or bool(load_json(SETTINGS, {}).get("labs", {}).get("openrgb")))
 
-API_VERSION = "0.9.24-alpha"
+API_VERSION = "0.9.25-alpha"
 # The API contract (docs/API.md). API_LEVEL only ever goes up: each new level adds endpoints or fields, never removes or
 # changes one. MIN_LEVEL is the oldest level this server still answers in full (old apps keep working back to it).
 # MIN_CLIENT: the oldest app builds still served, per platform — 0 = all of them. Raising it is the last resort, after
@@ -839,6 +839,7 @@ def hub_search(text):
 def describe_action(a):
     p = [x for x in a["path"].split("/") if x][2:]
     if p == ["labs", "images", "clean"]: return "Remove the container images nothing uses anymore (the versions kept for rolling back stay)"
+    if p == ["device", "stepup-key"]: return f"Turn on fingerprint confirmation on {a.get('device_name', 'a phone')} (its fingerprint then approves its own risky actions)"
     if p == ["terminal"]: return f"Open a terminal on the server as {shell_account()} — that's full control if the account can use sudo or Docker"
     if p == ["files", "unlock"]: return f"Let this browser change files on the server as {shell_account()} for 15 minutes"
     if p == ["cloudflare", "publish"]: return f"Put {a.get('data', {}).get('host', '?')} on the internet through your Cloudflare tunnel (behind your Access login)"
@@ -1321,7 +1322,7 @@ class Handler(BaseHTTPRequestHandler):
             audit(device=dev["name"], path=path, result=403, why="step-up required")
             return self.send(403, {"error": "stepup_required",
                                    "message": "Confirm with your fingerprint to do this."
-                                   if dev.get("stepup_key") else "Set up fingerprint confirmation first (home Wi-Fi)."})
+                                   if dev.get("stepup_key") else "Set up fingerprint confirmation first: Settings → This phone → Fingerprint confirmation."})
         if role_of(dev) != "admin" and not viewer_may(method, parts, dev):
             audit(device=dev["name"], path=path, result=403, why="view-only")
             return self.send(403, {"error": "view_only", "message": "This phone has view-only access."})
@@ -1689,13 +1690,21 @@ class Handler(BaseHTTPRequestHandler):
             # Home network only — except a phone that was just paired from away (it may never be on home Wi-Fi): then its first
             # 30 minutes, and only while it has no key yet. (The key is made in its fingerprint-protected chip, so a copy of the
             # signing key alone can't use it.)
+            # Straight away at home, over Tailscale (the owner's own private network — a server with no home network, wired straight
+            # to the internet, has only that), or in a phone's first 30 minutes after pairing from away. From anywhere else
+            # (Cloudflare) it waits for a yes: the server shell (sudo nova approve CODE), another admin's fingerprint or an
+            # authenticator code — so a stolen, unlocked phone away from home can't give itself a fingerprint key.
             fresh = dev.get("paired_via") in ("tailnet", "remote") and time.time() - float(dev.get("paired_at") or 0) < 1800
-            if dev["via"] not in ("lan", "local") and not fresh: return 403, {"error": "set this up on home Wi-Fi"}
             if dev.get("stepup_key"): return 409, {"error": "already set up (re-pair to replace it)"}
             pem = str(data.get("public_key", ""))
             pub = serialization.load_pem_public_key(pem.encode())
             if not isinstance(pub, ec.EllipticCurvePublicKey) or pub.curve.name != "secp256r1":
                 raise ValueError("need a P-256 public key")
+            if dev["via"] not in ("lan", "local", "tailnet") and not fresh and not dev.get("stepup_ok"):
+                a = new_approval(dev, method, path, {"public_key": pem})
+                audit(device=dev["name"], path=path, result=202, why="fingerprint key from away: waiting for approval")
+                return 202, {"approval": a["id"], "code": a["code"], "totp": bool(totp_state().get("secret")),
+                             "message": "Approve it on the server: sudo nova approve " + a["code"] + " (or Nova Server → Waiting for approval), or from another admin phone"}
             with lock:
                 devs = load_json(DEVICES, {}); devs[dev["id"]]["stepup_key"] = pem; save_json(DEVICES, devs)
             return 200, {"ok": True}

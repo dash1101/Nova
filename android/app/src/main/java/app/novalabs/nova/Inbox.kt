@@ -301,9 +301,14 @@ import java.util.*
                 Detail("Risky actions — opening a terminal, stopping or restarting things, installs, unmounting drives, restarting the server — need your fingerprint (or PIN).")
                 Detail("Behind the scenes that unlocks a second key in the secure chip, which signs the request as well. The server refuses risky actions without that second signature, so even a stolen, unlocked phone can't do them without you.")
                 Detail(if (app.pairing.stepUpRegistered) "Status: set up and registered with the server."
-                       else if (app.api.via == "home") "Status: not set up — this ${DeviceForm.noun} needs a fingerprint or a screen lock first. Add one in Android settings, then reopen Nova. Until then, risky actions wait for another admin device (or the server) to approve them."
-                       else "Status: waiting — it's registered automatically the next time Nova opens on home Wi-Fi (registration is only accepted from home). Until then, risky actions wait for another admin device (or the server) to approve them.",
+                       else if (app.api.via == "home" || app.api.via == "tailnet") "Status: not set up — this ${DeviceForm.noun} needs a fingerprint or a screen lock first. Add one in Android settings, then tap Set it up now. Until then, risky actions wait for another admin device (or the server) to approve them."
+                       else "Status: not set up yet. At home or over Tailscale it's set up by itself; from here, Set it up now asks the server to approve it (sudo nova approve CODE there, Nova Server → Waiting for approval, or another admin phone). Until then, risky actions wait for approval the same way.",
                     if (app.pairing.stepUpRegistered) N.green else N.amber)
+                if (!app.pairing.stepUpRegistered) {
+                    var busy by remember { mutableStateOf(false) }
+                    PillButton(if (busy) "Setting up…" else "Set it up now", !busy) {
+                        busy = true; app.act("Fingerprint confirmation is on") { try { app.registerStepUp() } finally { busy = false } } }
+                }
             }
             RowDivider()
             var quickOn by remember { mutableStateOf(app.pairing.quickApproverId.isNotEmpty()) }

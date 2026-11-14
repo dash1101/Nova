@@ -76,8 +76,16 @@ object FrameStats {
     private var window: android.view.Window? = null; private var listener: android.view.Window.OnFrameMetricsAvailableListener? = null
     private var thread: android.os.HandlerThread? = null
     class Snap(val fps: Int, val frames: Int, val seconds: Float, val tot: FloatArray, val ui: FloatArray, val gpu: FloatArray)
-    fun start(w: android.view.Window) {
-        if (window === w) return; stop()
+    // How many meters are showing. A meter that's recreated (the screen turns, the activity comes back) starts the new one before
+    // the old one is let go — so "stop" may only stop when the last meter has gone, or it switched the counter off under the
+    // new meter, which then read "idle" for good while the app was drawing.
+    private var users = 0
+    fun start(w: android.view.Window) { users++; attach(w) }
+    fun stop() { users = maxOf(0, users - 1); if (users == 0) detach() }
+    /** Still listening to this window? (A meter checks now and then, and puts it right if not.) */
+    fun ensure(w: android.view.Window) { if (users > 0 && (window !== w || listener == null)) attach(w) }
+    private fun attach(w: android.view.Window) {
+        if (window === w && listener != null) return; detach()
         val t = android.os.HandlerThread("nova-frames").also { it.start() }; thread = t
         val l = android.view.Window.OnFrameMetricsAvailableListener { _, fm, _ ->
             fun ms(k: Int) = fm.getMetric(k) / 1e6f
@@ -87,7 +95,7 @@ object FrameStats {
         }
         listener = l; window = w; w.addOnFrameMetricsAvailableListener(l, android.os.Handler(t.looper))
     }
-    fun stop() { listener?.let { window?.removeOnFrameMetricsAvailableListener(it) }; listener = null; window = null; thread?.quitSafely(); thread = null }
+    private fun detach() { listener?.let { runCatching { window?.removeOnFrameMetricsAvailableListener(it) } }; listener = null; window = null; thread?.quitSafely(); thread = null }
     @Synchronized fun snapshot(): Snap {
         val k = minOf(n, CAP.toLong()).toInt(); val now = System.nanoTime()
         val idx = (0 until k).map { ((n - 1 - it) % CAP).toInt() }
@@ -110,13 +118,16 @@ object FrameStats {
     val view = androidx.compose.ui.platform.LocalView.current
     var snap by remember { mutableStateOf(FrameStats.snapshot()) }
     val hz = view.display?.refreshRate?.toInt() ?: 60
-    DisposableEffect(view) {
+    val win = remember(view) {
         var c: android.content.Context = view.context
         while (c is android.content.ContextWrapper && c !is android.app.Activity) c = c.baseContext
-        (c as? android.app.Activity)?.window?.let { FrameStats.start(it) }
-        onDispose { FrameStats.stop() }
+        (c as? android.app.Activity)?.window
     }
-    LaunchedEffect(Unit) { while (true) { kotlinx.coroutines.delay(500); snap = FrameStats.snapshot() } }
+    DisposableEffect(win) {
+        win?.let { FrameStats.start(it) }
+        onDispose { if (win != null) FrameStats.stop() }
+    }
+    LaunchedEffect(win) { var k = 0; while (true) { kotlinx.coroutines.delay(500); snap = FrameStats.snapshot(); if (++k % 4 == 0) win?.let { FrameStats.ensure(it) } } }
     val recent = snap.tot.take(30)
     val c = when { snap.fps == 0 -> Color(0xFF8E8E93); recent.isNotEmpty() && recent.average() < 1000f / hz * 1.1 -> Color(0xFF30D158); recent.isNotEmpty() && recent.average() < 1000f / hz * 2 -> Color(0xFFFF9F0A); else -> Color(0xFFFF453A) }
     fun avg(a: FloatArray) = a.take(30).let { if (it.isEmpty()) 0 else it.average().toInt() }
