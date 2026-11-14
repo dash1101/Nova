@@ -15,6 +15,8 @@ jobs:
           # Windows PowerShell reads a script without a byte-order mark as ANSI, where some UTF-8 bytes become quote marks: keep these plain ASCII
           if grep -nP '[^\x00-\x7F]' server/windows/*.ps1 get.ps1; then echo 'non-ASCII characters in a .ps1 file'; exit 1; fi
           for f in server/web/*.js; do node --check "$f"; done
+      - name: Controlling another server from Nova web (the relay takes the web's headers)
+        run: python3 packaging/relay_test.py
       - name: Build package
         run: packaging/build-deb.sh
       - name: The tarball unpacks the way every installed updater unpacks it

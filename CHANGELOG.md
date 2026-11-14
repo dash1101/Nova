@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.9.27-alpha (server)
+- **Fix: Nova web couldn't control another server ("only the four X-Nova signature headers").** Servers → pick another Nova server → every page failed with that message. Nova web marks each request with which app it is (`X-Nova-Client`, since 0.7.5), and the server carrying the request to the other one refused anything but the four signature headers. It now takes that one too (checked, and passed along). Only the server you open Nova web on needs this update. A new CI check signs requests exactly the way Nova web does and sends them through the relay.
+
 ## 0.9.26-alpha (server and app)
 - **The Terminal works with a Windows server.** It said "SSH isn't running on the server" (0.9.25) or "Couldn't load the server's details" (before) on a PC with OpenSSH Server running, and adding the phone's key was refused: Nova only knew Linux's SSH. Now it reads Windows' host keys (`%ProgramData%\ssh`), signs in as whoever is signed in at the PC (or `ssh_user` from the config), and puts the phone's key where Windows' sshd looks for it — the shared administrators' key file for an administrator, `%USERPROFILE%\.ssh\authorized_keys` otherwise — with the strict permissions sshd insists on. Removing the phone removes the key. Without OpenSSH Server the Terminal page says how to turn it on. CI now logs in over real SSH on Windows with a phone-style key.
 

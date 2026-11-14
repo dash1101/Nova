@@ -231,6 +231,7 @@ RELAY_MAX = 4 * 1024 * 1024
 RELAY_PATH = re.compile(r"/api/v1/[A-Za-z0-9._~\-/]*(\?[A-Za-z0-9._~\-=&%+,:]*)?")
 _INNER = {"X-Nova-Device": r"[A-Za-z0-9_-]{1,64}", "X-Nova-Time": r"\d{10,16}", "X-Nova-Nonce": r"[A-Za-z0-9_-]{16,64}",
           "X-Nova-Signature": r"[A-Za-z0-9+/]{20,200}={0,2}"}
+_CLIENT = r"(android|wear|web) \d{1,9}"                # X-Nova-Client: which app it is (not signed; also sent straight to a server)
 _UNSIGNED = re.compile(r"/api/v1/browser/request(/[A-Za-z0-9_-]{8,64})?")      # asking to be added, and waiting for the answer
 
 def relay(nid, method, path, hdrs, body, via, ip):
@@ -242,7 +243,9 @@ def relay(nid, method, path, hdrs, body, via, ip):
         raise ValueError("that isn't a Nova API path")
     p0 = path.split("?", 1)[0]
     if p0 in ("/api/v1/pair", "/api/v1/crash"): raise ValueError("that can't be done through another server")
-    if not isinstance(hdrs, dict) or set(hdrs) - set(_INNER): raise ValueError("only the four X-Nova signature headers")
+    if not isinstance(hdrs, dict) or set(hdrs) - set(_INNER) - {"X-Nova-Client"}: raise ValueError("only the four X-Nova signature headers (and X-Nova-Client)")
+    client = hdrs.get("X-Nova-Client")
+    if client is not None and not (isinstance(client, str) and re.fullmatch(_CLIENT, client)): raise ValueError("bad X-Nova-Client")
     inner = {}
     for k, pat in _INNER.items():
         v = hdrs.get(k)
@@ -259,7 +262,7 @@ def relay(nid, method, path, hdrs, body, via, ip):
     key = serialization.load_pem_private_key(n["key"].encode(), None)
     ts, rn = str(int(time.time() * 1000)), secrets.token_urlsafe(18)
     sig = base64.b64encode(key.sign(statement(method, path, rn, inner.get("X-Nova-Nonce", ""), via, ip, ts), ec.ECDSA(hashes.SHA256()))).decode()
-    h = {"Content-Type": "application/json", **inner, "X-Nova-Relay-Head": n["device_id"], "X-Nova-Relay-Via": via, "X-Nova-Relay-IP": ip,
+    h = {"Content-Type": "application/json", **inner, **({"X-Nova-Client": client} if client else {}), "X-Nova-Relay-Head": n["device_id"], "X-Nova-Relay-Via": via, "X-Nova-Relay-IP": ip,
          "X-Nova-Relay-Time": ts, "X-Nova-Relay-Nonce": rn, "X-Nova-Relay-Sig": sig}
     try:
         c, _ = _conn(n["host"], n["pin"], timeout=200)

@@ -47,7 +47,7 @@ def lights_ready():
     (sudo nova lighting makes /var/lib/nova-rgb) or OpenRGB is on in Labs — not on a server without that hardware."""
     return nova_rgb is not None and (os.path.isdir("/var/lib/nova-rgb") or bool(load_json(SETTINGS, {}).get("labs", {}).get("openrgb")))
 
-API_VERSION = "0.9.26-alpha"
+API_VERSION = "0.9.27-alpha"
 # The API contract (docs/API.md). API_LEVEL only ever goes up: each new level adds endpoints or fields, never removes or
 # changes one. MIN_LEVEL is the oldest level this server still answers in full (old apps keep working back to it).
 # MIN_CLIENT: the oldest app builds still served, per platform — 0 = all of them. Raising it is the last resort, after
