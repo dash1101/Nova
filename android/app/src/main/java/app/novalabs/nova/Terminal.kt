@@ -66,7 +66,7 @@ private fun hostOf(url: String): String? = runCatching { java.net.URI(normUrl(ur
     fun connect() {
         val pinned = info?.optJSONArray("keys")?.let { a -> (0 until a.length()).map { a.getString(it) } }
         if (info == null) { app.toast("Couldn't load the server's SSH details yet — try again in a moment"); return }
-        if (pinned.isNullOrEmpty()) { app.toast("SSH isn't running on the server — install it there: sudo apt install openssh-server"); return }
+        if (pinned.isNullOrEmpty()) { app.toast(info?.optString("why")?.ifEmpty { null } ?: "SSH isn't installed on the server — install it there: sudo apt install openssh-server"); return }
         if (hosts.isEmpty()) { app.toast("The server has no SSH address to offer — run sudo nova setup on it"); return }
         val listed = hosts.map { SshSession.Target(it.optString("name"), it.optString("host"), it.optInt("port", 22)) }.filter { it.host.isNotEmpty() }
         // Automatic: first the address Nova itself is reaching the server on right now (it's the same computer), then the rest —
@@ -111,7 +111,9 @@ private fun hostOf(url: String): String? = runCatching { java.net.URI(normUrl(ur
                 SshSession.state != "connecting") { connect() }
         }
         // The usual first-time snag: the server doesn't know this phone's key yet. One tap (and your fingerprint) fixes it.
-        if (installed == false) Note("The server doesn't know this ${DeviceForm.noun}'s key yet. Nova adds it for you after your fingerprint.", 13.sp, 0.dp)
+        val why = info?.optString("why").orEmpty()
+        if (why.isNotEmpty() && info?.optJSONArray("keys")?.length() == 0) Note(why, 13.sp, 0.dp)
+        else if (installed == false) Note("The server doesn't know this ${DeviceForm.noun}'s key yet. Nova adds it for you after your fingerprint.", 13.sp, 0.dp)
         SectionLabel("Connect through")
         Group {
             (listOf("auto" to ("Automatic" to "The way Nova reaches the server right now, then the others")) +
@@ -131,7 +133,9 @@ private fun hostOf(url: String): String? = runCatching { java.net.URI(normUrl(ur
                 Detail("Or add it by hand, on the server or from a computer that can already log in:")
                 if (!hasKey) PillButton("Create the key now") { runCatching { sshKey.ensure(); hasKey = true }.onFailure { app.toast("Set a screen lock on this ${DeviceForm.noun} first") } }
                 else {
-                    val cmd = "mkdir -p ~/.ssh && echo '${sshKey.openSsh()}' >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys"
+                    val win = app.overview?.optJSONObject("server")?.optString("os") == "windows"
+                    val cmd = if (win) "Add-Content \$env:ProgramData\\ssh\\administrators_authorized_keys '${sshKey.openSsh()}'   # an administrator account; others: \$HOME\\.ssh\\authorized_keys"
+                              else "mkdir -p ~/.ssh && echo '${sshKey.openSsh()}' >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys"
                     Text(cmd, color = N.text, fontFamily = Mono, fontSize = 12.sp, modifier = Modifier.clip(RoundedCornerShape(14.dp))
                         .background(N.pill).padding(12.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {

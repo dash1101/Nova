@@ -18,6 +18,9 @@ UNMOUNTED = "/run/nova-unmounted.json"           # intentionally unmounted (moni
 SITE = {}
 try: SITE = json.load(open(plat.p("/etc/nova-api/config.json")))
 except Exception: pass
+# SSH (below, and winhost.py on Windows, which runs before the rest of this file): a Nova device id, and what its key may do
+DEV_RE = r"[A-Za-z0-9_-]{8,40}"
+SSH_OPTS = "no-port-forwarding,no-agent-forwarding,no-X11-forwarding"
 # Site-specific storage layout (config.json); defaults are safe for any machine.
 PROTECTED_MOUNTS = set(SITE.get("protected_mounts", ["/", "/boot", "/boot/efi"])) | {"/", "/boot", "/boot/efi"}
 PROTECTED_PREFIXES = tuple(SITE.get("protected_prefixes", []))
@@ -1054,8 +1057,6 @@ if verb == "smart-tests" and len(args) == 1:
 # The key comes from the phone's hardware keystore over the signed, fingerprint-confirmed API,
 # so nobody has to copy and paste it. Each line is tagged with the device id, so removing the
 # device in Nova also removes its SSH access. Forwarding is disabled: the terminal needs a shell only.
-DEV_RE = r"[A-Za-z0-9_-]{8,40}"
-SSH_OPTS = "no-port-forwarding,no-agent-forwarding,no-X11-forwarding"
 
 def _ak_path():
     import pwd

@@ -47,7 +47,7 @@ def lights_ready():
     (sudo nova lighting makes /var/lib/nova-rgb) or OpenRGB is on in Labs — not on a server without that hardware."""
     return nova_rgb is not None and (os.path.isdir("/var/lib/nova-rgb") or bool(load_json(SETTINGS, {}).get("labs", {}).get("openrgb")))
 
-API_VERSION = "0.9.25-alpha"
+API_VERSION = "0.9.26-alpha"
 # The API contract (docs/API.md). API_LEVEL only ever goes up: each new level adds endpoints or fields, never removes or
 # changes one. MIN_LEVEL is the oldest level this server still answers in full (old apps keep working back to it).
 # MIN_CLIENT: the oldest app builds still served, per platform — 0 = all of them. Raising it is the last resort, after
@@ -140,7 +140,8 @@ def win_extras():
         rc, r = helper("tools-status", timeout=30)
         ok = rc == 0 and bool((r.get("tools") or {}).get("winget"))
         _winx.update(t=time.time(), v={"updates": True, "programs": True, "store": True} if ok else {})
-    return _winx["v"]
+    # the Terminal works wherever Windows' OpenSSH Server is installed (Settings → System → Optional features)
+    return {**_winx["v"], "ssh": os.path.exists(os.path.join(os.environ.get("SystemRoot") or r"C:\Windows", "System32", "OpenSSH", "sshd.exe"))}
 
 def docker_present():
     """Is Docker installed and running? (Nova works without it: no containers, the rest is the same.)"""
@@ -2630,12 +2631,15 @@ class Handler(BaseHTTPRequestHandler):
             return (200 if rc == 0 else 400), res
         if method == "GET" and parts == ["ssh-hostkeys"]:
             # Lets the app pin the server's SSH host keys (no trust-on-first-use).
+            if plat.WINDOWS:                                    # Windows' OpenSSH Server: keys and the account, asked of the helper
+                rc, res = helper("ssh-info", timeout=60)
+                return 200, {"keys": res.get("keys", []), "user": res.get("user") or SSH_USER, "hosts": SSH_HOSTS, "why": res.get("why", "")}
             keys = []
             for f in sorted(os.listdir("/etc/ssh") if os.path.isdir("/etc/ssh") else []):
                 if f.startswith("ssh_host_") and f.endswith("_key.pub"):
                     try: keys.append(" ".join(open(f"/etc/ssh/{f}").read().split()[:2]))
                     except OSError: pass
-            return 200, {"keys": keys, "user": SSH_USER, "hosts": SSH_HOSTS}
+            return 200, {"keys": keys, "user": SSH_USER, "hosts": SSH_HOSTS, "why": "" if keys else "SSH isn't installed on the server — install it there: sudo apt install openssh-server"}
 
         # ── jobs ──
         if method == "GET" and parts == ["jobs"]:

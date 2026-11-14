@@ -194,6 +194,44 @@ if has_wg:
 else:
     rc, r = helper("programs"); check("without winget, Programs says why", rc != 0 and "winget" in r.get("error", ""), (rc, r))
 
+print("\nThe Terminal (Windows' OpenSSH Server)")
+SSHD = os.path.join(os.environ.get("SystemRoot", r"C:\Windows"), "System32", "OpenSSH", "sshd.exe")
+s, r = d.call("GET", "/api/v1/ssh-hostkeys")
+check("ssh-hostkeys answers on Windows (keys, or what to turn on)", s == 200 and isinstance(r.get("keys"), list) and (r["keys"] or r.get("why")), (s, r))
+if not os.path.exists(SSHD):
+    q = subprocess.run(["powershell", "-NoProfile", "-Command", "Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0 | Out-Null"], capture_output=True, text=True, timeout=900)
+    print("      installed OpenSSH Server:", q.returncode, q.stderr[-200:])
+if os.path.exists(SSHD):
+    subprocess.run(["powershell", "-NoProfile", "-Command", "Start-Service sshd"], capture_output=True, text=True, timeout=120)
+    CFGF = os.path.join(DATA, "config", "config.json"); cfg0 = open(CFGF, encoding="utf-8").read()
+    me = os.environ.get("USERNAME", "")
+    json.dump({**json.loads(cfg0), "ssh_user": me}, open(CFGF, "w", encoding="utf-8"))     # a runner has nobody at the screen
+    try:
+        s, r = d.call("GET", "/api/v1/ssh-hostkeys")
+        check("…with OpenSSH Server running: its host keys and the account", s == 200 and any(k.startswith("ecdsa-sha2-nistp256 ") for k in r.get("keys", [])) and r.get("user", "").lower() == me.lower(), (s, r))
+        sk = ec.generate_private_key(ec.SECP256R1())
+        pub = sk.public_key().public_bytes(serialization.Encoding.OpenSSH, serialization.PublicFormat.OpenSSH).decode()
+        s, r = d.call("GET", "/api/v1/ssh/authorize"); check("the phone's key isn't there yet", s == 200 and r.get("installed") is False, (s, r))
+        rc, r = helper("ssh-authorize", d.id, pub); check("add the phone's key (as the API does after the fingerprint)", rc == 0 and r.get("ok"), (rc, r))
+        s, r = d.call("GET", "/api/v1/ssh/authorize"); check("…now it's there", s == 200 and r.get("installed") is True, (s, r))
+        akf = os.path.join(os.environ.get("ProgramData", r"C:\ProgramData"), "ssh", "administrators_authorized_keys")
+        acl = subprocess.run(["icacls", akf], capture_output=True, text=True).stdout
+        check("…in the administrators' key file, writable only by SYSTEM and Administrators", os.path.exists(akf) and "Users" not in acl and "Everyone" not in acl, acl)
+        kf = os.path.join(os.environ.get("TEMP", "."), "nova-ci-key")
+        open(kf, "wb").write(sk.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.OpenSSH, serialization.NoEncryption()))
+        subprocess.run(["icacls", kf, "/inheritance:r", "/grant", f"{me}:F"], capture_output=True)
+        q = subprocess.run(["ssh", "-i", kf, "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=NUL", f"{me}@127.0.0.1", "echo nova-ssh-ok"],
+                           capture_output=True, text=True, timeout=60)
+        check("…and it really logs in over SSH", "nova-ssh-ok" in q.stdout, (q.returncode, q.stdout[-200:], q.stderr[-300:]))
+        rc, r = helper("ssh-unauthorize", d.id); check("removing the device takes the key out again", rc == 0 and r.get("removed") == 1, (rc, r))
+        q = subprocess.run(["ssh", "-i", kf, "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=NUL", f"{me}@127.0.0.1", "echo nova-ssh-ok"],
+                           capture_output=True, text=True, timeout=60)
+        check("…after which it can't log in", "nova-ssh-ok" not in q.stdout, q.stdout[-200:])
+        rc, r = helper("ssh-authorize", d.id, "ssh-rsa AAAA"); check("a key that isn't a Nova phone key is refused", rc != 0, (rc, r))
+    finally:
+        open(CFGF, "w", encoding="utf-8").write(cfg0)
+else: print("      (OpenSSH Server couldn't be installed on this runner — the login checks were skipped)")
+
 print("\nThe monitor")
 status = os.path.join(DATA, "alerts", "www", "status.json"); end = time.time() + 120
 while time.time() < end and not os.path.exists(status): time.sleep(2)

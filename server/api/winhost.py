@@ -227,6 +227,86 @@ def is_admin():
     except Exception: return False
 
 
+# ── SSH: Windows' own OpenSSH Server, for the app's Terminal ─────────────────────────
+# Same idea as on Linux (helper.py): the phone's key — from its secure chip, over the signed, fingerprint-confirmed API — goes
+# into the file sshd reads for that account, tagged with the device id so removing the device removes it. Windows' sshd reads
+# administrators' keys from one shared file (%ProgramData%\ssh\administrators_authorized_keys, by the Match block in its
+# default sshd_config) and everyone else's from their own %USERPROFILE%\.ssh\authorized_keys; both must be writable only by
+# SYSTEM, Administrators (and the user), or sshd ignores them.
+SSH_DIR = os.path.join(os.environ.get("ProgramData") or r"C:\ProgramData", "ssh")
+ADMIN_KEYS = os.path.join(SSH_DIR, "administrators_authorized_keys")
+SSHD_EXE = os.path.join(os.environ.get("SystemRoot") or r"C:\Windows", "System32", "OpenSSH", "sshd.exe")
+
+def sshd_state():
+    """'running' | 'stopped' | 'missing' — Windows' OpenSSH Server service."""
+    rc, so, _ = run(["sc.exe", "query", "sshd"], 15)
+    if rc != 0: return "missing"
+    return "running" if "RUNNING" in so else "stopped"
+
+def ssh_hostkeys():
+    keys = []
+    try: names = sorted(os.listdir(SSH_DIR))
+    except OSError: names = []
+    for f in names:
+        if f.startswith("ssh_host_") and f.endswith("_key.pub"):
+            try: keys.append(" ".join(open(os.path.join(SSH_DIR, f), encoding="utf-8").read().split()[:2]))
+            except OSError: pass
+    return keys
+
+def ssh_account(site):
+    """The account the Terminal signs in as: ssh_user from setup, else whoever is signed in at the screen.
+    → {user, sid, admin, home} or None."""
+    want = str(site.get("ssh_user") or "")
+    if want and not re.fullmatch(r"[A-Za-z0-9 ._@\\-]{1,64}", want): return None
+    script = (f"$n={psq(want)};if(-not $n){{$n=(Get-CimInstance Win32_ComputerSystem).UserName}};if(-not $n){{exit 3}};"
+              "$sid=(New-Object Security.Principal.NTAccount($n)).Translate([Security.Principal.SecurityIdentifier]).Value;"
+              "$g=(New-Object Security.Principal.SecurityIdentifier('S-1-5-32-544')).Translate([Security.Principal.NTAccount]).Value.Split('\\')[-1];"
+              "$m=@(([ADSI]\"WinNT://./$g,group\").psbase.Invoke('Members')|%{(New-Object Security.Principal.SecurityIdentifier([byte[]]$_.GetType().InvokeMember('objectSid','GetProperty',$null,$_,$null),0)).Value});"
+              "$h=(Get-CimInstance Win32_UserProfile -Filter \"SID='$sid'\").LocalPath;"
+              "[pscustomobject]@{user=$n.Split('\\')[-1];sid=$sid;admin=($m -contains $sid);home=$h}|ConvertTo-Json -Compress")
+    rc, so, _ = ps(script, 40)
+    try: a = json.loads(so.strip().splitlines()[-1]) if rc == 0 and so.strip() else None
+    except ValueError: a = None
+    if not a or not re.fullmatch(r"S-1-5-[0-9-]+", str(a.get("sid", ""))): return None
+    return a
+
+def _admin_match():
+    """Does sshd_config send administrators to the shared key file? (Windows' default does.)"""
+    try: lines = open(os.path.join(SSH_DIR, "sshd_config"), encoding="utf-8", errors="replace").read().splitlines()
+    except OSError: return True                                    # no config yet: sshd will write the default one
+    on = False
+    for l in (x.strip() for x in lines):
+        if not l or l.startswith("#"): continue
+        if l.lower().startswith("match "): on = l.lower().split()[1:3] == ["group", "administrators"]; continue
+        if on and l.lower().startswith("authorizedkeysfile") and "administrators_authorized_keys" in l: return True
+    return False
+
+def ssh_keyfile(a, fail):
+    if a.get("admin") and _admin_match(): return ADMIN_KEYS, None
+    home = a.get("home") or ""
+    if not home or not os.path.isdir(home): fail(f"{a.get('user')} has no profile folder on this computer yet — sign in to it once")
+    return os.path.join(home, ".ssh", "authorized_keys"), os.path.join(home, ".ssh")
+
+def _no_links(*paths):
+    for x in paths:
+        if x and (os.path.islink(x) or (hasattr(os.path, "isjunction") and os.path.isjunction(x))): return False
+    return True
+
+def ssh_lines(f):
+    try: return open(f, encoding="utf-8", errors="replace").read().splitlines(True)
+    except OSError: return []
+
+def ssh_write(a, f, d, lines, fail):
+    if not _no_links(d, f): fail("the .ssh folder is a link — refusing")
+    if d: os.makedirs(d, exist_ok=True)
+    tmp = f + ".nova-tmp"
+    with open(tmp, "w", encoding="utf-8", newline="\n") as fh: fh.write("".join(l if l.endswith("\n") else l + "\n" for l in lines))
+    os.replace(tmp, f)
+    # only SYSTEM, Administrators (and, for their own file, the user) — anything looser and sshd ignores the file
+    grant = ["/grant", "*S-1-5-18:F", "/grant", "*S-1-5-32-544:F"] + ([] if f == ADMIN_KEYS else ["/grant", f"*{a['sid']}:F"])
+    rc, so, se = run(["icacls", f, "/inheritance:r"] + grant, 30)
+    if rc != 0: fail("couldn't set the key file's permissions: " + (se or so).strip()[:160])
+
 # ── 3. the privileged verbs ──────────────────────────────────────────────────────────
 # Shared with Linux (helper.py's own code runs): everything Docker, notification settings, Discord, dismissing alerts,
 # background tasks. Listed so a verb that hasn't been looked at on Windows says so instead of failing oddly.
@@ -483,6 +563,34 @@ def verb(verb, args, h):
     if verb == "keep-awake-status" and not args: out(keep_awake_status())
     if verb == "keep-awake" and len(args) == 1 and (args[0].isdigit() or args[0] == "forever"): out(keep_awake(args[0], fail))
     if verb == "list-dirs" and len(args) == 1: out(list_dirs(args[0], fail))
+    if verb == "ssh-info" and not args:
+        st = sshd_state(); keys = ssh_hostkeys() if st != "missing" else []
+        a = ssh_account(h.SITE) if keys else None
+        why = ("" if keys and a else
+               "Turn on OpenSSH Server on this PC: Settings → System → Optional features → Add a feature → OpenSSH Server" if st == "missing" else
+               "Start Windows' SSH server once so it makes its keys: services.msc → OpenSSH SSH Server → Start (and set it to Automatic)" if not keys else
+               "Nova couldn't tell which Windows account to sign in as — sign in to the PC, or set ssh_user in Nova's config")
+        out({"keys": keys, "user": (a or {}).get("user", ""), "running": st == "running", "why": why})
+    if verb in ("ssh-authorize", "ssh-unauthorize", "ssh-key-status") and args and re.fullmatch(h.DEV_RE, args[0]):
+        a = ssh_account(h.SITE)
+        if not a: fail("Nova couldn't tell which Windows account to sign in as — sign in to the PC, or set ssh_user in Nova's config")
+        f, d = ssh_keyfile(a, fail); tag = f"nova-{args[0]}"
+        if not _no_links(d, f): fail("the .ssh folder is a link — refusing")
+        lines = ssh_lines(f); keep = [l for l in lines if not l.rstrip().endswith(" " + tag)]
+        if verb == "ssh-key-status" and len(args) == 1: out({"installed": len(keep) != len(lines), "user": a["user"]})
+        if verb == "ssh-unauthorize" and len(args) == 1:
+            if len(keep) != len(lines):
+                ssh_write(a, f, d, keep, fail); changelog(f"SSH key of removed Nova device {args[0]} taken out of {os.path.basename(f)}")
+            out({"ok": True, "removed": len(lines) - len(keep)})
+        if verb == "ssh-authorize" and len(args) == 2:
+            import base64
+            parts = args[1].split()
+            if len(parts) < 2 or parts[0] != "ecdsa-sha2-nistp256" or not re.fullmatch(r"[A-Za-z0-9+/]{100,200}={0,2}", parts[1]): fail("not a Nova phone key")
+            if base64.b64decode(parts[1])[4:4 + 19] != b"ecdsa-sha2-nistp256": fail("not a Nova phone key")
+            ssh_write(a, f, d, keep + [f"{h.SSH_OPTS} {parts[0]} {parts[1]} {tag}"], fail)
+            changelog(f"SSH key of Nova device {args[0]} added for {a['user']} ({os.path.basename(f)}, from the Nova app)")
+            out({"ok": True, "user": a["user"]})
+        fail("bad request", 2)
     if verb == "backup-status" and not args: out({"none": True})
     if verb == "recommendations" and not args: out({"recommendations": [], "snoozed": 0, "t": time.time()})
     if verb == "task-start" and args and args[0] not in WIN_TASKS: fail("That isn't available on a Windows server yet.", 3)

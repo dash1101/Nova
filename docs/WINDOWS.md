@@ -60,7 +60,8 @@ for approval, `setup`, `ports`, `urls` and the check-up's findings (`doctor`); `
 | Updates: what winget can upgrade, upgrade one or all | ✅ | the same Updates page as on Linux, with programs' friendly names |
 | Windows Update | ❌ | planned (Nova already says when Windows needs a restart to finish updates) |
 | App store containers, compose editing, container updates | ◐ | need Docker Desktop; untested — the test machines have no Docker |
-| Files, terminal | ❌ | planned (terminal needs Windows' ConPTY) |
+| The app's Terminal (SSH) | ✅ | through Windows' **OpenSSH Server** (Settings → System → Optional features). The app adds its key for you after your fingerprint: an administrator's goes in `%ProgramData%\ssh\administrators_authorized_keys`, anyone else's in their own `.ssh\authorized_keys`. It signs in as whoever is signed in at the PC (set `ssh_user` in the config to choose) |
+| Files, the built-in terminal (without SSH) | ❌ | planned (needs Windows' ConPTY) |
 | Backups | ❌ | planned |
 | Storage wizard, partitions, RAID, SMART self-tests, unmounting | ❌ | Windows' own tools for now |
 | Updating Nova itself | ◐ | from the Nova Server window or `nova update` (signature checked); not yet from the phone app |
