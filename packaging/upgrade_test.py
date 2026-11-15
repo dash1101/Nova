@@ -75,7 +75,7 @@ elif sys.argv[1:] == ["after"]:
     try: stops = [c for c in json.loads(so).get("checks", []) if c.get("level") == "stop"]
     except ValueError: stops = [so[-300:]]
     check("the check-up finds nothing that stops it", not stops, stops)
-    rc, so, se = sh("sudo", "nova", "devices"); check("nova devices still lists the phone", "Phone from before the upgrade" in so, so[-300:])
+    rc, so, se = sh("sudo", "nova", "devices"); check("nova devices still lists the phone", "Phone from before the upg" in so and b["id"][:8] in so, so[-300:])
 else:
     sys.exit("usage: upgrade_test.py before|after")
 print(f"\n{'ALL PASSED' if not fails else str(len(fails)) + ' FAILED: ' + '; '.join(fails)}")

@@ -4,8 +4,11 @@ Nova backups — scheduled, versioned copies of folders to a local drive or a NA
 
   * Every run is a dated snapshot that is a complete, plain folder (browse or copy it back with any
     tool). Unchanged files are hard-linked to the previous snapshot, so a run costs only what changed.
-    Destinations without hard links (some SMB servers) get one mirror plus dated "versions" folders
-    holding the files that changed or were deleted.
+    Destinations without hard links (exFAT / FAT drives, some SMB servers) get one mirror plus dated
+    "versions" folders holding the files that changed or were deleted — those can be restored too.
+  * A destination that can't hold owners and permissions (exFAT, FAT, SMB, an NFS export that maps
+    everyone to one account) gets the files and their dates only; a restore from it hands the files to
+    whoever owns the folder they go back into.
   * Safety: a source that is missing, or suddenly has far fewer files than last time (what a dropped
     drive looks like), is not backed up from — the previous copy stays and you get an alert.
   * Old snapshots are thinned to the newest N daily / weekly / monthly; the newest three always stay.
@@ -180,7 +183,7 @@ class Dest:
                     cmd = ["mount", "-t", "nfs", "-o", "soft,timeo=150,retrans=3,noatime", f"{d['host']}:/{d['share']}", self.mnt]
                 else:
                     cmd = ["mount", "-t", "cifs", f"//{d['host']}/{d['share']}", self.mnt, "-o",
-                           f"credentials={SECRETS}/{self.job['id']}.cred,iocharset=utf8,uid=0,gid=0,file_mode=0600,dir_mode=0700,noperm,vers=3.0"]
+                           f"credentials={SECRETS}/{self.job['id']}.cred,iocharset=utf8,uid=0,gid=0,file_mode=0600,dir_mode=0700,noperm,mfsymlinks,vers=3.0"]
                 rc, _, se = run(cmd, timeout=90)
                 if rc != 0:
                     e = se.strip()
@@ -201,15 +204,36 @@ class Dest:
 def snap_time(s):
     return dt.datetime.strptime(s, "%Y-%m-%d_%H%M%S" if len(s) == 17 else "%Y-%m-%d_%H%M")
 
-def hardlinks_work(folder):
-    a, b = os.path.join(folder, ".nova-link-test"), os.path.join(folder, ".nova-link-test2")
+def dest_traits(folder):
+    """What the destination's filesystem can hold, found by trying: hard links (→ dated snapshots), owners and
+    permissions, symbolic links. exFAT and FAT have none of the three; SMB and squashed NFS exports no owners."""
+    a, b, c = (os.path.join(folder, n) for n in (".nova-test", ".nova-test2", ".nova-test3"))
+    t = {"links": False, "owners": False, "symlinks": False}
     try:
-        open(a, "w").write("x"); os.link(a, b); ok = os.stat(a).st_nlink == 2
-    except OSError: ok = False
-    for p in (a, b):
+        with open(a, "w") as f: f.write("x")
+        try: os.link(a, b); t["links"] = os.stat(a).st_nlink == 2
+        except OSError: pass
+        try:
+            os.chown(a, 12345, 12345); os.chmod(a, 0o640); st = os.stat(a)
+            t["owners"] = st.st_uid == 12345 and st.st_gid == 12345 and st.st_mode & 0o777 == 0o640
+        except OSError: pass
+        try: os.symlink("nova-test", c); t["symlinks"] = os.path.islink(c)
+        except OSError: pass
+    except OSError: pass
+    for p in (a, b, c):
         try: os.remove(p)
         except OSError: pass
-    return ok
+    return t
+
+def hardlinks_work(folder): return dest_traits(folder)["links"]
+
+def snap_dir(folder, snap):
+    """The folder of one restore point: a dated snapshot, the mirror ("current"), or — next to a mirror — the
+    files one run replaced or removed (versions/<date>)."""
+    if snap != "current" and not SNAP_RE.match(snap): raise ValueError("bad snapshot")
+    d = os.path.join(folder, snap)
+    if snap != "current" and not os.path.isdir(d) and os.path.isdir(os.path.join(folder, "versions", snap)): return os.path.join(folder, "versions", snap)
+    return d
 
 def snapshots(folder):
     try: return sorted(n for n in os.listdir(folder) if SNAP_RE.match(n) and os.path.isdir(os.path.join(folder, n)))
@@ -248,16 +272,43 @@ def prune(folder, keep, log):
         for s in vs[:-max(3, keep["daily"] + keep["weekly"])]: shutil.rmtree(os.path.join(vdir, s), ignore_errors=True)
     return gone
 
-def rsync_cmd(job, extra):
+PLAIN = ["-rt", "--no-perms", "--no-owner", "--no-group", "--modify-window=2"]     # files and dates only (FAT keeps time to 2 s)
+
+def rsync_cmd(job, extra, traits=None):
     import storage
     storage.ensure_tools(["rsync"])
-    cmd = ["rsync", "-aHAX", "--relative", "--numeric-ids", "--delete", "--delete-excluded", "--info=progress2,stats2", "--no-inc-recursive",
-           "--partial-dir=.rsync-partial"]
+    t = traits or {"owners": job["dest"]["type"] != "smb", "symlinks": True}
+    cmd = ["rsync"] + (["-aHAX"] if t["owners"] else PLAIN + (["-l"] if t["symlinks"] else [])) + \
+          ["--relative", "--numeric-ids", "--delete", "--delete-excluded", "--info=progress2,stats2", "--no-inc-recursive", "--partial-dir=.rsync-partial"]
     if job.get("one_filesystem", True): cmd.append("--one-file-system")
     if job.get("bwlimit_mb"): cmd.append(f"--bwlimit={job['bwlimit_mb'] * 1000}")
-    if job["dest"]["type"] == "smb": cmd = [c for c in cmd if c != "-aHAX"] + ["-rlt", "--no-perms", "--no-owner", "--no-group"]
     for e in job.get("excludes", []): cmd.append(f"--exclude={e}")
     return cmd + extra
+
+def copy_problems(err, strip=""):
+    """rsync's complaints about single files ("couldn't read this one", "this name can't be written there"), as
+    short lines. It carries on past those and finishes with code 23."""
+    out = []
+    for line in err.splitlines():
+        m = re.match(r'rsync: (?:\[\w+\] )?[^"]*"(.+?)"(?: -> "[^"]*")?[^:]*: (.+?)(?: \(\d+\))?$', line)
+        if not m: continue
+        path = m.group(1)
+        if strip and path.startswith(strip): path = path[len(strip):] or "/"
+        path = re.sub(r"/\.([^/]+)\.[A-Za-z0-9]{6}$", r"/\1", path)                 # the temporary name it was being written under
+        item = f"{path}: {m.group(2).strip()}"
+        if item not in out: out.append(item)
+    return out
+
+def settle(rc, stats, err, target, skipped, log):
+    """After a copy: 0 is done, 24 is "some files went away meanwhile" (fine). 23 means single files couldn't be
+    copied — the backup has everything else, so it counts, and says which. Anything else, or a copy that mostly
+    failed, is a failed run."""
+    if stats.get("left_out"): log(f"{stats['left_out']} links or special files were left out — this destination can't hold them")
+    if rc in (0, 24): return
+    probs = copy_problems(err, target) if rc == 23 else []
+    if not probs or len(probs) > max(10, stats.get("files", 0) // 100): raise RuntimeError(f"rsync failed ({rc}): {err.strip()[-300:]}")
+    for x in probs[:50]: log("Couldn't copy " + x)
+    skipped.append(f"{len(probs)} file{'s' if len(probs) != 1 else ''} couldn't be copied — {'; '.join(probs[:3])}{'…' if len(probs) > 3 else ''}")
 
 def run_rsync(cmd, progress, log):
     p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, errors="replace", bufsize=1)
@@ -269,7 +320,8 @@ def run_rsync(cmd, progress, log):
             line = buf.strip(); buf = ""
             m = re.match(r"([\d,]+)\s+(\d+)%\s+(\S+/s)", line)
             if m: progress(int(m.group(2)), f"{human(int(m.group(1).replace(',', '')))} · {m.group(3)}")
-            for k, rx in (("files", r"Number of files: ([\d,]+)"), ("transferred", r"Number of regular files transferred: ([\d,]+)"),
+            if line.startswith("skipping non-regular file"): stats["left_out"] = stats.get("left_out", 0) + 1
+            for k, rx in (("files", r"Number of files: ([\d,]+)"), ("regular", r"Number of files: [\d,]+ \((?:.*?, )?reg: ([\d,]+)"), ("transferred", r"Number of regular files transferred: ([\d,]+)"),
                           ("size", r"Total file size: ([\d,]+)"), ("sent", r"Total transferred file size: ([\d,]+)")):
                 mm = re.search(rx, line)
                 if mm: stats[k] = int(mm.group(1).replace(",", ""))
@@ -303,7 +355,8 @@ def run_job(job, log=print, progress=lambda pct, note="": None, force=False):
             while os.path.exists(os.path.join(folder, stamp)):          # two runs within the same second
                 k += 1; stamp = time.strftime("%Y-%m-%d_%H%M%S", time.localtime(t0 + k))
             result["stamp"] = stamp
-            if hardlinks_work(folder):
+            traits = dest_traits(folder)
+            if traits["links"]:
                 result["mode"] = "snapshots"
                 target = os.path.join(folder, stamp + ".partial")
                 stale = sorted(n for n in os.listdir(folder) if n.endswith(".partial") and SNAP_RE.match(n[:-8]))
@@ -321,8 +374,8 @@ def run_job(job, log=print, progress=lambda pct, note="": None, force=False):
                         parent = os.path.dirname(target + s); os.makedirs(parent, exist_ok=True)
                         subprocess.run(["cp", "-al", old, parent + "/"], timeout=7200)
                 log(f"Copying to {job['dest'].get('path') or job['dest']['host']}…")
-                rc, stats, err = run_rsync(rsync_cmd(job, link + ok_sources + [target + "/"]), progress, log)
-                if rc not in (0, 24): raise RuntimeError(f"rsync failed ({rc}): {err.strip()[-300:]}")
+                rc, stats, err = run_rsync(rsync_cmd(job, link + ok_sources + [target + "/"], traits), progress, log)
+                settle(rc, stats, err, target, skipped, log)
                 os.rename(target, os.path.join(folder, stamp))
                 latest = os.path.join(folder, "latest")
                 try:
@@ -333,8 +386,8 @@ def run_job(job, log=print, progress=lambda pct, note="": None, force=False):
                 result["mode"] = "mirror"
                 target = os.path.join(folder, "current"); os.makedirs(target, exist_ok=True)
                 vdir = os.path.join(folder, "versions", stamp)
-                rc, stats, err = run_rsync(rsync_cmd(job, ["--backup", f"--backup-dir={vdir}"] + ok_sources + [target + "/"]), progress, log)
-                if rc not in (0, 24): raise RuntimeError(f"rsync failed ({rc}): {err.strip()[-300:]}")
+                rc, stats, err = run_rsync(rsync_cmd(job, ["--backup", f"--backup-dir={vdir}"] + ok_sources + [target + "/"], traits), progress, log)
+                settle(rc, stats, err, target, skipped, log)
             result.update(stats=stats); pruned = prune(folder, job["keep"], log); result["pruned"] = len(pruned)
             u = shutil.disk_usage(folder); result["dest_free"] = u.free; result["dest_total"] = u.total
         result["ok"] = not skipped
@@ -346,7 +399,8 @@ def run_job(job, log=print, progress=lambda pct, note="": None, force=False):
     with open(f"{st_dir}/history.jsonl", "a") as f: f.write(json.dumps(result) + "\n")
     s = result.get("stats", {})
     if result.get("error"): notify("warning", f"Backup failed: {job['name']}", result["error"])
-    elif skipped: notify("warning", f"Backup incomplete: {job['name']}", "; ".join(skipped))
+    elif skipped and not (skipped == (prev.get("last") or {}).get("skipped") and all("couldn't be copied" in x for x in skipped)):
+        notify("warning", f"Backup incomplete: {job['name']}", "; ".join(skipped))        # the same few files every night: said once, shown in the app after that
     elif job.get("notify") == "always": notify("info", f"Backup done: {job['name']}", f"{s.get('transferred', 0)} files changed ({human(s.get('sent', 0))}) in {result['duration']} s")
     if result.get("error"): raise RuntimeError(result["error"])
     return result
@@ -402,6 +456,10 @@ def list_snapshots(job, log=print):
         out = [{"id": s, "t": snap_time(s).timestamp()} for s in reversed(snaps)]
         if os.path.isdir(os.path.join(folder, "current")):
             out.insert(0, {"id": "current", "t": os.path.getmtime(os.path.join(folder, "current"))})
+            vdir = os.path.join(folder, "versions")           # next to a mirror: what each run replaced or removed, as it was before
+            try: vs = sorted((n for n in os.listdir(vdir) if SNAP_RE.match(n) and os.path.isdir(os.path.join(vdir, n))), reverse=True)
+            except OSError: vs = []
+            out[1:1] = [{"id": v, "t": snap_time(v).timestamp(), "changes": True} for v in vs]
         return out
 
 def _inside(snapdir, rel):
@@ -410,9 +468,8 @@ def _inside(snapdir, rel):
     return full
 
 def browse(job, snap, rel, log=print):
-    if snap != "current" and not SNAP_RE.match(snap): raise ValueError("bad snapshot")
     with Dest(job, log) as folder:
-        base = os.path.join(folder, snap); full = _inside(base, rel or "/")
+        base = snap_dir(folder, snap); full = _inside(base, rel or "/")
         items = []
         with os.scandir(full) as it:
             for e in it:
@@ -426,33 +483,51 @@ def browse(job, snap, rel, log=print):
                 "items": sorted(items, key=lambda x: (not x["dir"], x["name"].lower()))}
 
 def restore(job, snap, rel, to, log=print, progress=lambda pct, note="": None):
-    """Copy a file or folder back. to="original" puts it back where it was (newer files are kept —
-    nothing is deleted); to="beside" puts it in a "restored-<date>" folder next to the original."""
+    """Copy a file or folder back. to="original" puts it back where it was (files already there are left alone —
+    nothing is overwritten or deleted); to="beside" puts it in a "restored-<date>" folder next to the original.
+    Returns where it went, how many files were put back and how many were already there."""
     if snap != "current" and not SNAP_RE.match(snap): raise ValueError("bad snapshot")
     rel = "/" + rel.strip("/")
     if not any(rel == s or rel.startswith(s.rstrip("/") + "/") for s in job["sources"]): raise ValueError("that isn't inside this backup")
     import storage
     storage.ensure_tools(["rsync"], log)
     with Dest(job, log) as folder:
-        src = _inside(os.path.join(folder, snap), rel)
+        src = _inside(snap_dir(folder, snap), rel)
         if not os.path.exists(src): raise ValueError("not in that snapshot")
         if to == "original": target = rel
         elif to == "beside": target = os.path.join(os.path.dirname(rel), f"restored-{snap}", os.path.basename(rel))
         else: raise ValueError("restore to: original or beside")
-        os.makedirs(os.path.dirname(target) or "/", exist_ok=True)
+        # Folders that have to be made on the way belong to whoever owns the folder they're made in — not to root.
+        parent = os.path.dirname(target) or "/"; have = parent; made = []
+        while not os.path.isdir(have): made.append(have); have = os.path.dirname(have)
+        own = os.stat(target if os.path.isdir(target) else have); os.makedirs(parent, exist_ok=True)
+        for d in made:
+            try: os.chown(d, own.st_uid, own.st_gid)
+            except OSError: pass
         log(f"Restoring {rel} from {snap} to {target}…")
-        cmd = ["rsync", "-aHAX", "--info=progress2", "--no-inc-recursive"] + (["--ignore-existing"] if to == "original" and job.get("keep_newer", True) else [])
+        traits = dest_traits(folder)
+        if traits["owners"]: cmd = ["rsync", "-aHAX"]
+        else:
+            # The backup has no owners or permissions (exFAT, FAT, SMB…): what comes back goes to the owner of the
+            # folder it lands in, private if that folder is private.
+            private = not own.st_mode & 0o077
+            cmd = ["rsync"] + PLAIN[:1] + (["-l"] if traits["symlinks"] else []) + [f"--chown={own.st_uid}:{own.st_gid}", "--chmod=" + ("D700,F600" if private else "D755,F644")]
+        cmd += ["--info=progress2,stats2", "--no-inc-recursive"] + (["--ignore-existing"] if to == "original" and job.get("keep_newer", True) else [])
         rc, stats, err = run_rsync(cmd + ([src + "/", target + "/"] if os.path.isdir(src) else [src, target]), progress, log)
         if rc not in (0, 24): raise RuntimeError(f"restore failed: {err.strip()[-300:]}")
-        notify("info", f"Restored from backup: {job['name']}", f"{rel} ({snap}) → {target}")
-        return {"target": target}
+        n = stats.get("transferred", 0); there = max(0, stats.get("regular", n) - n)
+        said = f"{n} file{'s' if n != 1 else ''} put back" + (f", {there} already there and left as {'they were' if there != 1 else 'it was'}" if there else "")
+        log(said[0].upper() + said[1:] + ".")
+        notify("info", f"Restored from backup: {job['name']}", f"{rel} ({snap}) → {target} · {said}")
+        return {"target": target, "restored": n, "left_alone": there}
 
 def test_dest(job, log=print):
     """Connect, write and delete a test file — before saving a NAS destination."""
     with Dest(job, log) as folder:
         p = os.path.join(folder, ".nova-write-test"); open(p, "w").write("ok"); os.remove(p)
         u = shutil.disk_usage(folder)
-        return {"ok": True, "free": u.free, "total": u.total, "hardlinks": hardlinks_work(folder)}
+        t = dest_traits(folder)
+        return {"ok": True, "free": u.free, "total": u.total, "hardlinks": t["links"], "owners": t["owners"], "symlinks": t["symlinks"]}
 
 
 # ── what the app shows ────────────────────────────────────────────────────────────────

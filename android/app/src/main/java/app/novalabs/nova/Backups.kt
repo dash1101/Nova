@@ -377,7 +377,7 @@ fun kotlinx.coroutines.CoroutineScope.launchCatching(onError: (String) -> Unit, 
                 data == null -> Row1("Opening…", enabled = false)
                 r.snap.isEmpty() -> data!!.optJSONArray("snapshots").objs().forEachIndexed { i, s ->
                     if (i > 0) RowDivider()
-                    Row1(if (s.optString("id") == "current") "Latest copy" else whenText(s.optDouble("t")), s.optString("id").replace('_', ' '), i == 0, Icons.Rounded.History, N.blue,
+                    Row1(if (s.optString("id") == "current") "Latest copy" else whenText(s.optDouble("t")), if (s.optBoolean("changes")) "What this backup replaced or removed, as it was before" else s.optString("id").replace('_', ' '), i == 0, Icons.Rounded.History, N.blue,
                         onClick = { app.go(Route.BackupBrowse(r.id, s.optString("id"), "")) })
                 }
                 else -> {

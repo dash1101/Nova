@@ -173,7 +173,9 @@ private fun f1(d: Double) = if (d >= 100) "%.0f".format(d) else "%.1f".format(d)
         "cpu-stress" -> Group { CpuResult(r); Spacer(Modifier.height(8.dp)) }
         "mem-test" -> Group { MemResult(r); Spacer(Modifier.height(8.dp)) }
         "backup-run" -> r.optJSONObject("stats")?.let { s -> Group { Row1("${s.optInt("transferred")} files changed", "${bytesHuman(s.optLong("sent"))} copied · ${s.optInt("files")} files in the backup · ${r.optInt("duration")} s", true, Icons.Rounded.CheckCircle, N.green) } }
-        "restore" -> Group { Row1("Restored", r.optString("target"), true, Icons.Rounded.CheckCircle, N.green) }
+        "restore" -> Group { val n = r.optInt("restored", -1); val left = r.optInt("left_alone")
+            Row1(when { n < 0 -> "Restored"; n == 1 -> "1 file put back"; n > 0 -> "$n files put back"; else -> "Nothing needed putting back" },
+                r.optString("target") + if (left > 0) " · $left already there, left alone" else "", true, Icons.Rounded.CheckCircle, N.green) }
         "format", "combine", "raid" -> Group { Row1("Ready", r.optString("mount"), true, Icons.Rounded.CheckCircle, N.green) }
     }
 }

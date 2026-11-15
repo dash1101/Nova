@@ -272,7 +272,8 @@ function resultHtml(kind, r) {
   if (kind === "cpu-stress") return group(bigs(big(f1(r.max_temp), "°C", "Hottest", r.max_temp >= 92 ? "var(--red)" : r.max_temp >= 80 ? "var(--amber)" : "var(--green)"), big(r.avg_mhz ?? "—", "MHz", "Average clock"), ...(r.avg_watts != null ? [big(f1(r.avg_watts), "W", "CPU power", "var(--blue)")] : [])) + `<p style="margin:6px 22px 14px">${esc(r.verdict || "")}</p>`);
   if (kind === "mem-test") return group(bigs(big(f1(r.tested_bytes / 1e9), "GB", "Tested"), big(r.errors, "", "Errors", r.errors ? "var(--red)" : "var(--green)")) + `<p style="margin:6px 22px 14px;${r.ok ? "" : "color:var(--red)"}">${esc(r.verdict || "")}</p>`);
   if (kind === "backup-run" && r.stats) return group(row(`${r.stats.transferred} files changed`, { sub: `${bytes(r.stats.sent)} copied · ${r.stats.files} files in the backup · ${r.duration} s`, blue: true, icon: "okc", tint: "var(--green)" }));
-  if (kind === "restore") return group(row("Restored", { sub: r.target, blue: true, icon: "okc", tint: "var(--green)" }));
+  if (kind === "restore") return group(row(r.restored == null ? "Restored" : r.restored === 1 ? "1 file put back" : r.restored ? `${r.restored} files put back` : "Nothing needed putting back",
+    { sub: r.target + (r.left_alone ? ` · ${r.left_alone} already there, left alone` : ""), blue: true, icon: "okc", tint: "var(--green)" }));
   if (r.mount) return group(row("Ready", { sub: r.mount, blue: true, icon: "okc", tint: "var(--green)" }));
   return "";
 }
@@ -457,7 +458,7 @@ export async function restore(ctx) {
   const draw = () => {
     const items = data?.items || [], base = (data?.path || "/").replace(/\/$/, "");
     ctx.show((snap ? note(`Snapshot ${snap.replace("_", " ")} · ${path || "/"}`) : "") + group(err ? row("Couldn't open the backup", { sub: err, icon: "err", tint: "var(--red)" }) : !data ? row("Opening…", { dis: true })
-      : !snap ? (data.snapshots || []).map((s, i) => row(s.id === "current" ? "Latest copy" : ago(s.t), { sub: s.id.replace("_", " "), blue: i === 0, icon: "clock", click: `go:restore/${id}/${s.id}` })).join("")
+      : !snap ? (data.snapshots || []).map((s, i) => row(s.id === "current" ? "Latest copy" : ago(s.t), { sub: s.changes ? "What this backup replaced or removed, as it was before" : s.id.replace("_", " "), blue: i === 0, icon: "clock", click: `go:restore/${id}/${s.id}` })).join("")
       : items.length ? items.map((it, i) => row(it.name, { sub: it.dir ? "Folder" : `${bytes(it.size)} · ${ago(it.mtime)}`, icon: it.dir ? "list" : "article",
           click: it.dir ? `go:restore/${id}/${snap}${(base + "/" + it.name).split("/").map(enc).join("/")}` : isAdmin() ? `pick:${i}` : "", end: isAdmin() ? `<button class="xbtn" data-act="pick:${i}" aria-label="Restore">${I("refresh")}</button>` : "" })).join("") : row("Empty folder", { dis: true })),
       { title: !snap ? "Pick a snapshot" : (path.split("/").pop() || snap), actions: snap && path.length > 1 && isAdmin() ? [{ icon: "refresh", label: "Restore this folder", act: "pickdir" }] : [] });

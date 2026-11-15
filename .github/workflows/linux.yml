@@ -102,6 +102,21 @@ jobs:
       - name: Logs
         if: always()
         run: sudo journalctl -u nova-api -n 60 --no-pager || true
+  backups:
+    # A backup is only as good as its restore. On every kind of destination Nova backs up to — a drive, a drive
+    # formatted for Windows and Macs (exFAT), a USB stick (FAT), an SMB share, an NFS export — real files are backed
+    # up, changed, backed up again, wiped, restored and compared byte for byte (packaging/restore_drill.py).
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and install the package
+        run: |
+          packaging/build-deb.sh
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ./dist/nova-server_*_all.deb
+      - name: Back up, wipe, restore, compare
+        run: sudo NOVA_DRILL_NEED=ext4 python3 packaging/restore_drill.py
   released:
     # The one-line install against what is actually published — or, with a tag, against a beta before it's promoted.
     if: github.event_name == 'workflow_dispatch' && inputs.released
