@@ -79,6 +79,8 @@ rc, so, se = nova("add", "--json")
 try: inv = json.loads(so.strip().splitlines()[-1])
 except Exception: inv = {}
 check("nova add makes a code", rc == 0 and len(inv.get("code", "")) == 10 and inv.get("payload"), (rc, so[-200:], se[-300:]))
+qr = json.loads(inv.get("payload") or "{}")
+check("…whose QR carries the encrypted address and the certificate's fingerprint", str(qr.get("lan", "")).startswith("https://") and len(qr.get("pin", "")) == 64, qr)
 k = ec.generate_private_key(ec.SECP256R1())
 s, r = raw("POST", "/api/v1/pair", json.dumps({"code": "WRONGCODE1", "name": "ci", "public_key": pem_of(k)}).encode(), {"Content-Type": "application/json"})
 check("a wrong code is refused", s == 401, (s, r))

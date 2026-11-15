@@ -3016,6 +3016,11 @@ def main():
                 if addr in waiting: waiting.remove(addr)
                 return
         threading.Thread(target=again, daemon=True).start()
+    # The certificate first: once Nova answers at all, the certificate exists. (A pairing code made in Nova's very first
+    # second — an installer that opens "Pair a phone" as soon as Nova answers — used to carry the plain address and no
+    # fingerprint, which apps refuse.)
+    try: tls_material()
+    except Exception as e: print(f"no certificate: {e}", flush=True)
     for addr in binds:
         listen(lambda a: NovaServer(a, Handler), addr, port, f"{API_VERSION} listening")
     # Encrypted listener on the home network (the app pins its certificate).

@@ -27,7 +27,9 @@ Commands:  nova_alerts.py                  one check pass (the timer runs this e
            nova_alerts.py forget-drive <serial|name>
            nova_alerts.py test             send a test alert
 """
-import json, math, os, re, subprocess, sys, time, socket, glob, urllib.request, urllib.error
+import json, math, os, re, subprocess, sys, time, socket, glob
+# (urllib is imported where it's used — a web check or a Discord post — not on every pass: a pass runs every 15 seconds,
+#  and on a small server each import and each program started is time the processor could have slept)
 from datetime import datetime, timezone
 
 WINDOWS = os.name == "nt"            # the same monitor runs on Windows and macOS; its checks there are in winmon.py / macmon.py
@@ -167,7 +169,7 @@ def load_json(path, default):
 
 def write_json_atomic(path, data, mode=0o644):
     tmp = f"{path}.tmp{os.getpid()}"
-    with open(tmp, "w") as f: json.dump(data, f, indent=1, default=str)
+    with open(tmp, "w") as f: f.write(json.dumps(data, default=str))      # (compact, in one go: ten times quicker than indented)
     os.chmod(tmp, mode); os.replace(tmp, path)
 
 def archive_append(events, archived=False):
@@ -218,6 +220,14 @@ def mergerfs_branches():
             for part in src.split(":"):
                 br.update(glob.glob(part) if any(c in part for c in "*?[") else [part])
     return br
+
+def unit_states(verb, units):
+    """`systemctl is-active` / `is-enabled` for several units in one call → {unit: answer}."""
+    units = list(units)
+    if not units: return {}
+    lines = sh(["systemctl", verb] + units)[1].split()
+    if len(lines) == len(units): return dict(zip(units, lines))
+    return {u: sh(["systemctl", verb, u])[1].strip() for u in units}      # (an answer that doesn't line up: ask one by one)
 
 def unit_installed(name):
     """The service's unit file exists (is-enabled alone can claim "enabled" for units that aren't there)."""
@@ -740,12 +750,15 @@ class Monitor:
         down = []
         svcs = self.cfg["required_services"]
         if svcs == "auto":
-            svcs = [x for x in self.cfg["auto_services"] if unit_installed(x) and sh(["systemctl", "is-enabled", x])[1].strip() in ("enabled", "static", "indirect", "alias")]
+            have = [x for x in self.cfg["auto_services"] if unit_installed(x)]
+            enabled = unit_states("is-enabled", have)
+            svcs = [x for x in have if enabled.get(x) in ("enabled", "static", "indirect", "alias")]
+        state = unit_states("is-active", svcs)
         for svc in svcs:
-            rc, out = sh(["systemctl", "is-active", svc])
-            active = out.strip() == "active"
+            out = state.get(svc, "")
+            active = out == "active"
             if not active: down.append(svc)
-            self.condition(f"svc:{svc}", not active, "critical", f"Service down: {svc}", f"systemctl is-active → {out.strip() or 'unknown'}")
+            self.condition(f"svc:{svc}", not active, "critical", f"Service down: {svc}", f"systemctl is-active → {out or 'unknown'}")
         rc, ids = sh(["docker", "ps", "-aq"])
         rc, out = sh(["docker", "inspect"] + ids.split()) if ids.strip() else (0, "[]")
         try: ctrs = json.loads(out)
@@ -785,6 +798,7 @@ class Monitor:
             return
         fails = self.st["counters"].setdefault("web_fails", {})
         ok = 0
+        import urllib.request, urllib.error
         for url in self.cfg["public_urls"]:
             code = 0
             try:

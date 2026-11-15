@@ -33,19 +33,18 @@ final class Transport: NSObject, URLSessionDelegate {
 
     func pin(_ url: String, to fingerprint: String) {
         guard let host = URL(string: url)?.host, !fingerprint.isEmpty else { return }
-        lock.lock(); pins[host] = fingerprint.lowercased(); lock.unlock()
+        lock.withLock { pins[host] = fingerprint.lowercased() }
     }
 
     func lastFingerprint(_ url: String) -> String? {
         guard let host = URL(string: url)?.host else { return nil }
-        lock.lock(); defer { lock.unlock() }
-        return seen[host]
+        return lock.withLock { seen[host] }
     }
 
     /// The fingerprint of whatever answers at this address — nothing is sent to it and nothing it says is believed.
     func fingerprint(of url: String) async -> String? {
-        lock.lock(); captureOnly = true; lock.unlock()
-        defer { lock.lock(); captureOnly = false; lock.unlock() }
+        lock.withLock { captureOnly = true }
+        defer { lock.withLock { captureOnly = false } }
         guard let u = URL(string: url + "/api/v1/ping") else { return nil }
         var req = URLRequest(url: u); req.timeoutInterval = 6
         _ = try? await session.data(for: req)
@@ -58,11 +57,11 @@ final class Transport: NSObject, URLSessionDelegate {
         guard space.authenticationMethod == NSURLAuthenticationMethodServerTrust, let trust = space.serverTrust else {
             return completionHandler(.performDefaultHandling, nil)
         }
-        lock.lock(); let want = pins[space.host]; let capture = captureOnly; lock.unlock()
+        let (want, capture) = lock.withLock { (pins[space.host], captureOnly) }
         var shown = ""
         if let chain = SecTrustCopyCertificateChain(trust) as? [SecCertificate], let leaf = chain.first {
             shown = SHA256.hash(data: SecCertificateCopyData(leaf) as Data).map { String(format: "%02x", $0) }.joined()
-            lock.lock(); seen[space.host] = shown; lock.unlock()
+            lock.withLock { seen[space.host] = shown }
         }
         if capture { return completionHandler(.cancelAuthenticationChallenge, nil) }
         guard let want = want else { return completionHandler(.performDefaultHandling, nil) }     // not pinned: the usual checks
@@ -113,12 +112,12 @@ final class NovaAPI {
     }
 
     var pairing: Pairing {
-        get { lock.lock(); defer { lock.unlock() }; return _pairing }
-        set { lock.lock(); _pairing = newValue; lock.unlock(); applyPins() }
+        get { lock.withLock { _pairing } }
+        set { lock.withLock { _pairing = newValue }; applyPins() }
     }
 
     /// The way the last request went: "home", "tailnet" or "remote".
-    var via: String { lock.lock(); defer { lock.unlock() }; return _via }
+    var via: String { lock.withLock { _via } }
 
     private func applyPins() {
         let p = pairing
@@ -136,7 +135,7 @@ final class NovaAPI {
     }
 
     /// After the app comes back, or the network changes: start from the home network again.
-    func forgetRoute() { lock.lock(); preferred = ""; alive = [:]; lock.unlock() }
+    func forgetRoute() { lock.withLock { preferred = ""; alive = [:] } }
 
     func get(_ path: String) async throws -> JSON { try await call("GET", path) }
     func post(_ path: String, _ body: [String: Any] = [:]) async throws -> JSON { try await call("POST", path, body) }
@@ -151,7 +150,7 @@ final class NovaAPI {
         do { return try await overRoutes(method, path, data, fixed) }
         catch let e as ApiError where e.reason == "clock" && fixed == nil {
             // refused only because this iPhone's clock is off: use the server's time and sign it again
-            if let t = e.serverTime { lock.lock(); clockOffsetMs = t - Date().timeIntervalSince1970 * 1000; lock.unlock() }
+            if let t = e.serverTime { lock.withLock { clockOffsetMs = t - Date().timeIntervalSince1970 * 1000 } }
             do { return try await overRoutes(method, path, data, nil) }
             catch let e2 as ApiError where e2.reason == "clock" {
                 throw ApiError(code: 0, message: "This iPhone's clock is off from the server's. Turn on Set Automatically in Settings → General → Date & Time.", reason: "clock")
@@ -160,7 +159,7 @@ final class NovaAPI {
     }
 
     private func sign(_ method: String, _ path: String, _ body: Data, confirm: String?) throws -> [String: String] {
-        lock.lock(); let off = clockOffsetMs; let id = _pairing.deviceId; lock.unlock()
+        let (off, id) = lock.withLock { (clockOffsetMs, _pairing.deviceId) }
         let ts = String(Int64(Date().timeIntervalSince1970 * 1000 + off))
         var rnd = [UInt8](repeating: 0, count: 18)
         _ = SecRandomCopyBytes(kSecRandomDefault, rnd.count, &rnd)
@@ -175,23 +174,23 @@ final class NovaAPI {
 
     private func overRoutes(_ method: String, _ path: String, _ body: Data, _ fixed: [String: String]?) async throws -> JSON {
         var order = routes
-        lock.lock(); let first = preferred; lock.unlock()
+        let first = lock.withLock { preferred }
         if let i = order.firstIndex(where: { $0.name == first }) { order.insert(order.remove(at: i), at: 0) }
         if order.isEmpty { throw ApiError(code: 0, message: "This iPhone isn't paired with a server") }
         var notes: [String] = []
         for r in order {
             do {
                 // a way in that hasn't answered lately gets a quick knock first, so a dead one costs seconds, not a long wait
-                lock.lock(); let fresh = (alive[r.name].map { Date().timeIntervalSince($0) < 20 }) ?? false; lock.unlock()
+                let fresh = lock.withLock { (alive[r.name].map { Date().timeIntervalSince($0) < 20 }) ?? false }
                 if !fresh { _ = try await transport.send("GET", r.base, "/api/v1/ping", body: Data(), headers: extra(r), timeout: r.name == "remote" ? 8 : 3.5) }
                 var h = try fixed ?? sign(method, path, body, confirm: nil)
                 for (k, v) in extra(r) { h[k] = v }
                 let j = try await transport.send(method, r.base, path, body: body, headers: h, timeout: 90)
-                lock.lock(); _via = r.name; preferred = r.name == "home" ? "" : r.name; alive[r.name] = Date(); lock.unlock()
+                lock.withLock { _via = r.name; preferred = r.name == "home" ? "" : r.name; alive[r.name] = Date() }
                 return j
             } catch let e as ApiError {
-                if !e.offline { lock.lock(); alive[r.name] = Date(); lock.unlock(); throw e }
-                lock.lock(); alive[r.name] = nil; lock.unlock()
+                if !e.offline { lock.withLock { alive[r.name] = Date() }; throw e }
+                lock.withLock { alive[r.name] = nil }
                 notes.append("\(label(r.name)): \(e.message)")
             }
         }
@@ -214,7 +213,7 @@ final class NovaAPI {
         let t = Transport()
         t.pin(info.lan, to: info.pin); t.pin(info.tailnet, to: info.pin)
         let pem = try Keys.ensure(.device)
-        let form = UIDevice.current.userInterfaceIdiom == .pad ? "tablet" : "phone"
+        let form = await MainActor.run { UIDevice.current.userInterfaceIdiom == .pad } ? "tablet" : "phone"
         let body = try JSONSerialization.data(withJSONObject: ["code": info.code, "name": name, "public_key": pem, "form": form])
         var tries: [(String, String, [String: String])] = []
         if !info.lan.isEmpty { tries.append(("home network", info.lan, [:])) }
