@@ -40,17 +40,18 @@ final class NovaTests: XCTestCase {
     }
 
     func testTheDeviceKeySignsWhatTheServerChecks() throws {
-        Keys.remove(.device)
-        let pem = try Keys.ensure(.device)
+        let key = Keys.Kind(slot: "key.unit-test")              // a key of its own: the app hosting these tests keeps its real one
+        Keys.remove(key)
+        let pem = try Keys.ensure(key)
         XCTAssertTrue(pem.hasPrefix("-----BEGIN PUBLIC KEY-----"), "the server reads the key as PEM")
-        XCTAssertEqual(try Keys.ensure(.device), pem, "asking again gives the same key")
+        XCTAssertEqual(try Keys.ensure(key), pem, "asking again gives the same key")
         let message = Data("GET\n/api/v1/overview\n1794616313839\nabcdefghijklmnopqrstuvwx\ne3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855".utf8)
-        let sig = try Keys.sign(.device, message)
+        let sig = try Keys.sign(key, message)
         let der = try XCTUnwrap(Data(base64Encoded: sig))
         let pub = try P256.Signing.PublicKey(pemRepresentation: pem)
         XCTAssertTrue(pub.isValidSignature(try P256.Signing.ECDSASignature(derRepresentation: der), for: message), "ECDSA P-256 over SHA-256, DER")
-        Keys.remove(.device)
-        XCTAssertFalse(Keys.exists(.device))
+        Keys.remove(key)
+        XCTAssertFalse(Keys.exists(key))
     }
 
     func testReadingAnswers() {

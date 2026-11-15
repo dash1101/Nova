@@ -226,6 +226,8 @@ struct DevicesView: View {
     @EnvironmentObject var app: AppState
     @State private var devices: [JSON] = []
     @State private var removing: JSON?
+    @State private var addingBrowser = false
+    @State private var browserCode = ""
 
     var body: some View {
         List {
@@ -246,6 +248,21 @@ struct DevicesView: View {
         .navigationTitle("Users & devices")
         .refreshable { await load() }
         .task { await load() }
+        .toolbar {
+            if app.isAdmin {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button { browserCode = ""; addingBrowser = true } label: { Label("Add a browser", systemImage: "plus") }
+                }
+            }
+        }
+        .alert("Add a browser", isPresented: $addingBrowser) {
+            TextField("Code", text: $browserCode).textInputAutocapitalization(.characters).autocorrectionDisabled()
+            Button("Add") {
+                let code = browserCode.trimmingCharacters(in: .whitespaces).uppercased()
+                app.act("Added — that browser can use Nova now") { try await app.risky("Add the browser with code \(code)", "POST", "/api/v1/browser/approve", ["code": code]); await load() }
+            }
+            Button("Cancel", role: .cancel) { }
+        } message: { Text("Open your server's address in a browser; it shows a code under “Get a code”. Type it here to let that browser in.") }
         .confirmationDialog("Remove \(removing?["name"].str ?? "")?", isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } }), titleVisibility: .visible) {
             Button("Remove", role: .destructive) {
                 guard let d = removing else { return }

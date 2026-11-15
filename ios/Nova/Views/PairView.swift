@@ -76,7 +76,7 @@ struct PairView: View {
         .task {
             #if DEBUG
             // UI tests hand the pairing code over at launch (the Simulator has no camera to scan it with)
-            if let raw = ProcessInfo.processInfo.environment["NOVA_PAIR"], let info = PairInfo.parse(raw) { pair(info) }
+            if let raw = ProcessInfo.processInfo.environment["NOVA_UITEST_PAIR"], let info = PairInfo.parse(raw) { pair(info) }
             #endif
         }
     }

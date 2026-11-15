@@ -33,6 +33,9 @@ final class AppState: ObservableObject {
     private var cancelWaiting = false
 
     init() {
+        #if DEBUG
+        if ProcessInfo.processInfo.environment["NOVA_UITEST_RESET"] == "1" { Pairing.forget() }      // UI tests start unpaired
+        #endif
         if let p = Pairing.load(), Keys.exists(.device) { adopt(p) }
     }
 

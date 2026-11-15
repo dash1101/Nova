@@ -16,7 +16,7 @@ final class NovaUITests: XCTestCase {
     private func anything(_ id: String) -> XCUIElement { app.descendants(matching: .any).matching(identifier: id).firstMatch }
 
     func testFirstScreen() {
-        app.launchEnvironment["NOVA_PAIR"] = ""
+        app.launchEnvironment["NOVA_UITEST_RESET"] = "1"
         app.launch()
         XCTAssertTrue(app.buttons["scan"].waitForExistence(timeout: 20), "the pairing screen offers to scan the code")
         XCTAssertTrue(app.textFields["address"].exists && app.textFields["code"].exists, "…or to type the address and code")
@@ -25,10 +25,11 @@ final class NovaUITests: XCTestCase {
 
     func testPairAndLookAround() throws {
         guard let pair = ProcessInfo.processInfo.environment["NOVA_PAIR"], !pair.isEmpty else { throw XCTSkip("no server to pair with (NOVA_PAIR isn't set)") }
-        app.launchEnvironment["NOVA_PAIR"] = pair
+        app.launchEnvironment["NOVA_UITEST_RESET"] = "1"
+        app.launchEnvironment["NOVA_UITEST_PAIR"] = pair
         app.launch()
 
-        XCTAssertTrue(anything("status").waitForExistence(timeout: 60), "paired, and Home shows the server's status: \(app.debugDescription.suffix(1500))")
+        XCTAssertTrue(anything("status").waitForExistence(timeout: 60), "paired, and Home shows the server's status — \(anything("pairError").exists ? anything("pairError").label : "no error shown")")
         XCTAssertFalse(anything("offline").exists, "the server is reachable")
         sleep(5)                                              // a few live numbers for the graphs
         shot("01-home")

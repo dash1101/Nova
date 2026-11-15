@@ -47,15 +47,21 @@ enum Keychain {
 ///  - the confirmation key signs risky actions a second time, and only after Face ID, Touch ID or the passcode.
 /// The Simulator has no Secure Enclave, so there (and only there) the keys are ordinary ones kept in the Keychain.
 enum Keys {
-    enum Kind: String { case device = "key.device", confirm = "key.confirm" }
+    /// Which key: where it's kept in the Keychain, and whether using it asks for Face ID / Touch ID / the passcode.
+    struct Kind: Equatable {
+        let slot: String
+        var asks = false
+        static let device = Kind(slot: "key.device")
+        static let confirm = Kind(slot: "key.confirm", asks: true)
+    }
 
     struct Failure: LocalizedError { let message: String; var errorDescription: String? { message } }
 
     static var hasEnclave: Bool { SecureEnclave.isAvailable }
 
-    static func exists(_ kind: Kind) -> Bool { Keychain.get(kind.rawValue) != nil }
+    static func exists(_ kind: Kind) -> Bool { Keychain.get(kind.slot) != nil }
 
-    static func remove(_ kind: Kind) { Keychain.delete(kind.rawValue) }
+    static func remove(_ kind: Kind) { Keychain.delete(kind.slot) }
 
     /// Makes the key if there isn't one yet. Returns its public half as PEM (what the server stores).
     @discardableResult
@@ -63,23 +69,23 @@ enum Keys {
         if let pem = try? publicPEM(kind) { return pem }
         if hasEnclave {
             var flags: SecAccessControlCreateFlags = [.privateKeyUsage]
-            if kind == .confirm { flags.insert(.userPresence) }
-            let protection = kind == .confirm ? kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly : kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+            if kind.asks { flags.insert(.userPresence) }
+            let protection = kind.asks ? kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly : kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
             var err: Unmanaged<CFError>?
             guard let access = SecAccessControlCreateWithFlags(nil, protection, flags, &err) else {
-                throw Failure(message: kind == .confirm ? "Set a passcode on this iPhone first (Settings → Face ID & Passcode)." : "Couldn't make this iPhone's key.")
+                throw Failure(message: kind.asks ? "Set a passcode on this iPhone first (Settings → Face ID & Passcode)." : "Couldn't make this iPhone's key.")
             }
             let key = try SecureEnclave.P256.Signing.PrivateKey(accessControl: access)
-            guard Keychain.set(kind.rawValue, key.dataRepresentation) else { throw Failure(message: "Couldn't save this iPhone's key.") }
+            guard Keychain.set(kind.slot, key.dataRepresentation) else { throw Failure(message: "Couldn't save this iPhone's key.") }
             return key.publicKey.pemRepresentation
         }
         let key = P256.Signing.PrivateKey()
-        guard Keychain.set(kind.rawValue, key.rawRepresentation) else { throw Failure(message: "Couldn't save this iPhone's key.") }
+        guard Keychain.set(kind.slot, key.rawRepresentation) else { throw Failure(message: "Couldn't save this iPhone's key.") }
         return key.publicKey.pemRepresentation
     }
 
     static func publicPEM(_ kind: Kind) throws -> String {
-        guard let blob = Keychain.get(kind.rawValue) else { throw Failure(message: "This iPhone has no key yet.") }
+        guard let blob = Keychain.get(kind.slot) else { throw Failure(message: "This iPhone has no key yet.") }
         if hasEnclave { return try SecureEnclave.P256.Signing.PrivateKey(dataRepresentation: blob).publicKey.pemRepresentation }
         return try P256.Signing.PrivateKey(rawRepresentation: blob).publicKey.pemRepresentation
     }
@@ -87,18 +93,18 @@ enum Keys {
     /// Signs `message`; the answer is the signature the server expects (DER, base64).
     /// For the confirmation key, iOS shows Face ID / Touch ID / passcode with `reason` first — call it off the main thread.
     static func sign(_ kind: Kind, _ message: Data, reason: String = "") throws -> String {
-        guard let blob = Keychain.get(kind.rawValue) else { throw Failure(message: "This iPhone has no key yet.") }
+        guard let blob = Keychain.get(kind.slot) else { throw Failure(message: "This iPhone has no key yet.") }
         if hasEnclave {
             let ctx = LAContext()
-            if kind == .confirm { ctx.localizedReason = reason.isEmpty ? "Confirm it's you" : reason }
+            if kind.asks { ctx.localizedReason = reason.isEmpty ? "Confirm it's you" : reason }
             do {
                 let key = try SecureEnclave.P256.Signing.PrivateKey(dataRepresentation: blob, authenticationContext: ctx)
                 return try key.signature(for: message).derRepresentation.base64EncodedString()
             } catch {
-                throw Failure(message: kind == .confirm ? "Not confirmed." : "This iPhone's key couldn't sign (\(error.localizedDescription)).")
+                throw Failure(message: kind.asks ? "Not confirmed." : "This iPhone's key couldn't sign (\(error.localizedDescription)).")
             }
         }
-        if kind == .confirm {                                   // Simulator: ask the same way where it can, then sign
+        if kind.asks {                                          // Simulator: ask the same way where it can, then sign
             let ctx = LAContext()
             var e: NSError?
             if ctx.canEvaluatePolicy(.deviceOwnerAuthentication, error: &e) {
