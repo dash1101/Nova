@@ -285,6 +285,10 @@ def rsync_cmd(job, extra, traits=None):
     for e in job.get("excludes", []): cmd.append(f"--exclude={e}")
     return cmd + extra
 
+PLAINLY = {"Invalid argument": "the destination can't hold a name like this", "Operation not supported": "the destination can't hold this kind of file",
+           "Permission denied": "it couldn't be read (not allowed)", "Input/output error": "it couldn't be read — the drive it's on may be failing",
+           "File name too long": "its name is too long for the destination", "Function not implemented": "the destination can't hold this kind of file"}
+
 def copy_problems(err, strip=""):
     """rsync's complaints about single files ("couldn't read this one", "this name can't be written there"), as
     short lines. It carries on past those and finishes with code 23."""
@@ -295,7 +299,8 @@ def copy_problems(err, strip=""):
         path = m.group(1)
         if strip and path.startswith(strip): path = path[len(strip):] or "/"
         path = re.sub(r"/\.([^/]+)\.[A-Za-z0-9]{6}$", r"/\1", path)                 # the temporary name it was being written under
-        item = f"{path}: {m.group(2).strip()}"
+        why = m.group(2).strip()
+        item = f"{path}: {PLAINLY.get(why, why[:1].lower() + why[1:])}"
         if item not in out: out.append(item)
     return out
 
