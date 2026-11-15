@@ -18,8 +18,9 @@ case "$OS" in
   Darwin) ;;
   *) die "Nova's server runs on Linux, macOS and Windows (there: get.ps1). Nova web works in any browser." ;;
 esac
-if command -v sha256sum >/dev/null 2>&1; then sums() { sha256sum -c --status; }
-else sums() { shasum -a 256 -c --status; }; fi           # (a Mac has shasum)
+# (a Mac checks with shasum: the sha256sum newer Macs have is a different program that can't check a list)
+if [ "$OS" != Darwin ] && command -v sha256sum >/dev/null 2>&1; then sums() { sha256sum -c --status; }
+else sums() { shasum -a 256 -c --status; }; fi
 if command -v curl >/dev/null 2>&1; then get() { curl -fsSL --retry 3 -o "$2" "$1"; }
 elif command -v wget >/dev/null 2>&1; then get() { wget -q -O "$2" "$1"; }
 else die "Needs curl or wget."; fi
@@ -31,7 +32,7 @@ get "$BASE/SHA256SUMS" "$T/SHA256SUMS" || die "Couldn't reach GitHub."
 get "$BASE/SHA256SUMS.sig" "$T/SHA256SUMS.sig"
 
 # The checksums are signed with Nova's release key (ed25519). Check it when this system's openssl can.
-if command -v openssl >/dev/null 2>&1 && get "$KEY_URL" "$T/key.pub" 2>/dev/null && base64 -d "$T/SHA256SUMS.sig" > "$T/sig.bin" 2>/dev/null; then
+if command -v openssl >/dev/null 2>&1 && get "$KEY_URL" "$T/key.pub" 2>/dev/null && { base64 -d < "$T/SHA256SUMS.sig" > "$T/sig.bin" 2>/dev/null || base64 -D < "$T/SHA256SUMS.sig" > "$T/sig.bin" 2>/dev/null; }; then
   if openssl pkeyutl -verify -pubin -inkey "$T/key.pub" -rawin -in "$T/SHA256SUMS" -sigfile "$T/sig.bin" >/dev/null 2>&1; then say "✓ Release signature checks out"
   elif openssl pkeyutl -help 2>&1 | grep -q rawin; then die "The release's signature doesn't match — not installing."
   else say "(this openssl can't check ed25519 signatures; checking the file's checksum only)"; fi
