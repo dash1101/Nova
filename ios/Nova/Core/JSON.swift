@@ -25,6 +25,13 @@ struct JSON {
 }
 
 enum Fmt {
+    /// The server puts a symbol in front of an alert's title for Discord ("⚠️ Drive is hot"); this app shows its own icon.
+    static func plain(_ title: String) -> String {
+        var s = Substring(title)
+        while let c = s.first, !(c.isLetter || c.isNumber || c == "/" || c == "\"" || c == "(") { s = s.dropFirst() }
+        return s.isEmpty ? title : String(s)
+    }
+
     /// 1536 → "1.5 KB", for sizes and speeds.
     static func bytes(_ n: Double) -> String {
         let units = ["B", "KB", "MB", "GB", "TB", "PB"]

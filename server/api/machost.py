@@ -95,7 +95,8 @@ def cpu_model():
 def board():
     """"Apple Mac mini (Macmini9,1)" — what a Mac has instead of a motherboard name."""
     hw = _hardware(); name = str(hw.get("machine_name", "")).strip(); ident = str(hw.get("machine_model", "") or sysctl("hw.model")).strip()
-    return ("Apple " + (f"{name} ({ident})" if name and ident else name or ident)).strip()
+    what = f"{name} ({ident})" if name and ident else name or ident
+    return what if what.startswith("Apple") else ("Apple " + what).strip()
 
 def look():
     """Which picture the Home page shows until someone picks: a laptop for a MacBook, a mini PC for a Mac mini or Studio, else a tower."""

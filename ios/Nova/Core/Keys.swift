@@ -75,7 +75,9 @@ enum Keys {
             guard let access = SecAccessControlCreateWithFlags(nil, protection, flags, &err) else {
                 throw Failure(message: kind.asks ? "Set a passcode on this iPhone first (Settings → Face ID & Passcode)." : "Couldn't make this iPhone's key.")
             }
-            let key = try SecureEnclave.P256.Signing.PrivateKey(accessControl: access)
+            let key: SecureEnclave.P256.Signing.PrivateKey
+            do { key = try SecureEnclave.P256.Signing.PrivateKey(accessControl: access) }
+            catch { throw Failure(message: kind.asks ? "Set a passcode on this iPhone first (Settings → Face ID & Passcode) — the confirmation key is tied to it." : "Couldn't make this iPhone's key.") }
             guard Keychain.set(kind.slot, key.dataRepresentation) else { throw Failure(message: "Couldn't save this iPhone's key.") }
             return key.publicKey.pemRepresentation
         }

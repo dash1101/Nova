@@ -16,7 +16,7 @@ struct InboxView: View {
             if !active.isEmpty {
                 Section("Needs attention") {
                     ForEach(Array(active.enumerated()), id: \.offset) { _, a in
-                        EventRow(level: a["level"].str, title: a["title"].str, detail: a["detail"].str, when: a["since"].double)
+                        EventRow(level: a["level"].str, title: Fmt.plain(a["title"].str), detail: a["detail"].str, when: a["since"].double)
                             .swipeActions(edge: .trailing) {
                                 if app.isAdmin, let key = a["key"].string {
                                     Button("Ignore") {

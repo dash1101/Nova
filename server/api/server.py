@@ -838,7 +838,7 @@ def convo_history(c):
 
 def process_list():
     """Every process, like top: who runs it, its CPU (now) and memory, and how long it's been running."""
-    rc, res = helper("proc-list", timeout=20)                # through the helper: this service only sees its own processes
+    rc, res = helper("proc-list", timeout=45)                # through the helper: this service only sees its own processes (a busy Mac or Windows PC takes a while to ask about each one)
     procs = res.get("processes", []) if rc == 0 else []
     try:
         m = plat.meminfo()

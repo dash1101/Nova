@@ -42,7 +42,7 @@ struct PowerView: View {
         List {
             Section {
                 Button { ask = "reboot" } label: { Label("Restart the server", systemImage: "arrow.clockwise") }
-                Button(role: .destructive) { ask = "poweroff" } label: { Label("Shut down the server", systemImage: "power") }
+                Button(role: .destructive) { ask = "poweroff" } label: { Label("Shut down the server", systemImage: "power").foregroundStyle(.red) }
             } footer: { Text("Both ask for your confirmation. After a shutdown someone has to switch the server on again.") }
             Section("Keep awake") {
                 if awake["on"].bool {
@@ -130,9 +130,11 @@ struct ProcessesView: View {
     var body: some View {
         let sorted = procs.sorted { byMemory ? ($0["mem"].double ?? 0) > ($1["mem"].double ?? 0) : ($0["cpu"].double ?? 0) > ($1["cpu"].double ?? 0) }
         List {
-            Picker("Sort by", selection: $byMemory) { Text("Processor").tag(false); Text("Memory").tag(true) }
-                .pickerStyle(.segmented).listRowBackground(Color.clear).listRowInsets(EdgeInsets())
-            ForEach(Array(sorted.prefix(60).enumerated()), id: \.offset) { _, p in
+            Section {
+                Picker("Sort by", selection: $byMemory) { Text("Processor").tag(false); Text("Memory").tag(true) }
+                    .pickerStyle(.segmented).listRowBackground(Color.clear).listRowInsets(EdgeInsets())
+            }
+            Section { ForEach(Array(sorted.prefix(60).enumerated()), id: \.offset) { _, p in
                 Button { if !p["kernel"].bool { picked = p } } label: {
                     HStack {
                         VStack(alignment: .leading, spacing: 2) {
@@ -146,7 +148,7 @@ struct ProcessesView: View {
                         }
                     }
                 }.foregroundStyle(.primary)
-            }
+            } }
         }
         .overlay { if !loaded { ProgressView() } }
         .navigationTitle("Task manager")
@@ -200,7 +202,7 @@ struct DrivesView: View {
                     ForEach(Array(d["usage"].array.enumerated()), id: \.offset) { _, u in
                         let total = u["total"].double ?? 0, used = u["used"].double ?? 0
                         VStack(alignment: .leading, spacing: 4) {
-                            HStack { Text(u["mount"].str).font(.footnote); Spacer(); Text("\(Fmt.bytes(u["free"].double ?? 0)) free of \(Fmt.bytes(total))").font(.footnote).foregroundStyle(.secondary) }
+                            HStack { Text(u["mount"].str == "/" ? "System" : u["mount"].str).font(.footnote); Spacer(); Text("\(Fmt.bytes(u["free"].double ?? 0)) free of \(Fmt.bytes(total))").font(.footnote).foregroundStyle(.secondary) }
                             ProgressView(value: total > 0 ? min(used / total, 1) : 0)
                         }
                     }

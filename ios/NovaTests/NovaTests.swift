@@ -74,5 +74,8 @@ final class NovaTests: XCTestCase {
         XCTAssertEqual(Fmt.duration(50), "50s")
         XCTAssertEqual(Fmt.duration(3700), "1h 1m")
         XCTAssertEqual(Fmt.duration(93784), "1d 2h")
+        XCTAssertEqual(Fmt.plain("⚠️ Drive is hot"), "Drive is hot", "the symbol the server adds for Discord is taken off")
+        XCTAssertEqual(Fmt.plain("/ is 91% full"), "/ is 91% full")
+        XCTAssertEqual(Fmt.plain("Container down: web"), "Container down: web")
     }
 }

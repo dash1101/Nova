@@ -3,7 +3,6 @@ import SwiftUI
 /// Home: is the server all right, and what is it doing right now.
 struct HomeView: View {
     @EnvironmentObject var app: AppState
-    private let columns = [GridItem(.adaptive(minimum: 150), spacing: 12)]
 
     var body: some View {
         ScrollView {
@@ -13,15 +12,17 @@ struct HomeView: View {
                     ProgressView("Connecting to \(app.serverName)…").padding(.top, 60)
                 } else {
                     StatusCard()
-                    LazyVGrid(columns: columns, spacing: 12) {
+                    HStack(spacing: 12) {
                         Tile(title: "CPU", value: percent(app.now["cpu"].double), icon: "cpu", trail: app.cpuTrail,
                              note: app.now["load"].double.map { String(format: "load %.2f", $0) })
                         Tile(title: "Memory", value: percent(app.now["mem"].double), icon: "memorychip", trail: app.memTrail,
                              note: app.now["mem_used_gb"].double.map { String(format: "%.1f of %.0f GB", $0, app.now["mem_total_gb"].double ?? 0) })
+                    }
+                    HStack(spacing: 12) {
                         if let t = app.now["temp"].double {
-                            Tile(title: "Temperature", value: String(format: "%.0f°C", t), icon: "thermometer.medium", trail: [], note: "processor")
+                            Tile(title: "Temperature", value: String(format: "%.0f°C", t), icon: "thermometer.medium", trail: nil, note: "processor")
                         }
-                        Tile(title: "Network", value: "↓ " + Fmt.bytes(app.now["rx"].double ?? 0) + "/s", icon: "arrow.up.arrow.down", trail: [],
+                        Tile(title: "Network", value: "↓ " + Fmt.bytes(app.now["rx"].double ?? 0) + "/s", icon: "arrow.up.arrow.down", trail: nil,
                              note: "↑ " + Fmt.bytes(app.now["tx"].double ?? 0) + "/s")
                     }
                     StorageCard()
@@ -58,13 +59,17 @@ private struct StatusCard: View {
                         Text(reach).font(.footnote).foregroundStyle(.secondary)
                     }
                 }
-                ForEach(Array(active.prefix(3).enumerated()), id: \.offset) { _, a in
-                    Divider()
-                    HStack(alignment: .top, spacing: 8) {
-                        Dot(color: Level.color(a["level"].str)).padding(.top, 5)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(a["title"].str).font(.subheadline.weight(.medium))
-                            if !a["detail"].str.isEmpty { Text(a["detail"].str).font(.footnote).foregroundStyle(.secondary).lineLimit(2) }
+                if active.count == 1, !active[0]["detail"].str.isEmpty {      // (the headline already names a single one)
+                    Text(active[0]["detail"].str).font(.footnote).foregroundStyle(.secondary)
+                } else if active.count > 1 {
+                    ForEach(Array(active.prefix(3).enumerated()), id: \.offset) { _, a in
+                        Divider()
+                        HStack(alignment: .top, spacing: 8) {
+                            Dot(color: Level.color(a["level"].str)).padding(.top, 5)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(Fmt.plain(a["title"].str)).font(.subheadline.weight(.medium))
+                                if !a["detail"].str.isEmpty { Text(a["detail"].str).font(.footnote).foregroundStyle(.secondary).lineLimit(2) }
+                            }
                         }
                     }
                 }
@@ -86,7 +91,7 @@ private struct Tile: View {
     let title: String
     let value: String
     let icon: String
-    let trail: [Double]
+    let trail: [Double]?                  // nil: this number has no graph
     var note: String?
 
     var body: some View {
@@ -94,8 +99,8 @@ private struct Tile: View {
             VStack(alignment: .leading, spacing: 6) {
                 Label(title, systemImage: icon).font(.footnote.weight(.medium)).foregroundStyle(.secondary)
                 Text(value).font(.title2.weight(.semibold)).monospacedDigit().lineLimit(1).minimumScaleFactor(0.6)
-                if trail.count > 1 {
-                    Sparkline(values: trail).stroke(Color.accentColor, style: StrokeStyle(lineWidth: 2, lineJoin: .round)).frame(height: 28)
+                if let t = trail {         // (the space is kept while the first points arrive, so the tiles don't jump)
+                    Sparkline(values: t).stroke(Color.accentColor, style: StrokeStyle(lineWidth: 2, lineJoin: .round)).frame(height: 28)
                 }
                 if let n = note { Text(n).font(.caption).foregroundStyle(.secondary).lineLimit(1) }
             }

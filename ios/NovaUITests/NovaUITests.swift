@@ -15,6 +15,9 @@ final class NovaUITests: XCTestCase {
 
     private func anything(_ id: String) -> XCUIElement { app.descendants(matching: .any).matching(identifier: id).firstMatch }
 
+    /// What the app last said in its message bubble ("" when there's none).
+    private func said() -> String { anything("toast").exists ? anything("toast").label : "no message shown" }
+
     func testFirstScreen() {
         app.launchEnvironment["NOVA_UITEST_RESET"] = "1"
         app.launch()
@@ -49,7 +52,7 @@ final class NovaUITests: XCTestCase {
         app.navigationBars.buttons.firstMatch.tap()
 
         app.staticTexts["Task manager"].tap()
-        XCTAssertTrue(app.staticTexts["launchd"].waitForExistence(timeout: 30) || app.staticTexts["kernel_task"].exists, "processes are listed")
+        XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label ENDSWITH '%'")).firstMatch.waitForExistence(timeout: 60), "processes are listed with their share of the processor")
         shot("06-task-manager")
         app.navigationBars.buttons.firstMatch.tap()
 
@@ -70,15 +73,18 @@ final class NovaUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Schedule"].waitForExistence(timeout: 10))
         shot("09-schedule")
         app.buttons["Schedule"].tap()
-        XCTAssertTrue(app.staticTexts["Restart"].waitForExistence(timeout: 30), "the scheduled restart is listed: \(anything("toast").label)")
-        shot("10-scheduled")
+        // The Simulator has no passcode, so this iPhone has no confirmation key: the server holds the action and shows a
+        // code — CI approves it the way a person would on the server (sudo nova approve CODE), and the app carries on.
+        if anything("approvalCode").waitForExistence(timeout: 15) { shot("10-waiting-for-approval") }
+        XCTAssertTrue(app.staticTexts["Restart"].waitForExistence(timeout: 90), "the scheduled restart is listed — \(said())")
+        shot("11-scheduled")
         app.staticTexts["Restart"].swipeLeft()
         app.buttons["Cancel"].firstMatch.tap()
-        XCTAssertTrue(app.staticTexts["Nothing scheduled"].waitForExistence(timeout: 30), "…and cancelled: \(anything("toast").label)")
+        XCTAssertTrue(app.staticTexts["Nothing scheduled"].waitForExistence(timeout: 90), "…and cancelled — \(said())")
         app.navigationBars.buttons.firstMatch.tap()
 
         app.staticTexts["Settings"].tap()
         XCTAssertTrue(app.staticTexts["Paired with"].waitForExistence(timeout: 10))
-        shot("11-settings")
+        shot("12-settings")
     }
 }
