@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Build the macOS download: dist/nova-server_<version>_macos.tar.gz (and the stable name nova-macos.tar.gz).
+# Build the macOS download: dist/nova-macos-<version>.tar.gz (and the stable name nova-macos.tar.gz).
+# (Not "nova-server_….tar.gz": that name is how Linux servers installed from the tarball find THEIR update in a release.)
 # It holds the same server files as the Linux package plus server/mac/ (the installer). Unpack it and run
 #   sudo sh Nova/mac/install.sh      — or let get.sh do both. Needs only tar; nothing is compiled.
 set -euo pipefail
@@ -36,7 +37,7 @@ Removing:  sudo nova uninstall   (add --purge to remove settings too)
 What works on a Mac and what does not yet: docs/MACOS.md at
 https://github.com/dash1101/Nova
 TXT
-OUT="$D/nova-server_${VER}_macos.tar.gz"; rm -f "$OUT"
+OUT="$D/nova-macos-${VER}.tar.gz"; rm -f "$OUT"
 tar --owner=0 --group=0 -C "$T" -czf "$OUT" Nova
 cp "$OUT" "$D/nova-macos.tar.gz"
 echo "built $OUT ($(du -h "$OUT" | cut -f1))"

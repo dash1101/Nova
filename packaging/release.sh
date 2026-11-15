@@ -19,7 +19,7 @@ cp "nova-server_$(echo "$VER" | sed 's/-/~/')_all.deb" nova-server.deb
 # the app's stable names (Orbit and the website download these) always come from THIS version's builds — never a leftover
 [[ -f "nova-$VER-universal.apk" ]] && cp "nova-$VER-universal.apk" nova-universal.apk
 [[ -f "nova-wear-$VER.apk" ]] && cp "nova-wear-$VER.apk" nova-wear.apk
-sha256sum nova-server_*.deb nova-server.deb nova-server_*.tar.gz nova-installer.run nova-server_*_windows.zip nova-windows.zip nova-server_*_macos.tar.gz nova-macos.tar.gz $(ls nova-*.apk nova-ios-*.ipa nova-ios.ipa 2>/dev/null) > SHA256SUMS
+sha256sum nova-server_*.deb nova-server.deb nova-server_*.tar.gz nova-installer.run nova-server_*_windows.zip nova-windows.zip nova-macos-*.tar.gz nova-macos.tar.gz $(ls nova-*.apk nova-ios-*.ipa nova-ios.ipa 2>/dev/null) > SHA256SUMS
 python3 - "$KEY" <<'PY'
 import base64, sys
 from cryptography.hazmat.primitives import serialization

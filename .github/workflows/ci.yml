@@ -25,6 +25,15 @@ jobs:
           # every tarball update in 0.9.23. Servers keep their old updater, so the tarball itself must stay safe.
           packaging/build-tar.sh >/dev/null
           python3 -c "import glob, tarfile, tempfile; t = tarfile.open(glob.glob('dist/nova-server_*.tar.gz')[0]); t.extractall(tempfile.mkdtemp(), filter='data'); print('ok')"
+      - name: A release has exactly one file a Linux updater takes for its tarball
+        run: |
+          # Installed updaters pick the last file named nova-server_<version>.tar.gz. Another system's package with a name
+          # of that shape (the Mac's once was) could be picked instead — today or after a version without "-alpha".
+          packaging/build-mac.sh >/dev/null; packaging/build-win.sh >/dev/null
+          python3 -c "
+          import os, re
+          names = sorted(os.listdir('dist')); hits = [n for n in names if re.fullmatch(r'nova-server_[\w.~+-]+\.tar\.gz', n)]
+          print(names); assert len(hits) == 1, hits"
       - uses: actions/upload-artifact@v4
         with: { name: nova-server-deb, path: dist/*.deb }
   android:
