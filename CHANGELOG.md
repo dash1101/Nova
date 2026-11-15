@@ -9,6 +9,8 @@
   one address ask only 60 times an hour — everyone behind it together (a campus, a carrier's shared address, a VPN).
   Updates on Linux, Windows and macOS now use the release's plain download links, which have no such limit. The
   signature check is the same as before, and the list is verified before anything else is fetched.
+- Fix: `sudo nova update --reinstall` did nothing on a .deb install (apt skips a version that's already there) while
+  saying it had installed it.
 - Verified after 0.10.1 on real machines: the one-line install on a Mac against the published release (signature
   checked there), and updating from the app on Windows and on a Mac. CI now also runs a full update on Linux for every
   change — with a release whose other files are deliberately wrong, so an updater that touches them fails.

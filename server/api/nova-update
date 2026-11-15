@@ -237,7 +237,8 @@ def main():
             r = subprocess.run(["sh", inst, "--upgrade"], capture_output=True, text=True)
             if r.returncode != 0: fail("the installer stopped: " + (r.stderr or r.stdout)[-400:])
         else:
-            r = subprocess.run(["apt-get", "install", "-y", "--allow-downgrades", os.path.join(work, deb)], capture_output=True, text=True)
+            # (--reinstall: without it apt does nothing when that version is already installed, and this said "installed" all the same)
+            r = subprocess.run(["apt-get", "install", "-y", "--allow-downgrades"] + (["--reinstall"] if "--reinstall" in FLAGS else []) + [os.path.join(work, deb)], capture_output=True, text=True)
             if r.returncode != 0: fail("apt couldn't install it: " + (r.stderr or r.stdout)[-400:])
         if keep:
             subprocess.run(["nova-app-publish", keep, f"Nova {pretty(ver)}"], capture_output=True)
