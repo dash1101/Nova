@@ -11,6 +11,10 @@ on:
         description: "Also install the newest published release with get.sh (the one-line install)"
         type: boolean
         default: false
+      tag:
+        description: "…a particular release instead of the newest regular one (a beta before it's promoted: v1.0.0-beta.1)"
+        type: string
+        default: ""
 jobs:
   package:
     runs-on: ubuntu-latest
@@ -88,6 +92,8 @@ jobs:
     if: github.event_name == 'workflow_dispatch' && inputs.released
     runs-on: macos-latest
     timeout-minutes: 25
+    env:
+      NOVA_RELEASE_URL: ${{ inputs.tag && format('https://github.com/dash1101/Nova/releases/download/{0}', inputs.tag) || '' }}
     steps:
       - uses: actions/checkout@v4
       - name: get.sh
@@ -96,6 +102,6 @@ jobs:
           curl -fs -m 10 http://127.0.0.1:8095/api/v1/ping
           /usr/local/lib/nova/venv/bin/python packaging/mac_test.py
       - name: nova update finds nothing newer than the release it just installed
-        run: sudo /usr/local/bin/nova update --check
+        run: sudo /usr/local/bin/nova update ${{ inputs.tag && '--beta' || '' }} --check
       - name: Update it the way the app does (the same release over itself, started from Nova's own service)
         run: /usr/local/lib/nova/venv/bin/python packaging/selfupdate_test.py || { sudo sh -c 'tail -n 40 "/Library/Application Support/Nova/log/update.log"'; exit 1; }

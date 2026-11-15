@@ -11,6 +11,10 @@ on:
         description: "Also install the newest published release with get.ps1 (the one-line install)"
         type: boolean
         default: false
+      tag:
+        description: "…a particular release instead of the newest regular one (a beta before it's promoted: v1.0.0-beta.1)"
+        type: string
+        default: ""
 jobs:
   package:
     runs-on: ubuntu-latest
@@ -88,6 +92,8 @@ jobs:
     if: github.event_name == 'workflow_dispatch' && inputs.released
     runs-on: windows-latest
     timeout-minutes: 20
+    env:
+      NOVA_RELEASE_URL: ${{ inputs.tag && format('https://github.com/dash1101/Nova/releases/download/{0}', inputs.tag) || '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -103,5 +109,6 @@ jobs:
       - name: Update it the way the app does (the same release over itself, started from Nova's own service)
         shell: powershell
         run: |
+          if ("${{ inputs.tag }}") { & "$env:ProgramFiles\Nova\nova.cmd" update --beta --check }      # a beta: this server takes betas
           & "$env:ProgramFiles\Nova\venv\Scripts\python.exe" packaging\selfupdate_test.py
           if ($LASTEXITCODE -ne 0) { Get-Content "$env:ProgramData\Nova\log\helper.log" -Tail 30; exit 1 }

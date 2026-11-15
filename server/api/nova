@@ -16,7 +16,7 @@
     sudo nova doctor               check everything; each problem comes with how to fix it
     sudo nova setup                guided setup (network, remote access, location, tools…)
     nova gui                       the Nova Server window: status, pairing, devices and approvals without the terminal
-    sudo nova update [--check]     install the newest signed release (--check: only look)
+    sudo nova update [--check]     install the newest signed release (--check: only look; --beta: take betas from now on, --stable: go back)
     nova version                   which Nova this is
     sudo nova uninstall [--purge]  remove Nova (--purge: its settings and paired devices too); containers and files stay
     sudo nova lighting             set up the fan/case lighting module
@@ -318,6 +318,11 @@ def self_update(args):
     """`nova update` on Windows and macOS: the newest signed release, verified like on Linux, installed by its own installer
     (Windows: in a new window; a Mac: right here)."""
     import selfupdate
+    for flag, want in (("--beta", "beta"), ("--stable", "")):          # which releases this server takes, kept in its settings
+        cfg = load(CONFIG, {})
+        if flag in args and cfg and (cfg.get("update_channel") or "") != want:
+            cfg["update_channel"] = want; save(CONFIG, cfg, mode=0o640, owner="root")
+            print("This server takes beta releases from now on (nova update --stable goes back)." if want else "This server takes regular releases again.")
     try:
         r = selfupdate.check()
         if not r["update"]: print(f"{G}✓{X} This is the newest Nova ({r['installed']})."); return
