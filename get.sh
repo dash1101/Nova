@@ -7,8 +7,8 @@
 # a Mac sets itself up — open Nova Server from Applications to pair your phone. (Windows: get.ps1)
 set -eu
 REPO=dash1101/Nova
-BASE="https://github.com/$REPO/releases/latest/download"
-KEY_URL="https://raw.githubusercontent.com/$REPO/main/packaging/release-key.pub"
+BASE="${NOVA_RELEASE_URL:-https://github.com/$REPO/releases/latest/download}"      # (the two can be pointed elsewhere: Nova's tests install an unreleased build this way)
+KEY_URL="${NOVA_KEY_URL:-https://raw.githubusercontent.com/$REPO/main/packaging/release-key.pub}"
 say() { printf '  %s\n' "$*"; }
 die() { printf '  \033[31m%s\033[0m\n' "$*" >&2; exit 1; }
 
@@ -45,7 +45,7 @@ else
   F=nova-installer.run
 fi
 [ -n "$F" ] || die "The release has no server package."
-say "Downloading $F…"
+say "Downloading ${F}…"            # (braces: macOS's sh reads a name followed straight by "…" as part of the name)
 get "$BASE/$(printf %s "$F" | tr '~' '.')" "$T/$F"          # (GitHub stores "~" in file names as ".")
 (cd "$T" && grep "  $F\$" SHA256SUMS | sums) || die "$F doesn't match its checksum — not installing."
 say "✓ $F checks out"
