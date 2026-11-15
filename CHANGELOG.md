@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.10.2-alpha (server)
+- **Looking for an update no longer downloads the whole release.** Every Linux server checks once a day, and each check
+  fetched every file of the release — every system's package and all the apps, about 55 MB — just to read the version.
+  A check now reads only the release's signed list of files (about 1.5 KB); an update takes only this system's package
+  and the app. Checked here: 0.6 seconds for a check.
+- **Fix: "GitHub is busy right now (403)" on shared internet addresses.** Checks went through GitHub's API, which lets
+  one address ask only 60 times an hour — everyone behind it together (a campus, a carrier's shared address, a VPN).
+  Updates on Linux, Windows and macOS now use the release's plain download links, which have no such limit. The
+  signature check is the same as before, and the list is verified before anything else is fetched.
+- Verified after 0.10.1 on real machines: the one-line install on a Mac against the published release (signature
+  checked there), and updating from the app on Windows and on a Mac. CI now also runs a full update on Linux for every
+  change — with a release whose other files are deliberately wrong, so an updater that touches them fails.
+
 ## 0.10.1-alpha (server)
 - **The monitor's check now costs about a quarter of what it did.** It runs every 15 seconds on every server, and most
   of its cost was starting the `docker` program three times a pass. It now asks Docker directly over Docker's own

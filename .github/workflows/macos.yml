@@ -56,8 +56,6 @@ jobs:
           r = json.load(sys.stdin); print(r)
           assert r['ok'] and r['firstRun'] and not r['previous'] and r['running'] and r['ports']['https'] == 8495 and r['urls']['local'] == 'https://127.0.0.1:8495', 'unexpected result'"
       - name: Test
-        env:
-          GITHUB_TOKEN: ${{ github.token }}      # (only for looking up Nova's newest release without GitHub's anonymous limit)
         run: /usr/local/lib/nova/venv/bin/python packaging/mac_test.py
       - name: Install again over itself (an update keeps settings and devices)
         run: |
@@ -93,8 +91,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: get.sh
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
         run: |
           sh get.sh
           curl -fs -m 10 http://127.0.0.1:8095/api/v1/ping

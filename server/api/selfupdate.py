@@ -21,10 +21,8 @@ class UpdateError(Exception):
     pass
 
 
-def _fetch(url, limit=80 << 20, api=False):
-    headers = {"User-Agent": "nova-update", "Accept": "application/vnd.github+json" if api else "application/octet-stream"}
-    if api and os.environ.get("GITHUB_TOKEN"): headers["Authorization"] = "Bearer " + os.environ["GITHUB_TOKEN"]     # (Nova's own tests: GitHub limits anonymous lookups per address)
-    req = urllib.request.Request(url, headers=headers)
+def _fetch(url, limit=80 << 20):
+    req = urllib.request.Request(url, headers={"User-Agent": "nova-update", "Accept": "application/octet-stream"})
     try:
         with urllib.request.urlopen(req, timeout=60) as r: data = r.read(limit + 1)
     except urllib.error.HTTPError as e: raise UpdateError(f"GitHub answered {e.code}" + (" — no release published yet?" if e.code == 404 else " — try again in a few minutes"))
@@ -48,10 +46,23 @@ def installed():
     except OSError: return ""
 
 
+# The newest release's files, by their download links. (Not GitHub's API: it lets one address ask only 60 times an hour —
+# everyone behind that address together — and these links say the same without that limit.)
+BASE = f"https://github.com/{REPO}/releases/latest/download/"
+
 def latest():
-    """(version, {asset name: download url}) of the newest release."""
-    rel = json.loads(_fetch(f"https://api.github.com/repos/{REPO}/releases/latest", 2 << 20, api=True))
-    return rel.get("tag_name", "").lstrip("v"), {a["name"]: a["browser_download_url"] for a in rel.get("assets", [])}
+    """(version, {file name: checksum}) of the newest release, read from its list of checksums — after checking that the
+    list carries a valid signature from Nova's release key."""
+    if not KEY: raise UpdateError("Nova's release key isn't installed here, so an update can't be checked — install the newest release by hand")
+    sums, sig = _fetch(BASE + "SHA256SUMS", 1 << 20), _fetch(BASE + "SHA256SUMS.sig", 1 << 16)
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.exceptions import InvalidSignature
+    try: serialization.load_pem_public_key(open(KEY, "rb").read()).verify(base64.b64decode(sig.strip()), sums)
+    except (InvalidSignature, ValueError): raise UpdateError("the release's signature is NOT valid — not installing it")
+    listed = {m.group(2): m.group(1) for m in (re.fullmatch(r"([0-9a-f]{64})\s+\*?(\S+)", l.strip()) for l in sums.decode("utf-8", "replace").splitlines()) if m}
+    ver = next((n[len("nova-server_"):-len("_all.deb")].replace("~", "-") for n in sorted(listed) if n.startswith("nova-server_") and n.endswith("_all.deb")), "")
+    if not ver: raise UpdateError("the newest release doesn't say which version it is")
+    return ver, listed
 
 
 def check():
@@ -61,19 +72,11 @@ def check():
 
 def prepare():
     """Download the newest release's package for this system, verify it, unpack it → (version, path of its installer)."""
-    if not KEY: raise UpdateError("Nova's release key isn't installed here, so an update can't be checked — install the newest release by hand")
-    ver, assets = latest()
-    for need in ("SHA256SUMS", "SHA256SUMS.sig", ZIP):
-        if need not in assets: raise UpdateError(f"the newest release has no {need}")
-    sums, sig = _fetch(assets["SHA256SUMS"], 1 << 20), _fetch(assets["SHA256SUMS.sig"], 1 << 16)
-    from cryptography.hazmat.primitives import serialization
-    from cryptography.exceptions import InvalidSignature
-    try: serialization.load_pem_public_key(open(KEY, "rb").read()).verify(base64.b64decode(sig.strip()), sums)
-    except (InvalidSignature, ValueError): raise UpdateError("the release's signature is NOT valid — not installing it")
-    want = next((m.group(1) for m in (re.fullmatch(r"([0-9a-f]{64})\s+\*?(\S+)", l.strip()) for l in sums.decode().splitlines()) if m and m.group(2) == ZIP), None)
-    if not want: raise UpdateError(f"the release's signed checksums don't list {ZIP}")
-    data = _fetch(assets[ZIP])
-    if hashlib.sha256(data).hexdigest() != want: raise UpdateError(f"the download doesn't match its signed checksum — not installing it")
+    ver, listed = latest()
+    want = listed.get(ZIP)
+    if not want: raise UpdateError(f"the newest release has no {ZIP}")
+    data = _fetch(BASE + ZIP)
+    if hashlib.sha256(data).hexdigest() != want: raise UpdateError("the download doesn't match its signed checksum — not installing it")
     work = tempfile.mkdtemp(prefix="nova-update-")
     zp = os.path.join(work, ZIP)
     with open(zp, "wb") as f: f.write(data)

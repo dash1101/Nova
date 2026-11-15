@@ -35,6 +35,27 @@ jobs:
           sudo dpkg -i ./dist/nova-server_*_all.deb >/dev/null
           test ! -e /usr/lib/nova-api/INSTALLED_FROM_TARBALL && echo "installing the .deb removed the stale marker"
           for i in $(seq 30); do curl -sf http://127.0.0.1:8095/api/v1/ping >/dev/null && break; sleep 1; done
+      - name: Nova updates itself (a release in a folder, signed with a key made for this run)
+        run: |
+          # The updater is what every installed server depends on for its next version, so it runs here for real:
+          # the signed list alone for a check, then this system's package and the app for the update — and nothing else.
+          R=/tmp/rel; mkdir -p $R && cp dist/nova-server_*_all.deb $R/ && head -c 300000 /dev/urandom > $R/nova-universal.apk
+          # another system's package, listed with a checksum it doesn't have: an updater that still fetched and checked
+          # the whole release would stop on it; one that takes only what this server installs never looks at it
+          head -c 100000 /dev/urandom > $R/nova-windows.zip
+          (cd $R && sha256sum nova-server_*_all.deb nova-universal.apk > SHA256SUMS && echo "$(printf 0%.0s $(seq 64))  nova-windows.zip" >> SHA256SUMS)
+          openssl genpkey -algorithm ed25519 -out /tmp/k.pem && openssl pkey -in /tmp/k.pem -pubout -out /tmp/k.pub
+          openssl pkeyutl -sign -inkey /tmp/k.pem -rawin -in $R/SHA256SUMS | base64 -w0 > $R/SHA256SUMS.sig
+          sudo cp /usr/lib/nova-api/release-key.pub /tmp/real-key.pub && sudo cp /tmp/k.pub /usr/lib/nova-api/release-key.pub
+          sudo nova-update $R --check | tee /tmp/check.txt; grep -q "up to date" /tmp/check.txt
+          sudo nova-update $R --reinstall | tee /tmp/upd.txt
+          grep -q "installed — settings and paired devices kept" /tmp/upd.txt || { sudo cat /var/lib/nova-api/update.json; exit 1; }
+          sudo python3 -c "import json; s=json.load(open('/var/lib/nova-api/update.json')); print(s); assert s['state'] == 'done', s"
+          for i in $(seq 30); do curl -sf http://127.0.0.1:8095/api/v1/ping >/dev/null && break; sleep 1; done
+          curl -sf http://127.0.0.1:8095/api/v1/ping
+          cmp /usr/lib/nova-api/release-key.pub packaging/release-key.pub && echo "the installed package brought Nova's own release key back"
+          # …and with it back, a list that key didn't sign is refused
+          if sudo nova-update $R --check; then echo "accepted a list Nova's release key didn't sign"; exit 1; fi
       - name: Security test
         run: |
           mkdir -p pt && cd pt
