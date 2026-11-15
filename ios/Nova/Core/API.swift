@@ -166,7 +166,7 @@ final class NovaAPI {
         let nonce = Data(rnd).base64EncodedString().replacingOccurrences(of: "+", with: "-").replacingOccurrences(of: "/", with: "_")
         let digest = SHA256.hash(data: body).map { String(format: "%02x", $0) }.joined()
         let message = Data("\(method)\n\(path)\n\(ts)\n\(nonce)\n\(digest)".utf8)
-        var h = ["X-Nova-Device": id, "X-Nova-Time": ts, "X-Nova-Nonce": nonce, "X-Nova-Client": "ios 1",
+        var h = ["X-Nova-Device": id, "X-Nova-Time": ts, "X-Nova-Nonce": nonce, "X-Nova-Client": "ios 2",
                  "X-Nova-Signature": try Keys.sign(.device, message)]
         if let reason = confirm { h["X-Nova-StepUp"] = try Keys.sign(.confirm, message, reason: reason) }
         return h

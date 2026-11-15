@@ -3,7 +3,7 @@
 Nova has two parts: the **server package** on the Linux machine you want to control, and the
 **app** on your Android phone. The whole thing takes about ten minutes.
 
-> Nova is **alpha**. Try it on a machine where you have backups and console access.
+> Nova is in **beta** on Linux. Keep backups and a way to reach the machine's own console, as with anything that manages a server.
 
 ## 1. Install the server package
 

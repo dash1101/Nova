@@ -23,19 +23,33 @@ import java.util.concurrent.TimeUnit
  * out-of-date app can still update itself. Android only installs an APK that is signed by the same key as this app, and the
  * file is also checked against the release's published checksum first.
  */
+private val DIGITS = Regex("\\d+")
+
+/** Is version [a] newer than [b]? 0.9.26-alpha < 1.0.0-beta.1 < 1.0.0-beta.2 < 1.0.0-beta.10 < 1.0.0 < 1.0.1-alpha:
+ *  the numbers decide; with the same numbers a finished release is newer than its betas, and betas go by their own number. */
+fun versionNewer(a: String, b: String): Boolean {
+    fun split(v: String) = v.trim().removePrefix("v").let { it.substringBefore('-') to it.substringAfter('-', "") }
+    val (am, ap) = split(a); val (bm, bp) = split(b)
+    val x = DIGITS.findAll(am).map { it.value.toIntOrNull() ?: 0 }.toList(); val y = DIGITS.findAll(bm).map { it.value.toIntOrNull() ?: 0 }.toList()
+    for (i in 0 until maxOf(x.size, y.size)) { val p = x.getOrElse(i) { 0 }; val q = y.getOrElse(i) { 0 }; if (p != q) return p > q }
+    if (ap.isEmpty() || bp.isEmpty()) return ap.isEmpty() && bp.isNotEmpty()
+    val p = ap.split('.'); val q = bp.split('.')
+    for (i in 0 until maxOf(p.size, q.size)) {
+        val s = p.getOrNull(i) ?: return false; val t = q.getOrNull(i) ?: return true
+        if (s == t) continue
+        val sn = s.toIntOrNull(); val tn = t.toIntOrNull()
+        return if (sn != null && tn != null) sn > tn else s > t
+    }
+    return false
+}
+
 object Releases {
     const val REPO = "dash1101/Nova"
     data class Release(val version: String, val notes: String, val apkUrl: String, val apkName: String, val sums: String)
 
     private val http = OkHttpClient.Builder().connectTimeout(12, TimeUnit.SECONDS).readTimeout(60, TimeUnit.SECONDS).build()
 
-    private val DIGITS = Regex("\\d+")
-    private fun numbers(v: String) = DIGITS.findAll(v.substringBefore('-')).map { it.value.toIntOrNull() ?: 0 }.toList()
-    fun isNewer(tag: String): Boolean {
-        val a = numbers(tag.removePrefix("v")); val b = numbers(APP_VERSION)
-        for (i in 0 until maxOf(a.size, b.size)) { val x = a.getOrElse(i) { 0 }; val y = b.getOrElse(i) { 0 }; if (x != y) return x > y }
-        return false
-    }
+    fun isNewer(tag: String) = versionNewer(tag, APP_VERSION)
 
     /** The newest release (null: couldn't ask). */
     suspend fun latest(): Release? = withContext(Dispatchers.IO) {

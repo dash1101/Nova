@@ -5,10 +5,13 @@
 # the .deb on Debian/Ubuntu (so apt updates it like any package), the one-file installer on other Linux, the macOS
 # package on a Mac. On Linux, then run  sudo nova setup  (or  sudo nova setup --gui  for the setup in a browser);
 # a Mac sets itself up — open Nova Server from Applications to pair your phone. (Windows: get.ps1)
+#
+# The beta instead of the latest regular release:   curl -fsSL …/get.sh | sh -s -- --beta
 set -eu
 REPO=dash1101/Nova
 BASE="${NOVA_RELEASE_URL:-https://github.com/$REPO/releases/latest/download}"      # (the two can be pointed elsewhere: Nova's tests install an unreleased build this way)
 KEY_URL="${NOVA_KEY_URL:-https://raw.githubusercontent.com/$REPO/main/packaging/release-key.pub}"
+BETA=""; for a in "$@"; do shift; if [ "$a" = --beta ]; then BETA=1; else set -- "$@" "$a"; fi; done
 say() { printf '  %s\n' "$*"; }
 die() { printf '  \033[31m%s\033[0m\n' "$*" >&2; exit 1; }
 
@@ -27,7 +30,14 @@ else die "Needs curl or wget."; fi
 SUDO=""; [ "$(id -u)" = 0 ] || { command -v sudo >/dev/null 2>&1 || die "Run as root, or install sudo."; SUDO=sudo; }
 
 T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
-say "Getting the latest Nova release…"
+WHAT="the latest Nova release"
+if [ -n "$BETA" ] && [ -z "${NOVA_RELEASE_URL:-}" ]; then       # which release is the beta right now is written down in the repository
+  get "https://raw.githubusercontent.com/$REPO/main/packaging/channels.json" "$T/channels.json" || die "Couldn't reach GitHub."
+  TAG=$(sed -n 's/.*"beta"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$T/channels.json" | head -1)
+  if [ -n "$TAG" ]; then BASE="https://github.com/$REPO/releases/download/$TAG"; WHAT="the Nova beta ($TAG)"
+  else say "There's no beta out right now — the latest release is the newest there is."; BETA=""; fi
+fi
+say "Getting ${WHAT}…"
 get "$BASE/SHA256SUMS" "$T/SHA256SUMS" || die "Couldn't reach GitHub."
 get "$BASE/SHA256SUMS.sig" "$T/SHA256SUMS.sig"
 
@@ -60,3 +70,4 @@ case "$F" in
   *)     if [ -r /dev/tty ]; then $SUDO sh "$T/$F" </dev/tty; else $SUDO sh "$T/$F"; fi ;;
 esac
 printf '\n  \033[1mNova is installed.\033[0m Next:  sudo nova setup   (or: sudo nova setup --gui for the setup in a browser)\n\n'
+[ -z "$BETA" ] || printf '  This is a beta. To keep getting betas as they come out, after the setup:  sudo nova update --beta\n\n'

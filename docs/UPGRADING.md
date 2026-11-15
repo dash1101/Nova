@@ -21,6 +21,17 @@ server set up then can catch up once with `sudo nova update github:dash1101/Nova
 Your settings, paired devices, alerts and backup jobs stay where they are (`/etc/nova-api`, `/var/lib/nova-api`,
 `/etc/nova-backup`) through every update and reinstall.
 
+## Betas
+
+A beta is a release that's being tried on a few servers before it becomes everyone's.
+
+- `sudo nova update --beta` — this server takes betas from now on (and regular releases, whichever is newer).
+- `sudo nova update --stable` — back to regular releases only. It doesn't go back a version; it waits for the next
+  regular release.
+- A fresh install straight onto the beta: `curl -fsSL https://raw.githubusercontent.com/dash1101/Nova/main/get.sh | sh -s -- --beta`.
+
+Betas are signed with the same key and checked the same way as every release.
+
 ## Going back
 
 Install the older version's package the same way (`sudo apt install ./nova-server_OLD_all.deb` — apt asks you

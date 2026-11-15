@@ -35,8 +35,8 @@ as its own background task (`nova-task-<id>`), so it finishes even if the app cl
 Jobs live in `/etc/nova-backup/jobs.json` (root only; SMB passwords in `/etc/nova-backup/secrets/`).
 `nova-backups.timer` checks every minute and starts due jobs (a run missed while the server was off
 starts after boot). Each run is a dated snapshot in `<destination>/nova-backups/<name>/<date>/`,
-hard-linked to the previous one, with `latest` pointing at the newest. Shares without hard links
-get one copy plus `versions/<date>/`. Old snapshots are thinned to N hourly/daily/weekly/monthly
+hard-linked to the previous one, with `latest` pointing at the newest. Drives and shares without hard links (exFAT, FAT, some NAS shares)
+get one copy plus `versions/<date>/` — what each run replaced or removed, restorable like a snapshot. Old snapshots are thinned to N hourly/daily/weekly/monthly
 (the newest three always stay). A source that's missing, or lost more than 20 % of its files since
 last time, is skipped and you get an alert; "Back up anyway" overrides it once.
 

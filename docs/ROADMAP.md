@@ -4,16 +4,38 @@ Where Nova is heading next. Nothing here is promised; it's the plan as it stands
 
 ## The road to 1.0
 
+**1.0 is Linux servers, the Android app and Nova web.** Those three have run day in, day out since the first alpha, and
+they are what 1.0 promises to keep working. The server on Windows and macOS, the iPhone app and the Wear OS app ship
+alongside as **previews**: usable, tested on every change, and labeled as previews until they've had the same time
+on real machines ([PREVIEWS.md](PREVIEWS.md) is how to help with that).
+
+Done:
+
 - [x] One-line install on any Linux with systemd (`get.sh`), signed releases, self-updating server and app
-- [x] A stable, documented API contract with levels and a deprecation policy ([API.md](API.md))
+- [x] A documented API contract with levels and a deprecation policy, and what 1.0 freezes ([API.md](API.md))
 - [x] Privacy policy ([site/privacy.html](../site/privacy.html)) and an upgrade guide ([UPGRADING.md](UPGRADING.md))
 - [x] Nova web installable on iPhone and iPad (Add to Home Screen)
-- [ ] A feature freeze and a beta period on several machines and distributions
-- [ ] Translations complete for the languages that ship (fewer, finished languages over many half-done ones)
-- [ ] App store rework: dynamic listings and easier installs
-- [ ] Play Store listing (screenshots, store text, permission review)
-- [ ] An outside review of the pairing and approval design
-- [x] A native iPhone app, and the server on Windows and macOS — all three in preview (below)
+- [x] A beta channel (`sudo nova update --beta`), and release checks that run against a beta *before* it becomes the
+      release everyone gets ([packaging/RELEASING.md](../packaging/RELEASING.md))
+- [x] Every change is tested as an **upgrade**: the previously published release is installed and paired, updated by
+      its own updater, and the paired device must still get in with the same certificate
+- [x] Backups proven by restoring: on every kind of destination (a drive, an exFAT or FAT drive, an SMB share, NFS
+      exports) files are backed up, changed, wiped, restored and compared byte for byte, on every change
+- [x] The app's pairing-code reader and request signing checked against vectors made with the server's own rule
+- [x] A brief for an outside security review ([REVIEW.md](REVIEW.md))
+
+Open, in the order they block 1.0:
+
+- [ ] **The beta period.** `1.0.0-beta.N` on several machines and distributions for a few weeks, with no new features
+      going in — only fixes. 1.0 is the last beta, renamed.
+- [ ] **An outside review of the pairing and approval design.** The brief is written; the review itself needs a second
+      pair of eyes.
+- [ ] **Translations.** English is complete. The nine other languages each cover about two thirds of the text (2,826 of
+      4,197 pieces; everything written since 0.8.3 is English only), so today they show a mix. 1.0 ships the languages
+      that are finished and holds back the rest — fewer, finished languages over many half-done ones.
+- [ ] App store rework: dynamic listings and easier installs *(may land after 1.0 — it adds, it doesn't change)*
+
+Not part of 1.0: a Google Play listing (below), the previews leaving preview.
 
 ## Windows (server side)
 
@@ -70,17 +92,12 @@ builds it and walks it through a real server in the Simulator on every change.
 
 ## Google Play
 
-The Android app can be published on Google Play (the developer account exists). What it needs:
-
-- A **Play build** without the built-in updater: Play policy doesn't allow apps to install their own
-  updates, so that build gets updates from Play instead. The direct-download APK keeps the updater.
-- Store listing: screenshots, a short and long description, the icon, a privacy policy (Nova
-  collects nothing; everything stays between your phone and your server), and the Data safety form.
-- Target the current Android SDK level Play requires, and an app bundle (`.aab`) signed with Play
-  App Signing.
+Not planned. The Android app comes from your own server (Settings → Software update) or from the releases page, checks
+each update's signature and checksum itself, and needs no account anywhere — a Play build would have to drop its
+updater and add a second way of shipping. If that changes, it gets its own entry here.
 
 ## Also planned
 
 - Servers page, next step: manage another server right from this one's Nova web (a signed relay, so each server still checks your browser's own key and approvals), instead of opening its own Nova web.
-- Wear OS, next: a watch-face complication, more quick actions (restart a container), and a Play listing.
+- Wear OS, next: a watch-face complication and more quick actions (restart a container).
 - A reworked app store with categories, search and one-tap installs.

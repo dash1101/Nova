@@ -63,6 +63,14 @@ class PairingTest {
         assertFalse(isTailscaleUrl("https://server.tail1234.ts.net:8495")); assertFalse(isTailscaleUrl("")); assertFalse(isTailscaleUrl("not a url"))
     }
 
+    // ── which release is newer ──
+    @Test fun versionsInOrder() {
+        val order = listOf("0.9.26-alpha", "0.10.3-alpha", "1.0.0-alpha", "1.0.0-beta.1", "1.0.0-beta.2", "1.0.0-beta.10", "1.0.0-rc.1", "1.0.0", "1.0.1-alpha", "1.0.1", "1.1.0", "2.0.0")
+        for (i in order.indices) for (j in order.indices)
+            assertEquals("${order[i]} newer than ${order[j]}", i > j, versionNewer(order[i], order[j]))
+        assertTrue(versionNewer("v1.0.0", "1.0.0-beta.3")); assertFalse(versionNewer("v1.0.0", "1.0.0")); assertFalse(versionNewer("", "1.0.0")); assertFalse(versionNewer("junk", "0.1.0"))
+    }
+
     // ── signing ──
     private val vectors by lazy {                          // made with the server's own rule (packaging/signing_vectors.json)
         val f = generateSequence(File("").absoluteFile) { it.parentFile }.map { File(it, "packaging/signing_vectors.json") }.first { it.exists() }

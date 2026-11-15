@@ -69,6 +69,8 @@ exit with 0 or 1, and end with one line to parse, the same as on Windows:
 | Storage wizard, partitions, RAID | ❌ | Disk Utility for now |
 | Lighting, diagnostics, free up space, the assistant's on-server model | ❌ | Linux only for now |
 
+**Have an older or Intel Mac?** That's what hasn't been tried — [PREVIEWS.md](PREVIEWS.md) has a short list of what to check.
+
 ## How it's put together
 
 The Mac runs the files Linux runs. `server/api/plat.py` is the one place that knows which system it is; everything

@@ -9,7 +9,7 @@ other change from it.
 ## Install
 
 The watch app is `nova-wear-<version>.apk` on the [releases page](https://github.com/dash1101/Nova/releases).
-Until it's on Google Play, install it with ADB over Wi-Fi:
+Install it with ADB over Wi-Fi:
 
 1. On the watch: Settings → System → About → tap *Build number* 7 times; then Developer options →
    *ADB debugging* and *Wireless debugging* on. Note the address and port shown there.

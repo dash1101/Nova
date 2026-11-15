@@ -1,6 +1,60 @@
 [
 {
+"en": "$/, arranging ?",
+"in": [
+"web"
+]
+},
+{
+"en": "$DEST",
+"in": [
+"web"
+]
+},
+{
+"en": "$DEST/",
+"in": [
+"web"
+]
+},
+{
+"en": "$DEST/$STAMP",
+"in": [
+"web"
+]
+},
+{
+"en": "$DEST/$STAMP/",
+"in": [
+"web"
+]
+},
+{
+"en": "$DEST/latest",
+"in": [
+"web"
+]
+},
+{
+"en": "$RC",
+"in": [
+"web"
+]
+},
+{
 "en": "' folder beside it, to compare first.",
+"in": [
+"web"
+]
+},
+{
+"en": "*.tmp",
+"in": [
+"app"
+]
+},
+{
+"en": "*.tmp node_modules",
 "in": [
 "web"
 ]
@@ -66,9 +120,27 @@
 ]
 },
 {
+"en": ". From then on they approve risky actions and new browsers — no Android phone or SSH needed.",
+"in": [
+"site"
+]
+},
+{
 "en": ". Name it something like Nova.",
 "in": [
 "web"
+]
+},
+{
+"en": ". On the server, run",
+"in": [
+"site"
+]
+},
+{
+"en": ". Try saying it another way, or search for it.",
+"in": [
+"app"
 ]
 },
 {
@@ -163,6 +235,18 @@
 },
 {
 "en": ".IconRed",
+"in": [
+"app"
+]
+},
+{
+"en": ".IconSilBlack",
+"in": [
+"app"
+]
+},
+{
+"en": ".IconSilWhite",
 "in": [
 "app"
 ]
@@ -402,6 +486,12 @@
 ]
 },
 {
+"en": ".mapps, .fdrives, .chips",
+"in": [
+"web"
+]
+},
+{
 "en": ".mapps, .srvstrip, .fdrives, .hfade",
 "in": [
 "web"
@@ -417,6 +507,18 @@
 "en": ".OpenNova",
 "in": [
 "app"
+]
+},
+{
+"en": ".range-row .h span:last-child",
+"in": [
+"web"
+]
+},
+{
+"en": ".range-row, .sliderow",
+"in": [
+"web"
 ]
 },
 {
@@ -468,6 +570,12 @@
 ]
 },
 {
+"en": "0/0 running",
+"in": [
+"app"
+]
+},
+{
 "en": "1 day",
 "in": [
 "app",
@@ -515,6 +623,12 @@
 ]
 },
 {
+"en": "12 min",
+"in": [
+"app"
+]
+},
+{
 "en": "13.2 / 22.6 GB",
 "in": [
 "site"
@@ -552,6 +666,12 @@
 ]
 },
 {
+"en": "3/4 up",
+"in": [
+"app"
+]
+},
+{
 "en": "30 days",
 "in": [
 "app",
@@ -562,6 +682,12 @@
 "en": "4 GB",
 "in": [
 "web"
+]
+},
+{
+"en": "42 ms",
+"in": [
+"app"
 ]
 },
 {
@@ -578,6 +704,19 @@
 ]
 },
 {
+"en": "6-digit code",
+"in": [
+"app"
+]
+},
+{
+"en": "7 days",
+"in": [
+"app",
+"web"
+]
+},
+{
 "en": "8 GB",
 "in": [
 "web"
@@ -591,6 +730,12 @@
 },
 {
 "en": "\\\\.(md|conf|cfg|ini|log|env|toml|ya?ml|sh|py|js|ts|json|txt|service|properties)$",
+"in": [
+"app"
+]
+},
+{
+"en": "\\\\b(login|ssh|sudo|fail2ban|passkey|authenticator)\\\\b",
 "in": [
 "app"
 ]
@@ -656,9 +801,9 @@
 ]
 },
 {
-"en": "], [\"dark\",",
+"en": "^(?:hey|please|can you|could you|turn|set|apply|make|free|clean|disable|enable|lower|raise|dim|install|schedule|restart|reboot|stop|start|run|back ?up|open|show|switch|erase|format|wipe|change)\\\\b",
 "in": [
-"web"
+"app"
 ]
 },
 {
@@ -668,7 +813,49 @@
 ]
 },
 {
+"en": "^/api/v1/(power/|store/|freeup$|containers/.+/(stop|restart)$)",
+"in": [
+"app"
+]
+},
+{
+"en": "^/api/v1/actions/(free-ram|backup)$",
+"in": [
+"app"
+]
+},
+{
+"en": "^/api/v1/fan$",
+"in": [
+"app"
+]
+},
+{
+"en": "^/api/v1/freeup$",
+"in": [
+"app"
+]
+},
+{
+"en": "^/api/v1/power/(schedule|reboot|poweroff)$",
+"in": [
+"app"
+]
+},
+{
+"en": "^Container (?:crashed|unhealthy|ran out of memory|stopped|restarted)[^:]*: (\\\\S+)",
+"in": [
+"app"
+]
+},
+{
 "en": "^https?://\\\\S+$",
+"in": [
+"app"
+]
+},
+{
+"en": "^nova-approve:([A-Za-z0-9]{6})$",
 "in": [
 "app"
 ]
@@ -689,6 +876,12 @@
 "en": "A 12 V RGB header lights every LED in the same color, so the effects that move along the LEDs aren't offered.",
 "in": [
 "app",
+"web"
+]
+},
+{
+"en": "A background and a symbol color of your choice",
+"in": [
 "web"
 ]
 },
@@ -714,7 +907,21 @@
 ]
 },
 {
+"en": "A chime when something needs you — a more urgent one when it's serious",
+"in": [
+"app",
+"web"
+]
+},
+{
 "en": "A deleted preset",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "A drive",
 "in": [
 "app",
 "web"
@@ -727,13 +934,6 @@
 ]
 },
 {
-"en": "A drive",
-"in": [
-"app",
-"web"
-]
-},
-{
 "en": "A drive dropped out, a service is down…",
 "in": [
 "app"
@@ -741,6 +941,13 @@
 },
 {
 "en": "A fan (a ring of LEDs)",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "A few pixels (the default)",
 "in": [
 "app",
 "web"
@@ -767,7 +974,26 @@
 ]
 },
 {
+"en": "A light buzz with taps and switches (when the phone's touch feedback is on) and with alerts",
+"in": [
+"app"
+]
+},
+{
+"en": "A light buzz with taps, switches and alerts",
+"in": [
+"web"
+]
+},
+{
 "en": "A light in Home Assistant (like a Govee strip) shows the server's status too",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "A light in Home Assistant shows the server's status",
 "in": [
 "app",
 "web"
@@ -796,7 +1022,6 @@
 {
 "en": "A meter at the top: frames per second and the slowest frame",
 "in": [
-"app",
 "web"
 ]
 },
@@ -821,9 +1046,29 @@
 ]
 },
 {
+"en": "A page asks for an access code you give out — a random one, or a password you choose — and it can run out or be ended any time",
+"in": [
+"app",
+"web"
+]
+},
+{
 "en": "A paired browser wants to do something that needs your fingerprint",
 "in": [
 "app"
+]
+},
+{
+"en": "A password",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "A password needs at least 8 characters",
+"in": [
+"web"
 ]
 },
 {
@@ -846,6 +1091,19 @@
 ]
 },
 {
+"en": "a preview of the server is out — download",
+"in": [
+"site"
+]
+},
+{
+"en": "A random code",
+"in": [
+"app",
+"web"
+]
+},
+{
 "en": "A real shell on the server, over SSH",
 "in": [
 "app"
@@ -853,6 +1111,18 @@
 },
 {
 "en": "A shell inside any running container — open Containers, pick one, tap Shell (approved on your phone)",
+"in": [
+"web"
+]
+},
+{
+"en": "A small language model that runs on your server, so the assistant understands what its rules don't and answers questions about your server. It's downloaded once from its makers (checked against a fingerprint of the file), runs on its own without access to your files or the internet, and never sends anything anywhere.",
+"in": [
+"app"
+]
+},
+{
+"en": "A small language model that runs on your server, so the assistant understands what its rules don't, answers questions and follows a conversation. It's downloaded once from its makers (checked against a fingerprint of the file), runs on its own without access to your files or the internet, and never sends anything anywhere.",
 "in": [
 "web"
 ]
@@ -884,6 +1154,25 @@
 ]
 },
 {
+"en": "A visitor opens the address, types the code, and gets into this app only — never Nova. Codes can't be seen again after they're made, and too many wrong guesses lock a visitor out for a while.",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "A VPN is on — if it's Tailscale with an exit node, turn on Allow LAN access, or pair with sudo nova add --remote.",
+"in": [
+"app"
+]
+},
+{
+"en": "A VPN is on: if it's Tailscale with an exit node, turn on Allow LAN access in Tailscale, or this {0} can't reach the server at home",
+"in": [
+"app"
+]
+},
+{
 "en": "A warm flame (dark red → orange → yellow). Pick One color for a flame in your color, or Palette for your own.",
 "in": [
 "app"
@@ -902,7 +1191,27 @@
 ]
 },
 {
+"en": "abadge red",
+"in": [
+"web"
+]
+},
+{
 "en": "About",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "About 10 pixels",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "About 20 pixels — for a screen that's on all day",
 "in": [
 "app",
 "web"
@@ -937,7 +1246,38 @@
 ]
 },
 {
+"en": "abtn press",
+"in": [
+"web"
+]
+},
+{
 "en": "Accent color",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "Accent {0}",
+"in": [
+"app"
+]
+},
+{
+"en": "Accept",
+"in": [
+"app"
+]
+},
+{
+"en": "access code",
+"in": [
+"app"
+]
+},
+{
+"en": "Access codes",
 "in": [
 "app",
 "web"
@@ -998,6 +1338,18 @@
 ]
 },
 {
+"en": "achip press",
+"in": [
+"web"
+]
+},
+{
+"en": "Activity",
+"in": [
+"web"
+]
+},
+{
 "en": "Add",
 "in": [
 "app",
@@ -1020,7 +1372,8 @@
 {
 "en": "Add a color",
 "in": [
-"app"
+"app",
+"web"
 ]
 },
 {
@@ -1039,6 +1392,13 @@
 },
 {
 "en": "Add a drive",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "Add a folder…",
 "in": [
 "app",
 "web"
@@ -1117,6 +1477,13 @@
 ]
 },
 {
+"en": "Add at least one folder and a destination folder (starting with /)",
+"in": [
+"app",
+"web"
+]
+},
+{
 "en": "Add container {0}",
 "in": [
 "app"
@@ -1140,6 +1507,12 @@
 "en": "Add folder",
 "in": [
 "app"
+]
+},
+{
+"en": "Add Nova to your home screen",
+"in": [
+"web"
 ]
 },
 {
@@ -1335,6 +1708,13 @@
 ]
 },
 {
+"en": "Aero's sky",
+"in": [
+"app",
+"web"
+]
+},
+{
 "en": "AES/GCM/NoPadding",
 "in": [
 "app"
@@ -1342,6 +1722,13 @@
 },
 {
 "en": "After the steps above",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "Airy (Glass)",
 "in": [
 "app",
 "web"
@@ -1356,6 +1743,13 @@
 {
 "en": "alert form",
 "in": [
+"web"
+]
+},
+{
+"en": "Alert sounds",
+"in": [
+"app",
 "web"
 ]
 },
@@ -1432,10 +1826,28 @@
 ]
 },
 {
+"en": "All done!",
+"in": [
+"app"
+]
+},
+{
+"en": "All done!{0}",
+"in": [
+"web"
+]
+},
+{
 "en": "All good",
 "in": [
 "app",
 "web"
+]
+},
+{
+"en": "All good, or what needs attention — and how many containers are running.",
+"in": [
+"app"
 ]
 },
 {
@@ -1485,6 +1897,12 @@
 ]
 },
 {
+"en": "Allow LAN access",
+"in": [
+"app"
+]
+},
+{
 "en": "Allow Nova to install updates, then tap again",
 "in": [
 "app"
@@ -1494,6 +1912,18 @@
 "en": "Allow storage, then tap download again",
 "in": [
 "app"
+]
+},
+{
+"en": "Allow the microphone for Nova to talk to it",
+"in": [
+"app"
+]
+},
+{
+"en": "Allow the microphone for this page to talk to Nova",
+"in": [
+"web"
 ]
 },
 {
@@ -1525,6 +1955,13 @@
 },
 {
 "en": "Always runs",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "Always stronger",
 "in": [
 "app",
 "web"
@@ -1582,8 +2019,56 @@
 ]
 },
 {
+"en": "Ambience",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "Ambience volume",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "Ambience · Beta",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "AMOLED black",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "An address like nova.example.com",
+"in": [
+"app"
+]
+},
+{
 "en": "An address like share.example.com",
 "in": [
+"web"
+]
+},
+{
+"en": "An animated wallpaper in your accent color — your picture shows instead while it's set",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "An animated wallpaper in your accent color: Aero's ribbons of light, Mica's bloom, Breeze's waves and more",
+"in": [
+"app",
 "web"
 ]
 },
@@ -1616,19 +2101,7 @@
 ]
 },
 {
-"en": "and enter:",
-"in": [
-"web"
-]
-},
-{
-"en": "and install it.",
-"in": [
-"site"
-]
-},
-{
-"en": "and it opens full screen with its own icon, like an app. Risky actions are approved on an Android phone, a watch paired with it, or with",
+"en": "and double-click",
 "in": [
 "site"
 ]
@@ -1643,6 +2116,12 @@
 "en": "and scan the code. Pairing only works from your home network, and each code works once.",
 "in": [
 "site"
+]
+},
+{
+"en": "and scan this, or enter the code:",
+"in": [
+"web"
 ]
 },
 {
@@ -1665,6 +2144,12 @@
 ]
 },
 {
+"en": "Android installs it only if it's signed with the same key as this app, and Nova checks the file against the release's checksum first.",
+"in": [
+"app"
+]
+},
+{
 "en": "android {0}",
 "in": [
 "app"
@@ -1680,13 +2165,20 @@
 {
 "en": "Animation speed",
 "in": [
-"app"
+"app",
+"web"
 ]
 },
 {
 "en": "Another folder, e.g. /srv/music",
 "in": [
 "app",
+"web"
+]
+},
+{
+"en": "Another machine running Nova, on your home network or tailnet.",
+"in": [
 "web"
 ]
 },
@@ -1698,9 +2190,16 @@
 ]
 },
 {
-"en": "Answer a few questions: your network, remote access (optional), where the server is, which tools to install.",
+"en": "Answer a few questions: your network, remote access (optional), where the server is, which tools to install. Type",
 "in": [
 "site"
+]
+},
+{
+"en": "Answer the question first",
+"in": [
+"app",
+"web"
 ]
 },
 {
@@ -1711,6 +2210,12 @@
 },
 {
 "en": "Any authenticator app works (Google Authenticator, Aegis, 1Password…). Once it's on, a 6-digit code from it can add a browser to this server, or approve something a browser asks for — so keep it on a device only you use. Turning it on is approved on your phone.",
+"in": [
+"web"
+]
+},
+{
+"en": "Any one of these, within 10 minutes:",
 "in": [
 "web"
 ]
@@ -1762,7 +2267,35 @@
 ]
 },
 {
+"en": "Anyone using it is signed out right away, and it won't work again.",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "Anyone with a code",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "Anyone with a code?",
+"in": [
+"app",
+"web"
+]
+},
+{
 "en": "Anyone with a link",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "Anyone with an access code can open this. Only an admin can make or end codes.",
 "in": [
 "app",
 "web"
@@ -1851,6 +2384,18 @@
 ]
 },
 {
+"en": "app thread (UI)",
+"in": [
+"app"
+]
+},
+{
+"en": "App windows opening, minimizing and closing",
+"in": [
+"web"
+]
+},
+{
 "en": "App {0}",
 "in": [
 "app"
@@ -1860,6 +2405,18 @@
 "en": "app.novalabs.nova.wear.WearActivity",
 "in": [
 "wear"
+]
+},
+{
+"en": "app.novalabs.nova.widget.REFRESH",
+"in": [
+"app"
+]
+},
+{
+"en": "app.novalabs.nova.widget.RUN",
+"in": [
+"app"
 ]
 },
 {
@@ -1911,6 +2468,12 @@
 "en": "application/octet-stream",
 "in": [
 "web"
+]
+},
+{
+"en": "application/vnd.github+json",
+"in": [
+"app"
 ]
 },
 {
@@ -1985,9 +2548,21 @@
 ]
 },
 {
+"en": "Approve a browser, watch or tablet",
+"in": [
+"app"
+]
+},
+{
 "en": "Approve from notifications",
 "in": [
 "app"
+]
+},
+{
+"en": "Approve it on {0}",
+"in": [
+"web"
 ]
 },
 {
@@ -2007,6 +2582,12 @@
 "en": "Approve this browser on {0}",
 "in": [
 "web"
+]
+},
+{
+"en": "Approve with this code",
+"in": [
+"app"
 ]
 },
 {
@@ -2057,10 +2638,28 @@
 ]
 },
 {
+"en": "Apps in Nova windows",
+"in": [
+"web"
+]
+},
+{
 "en": "Apps like Immich or Home Assistant can't do this web login. Nova makes a key just for this address that the app sends instead.",
 "in": [
 "app",
 "web"
+]
+},
+{
+"en": "Apps open in a window inside Nova — with minimize, maximize and close, in the look you picked — instead of a new tab. Minimized ones wait in the navigation pill. Only in this browser.",
+"in": [
+"web"
+]
+},
+{
+"en": "Apps open in windows",
+"in": [
+"app"
 ]
 },
 {
@@ -2117,7 +2716,31 @@
 ]
 },
 {
+"en": "are there whenever you're stuck.",
+"in": [
+"site"
+]
+},
+{
+"en": "arrdone btn",
+"in": [
+"web"
+]
+},
+{
 "en": "ArrowDown",
+"in": [
+"web"
+]
+},
+{
+"en": "ArrowLeft",
+"in": [
+"web"
+]
+},
+{
+"en": "ArrowRight",
 "in": [
 "web"
 ]
@@ -2149,6 +2772,25 @@
 ]
 },
 {
+"en": "Ask Nova",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "Ask Nova — drag to move, drop on the navigation pill to dock it",
+"in": [
+"web"
+]
+},
+{
+"en": "Ask Nova: …",
+"in": [
+"web"
+]
+},
+{
 "en": "Asking your phone to approve…",
 "in": [
 "web"
@@ -2161,6 +2803,45 @@
 ]
 },
 {
+"en": "Assistant",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "Assistant button",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "Assistant settings",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "astate bad",
+"in": [
+"web"
+]
+},
+{
+"en": "astate ok",
+"in": [
+"web"
+]
+},
+{
+"en": "astate run",
+"in": [
+"web"
+]
+},
+{
 "en": "At a glance",
 "in": [
 "app",
@@ -2168,7 +2849,7 @@
 ]
 },
 {
-"en": "At home Nova talks to the server directly. Elsewhere it goes through Cloudflare Access, which turns away anyone without this app's access token before they ever reach the server.",
+"en": "At home Nova talks to the server directly. Away, it goes over Tailscale (a private network between your own devices) or through Cloudflare Access, which turns away anyone without this app's access key — whichever the server has set up.",
 "in": [
 "app"
 ]
@@ -2180,6 +2861,12 @@
 ]
 },
 {
+"en": "at home, or your Cloudflare address).",
+"in": [
+"site"
+]
+},
+{
 "en": "At home: encrypted",
 "in": [
 "web"
@@ -2187,6 +2874,12 @@
 },
 {
 "en": "At home: encrypted, pinned",
+"in": [
+"app"
+]
+},
+{
+"en": "At home: run sudo nova add on the server and scan the code it shows (or type the address and code). Away from home: use sudo nova add --remote, or sign in with Cloudflare above.",
 "in": [
 "app"
 ]
@@ -2218,6 +2911,18 @@
 ]
 },
 {
+"en": "athink work",
+"in": [
+"web"
+]
+},
+{
+"en": "aturn now",
+"in": [
+"web"
+]
+},
+{
 "en": "audio/",
 "in": [
 "app"
@@ -2241,6 +2946,12 @@
 "in": [
 "app",
 "web"
+]
+},
+{
+"en": "authenticator codes",
+"in": [
+"site"
 ]
 },
 {
@@ -2329,6 +3040,18 @@
 ]
 },
 {
+"en": "Away from home?",
+"in": [
+"app"
+]
+},
+{
+"en": "Away-from-home access isn't set up, so Nova only works on the home network (sudo nova setup → Away from home)",
+"in": [
+"app"
+]
+},
+{
 "en": "B:#0a84ff",
 "in": [
 "web"
@@ -2368,6 +3091,12 @@
 ]
 },
 {
+"en": "Back up",
+"in": [
+"app"
+]
+},
+{
 "en": "Back up anyway — just this once",
 "in": [
 "app",
@@ -2379,6 +3108,12 @@
 "in": [
 "app",
 "web"
+]
+},
+{
+"en": "Back up now, free memory, the fan light, and refresh — right from the home screen.",
+"in": [
+"app"
 ]
 },
 {
@@ -2456,6 +3191,18 @@
 ]
 },
 {
+"en": "Backup finished",
+"in": [
+"web"
+]
+},
+{
+"en": "Backup had errors (rsync $RC) — keeping the old snapshots",
+"in": [
+"web"
+]
+},
+{
 "en": "Backup script",
 "in": [
 "app",
@@ -2521,6 +3268,19 @@
 ]
 },
 {
+"en": "backup|restore",
+"in": [
+"app"
+]
+},
+{
+"en": "Bad sectors",
+"in": [
+"app",
+"web"
+]
+},
+{
 "en": "banner glass press",
 "in": [
 "web"
@@ -2566,6 +3326,12 @@
 },
 {
 "en": "bgc frost",
+"in": [
+"web"
+]
+},
+{
+"en": "Big",
 "in": [
 "web"
 ]
@@ -2639,6 +3405,13 @@
 ]
 },
 {
+"en": "Bloom (Mica)",
+"in": [
+"app",
+"web"
+]
+},
+{
 "en": "Blue",
 "in": [
 "app",
@@ -2648,7 +3421,6 @@
 {
 "en": "Blur",
 "in": [
-"app",
 "web"
 ]
 },
@@ -2660,6 +3432,13 @@
 },
 {
 "en": "Board",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "Bolder, higher-contrast text everywhere",
 "in": [
 "app",
 "web"
@@ -2690,6 +3469,13 @@
 "en": "Booting without a missing drive",
 "in": [
 "app"
+]
+},
+{
+"en": "Brain",
+"in": [
+"app",
+"web"
 ]
 },
 {
@@ -2853,6 +3639,13 @@
 ]
 },
 {
+"en": "Build it for me",
+"in": [
+"app",
+"web"
+]
+},
+{
 "en": "Building {0}%",
 "in": [
 "app",
@@ -2870,6 +3663,26 @@
 "en": "Built so a stolen password gets nobody in.",
 "in": [
 "site"
+]
+},
+{
+"en": "Built-in background",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "button, a, input, select, textarea, [data-act]",
+"in": [
+"web"
+]
+},
+{
+"en": "Buttons, rows and links",
+"in": [
+"app",
+"web"
 ]
 },
 {
@@ -2986,6 +3799,12 @@
 ]
 },
 {
+"en": "Can't ask for a fingerprint here.",
+"in": [
+"app"
+]
+},
+{
 "en": "Can't reach it",
 "in": [
 "app",
@@ -2999,13 +3818,25 @@
 ]
 },
 {
-"en": "Can't reach the server at {0} — are you on home Wi-Fi?",
+"en": "Can't reach the server at {0}",
+"in": [
+"app"
+]
+},
+{
+"en": "Can't reach the server at {0} — are you on home Wi-Fi? Away from home, make a code with sudo nova add --remote.",
 "in": [
 "app"
 ]
 },
 {
 "en": "Can't reach the server here. Away from home, turn on Tailscale.",
+"in": [
+"app"
+]
+},
+{
+"en": "Can't reach the server — check this {0}'s internet connection.",
 "in": [
 "app"
 ]
@@ -3030,6 +3861,12 @@
 ]
 },
 {
+"en": "Can't reach {0} — check that Tailscale is running on this {1}, signed in to the same account as the server.",
+"in": [
+"app"
+]
+},
+{
 "en": "Can't reach {0} — check the address and that you're on the server's network.",
 "in": [
 "app"
@@ -3044,8 +3881,15 @@
 ]
 },
 {
+"en": "Cancel the {0} on {1}",
+"in": [
+"web"
+]
+},
+{
 "en": "Cancelled",
 "in": [
+"app",
 "web"
 ]
 },
@@ -3057,13 +3901,13 @@
 ]
 },
 {
-"en": "card glass",
+"en": "canvas[data-look]",
 "in": [
 "web"
 ]
 },
 {
-"en": "card glass core",
+"en": "card glass",
 "in": [
 "web"
 ]
@@ -3159,6 +4003,12 @@
 ]
 },
 {
+"en": "Change the Compose file of {0}",
+"in": [
+"app"
+]
+},
+{
 "en": "Change the picture",
 "in": [
 "app",
@@ -3200,6 +4050,12 @@
 ]
 },
 {
+"en": "Changes with the style you pick",
+"in": [
+"web"
+]
+},
+{
 "en": "Changing {0}…",
 "in": [
 "web"
@@ -3226,6 +4082,12 @@
 ]
 },
 {
+"en": "Check it, answer anything I asked, then tap Do it. Nothing has changed yet.",
+"in": [
+"app"
+]
+},
+{
 "en": "Check port",
 "in": [
 "app",
@@ -3239,6 +4101,12 @@
 ]
 },
 {
+"en": "Check the steps below. Apply asks you to type this drive's serial and approve it — everything on the drive is erased.{0}",
+"in": [
+"web"
+]
+},
+{
 "en": "Checked",
 "in": [
 "app"
@@ -3248,6 +4116,13 @@
 "en": "Checked about every 15 minutes (Android may delay it)",
 "in": [
 "app"
+]
+},
+{
+"en": "Checking and applying…",
+"in": [
+"app",
+"web"
 ]
 },
 {
@@ -3310,9 +4185,8 @@
 ]
 },
 {
-"en": "Choose a picture",
+"en": "Choose a GIF or video",
 "in": [
-"app",
 "web"
 ]
 },
@@ -3324,8 +4198,22 @@
 ]
 },
 {
+"en": "Choose…",
+"in": [
+"app",
+"web"
+]
+},
+{
 "en": "Chrome",
 "in": [
+"web"
+]
+},
+{
+"en": "Circle",
+"in": [
+"app",
 "web"
 ]
 },
@@ -3343,6 +4231,20 @@
 },
 {
 "en": "Circles",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "Clarity {0}%",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "Clean (Material)",
 "in": [
 "app",
 "web"
@@ -3384,6 +4286,24 @@
 },
 {
 "en": "Click to enlarge",
+"in": [
+"web"
+]
+},
+{
+"en": "Click to enlarge · double-click for each core",
+"in": [
+"web"
+]
+},
+{
+"en": "ClickableViewAccessibility",
+"in": [
+"app"
+]
+},
+{
+"en": "Clicks, switches, pages, pop-ups and windows — each look has its own sound pack",
 "in": [
 "web"
 ]
@@ -3456,6 +4376,12 @@
 ]
 },
 {
+"en": "Cloudflare didn't accept the sign-in — try signing in again.",
+"in": [
+"app"
+]
+},
+{
 "en": "Cloudflare is up, but your server isn't connected to it (off, restarting or no internet) — {0}",
 "in": [
 "app",
@@ -3482,7 +4408,25 @@
 ]
 },
 {
+"en": "Cloudflare turned this away at the door — the setup code may be out of date. Make a new one with sudo nova add --remote.",
+"in": [
+"app"
+]
+},
+{
 "en": "Cloudflare Zero Trust →",
+"in": [
+"web"
+]
+},
+{
+"en": "Cloudflare's login comes off {0} Instead, a page asks visitors for an access code that you make here, and only a working code opens the app. Until you make one, nobody can get in.",
+"in": [
+"app"
+]
+},
+{
+"en": "Cloudflare's login comes off {0}. Instead, a page asks visitors for an access code that you make here, and only a working code opens the app. Until you make one, nobody can get in.",
 "in": [
 "web"
 ]
@@ -3532,6 +4476,13 @@
 },
 {
 "en": "Color cycle",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "Color strength",
 "in": [
 "app",
 "web"
@@ -3612,6 +4563,13 @@
 ]
 },
 {
+"en": "Command",
+"in": [
+"app",
+"web"
+]
+},
+{
 "en": "Command lines",
 "in": [
 "web"
@@ -3629,6 +4587,18 @@
 "in": [
 "app",
 "web"
+]
+},
+{
+"en": "Compose ·",
+"in": [
+"web"
+]
+},
+{
+"en": "Compose · {0}",
+"in": [
+"app"
 ]
 },
 {
@@ -3677,6 +4647,12 @@
 ]
 },
 {
+"en": "Confirming risky actions needs a fingerprint or screen lock on this {0} (or an admin device to approve). Add one in Android settings, then open Nova on home Wi-Fi.",
+"in": [
+"app"
+]
+},
+{
 "en": "Connect",
 "in": [
 "app",
@@ -3691,6 +4667,12 @@
 },
 {
 "en": "Connect through",
+"in": [
+"app"
+]
+},
+{
+"en": "connect: no address to try",
 "in": [
 "app"
 ]
@@ -3727,12 +4709,6 @@
 ]
 },
 {
-"en": "Connecting to {0}@{1}…\\r",
-"in": [
-"app"
-]
-},
-{
 "en": "Connecting…",
 "in": [
 "app",
@@ -3761,6 +4737,13 @@
 },
 {
 "en": "Container",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "Container ID",
 "in": [
 "app",
 "web"
@@ -3834,6 +4817,12 @@
 ]
 },
 {
+"en": "containers/{0}/compose",
+"in": [
+"web"
+]
+},
+{
 "en": "containers/{0}/logs",
 "in": [
 "web"
@@ -3870,6 +4859,18 @@
 ]
 },
 {
+"en": "Controller",
+"in": [
+"web"
+]
+},
+{
+"en": "Controller button hints",
+"in": [
+"web"
+]
+},
+{
 "en": "Controlling",
 "in": [
 "web"
@@ -3879,6 +4880,12 @@
 "en": "Controlling {0}",
 "in": [
 "web"
+]
+},
+{
+"en": "Conversation",
+"in": [
+"app"
 ]
 },
 {
@@ -3924,6 +4931,12 @@
 ]
 },
 {
+"en": "Copy a frame report",
+"in": [
+"app"
+]
+},
+{
 "en": "Copy command",
 "in": [
 "app"
@@ -3949,6 +4962,13 @@
 ]
 },
 {
+"en": "Copy the address",
+"in": [
+"app",
+"web"
+]
+},
+{
 "en": "Copy the command",
 "in": [
 "web"
@@ -3956,6 +4976,12 @@
 },
 {
 "en": "Copy the link",
+"in": [
+"app"
+]
+},
+{
+"en": "Copy the setup code (paste it in the app)",
 "in": [
 "app"
 ]
@@ -3981,14 +5007,14 @@
 ]
 },
 {
-"en": "Core {0}",
+"en": "Corner roundness",
 "in": [
 "app",
 "web"
 ]
 },
 {
-"en": "Corner roundness",
+"en": "Corners {0}%",
 "in": [
 "app",
 "web"
@@ -4050,6 +5076,18 @@
 ]
 },
 {
+"en": "Couldn't download the update ({0}).",
+"in": [
+"app"
+]
+},
+{
+"en": "Couldn't load",
+"in": [
+"app"
+]
+},
+{
 "en": "Couldn't load the list",
 "in": [
 "app",
@@ -4057,7 +5095,7 @@
 ]
 },
 {
-"en": "Couldn't load the server's details yet — try again in a moment",
+"en": "Couldn't load the server's SSH details yet — try again in a moment",
 "in": [
 "app"
 ]
@@ -4071,6 +5109,7 @@
 {
 "en": "Couldn't open it",
 "in": [
+"app",
 "web"
 ]
 },
@@ -4089,9 +5128,34 @@
 ]
 },
 {
+"en": "couldn't play {0} ({1})",
+"in": [
+"app"
+]
+},
+{
+"en": "Couldn't reach GitHub — check this {0}'s internet connection.",
+"in": [
+"app"
+]
+},
+{
+"en": "couldn't reach it",
+"in": [
+"app"
+]
+},
+{
 "en": "Couldn't reach the server",
 "in": [
+"app",
 "wear"
+]
+},
+{
+"en": "Couldn't reach the server from here (home network, Tailscale or Cloudflare). Check this {0}'s internet connection and that the code is still fresh.",
+"in": [
+"app"
 ]
 },
 {
@@ -4132,16 +5196,16 @@
 ]
 },
 {
-"en": "CPU & case fan speed",
+"en": "cp-reset press",
 "in": [
-"app",
 "web"
 ]
 },
 {
-"en": "CPU cores · {0}",
+"en": "CPU & case fan speed",
 "in": [
-"app"
+"app",
+"web"
 ]
 },
 {
@@ -4185,7 +5249,31 @@
 ]
 },
 {
-"en": "CPU, memory, temperatures and network as live one-second graphs, plus drive health from SMART. One line tells you if anything needs attention.",
+"en": "CPU · load %.2f",
+"in": [
+"app"
+]
+},
+{
+"en": "CPU · load {0}",
+"in": [
+"web"
+]
+},
+{
+"en": "CPU · {0} cores",
+"in": [
+"app"
+]
+},
+{
+"en": "CPU, memory, temperature and disk, with bars.",
+"in": [
+"app"
+]
+},
+{
+"en": "CPU, memory, temperatures and network as live one-second graphs, plus drive health from SMART. One line tells you if anything needs attention. Home draws your machine as it looks (tower, mini PC, NAS, rack, laptop or single-board), its lights showing status and drive activity.",
 "in": [
 "site"
 ]
@@ -4242,9 +5330,22 @@
 ]
 },
 {
+"en": "Created",
+"in": [
+"app",
+"web"
+]
+},
+{
 "en": "Created the first time you connect",
 "in": [
 "app"
+]
+},
+{
+"en": "CriOS",
+"in": [
+"web"
 ]
 },
 {
@@ -4331,7 +5432,19 @@
 ]
 },
 {
+"en": "cubic-bezier(.2,.9,.3,1)",
+"in": [
+"web"
+]
+},
+{
 "en": "cubic-bezier(.34,1.36,.64,1)",
+"in": [
+"web"
+]
+},
+{
+"en": "cubic-bezier(.4,0,.6,1)",
 "in": [
 "web"
 ]
@@ -4339,7 +5452,9 @@
 {
 "en": "curl -fsSL https://raw.githubusercontent.com/dash1101/Nova/main/get.sh | sh",
 "in": [
-"site"
+"app",
+"site",
+"web"
 ]
 },
 {
@@ -4405,6 +5520,19 @@
 ]
 },
 {
+"en": "Dark case",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "dash1101/Nova",
+"in": [
+"app"
+]
+},
+{
 "en": "Dashboard",
 "in": [
 "app",
@@ -4420,6 +5548,12 @@
 },
 {
 "en": "Dashboard options",
+"in": [
+"web"
+]
+},
+{
+"en": "Dashboard picture set",
 "in": [
 "web"
 ]
@@ -4445,6 +5579,13 @@
 },
 {
 "en": "database backup",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "Dated snapshots",
 "in": [
 "app",
 "web"
@@ -4479,6 +5620,13 @@
 "in": [
 "app",
 "site",
+"web"
+]
+},
+{
+"en": "Default's glow",
+"in": [
+"app",
 "web"
 ]
 },
@@ -4608,6 +5756,18 @@
 ]
 },
 {
+"en": "Dialogs and menus opening and closing",
+"in": [
+"web"
+]
+},
+{
+"en": "Dialogs opening and closing",
+"in": [
+"app"
+]
+},
+{
 "en": "Didn't finish",
 "in": [
 "app",
@@ -4615,9 +5775,9 @@
 ]
 },
 {
-"en": "Dim",
+"en": "didn't work —",
 "in": [
-"app"
+"web"
 ]
 },
 {
@@ -4826,9 +5986,40 @@
 ]
 },
 {
+"en": "Doesn't look like your computer?",
+"in": [
+"app"
+]
+},
+{
+"en": "Doesn't look like your computer? Pick its look",
+"in": [
+"app"
+]
+},
+{
 "en": "Don't back up a folder that suddenly lost most of its files",
 "in": [
 "app",
+"web"
+]
+},
+{
+"en": "Don't read replies aloud",
+"in": [
+"app"
+]
+},
+{
+"en": "Don't run if the destination isn't on its own drive (a missing drive would fill the system drive)",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "Don't show them",
+"in": [
 "web"
 ]
 },
@@ -4877,6 +6068,13 @@
 ]
 },
 {
+"en": "Done, or didn't finish",
+"in": [
+"app",
+"web"
+]
+},
+{
 "en": "Double parity (RAID 6)",
 "in": [
 "app",
@@ -4900,6 +6098,7 @@
 "en": "Download",
 "in": [
 "app",
+"site",
 "web"
 ]
 },
@@ -4934,15 +6133,53 @@
 ]
 },
 {
-"en": "Download the server package from the",
+"en": "Download voice (%.1f GB): what you say is turned into text on your server, never by an outside service. Until then the mic uses this phone's own recognizer.",
 "in": [
-"site"
+"app"
+]
+},
+{
+"en": "Download voice (0.2 GB): what you say is turned into text on your server, never by an outside service.",
+"in": [
+"web"
+]
+},
+{
+"en": "Download voice first (on this page, below), then tap the mic",
+"in": [
+"web"
+]
+},
+{
+"en": "Download {0}",
+"in": [
+"app"
 ]
 },
 {
 "en": "Downloaded",
 "in": [
 "app"
+]
+},
+{
+"en": "Downloaded but not in use — frees %.1f GB",
+"in": [
+"app"
+]
+},
+{
+"en": "downloaded — switches instantly",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "Downloaded.",
+"in": [
+"app",
+"web"
 ]
 },
 {
@@ -4960,6 +6197,13 @@
 },
 {
 "en": "Downloading…",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "Downloading… {0}%",
 "in": [
 "app"
 ]
@@ -4991,8 +6235,21 @@
 ]
 },
 {
+"en": "drawing (GPU side)",
+"in": [
+"app"
+]
+},
+{
 "en": "Drawn by the processor (no graphics card)",
 "in": [
+"web"
+]
+},
+{
+"en": "Dreamy (Default)",
+"in": [
+"app",
 "web"
 ]
 },
@@ -5000,6 +6257,12 @@
 "en": "Drive",
 "in": [
 "web"
+]
+},
+{
+"en": "drive %.0f°",
+"in": [
+"app"
 ]
 },
 {
@@ -5082,6 +6345,12 @@
 ]
 },
 {
+"en": "drive|disk|smart|sector|raid|pool|mount|nvme|usb",
+"in": [
+"app"
+]
+},
+{
 "en": "Drop files anywhere on this page to upload them here.",
 "in": [
 "web"
@@ -5089,6 +6358,13 @@
 },
 {
 "en": "Drop the disk cache",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "Droplets",
 "in": [
 "app",
 "web"
@@ -5115,6 +6391,12 @@
 ]
 },
 {
+"en": "e.g. 100.64.0.1 or 192.168.1.20",
+"in": [
+"app"
+]
+},
+{
 "en": "e.g. Case strip, Rear fan",
 "in": [
 "app",
@@ -5129,14 +6411,14 @@
 ]
 },
 {
-"en": "e.g. Photos",
+"en": "e.g. photos",
 "in": [
 "app",
 "web"
 ]
 },
 {
-"en": "e.g. photos",
+"en": "e.g. Photos",
 "in": [
 "app",
 "web"
@@ -5149,9 +6431,21 @@
 ]
 },
 {
+"en": "e.g. Set the lights to fire, free up some space and restart Jellyfin",
+"in": [
+"app"
+]
+},
+{
 "en": "e.g. Wake up",
 "in": [
 "app",
+"web"
+]
+},
+{
+"en": "Each core",
+"in": [
 "web"
 ]
 },
@@ -5194,6 +6488,13 @@
 ]
 },
 {
+"en": "Earlier conversations",
+"in": [
+"app",
+"web"
+]
+},
+{
 "en": "EC P-256 in the Android Keystore (StrongBox when the phone has one), never exportable",
 "in": [
 "site"
@@ -5209,6 +6510,12 @@
 "en": "Ecosia",
 "in": [
 "app",
+"web"
+]
+},
+{
+"en": "Edg",
+"in": [
 "web"
 ]
 },
@@ -5247,6 +6554,13 @@
 },
 {
 "en": "Edit Home",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "Edit its Compose file",
 "in": [
 "app",
 "web"
@@ -5293,6 +6607,18 @@
 ]
 },
 {
+"en": "EEE MMM d",
+"in": [
+"app"
+]
+},
+{
+"en": "EEE MMM d, h:mm a",
+"in": [
+"app"
+]
+},
+{
 "en": "EEEE, MMM d",
 "in": [
 "app"
@@ -5300,6 +6626,12 @@
 },
 {
 "en": "EEEE, MMM d, yyyy",
+"in": [
+"app"
+]
+},
+{
+"en": "EEEE, MMMM d",
 "in": [
 "app"
 ]
@@ -5345,10 +6677,64 @@
 ]
 },
 {
+"en": "End every code",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "End every code?",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "End it",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "End process",
+"in": [
+"app"
+]
+},
+{
+"en": "End this code",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "End this code?",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "Ended",
+"in": [
+"app",
+"web"
+]
+},
+{
 "en": "Ends",
 "in": [
 "app",
 "web"
+]
+},
+{
+"en": "ends {0}",
+"in": [
+"app"
 ]
 },
 {
@@ -5408,6 +6794,12 @@
 "en": "Erase and set up",
 "in": [
 "app",
+"web"
+]
+},
+{
+"en": "erase it, NTFS, 33% root + 67% home",
+"in": [
 "web"
 ]
 },
@@ -5573,7 +6965,34 @@
 ]
 },
 {
+"en": "Every icon takes on the accent color instead of its own — warnings stay red",
+"in": [
+"app",
+"web"
+]
+},
+{
 "en": "Every image is in use",
+"in": [
+"app"
+]
+},
+{
+"en": "Every look's background — pick one for any look.",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "Every look's living wallpaper — pick one for any look.",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "Every minute the whole layout moves to a new spot, so no pixel shows the same thing for hours. Bigger moves protect better and are easier to notice.",
 "in": [
 "app"
 ]
@@ -5591,20 +7010,15 @@
 ]
 },
 {
-"en": "Every release goes through an automated security test of more than 400 checks against a real server: forged and replayed requests, stolen keys, path tricks, oversized requests, brute force, and more. Releases are signed, and the server only installs updates whose signature checks out.",
+"en": "Every release goes through an automated security test of more than 650 checks against a real server: forged and replayed requests, stolen keys, path tricks, oversized requests, brute force, and more. Releases are signed, and the server only installs updates whose signature checks out.",
 "in": [
 "app",
+"site",
 "web"
 ]
 },
 {
-"en": "Every release goes through an automated security test of more than 500 checks against a real server: forged and replayed requests, stolen keys, path tricks, oversized requests, brute force, and more. Releases are signed, and the server only installs updates whose signature checks out.",
-"in": [
-"site"
-]
-},
-{
-"en": "Every release is checked with an automated security test of more than 400 checks, and update packages are signed. Remote access goes through Cloudflare Access, so nothing is open to the internet.",
+"en": "Every release is checked with an automated security test of more than 650 checks, and update packages are signed. Remote access goes through Cloudflare Access, so nothing is open to the internet.",
 "in": [
 "site"
 ]
@@ -5643,6 +7057,20 @@
 {
 "en": "Every {0} hour{1}",
 "in": [
+"web"
+]
+},
+{
+"en": "Everyone signed in with a code is signed out right away",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "Everyone who got in with a code is signed out right away, and none of the codes work again.",
+"in": [
+"app",
 "web"
 ]
 },
@@ -5752,6 +7180,25 @@
 ]
 },
 {
+"en": "exit \"\\{0}\"",
+"in": [
+"app"
+]
+},
+{
+"en": "Exited (1) 2 days ago",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "Exited ({0}) {1} ago",
+"in": [
+"web"
+]
+},
+{
 "en": "Experimental features (Labs)",
 "in": [
 "app",
@@ -5813,6 +7260,19 @@
 ]
 },
 {
+"en": "Fade color",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "Fade in and out over",
+"in": [
+"web"
+]
+},
+{
 "en": "Fades change the light gradually, a step each minute. With an end time, the light goes back to how it was when the schedule started.",
 "in": [
 "app",
@@ -5843,6 +7303,12 @@
 "en": "Failed {0} — {1}",
 "in": [
 "web"
+]
+},
+{
+"en": "Failed:",
+"in": [
+"app"
 ]
 },
 {
@@ -5881,6 +7347,18 @@
 "in": [
 "app",
 "web"
+]
+},
+{
+"en": "Fan light off",
+"in": [
+"app"
+]
+},
+{
+"en": "Fan light on",
+"in": [
+"app"
 ]
 },
 {
@@ -6037,7 +7515,7 @@
 ]
 },
 {
-"en": "Fingerprint confirmation isn't set up yet — open Settings → This {0} on home Wi-Fi.",
+"en": "Fingerprint confirmation is on",
 "in": [
 "app"
 ]
@@ -6058,6 +7536,13 @@
 "en": "Fingerprint to confirm",
 "in": [
 "app"
+]
+},
+{
+"en": "Finished tasks",
+"in": [
+"app",
+"web"
 ]
 },
 {
@@ -6134,6 +7619,13 @@
 ]
 },
 {
+"en": "Flow (Breeze)",
+"in": [
+"app",
+"web"
+]
+},
+{
 "en": "Fold",
 "in": [
 "app"
@@ -6167,6 +7659,13 @@
 ]
 },
 {
+"en": "Folders to back up (one per line)",
+"in": [
+"app",
+"web"
+]
+},
+{
 "en": "Folders · server → container",
 "in": [
 "app",
@@ -6177,6 +7676,12 @@
 "en": "Follow",
 "in": [
 "app"
+]
+},
+{
+"en": "Follows your look and light or dark",
+"in": [
+"web"
 ]
 },
 {
@@ -6192,10 +7697,44 @@
 ]
 },
 {
+"en": "For 1 hour",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "For 12 hours",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "For 4 hours",
+"in": [
+"app",
+"web"
+]
+},
+{
 "en": "For a bug report",
 "in": [
 "app",
 "web"
+]
+},
+{
+"en": "For a day",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "For a phone away from home",
+"in": [
+"app"
 ]
 },
 {
@@ -6232,6 +7771,19 @@
 ]
 },
 {
+"en": "Force stop",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "Force stop {0}?",
+"in": [
+"web"
+]
+},
+{
 "en": "Force unmount",
 "in": [
 "app",
@@ -6252,6 +7804,12 @@
 ]
 },
 {
+"en": "Force-stopped",
+"in": [
+"web"
+]
+},
+{
 "en": "Forest",
 "in": [
 "app",
@@ -6259,7 +7817,35 @@
 ]
 },
 {
+"en": "Forget",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "Forget the conversation",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "Forget the conversation?",
+"in": [
+"app",
+"web"
+]
+},
+{
 "en": "Forget the link",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "Forgotten",
 "in": [
 "app",
 "web"
@@ -6286,6 +7872,24 @@
 ]
 },
 {
+"en": "Forward",
+"in": [
+"web"
+]
+},
+{
+"en": "Found at home",
+"in": [
+"web"
+]
+},
+{
+"en": "Found it — reconnecting",
+"in": [
+"app"
+]
+},
+{
 "en": "Found on this network",
 "in": [
 "app"
@@ -6300,7 +7904,8 @@
 {
 "en": "Frame rate limit",
 "in": [
-"app"
+"app",
+"web"
 ]
 },
 {
@@ -6370,6 +7975,18 @@
 ]
 },
 {
+"en": "Freed memory",
+"in": [
+"app"
+]
+},
+{
+"en": "freed {0}",
+"in": [
+"app"
+]
+},
+{
 "en": "Freed {0} MB",
 "in": [
 "app",
@@ -6378,6 +7995,36 @@
 },
 {
 "en": "Freed {0} MB · {1} MB available",
+"in": [
+"web"
+]
+},
+{
+"en": "Freeing…",
+"in": [
+"app"
+]
+},
+{
+"en": "Frees %.1f GB — the assistant keeps working with its rules",
+"in": [
+"app"
+]
+},
+{
+"en": "Frees %.1f GB — the mic then uses this phone's speech recognizer",
+"in": [
+"app"
+]
+},
+{
+"en": "Frees 0.2 GB",
+"in": [
+"web"
+]
+},
+{
+"en": "Frees {0} GB — the assistant keeps working with its rules",
 "in": [
 "web"
 ]
@@ -6428,6 +8075,12 @@
 ]
 },
 {
+"en": "From Nova's public releases on GitHub — no server needed",
+"in": [
+"app"
+]
+},
+{
 "en": "From the app store",
 "in": [
 "web"
@@ -6466,9 +8119,28 @@
 ]
 },
 {
+"en": "Frost",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "Frost blurs your wallpaper picture behind the cards — pick a picture under Background to see it (the glow is soft already).",
+"in": [
+"app"
+]
+},
+{
 "en": "frost on",
 "in": [
 "web"
+]
+},
+{
+"en": "Frost shows once cards are see-through (Transparency above 0%).",
+"in": [
+"app"
 ]
 },
 {
@@ -6529,9 +8201,21 @@
 ]
 },
 {
+"en": "FxiOS",
+"in": [
+"web"
+]
+},
+{
 "en": "gap + stop dot",
 "in": [
 "app"
+]
+},
+{
+"en": "GB download",
+"in": [
+"web"
 ]
 },
 {
@@ -6550,6 +8234,7 @@
 {
 "en": "Get a code",
 "in": [
+"site",
 "web"
 ]
 },
@@ -6645,6 +8330,18 @@
 ]
 },
 {
+"en": "Glass is the most demanding look: on some devices it can make things warm, use more battery or stutter. Lighter effects (below) keeps the look with less work.",
+"in": [
+"web"
+]
+},
+{
+"en": "Glass is the most demanding look: on some phones it can make things warm, use more battery or stutter. Lighter effects (below) keeps the look with less work.",
+"in": [
+"app"
+]
+},
+{
 "en": "Glass quality",
 "in": [
 "app"
@@ -6658,8 +8355,22 @@
 ]
 },
 {
+"en": "Glass's vivid glow",
+"in": [
+"app",
+"web"
+]
+},
+{
 "en": "Glass, blur and the live graphs are drawn by the processor instead, so they can stutter and use more power. Turn on hardware acceleration and restart the browser — Chrome or Edge: Settings → System → “Use graphics acceleration when available”. Firefox: Settings → Performance. Until then, Lighter effects is on automatically.",
 "in": [
+"web"
+]
+},
+{
+"en": "Glassy (Aero)",
+"in": [
+"app",
 "web"
 ]
 },
@@ -6784,6 +8495,18 @@
 ]
 },
 {
+"en": "Going into a page and back",
+"in": [
+"app"
+]
+},
+{
+"en": "Going into a page and back, and the navigation pill sliding",
+"in": [
+"web"
+]
+},
+{
 "en": "Good afternoon",
 "in": [
 "app",
@@ -6888,12 +8611,6 @@
 ]
 },
 {
-"en": "grid cores",
-"in": [
-"web"
-]
-},
-{
 "en": "grid four",
 "in": [
 "web"
@@ -6919,12 +8636,6 @@
 },
 {
 "en": "group glass trouble",
-"in": [
-"web"
-]
-},
-{
-"en": "group glass wicons",
 "in": [
 "web"
 ]
@@ -6978,6 +8689,19 @@
 {
 "en": "hardware/{0}",
 "in": [
+"web"
+]
+},
+{
+"en": "Harmony",
+"in": [
+"web"
+]
+},
+{
+"en": "Harmony (Aero)",
+"in": [
+"app",
 "web"
 ]
 },
@@ -7071,6 +8795,13 @@
 ]
 },
 {
+"en": "Hearing you…",
+"in": [
+"app",
+"web"
+]
+},
+{
 "en": "Heaviest first",
 "in": [
 "app",
@@ -7084,8 +8815,21 @@
 ]
 },
 {
+"en": "hello nova",
+"in": [
+"web"
+]
+},
+{
+"en": "Hello! Your server says hi back. 👋",
+"in": [
+"web"
+]
+},
+{
 "en": "Help",
 "in": [
+"app",
 "web"
 ]
 },
@@ -7097,6 +8841,12 @@
 },
 {
 "en": "Help: {0}",
+"in": [
+"app"
+]
+},
+{
+"en": "Here's my plan",
 "in": [
 "app"
 ]
@@ -7142,6 +8892,13 @@
 ]
 },
 {
+"en": "Hide kernel threads",
+"in": [
+"app",
+"web"
+]
+},
+{
 "en": "Hide Recommended from Home",
 "in": [
 "app",
@@ -7152,6 +8909,13 @@
 "en": "Hide setup guide",
 "in": [
 "app"
+]
+},
+{
+"en": "Hide this",
+"in": [
+"app",
+"web"
 ]
 },
 {
@@ -7271,7 +9035,7 @@
 ]
 },
 {
-"en": "Home network when you're home, otherwise the next route",
+"en": "Home network (direct)",
 "in": [
 "app"
 ]
@@ -7284,7 +9048,7 @@
 ]
 },
 {
-"en": "Home Wi-Fi (direct)",
+"en": "Home-screen widgets",
 "in": [
 "app"
 ]
@@ -7304,6 +9068,13 @@
 },
 {
 "en": "Hottest",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "How",
 "in": [
 "app",
 "web"
@@ -7339,6 +9110,12 @@
 ]
 },
 {
+"en": "How full each drive is.",
+"in": [
+"app"
+]
+},
+{
 "en": "How hard to shake",
 "in": [
 "app"
@@ -7354,6 +9131,13 @@
 },
 {
 "en": "How long backups are kept",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "How long it works",
 "in": [
 "app",
 "web"
@@ -7380,6 +9164,12 @@
 ]
 },
 {
+"en": "how much did that free?",
+"in": [
+"web"
+]
+},
+{
 "en": "How Nova backs up",
 "in": [
 "app",
@@ -7387,10 +9177,22 @@
 ]
 },
 {
+"en": "How Nova works, what's safe, how to undo things",
+"in": [
+"app"
+]
+},
+{
 "en": "How storage works",
 "in": [
 "app",
 "web"
+]
+},
+{
+"en": "How the last few hundred frames went — paste it into a bug report",
+"in": [
+"app"
 ]
 },
 {
@@ -7407,6 +9209,12 @@
 },
 {
 "en": "How to set up your server",
+"in": [
+"web"
+]
+},
+{
+"en": "hsla({0},{1}%,{2}%,{3})",
 "in": [
 "web"
 ]
@@ -7444,9 +9252,34 @@
 ]
 },
 {
+"en": "I couldn't make that out — try again",
+"in": [
+"web"
+]
+},
+{
 "en": "I deleted those files on purpose",
 "in": [
 "app",
+"web"
+]
+},
+{
+"en": "I didn't hear anything",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "I didn't understand:",
+"in": [
+"app"
+]
+},
+{
+"en": "I have a code",
+"in": [
 "web"
 ]
 },
@@ -7491,7 +9324,42 @@
 ]
 },
 {
+"en": "Icon shape",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "Icon style",
+"in": [
+"app",
+"web"
+]
+},
+{
 "en": "Icons",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "Icons and text",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "Icons in your accent color",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "Icons inside Nova",
 "in": [
 "app",
 "web"
@@ -7644,6 +9512,12 @@
 ]
 },
 {
+"en": "image/gif,image/webp,image/apng,video/mp4,video/webm",
+"in": [
+"web"
+]
+},
+{
 "en": "image/jpeg",
 "in": [
 "web"
@@ -7682,6 +9556,12 @@
 ]
 },
 {
+"en": "in an administrator PowerShell.",
+"in": [
+"site"
+]
+},
+{
 "en": "In Discord: open the channel's settings → Integrations → Webhooks → New Webhook → Copy Webhook URL, and paste it here. Nova never shows the link again.",
 "in": [
 "app",
@@ -7701,6 +9581,12 @@
 ]
 },
 {
+"en": "In Nova →",
+"in": [
+"site"
+]
+},
+{
 "en": "In progress",
 "in": [
 "app",
@@ -7711,6 +9597,18 @@
 "en": "In progress · {0}",
 "in": [
 "app",
+"web"
+]
+},
+{
+"en": "In Safari, open Nova at your server's address (",
+"in": [
+"site"
+]
+},
+{
+"en": "In Safari, tap the Share button (the square with an arrow), then “Add to Home Screen”. Nova then opens full screen, like an app. To approve things without an Android phone, set up a passkey or authenticator codes in Security & privacy.",
+"in": [
 "web"
 ]
 },
@@ -7795,6 +9693,12 @@
 ]
 },
 {
+"en": "in your apps — no terminal needed.",
+"in": [
+"site"
+]
+},
+{
 "en": "in your pocket.",
 "in": [
 "site"
@@ -7831,6 +9735,18 @@
 "en": "Info & logins",
 "in": [
 "app"
+]
+},
+{
+"en": "input, textarea",
+"in": [
+"web"
+]
+},
+{
+"en": "input, textarea, select",
+"in": [
+"web"
 ]
 },
 {
@@ -7878,7 +9794,8 @@
 {
 "en": "Install Nova",
 "in": [
-"site"
+"site",
+"web"
 ]
 },
 {
@@ -7907,6 +9824,12 @@
 ]
 },
 {
+"en": "Install Nova.cmd",
+"in": [
+"site"
+]
+},
+{
 "en": "Install one from the Store, or add a link with +",
 "in": [
 "app",
@@ -7921,7 +9844,7 @@
 ]
 },
 {
-"en": "Install the Android app on your phone (Android 9 or newer), then pair it. You can also open Nova web in a browser and approve it with",
+"en": "Install the Android app on your phone (Android 7.0 or newer), then pair it. You can also open Nova web in a browser and approve it with",
 "in": [
 "site"
 ]
@@ -7970,6 +9893,12 @@
 "en": "Installing {0}",
 "in": [
 "web"
+]
+},
+{
+"en": "Installing — follow Android's prompt",
+"in": [
+"app"
 ]
 },
 {
@@ -8063,9 +9992,21 @@
 ]
 },
 {
+"en": "Invite a phone that is away from home",
+"in": [
+"app"
+]
+},
+{
 "en": "Invite phones, approve browsers and watches, roles",
 "in": [
 "app"
+]
+},
+{
+"en": "irm https://raw.githubusercontent.com/dash1101/Nova/main/get.ps1 | iex",
+"in": [
+"site"
 ]
 },
 {
@@ -8095,7 +10036,13 @@
 ]
 },
 {
-"en": "Is there an iPhone app?",
+"en": "Is the server on, and this {0} on the same Wi-Fi? (Nova answers on UDP port 8496.)",
+"in": [
+"app"
+]
+},
+{
+"en": "Is there an iPhone app? Can I use Nova with just an iPhone?",
 "in": [
 "site"
 ]
@@ -8126,6 +10073,13 @@
 ]
 },
 {
+"en": "It can sleep again",
+"in": [
+"app",
+"web"
+]
+},
+{
 "en": "It can't add browsers or approve requests any more. (It stays in your password manager — delete it there too.)",
 "in": [
 "app",
@@ -8140,6 +10094,25 @@
 },
 {
 "en": "It didn't work",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "it doesn't allow it",
+"in": [
+"web"
+]
+},
+{
+"en": "It doesn't get ports of its own — it listens on the server directly{0}",
+"in": [
+"web"
+]
+},
+{
+"en": "It ends at once, without saving anything. If it's part of something bigger, that can stop working too.",
 "in": [
 "app",
 "web"
@@ -8240,6 +10213,31 @@
 ]
 },
 {
+"en": "It shows here read-only: status, numbers and alerts. Its owner approves the link on that server.",
+"in": [
+"web"
+]
+},
+{
+"en": "It stays awake until you stop it",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "It stays awake until {0}",
+"in": [
+"web"
+]
+},
+{
+"en": "It stays here after you close it",
+"in": [
+"web"
+]
+},
+{
 "en": "It stays in the dock, even when closed",
 "in": [
 "app"
@@ -8295,6 +10293,19 @@
 ]
 },
 {
+"en": "It won't go to sleep by itself for that long. Restarting or shutting it down still works.",
+"in": [
+"app"
+]
+},
+{
+"en": "It won't go to sleep by itself until then",
+"in": [
+"app",
+"web"
+]
+},
+{
 "en": "It won't run again. The snapshots already on {0} are kept.",
 "in": [
 "web"
@@ -8308,9 +10319,21 @@
 ]
 },
 {
+"en": "It's downloaded but not in use — frees {0} GB",
+"in": [
+"web"
+]
+},
+{
 "en": "It's mounted at the folder you pick only, and comes back there after a restart. Files saved into that folder while the drive wasn't there are moved onto it.",
 "in": [
 "app"
+]
+},
+{
+"en": "It's one of the experimental features — turn it on in Labs to use this page",
+"in": [
+"web"
 ]
 },
 {
@@ -8334,15 +10357,15 @@
 ]
 },
 {
-"en": "Its address on your home network or tailnet. Nova must be installed on it.",
+"en": "Its apps and tools leave Nova. You can install it again any time.",
 "in": [
+"app",
 "web"
 ]
 },
 {
-"en": "Its apps and tools leave Nova. You can install it again any time.",
+"en": "Its certificate — to be sure it's that server, this should match the",
 "in": [
-"app",
 "web"
 ]
 },
@@ -8385,7 +10408,33 @@
 ]
 },
 {
+"en": "Its model is deleted from the server. The assistant keeps working with its rules, and you can download it again any time.",
+"in": [
+"app",
+"web"
+]
+},
+{
 "en": "Its Nova web is on your home network only{0}.",
+"in": [
+"web"
+]
+},
+{
+"en": "Its own color",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "Its own picture",
+"in": [
+"web"
+]
+},
+{
+"en": "Its own window and icon, like an app — no app store needed",
 "in": [
 "web"
 ]
@@ -8428,6 +10477,12 @@
 "en": "Just a week",
 "in": [
 "app",
+"web"
+]
+},
+{
+"en": "Just for the dashboard",
+"in": [
 "web"
 ]
 },
@@ -8486,10 +10541,29 @@
 ]
 },
 {
+"en": "Keep awake",
+"in": [
+"app",
+"web"
+]
+},
+{
 "en": "Keep folders together",
 "in": [
 "app",
 "web"
+]
+},
+{
+"en": "Keep the newest",
+"in": [
+"web"
+]
+},
+{
+"en": "Keep the newest … snapshots (unchanged files are shared, so each costs little)",
+"in": [
+"app"
 ]
 },
 {
@@ -8531,6 +10605,25 @@
 ]
 },
 {
+"en": "Kept awake until you stop it",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "Kept awake until {0}",
+"in": [
+"web"
+]
+},
+{
+"en": "Kept in this browser only (up to 60 MB)",
+"in": [
+"web"
+]
+},
+{
 "en": "Kept on the server, readable only by root",
 "in": [
 "app"
@@ -8557,6 +10650,12 @@
 ]
 },
 {
+"en": "kgrid big",
+"in": [
+"web"
+]
+},
+{
 "en": "Kind of protection",
 "in": [
 "app",
@@ -8568,6 +10667,12 @@
 "in": [
 "app",
 "web"
+]
+},
+{
+"en": "Know another address for it — its Tailscale one (sudo nova status shows them), or a new home address? Nova only takes it if the server's certificate matches the one this {0} paired with.",
+"in": [
+"app"
 ]
 },
 {
@@ -8611,6 +10716,27 @@
 },
 {
 "en": "Language",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "Laptop",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "Large",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "Large — about 20 pixels",
 "in": [
 "app",
 "web"
@@ -8665,12 +10791,6 @@
 "in": [
 "app",
 "web"
-]
-},
-{
-"en": "latest release",
-"in": [
-"site"
 ]
 },
 {
@@ -8731,6 +10851,12 @@
 ]
 },
 {
+"en": "Leave?",
+"in": [
+"web"
+]
+},
+{
 "en": "LED strip",
 "in": [
 "app",
@@ -8772,6 +10898,13 @@
 ]
 },
 {
+"en": "Let it sleep again",
+"in": [
+"app",
+"web"
+]
+},
+{
 "en": "Let its phone app in",
 "in": [
 "app",
@@ -8805,6 +10938,31 @@
 ]
 },
 {
+"en": "Light case",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "Light off",
+"in": [
+"app"
+]
+},
+{
+"en": "Light on",
+"in": [
+"app"
+]
+},
+{
+"en": "Light or dark",
+"in": [
+"app"
+]
+},
+{
 "en": "Light schedules",
 "in": [
 "app",
@@ -8818,7 +10976,7 @@
 ]
 },
 {
-"en": "Lighter effects",
+"en": "Light splitting",
 "in": [
 "app",
 "web"
@@ -8859,6 +11017,12 @@
 ]
 },
 {
+"en": "line of",
+"in": [
+"web"
+]
+},
+{
 "en": "line says",
 "in": [
 "web"
@@ -8866,6 +11030,12 @@
 },
 {
 "en": "linear-gradient(90deg,{0})",
+"in": [
+"web"
+]
+},
+{
+"en": "Link",
 "in": [
 "web"
 ]
@@ -8898,7 +11068,19 @@
 ]
 },
 {
+"en": "Link {0}",
+"in": [
+"web"
+]
+},
+{
 "en": "linkbtn press",
+"in": [
+"web"
+]
+},
+{
+"en": "Linked {0}",
 "in": [
 "web"
 ]
@@ -8923,6 +11105,20 @@
 },
 {
 "en": "Linux's everyday filesystem — the safe choice",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "Liquid (Glass)",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "Listening…",
 "in": [
 "app",
 "web"
@@ -8970,7 +11166,39 @@
 ]
 },
 {
+"en": "Living wallpaper",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "Living wallpaper set",
+"in": [
+"web"
+]
+},
+{
+"en": "Living wallpaper · Beta",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "ln -sfn \"\\{0}/\\{1}\" \"\\{2}/latest\"",
+"in": [
+"app"
+]
+},
+{
 "en": "Load older",
+"in": [
+"app"
+]
+},
+{
+"en": "load {0}",
 "in": [
 "app"
 ]
@@ -8984,6 +11212,13 @@
 {
 "en": "load {0} · {1} cores",
 "in": [
+"web"
+]
+},
+{
+"en": "Loading codes…",
+"in": [
+"app",
 "web"
 ]
 },
@@ -9065,6 +11300,13 @@
 ]
 },
 {
+"en": "Look",
+"in": [
+"app",
+"web"
+]
+},
+{
 "en": "Look again",
 "in": [
 "app",
@@ -9099,6 +11341,12 @@
 ]
 },
 {
+"en": "look:{0}",
+"in": [
+"web"
+]
+},
+{
 "en": "Looking at the server…",
 "in": [
 "app",
@@ -9126,6 +11374,12 @@
 ]
 },
 {
+"en": "Looking for Nova servers at home…",
+"in": [
+"web"
+]
+},
+{
 "en": "Looking on this network…",
 "in": [
 "app"
@@ -9140,6 +11394,13 @@
 },
 {
 "en": "Looking…",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "Looks like",
 "in": [
 "app",
 "web"
@@ -9204,6 +11465,12 @@
 ]
 },
 {
+"en": "macOS:",
+"in": [
+"site"
+]
+},
+{
 "en": "Made in this browser and can't be copied out — every request is signed with it",
 "in": [
 "web"
@@ -9263,6 +11530,19 @@
 ]
 },
 {
+"en": "Make a password",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "Make a password that opens {0}",
+"in": [
+"app"
+]
+},
+{
 "en": "Make a pool bigger, or replace a failed drive in an array.",
 "in": [
 "app",
@@ -9270,7 +11550,34 @@
 ]
 },
 {
+"en": "Make a random access code that opens {0}",
+"in": [
+"app"
+]
+},
+{
+"en": "Make a random code",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "Make it",
+"in": [
+"app",
+"web"
+]
+},
+{
 "en": "Make it public",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "Make it smarter",
 "in": [
 "app",
 "web"
@@ -9290,6 +11597,13 @@
 },
 {
 "en": "Make it work there",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "Make one below and send it to whoever should get in",
 "in": [
 "app",
 "web"
@@ -9323,6 +11637,12 @@
 ]
 },
 {
+"en": "Making it…",
+"in": [
+"web"
+]
+},
+{
 "en": "Making the key…",
 "in": [
 "web"
@@ -9351,6 +11671,12 @@
 "en": "Management",
 "in": [
 "app"
+]
+},
+{
+"en": "mapfile -t OLD",
+"in": [
+"web"
 ]
 },
 {
@@ -9414,6 +11740,12 @@
 ]
 },
 {
+"en": "margin:12px 0 4px",
+"in": [
+"web"
+]
+},
+{
 "en": "margin:12px 0 8px",
 "in": [
 "web"
@@ -9456,7 +11788,33 @@
 ]
 },
 {
+"en": "margin:8px 24px 0",
+"in": [
+"web"
+]
+},
+{
 "en": "Match my accent color",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "Match the controller",
+"in": [
+"web"
+]
+},
+{
+"en": "Match the look",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "Match the look ({0})",
 "in": [
 "app",
 "web"
@@ -9504,9 +11862,10 @@
 ]
 },
 {
-"en": "Material You follows your wallpaper's colors. With themed icons on (Android 13+), every choice turns into your phone's themed style.",
+"en": "Maximize",
 "in": [
-"app"
+"app",
+"web"
 ]
 },
 {
@@ -9556,6 +11915,20 @@
 ]
 },
 {
+"en": "Medium",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "Medium — about 10 pixels",
+"in": [
+"app",
+"web"
+]
+},
+{
 "en": "Memory",
 "in": [
 "app",
@@ -9578,6 +11951,18 @@
 ]
 },
 {
+"en": "Memory · {0}",
+"in": [
+"web"
+]
+},
+{
+"en": "memory|cpu|temperature|swap|service",
+"in": [
+"app"
+]
+},
+{
 "en": "Menu",
 "in": [
 "app",
@@ -9592,6 +11977,12 @@
 },
 {
 "en": "Menu → Terminal in the Nova app (its key lives in the phone's secure chip)",
+"in": [
+"web"
+]
+},
+{
+"en": "Menu → Users & devices → Approve a browser",
 "in": [
 "web"
 ]
@@ -9623,7 +12014,28 @@
 ]
 },
 {
+"en": "Mica's soft wash",
+"in": [
+"app",
+"web"
+]
+},
+{
 "en": "Micron",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "Mini PC",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "Minimize",
 "in": [
 "app",
 "web"
@@ -9692,7 +12104,25 @@
 ]
 },
 {
+"en": "MissingPermission",
+"in": [
+"app"
+]
+},
+{
 "en": "Mixing SSDs and hard drives makes the array as slow as the hard drives.",
+"in": [
+"app"
+]
+},
+{
+"en": "mkdir -p \"\\{0}\"",
+"in": [
+"app"
+]
+},
+{
+"en": "mkdir -p \"\\{0}/\\{1}\"",
 "in": [
 "app"
 ]
@@ -9725,6 +12155,13 @@
 "en": "Mobile site",
 "in": [
 "app"
+]
+},
+{
+"en": "Model",
+"in": [
+"app",
+"web"
 ]
 },
 {
@@ -9795,6 +12232,25 @@
 },
 {
 "en": "Mostly healthy{0}",
+"in": [
+"app"
+]
+},
+{
+"en": "Motion and blur",
+"in": [
+"web"
+]
+},
+{
+"en": "Motion and effects",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "Motion and tint",
 "in": [
 "app"
 ]
@@ -9944,7 +12400,25 @@
 ]
 },
 {
+"en": "muted asum",
+"in": [
+"web"
+]
+},
+{
+"en": "muted cp-l",
+"in": [
+"web"
+]
+},
+{
 "en": "muted edpath",
+"in": [
+"web"
+]
+},
+{
+"en": "muted pad",
 "in": [
 "web"
 ]
@@ -9963,6 +12437,18 @@
 },
 {
 "en": "My Profile",
+"in": [
+"web"
+]
+},
+{
+"en": "My server",
+"in": [
+"app"
+]
+},
+{
+"en": "M{0},{1}h{2}v{3}h-{4}z",
 "in": [
 "web"
 ]
@@ -10100,6 +12586,13 @@
 ]
 },
 {
+"en": "Nebula",
+"in": [
+"app",
+"web"
+]
+},
+{
 "en": "Needed",
 "in": [
 "app"
@@ -10133,6 +12626,12 @@
 ]
 },
 {
+"en": "Needs your fingerprint",
+"in": [
+"app"
+]
+},
+{
 "en": "Network",
 "in": [
 "app",
@@ -10148,6 +12647,13 @@
 },
 {
 "en": "Network in / out",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "Networks",
 "in": [
 "app",
 "web"
@@ -10195,6 +12701,18 @@
 ]
 },
 {
+"en": "New device paired",
+"in": [
+"app"
+]
+},
+{
+"en": "New device paired: <this phone>",
+"in": [
+"app"
+]
+},
+{
 "en": "New folder",
 "in": [
 "app",
@@ -10219,6 +12737,12 @@
 "in": [
 "app",
 "web"
+]
+},
+{
+"en": "New sign-in from your phone",
+"in": [
+"app"
 ]
 },
 {
@@ -10369,6 +12893,19 @@
 ]
 },
 {
+"en": "No code needed: sign in with your Cloudflare login, then approve this {0} from an admin phone or the server. Works on any Android.",
+"in": [
+"app"
+]
+},
+{
+"en": "No codes yet",
+"in": [
+"app",
+"web"
+]
+},
+{
 "en": "No computers yet",
 "in": [
 "app",
@@ -10377,6 +12914,27 @@
 },
 {
 "en": "No containers",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "No containers yet",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "No Docker",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "No Docker yet",
 "in": [
 "app",
 "web"
@@ -10409,9 +12967,9 @@
 ]
 },
 {
-"en": "No frosted-glass blur or soft shadows — much smoother on older computers and phones. Automatic turns it on when this device looks slow.",
+"en": "no free space",
 "in": [
-"web"
+"app"
 ]
 },
 {
@@ -10470,6 +13028,12 @@
 ]
 },
 {
+"en": "No Nova servers found on this network",
+"in": [
+"app"
+]
+},
+{
 "en": "No other drive found",
 "in": [
 "app",
@@ -10477,9 +13041,9 @@
 ]
 },
 {
-"en": "No other Nova servers found",
+"en": "No other Nova servers answered at home — type one's address below.",
 "in": [
-"app"
+"web"
 ]
 },
 {
@@ -10522,6 +13086,12 @@
 "in": [
 "app",
 "web"
+]
+},
+{
+"en": "No process matches",
+"in": [
+"app"
 ]
 },
 {
@@ -10592,6 +13162,18 @@
 ]
 },
 {
+"en": "Nobody approved it in time.",
+"in": [
+"app"
+]
+},
+{
+"en": "Nobody approved it in time. Start again when someone can approve it.",
+"in": [
+"app"
+]
+},
+{
 "en": "None",
 "in": [
 "app",
@@ -10600,6 +13182,13 @@
 },
 {
 "en": "None listed yet",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "None set up yet",
 "in": [
 "app",
 "web"
@@ -10615,7 +13204,8 @@
 {
 "en": "None yet",
 "in": [
-"app"
+"app",
+"web"
 ]
 },
 {
@@ -10768,6 +13358,12 @@
 ]
 },
 {
+"en": "not reachable there\\r",
+"in": [
+"app"
+]
+},
+{
 "en": "not reachable yet",
 "in": [
 "web"
@@ -10834,6 +13430,13 @@
 ]
 },
 {
+"en": "Not something the assistant may do",
+"in": [
+"app",
+"web"
+]
+},
+{
 "en": "Not started",
 "in": [
 "app",
@@ -10843,6 +13446,13 @@
 {
 "en": "Not supported",
 "in": [
+"web"
+]
+},
+{
+"en": "not used yet",
+"in": [
+"app",
 "web"
 ]
 },
@@ -10859,7 +13469,13 @@
 ]
 },
 {
-"en": "Not yet. iPhone users can use Nova web in Safari — tap Share →",
+"en": "Not yet an app — but Nova web works on iPhone and iPad, and you don't need an Android phone:",
+"in": [
+"site"
+]
+},
+{
+"en": "not yet. Nova web runs in any browser on Windows, macOS or Linux.",
 "in": [
 "site"
 ]
@@ -10892,6 +13508,12 @@
 "en": "Nothing answered at {0} (the server is off, or this network can't reach it)",
 "in": [
 "web"
+]
+},
+{
+"en": "Nothing answered there with this server's certificate.",
+"in": [
+"app"
 ]
 },
 {
@@ -10929,6 +13551,13 @@
 ]
 },
 {
+"en": "Nothing I can do from that.",
+"in": [
+"app",
+"web"
+]
+},
+{
 "en": "Nothing is erased.",
 "in": [
 "app"
@@ -10949,6 +13578,13 @@
 },
 {
 "en": "Nothing needed changing",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "Nothing needed putting back",
 "in": [
 "app",
 "web"
@@ -11039,6 +13675,13 @@
 ]
 },
 {
+"en": "Nothing yet — what you ask Nova shows up here.",
+"in": [
+"app",
+"web"
+]
+},
+{
 "en": "Nothing yet.",
 "in": [
 "app",
@@ -11082,6 +13725,18 @@
 },
 {
 "en": "Nova adds this {0}'s key to {1}'s ~/.ssh/authorized_keys for you (fingerprint-confirmed), and removes it again if you remove this {2}. Port and agent forwarding are off for it.",
+"in": [
+"app"
+]
+},
+{
+"en": "Nova app",
+"in": [
+"app"
+]
+},
+{
+"en": "Nova assistant",
 "in": [
 "app"
 ]
@@ -11131,16 +13786,17 @@
 ]
 },
 {
-"en": "Nova forgets {0} for this app. Your Cloudflare settings stay as they are — remove the address there yourself if you want it gone.",
+"en": "Nova forgets what you've talked about and what it remembers doing. Nothing on the server changes.",
 "in": [
 "app",
 "web"
 ]
 },
 {
-"en": "Nova from them: Nova web runs in any browser on Windows, macOS or Linux, pointed at your Linux server.",
+"en": "Nova forgets {0} for this app. Your Cloudflare settings stay as they are — remove the address there yourself if you want it gone.",
 "in": [
-"site"
+"app",
+"web"
 ]
 },
 {
@@ -11156,15 +13812,21 @@
 ]
 },
 {
-"en": "Nova has two parts: the app (phone, or this web version), and a small server package on the Linux machine you want to control (Debian or Ubuntu).",
+"en": "Nova has two parts: the app (phone, or this web version), and the Nova server on the computer you want to control — any Linux with systemd, or Windows (preview).",
 "in": [
 "web"
 ]
 },
 {
-"en": "Nova has two parts: this app, and a small server package on the Linux machine you want to control (Debian or Ubuntu).",
+"en": "Nova has two parts: this app, and the Nova server on the computer you want to control — any Linux with systemd, or Windows (preview).",
 "in": [
 "app"
+]
+},
+{
+"en": "nova help",
+"in": [
+"site"
 ]
 },
 {
@@ -11201,6 +13863,18 @@
 "en": "Nova is a remote for the Linux box in your closet. Check its health, restart a container, set up drives and backups, and get alerts the moment something breaks. Every request is signed by a key that never leaves your phone's secure chip.",
 "in": [
 "site"
+]
+},
+{
+"en": "Nova is done — open the assistant to see it",
+"in": [
+"web"
+]
+},
+{
+"en": "Nova is installed — open it like any app",
+"in": [
+"web"
 ]
 },
 {
@@ -11271,6 +13945,18 @@
 ]
 },
 {
+"en": "Nova makes the code and shows it to you once. You'll be asked to approve this on your phone.",
+"in": [
+"web"
+]
+},
+{
+"en": "Nova makes the code and shows it to you once. You'll confirm with your fingerprint.",
+"in": [
+"app"
+]
+},
+{
 "en": "Nova measured what it can safely remove. Your files, your apps' data, containers and their volumes are never touched.",
 "in": [
 "app",
@@ -11300,6 +13986,13 @@
 {
 "en": "Nova opens there next time",
 "in": [
+"web"
+]
+},
+{
+"en": "Nova picks a long one like K7QM-2XDF-9TPA-HW3R, and shows it once",
+"in": [
+"app",
 "web"
 ]
 },
@@ -11343,9 +14036,21 @@
 ]
 },
 {
+"en": "Nova setup code",
+"in": [
+"app"
+]
+},
+{
 "en": "Nova web",
 "in": [
 "site",
+"web"
+]
+},
+{
+"en": "Nova web didn't start",
+"in": [
 "web"
 ]
 },
@@ -11369,7 +14074,19 @@
 ]
 },
 {
+"en": "Nova {0} · Android {1}",
+"in": [
+"app"
+]
+},
+{
 "en": "Nova {0} · Android {1} (API {2}) · {3} {4} · {5}",
+"in": [
+"app"
+]
+},
+{
+"en": "Nova {0} · Android {1} · {2} {3}",
 "in": [
 "app"
 ]
@@ -11413,6 +14130,20 @@
 ]
 },
 {
+"en": "Nova's brain",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "Nova's icon",
+"in": [
+"app",
+"web"
+]
+},
+{
 "en": "Nova's own look: frosted glass and a soft glow",
 "in": [
 "app",
@@ -11420,10 +14151,9 @@
 ]
 },
 {
-"en": "Nova's own words are translated (by machine, so some may read oddly — tell us on GitHub). Messages written by the server, like alert details, stay in English for now.",
+"en": "Nova's own words are translated by machine, so some may read oddly — tell us on GitHub. Messages written by the server stay in English for now.",
 "in": [
-"app",
-"web"
+"app"
 ]
 },
 {
@@ -11463,6 +14193,12 @@
 ]
 },
 {
+"en": "nova-widget-do-{0}",
+"in": [
+"app"
+]
+},
+{
 "en": "nova.dismissedUpdate",
 "in": [
 "web"
@@ -11470,6 +14206,24 @@
 },
 {
 "en": "nova.fanReverse",
+"in": [
+"web"
+]
+},
+{
+"en": "nova.lookHint",
+"in": [
+"web"
+]
+},
+{
+"en": "nova1:…",
+"in": [
+"app"
+]
+},
+{
+"en": "Nova:",
 "in": [
 "web"
 ]
@@ -11500,6 +14254,12 @@
 ]
 },
 {
+"en": "NovaSound",
+"in": [
+"app"
+]
+},
+{
 "en": "Now at",
 "in": [
 "app",
@@ -11510,6 +14270,12 @@
 "en": "Now choose what to back up",
 "in": [
 "app",
+"web"
+]
+},
+{
+"en": "Now in Appearance → Shape and glass",
+"in": [
 "web"
 ]
 },
@@ -11620,6 +14386,18 @@
 ]
 },
 {
+"en": "OK · {0} ms",
+"in": [
+"app"
+]
+},
+{
+"en": "Okay, I'll leave it.",
+"in": [
+"web"
+]
+},
+{
 "en": "Old images",
 "in": [
 "app",
@@ -11655,6 +14433,12 @@
 ]
 },
 {
+"en": "On a tablet, apps float over Nova — drag, resize or maximize them, like on the web",
+"in": [
+"app"
+]
+},
+{
 "en": "On a wide screen or in landscape the same pill stands down the left edge. Back from any tab goes to Home. If you remove Menu, it's still in Home ⋮.",
 "in": [
 "web"
@@ -11668,6 +14452,19 @@
 },
 {
 "en": "on an app",
+"in": [
+"app"
+]
+},
+{
+"en": "On and off",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "On another admin phone: Nova → Approvals (it shows up there and as a notification), then confirm with its fingerprint. Or on the server: sudo nova approve {0}",
 "in": [
 "app"
 ]
@@ -11698,6 +14495,12 @@
 ]
 },
 {
+"en": "On it…",
+"in": [
+"app"
+]
+},
+{
 "en": "On Samsung phones Nova uses its default One UI-style look. On Pixel and most other phones it switches to Material You, with colors from your wallpaper. You can pick either in Appearance.",
 "in": [
 "site"
@@ -11711,6 +14514,12 @@
 },
 {
 "en": "On the dashboard · in this order",
+"in": [
+"app"
+]
+},
+{
+"en": "On the home network",
 "in": [
 "app"
 ]
@@ -11734,14 +14543,9 @@
 ]
 },
 {
-"en": "On the server, download the Nova package (nova-server_….deb) and install it — or build it from the source code.",
+"en": "On the server's own network",
 "in": [
-"app"
-]
-},
-{
-"en": "On the server, install the Nova package (nova-server_….deb) — or build it from the source code.",
-"in": [
+"app",
 "web"
 ]
 },
@@ -11752,15 +14556,10 @@
 ]
 },
 {
-"en": "On the server, run sudo nova add and scan the code it shows (or type the address and code). Pairing only works on the server's home network.",
+"en": "On the server, run this one line: it downloads the newest release, checks its signature and installs it. On Windows: download nova-windows.zip and double-click Install Nova.cmd.",
 "in": [
-"app"
-]
-},
-{
-"en": "on the server.",
-"in": [
-"site"
+"app",
+"web"
 ]
 },
 {
@@ -11778,10 +14577,22 @@
 ]
 },
 {
+"en": "On this server only.",
+"in": [
+"app"
+]
+},
+{
 "en": "On your domain, like photos.example.com.",
 "in": [
 "app",
 "web"
+]
+},
+{
+"en": "On your home screen",
+"in": [
+"app"
 ]
 },
 {
@@ -11874,6 +14685,13 @@
 ]
 },
 {
+"en": "One mirror copy",
+"in": [
+"app",
+"web"
+]
+},
+{
 "en": "One steady color",
 "in": [
 "app",
@@ -11884,6 +14702,12 @@
 "en": "Only admin phones can get SSH access",
 "in": [
 "app"
+]
+},
+{
+"en": "Only admins can run command apps.",
+"in": [
+"web"
 ]
 },
 {
@@ -11919,6 +14743,12 @@
 "in": [
 "app",
 "web"
+]
+},
+{
+"en": "Only onto its own drive",
+"in": [
+"app"
 ]
 },
 {
@@ -12011,6 +14841,13 @@
 ]
 },
 {
+"en": "Open (Breeze)",
+"in": [
+"app",
+"web"
+]
+},
+{
 "en": "Open a shell in {0}",
 "in": [
 "app"
@@ -12036,13 +14873,45 @@
 ]
 },
 {
+"en": "Open in a new tab",
+"in": [
+"web"
+]
+},
+{
 "en": "Open in your browser",
 "in": [
 "app"
 ]
 },
 {
+"en": "Open it",
+"in": [
+"app",
+"web"
+]
+},
+{
 "en": "Open it from anywhere…",
+"in": [
+"app"
+]
+},
+{
+"en": "Open it in a tab",
+"in": [
+"web"
+]
+},
+{
+"en": "Open Labs",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "Open Nova and pair it first",
 "in": [
 "app"
 ]
@@ -12054,7 +14923,13 @@
 ]
 },
 {
-"en": "Open Nova in the browser (https://your-server:8495 at home, or your Cloudflare address), or the Nova app on your watch, and enter the 6-letter code it shows. A watch can only see status and approve things, as you.",
+"en": "Open Nova at {0} and windows can use it.",
+"in": [
+"web"
+]
+},
+{
+"en": "Open Nova in the browser (https://your-server:8495 at home, or your Cloudflare address), the Nova app on your watch, or the Nova app on a phone or tablet that signed in through Cloudflare, and enter the 6-letter code it shows. A watch can only see status and approve things, as you.",
 "in": [
 "app"
 ]
@@ -12117,6 +14992,12 @@
 "en": "Open the app",
 "in": [
 "app",
+"web"
+]
+},
+{
+"en": "Open the assistant",
+"in": [
 "web"
 ]
 },
@@ -12184,6 +15065,13 @@
 ]
 },
 {
+"en": "Opening it at the end",
+"in": [
+"app",
+"web"
+]
+},
+{
 "en": "Opening it to anyone…",
 "in": [
 "app",
@@ -12202,6 +15090,18 @@
 "in": [
 "app",
 "web"
+]
+},
+{
+"en": "Opens in a new tab",
+"in": [
+"web"
+]
+},
+{
+"en": "Opens in your browser",
+"in": [
+"app"
 ]
 },
 {
@@ -12244,9 +15144,33 @@
 ]
 },
 {
+"en": "Or paste a setup code (from sudo nova add --remote or Invite a phone → away from home)",
+"in": [
+"app"
+]
+},
+{
 "en": "Or shake your {0}",
 "in": [
 "app"
+]
+},
+{
+"en": "Or type a code from your authenticator app:",
+"in": [
+"app"
+]
+},
+{
+"en": "Or type a request in Search and pick “Ask Nova”",
+"in": [
+"web"
+]
+},
+{
+"en": "Or type its address, e.g. 192.168.1.20",
+"in": [
+"web"
 ]
 },
 {
@@ -12266,6 +15190,13 @@
 "en": "Or type “{0} …” to use it once",
 "in": [
 "app"
+]
+},
+{
+"en": "Or until the server restarts",
+"in": [
+"app",
+"web"
 ]
 },
 {
@@ -12373,6 +15304,18 @@
 ]
 },
 {
+"en": "pad sbuild",
+"in": [
+"web"
+]
+},
+{
+"en": "pad seg-row",
+"in": [
+"web"
+]
+},
+{
 "en": "padding:0 16px 8px",
 "in": [
 "web"
@@ -12416,6 +15359,12 @@
 },
 {
 "en": "padding:16px 0",
+"in": [
+"web"
+]
+},
+{
+"en": "padding:16px 20px",
 "in": [
 "web"
 ]
@@ -12470,6 +15419,19 @@
 },
 {
 "en": "page narrow",
+"in": [
+"web"
+]
+},
+{
+"en": "Pages",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "Pages opened from the Menu show next to it, like on a tablet",
 "in": [
 "web"
 ]
@@ -12545,6 +15507,12 @@
 ]
 },
 {
+"en": "paired|new device|device removed",
+"in": [
+"app"
+]
+},
+{
 "en": "Pairing code",
 "in": [
 "app",
@@ -12597,6 +15565,13 @@
 ]
 },
 {
+"en": "Part of the Linux kernel — it can't be stopped.",
+"in": [
+"app",
+"web"
+]
+},
+{
 "en": "Partition manager",
 "in": [
 "app",
@@ -12639,6 +15614,12 @@
 "en": "Party",
 "in": [
 "app",
+"web"
+]
+},
+{
+"en": "Party mode! (it calms down in a few seconds)",
+"in": [
 "web"
 ]
 },
@@ -12686,6 +15667,26 @@
 "en": "Password (leave empty to keep it)",
 "in": [
 "app",
+"web"
+]
+},
+{
+"en": "Password saved — give it to them",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "Paste",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "Paste and run these lines?",
+"in": [
 "web"
 ]
 },
@@ -12825,6 +15826,19 @@
 ]
 },
 {
+"en": "Pick a day and time — cancel it any time before",
+"in": [
+"app"
+]
+},
+{
+"en": "Pick a day and time — cancel it here any time before then",
+"in": [
+"app",
+"web"
+]
+},
+{
 "en": "Pick a drive",
 "in": [
 "app",
@@ -12854,6 +15868,20 @@
 },
 {
 "en": "Pick a snapshot",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "Pick a time at least a minute from now",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "Pick folders and a destination — Nova writes the script",
 "in": [
 "app",
 "web"
@@ -12923,6 +15951,27 @@
 ]
 },
 {
+"en": "Picked from what the server says it is — choose the one that looks most like yours. It's the picture on Home, for every phone and browser.",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "Picture blur",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "Picture dim",
+"in": [
+"app",
+"web"
+]
+},
+{
 "en": "Picture spins the other way",
 "in": [
 "app",
@@ -12975,7 +16024,8 @@
 {
 "en": "Pin to the dock",
 "in": [
-"app"
+"app",
+"web"
 ]
 },
 {
@@ -13018,7 +16068,27 @@
 ]
 },
 {
+"en": "Pixel shift",
+"in": [
+"app",
+"web"
+]
+},
+{
 "en": "pk:{0}",
+"in": [
+"web"
+]
+},
+{
+"en": "Plain",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "Plain (1 2 3 4)",
 "in": [
 "web"
 ]
@@ -13033,6 +16103,42 @@
 "en": "Plain tiles",
 "in": [
 "app",
+"web"
+]
+},
+{
+"en": "Plan it",
+"in": [
+"app"
+]
+},
+{
+"en": "Plan · {0} step{1}",
+"in": [
+"web"
+]
+},
+{
+"en": "Planned by the assistant — nothing has changed yet",
+"in": [
+"web"
+]
+},
+{
+"en": "played {0} ({1})",
+"in": [
+"app"
+]
+},
+{
+"en": "PlayStation",
+"in": [
+"web"
+]
+},
+{
+"en": "PlayStation (✕ ○ □ △)",
+"in": [
 "web"
 ]
 },
@@ -13172,6 +16278,13 @@
 ]
 },
 {
+"en": "Pop-ups",
+"in": [
+"app",
+"web"
+]
+},
+{
 "en": "Port",
 "in": [
 "app",
@@ -13193,9 +16306,21 @@
 ]
 },
 {
+"en": "Ports it offers",
+"in": [
+"web"
+]
+},
+{
 "en": "Ports · server → container",
 "in": [
 "app",
+"web"
+]
+},
+{
+"en": "Ports, folders, environment, anything — checked before it's saved, and you can undo it · {0}",
+"in": [
 "web"
 ]
 },
@@ -13253,6 +16378,18 @@
 ]
 },
 {
+"en": "press pin",
+"in": [
+"web"
+]
+},
+{
+"en": "press x",
+"in": [
+"web"
+]
+},
+{
 "en": "Preview",
 "in": [
 "app",
@@ -13282,6 +16419,13 @@
 ]
 },
 {
+"en": "Processes",
+"in": [
+"app",
+"web"
+]
+},
+{
 "en": "Productivity",
 "in": [
 "app"
@@ -13289,6 +16433,13 @@
 },
 {
 "en": "Programs",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "Programs (winget)",
 "in": [
 "app",
 "web"
@@ -13361,6 +16512,31 @@
 ]
 },
 {
+"en": "Pure black, tiles with just an outline and softer whites — so most pixels stay off. Saves power and wear on OLED screens",
+"in": [
+"app"
+]
+},
+{
+"en": "Pure black, tiles with just an outline and softer whites — so most pixels stay off. Saves power and wear on OLED screens.",
+"in": [
+"web"
+]
+},
+{
+"en": "Put back",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "Put back the previous Compose file of {0}",
+"in": [
+"app"
+]
+},
+{
 "en": "Put it back",
 "in": [
 "web"
@@ -13405,6 +16581,26 @@
 ]
 },
 {
+"en": "Putting the code page in front of it…",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "Putting the previous version back…",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "QR code",
+"in": [
+"web"
+]
+},
+{
 "en": "Questions",
 "in": [
 "app",
@@ -13413,11 +16609,29 @@
 ]
 },
 {
+"en": "Questions and answers",
+"in": [
+"app"
+]
+},
+{
 "en": "Quick",
 "in": [
 "app",
 "site",
 "web"
+]
+},
+{
+"en": "Quick actions",
+"in": [
+"app"
+]
+},
+{
+"en": "Quick actions run without opening the app: Back up now, Free RAM and the fan light are things any paired {0} may do. Anything that needs your fingerprint stays in the app.",
+"in": [
+"app"
 ]
 },
 {
@@ -13457,6 +16671,13 @@
 {
 "en": "R:#ff453a",
 "in": [
+"web"
+]
+},
+{
+"en": "Rack server",
+"in": [
+"app",
 "web"
 ]
 },
@@ -13501,7 +16722,26 @@
 ]
 },
 {
+"en": "ran out",
+"in": [
+"web"
+]
+},
+{
+"en": "ran out {0}",
+"in": [
+"app"
+]
+},
+{
 "en": "Random",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "Random code",
 "in": [
 "app",
 "web"
@@ -13591,9 +16831,23 @@
 ]
 },
 {
+"en": "Read replies aloud",
+"in": [
+"app",
+"web"
+]
+},
+{
 "en": "Read-only",
 "in": [
 "app"
+]
+},
+{
+"en": "Readability",
+"in": [
+"app",
+"web"
 ]
 },
 {
@@ -13806,9 +17060,39 @@
 ]
 },
 {
+"en": "Refreshed",
+"in": [
+"app"
+]
+},
+{
+"en": "Refreshing…",
+"in": [
+"app"
+]
+},
+{
+"en": "refused ({0})",
+"in": [
+"app"
+]
+},
+{
 "en": "Reload",
 "in": [
 "app"
+]
+},
+{
+"en": "Reload anyway",
+"in": [
+"web"
+]
+},
+{
+"en": "Reloading now would leave this page empty until it's back. Nova keeps trying by itself and fills in as soon as it answers.",
+"in": [
+"web"
 ]
 },
 {
@@ -13821,18 +17105,6 @@
 "en": "Remote access",
 "in": [
 "web"
-]
-},
-{
-"en": "Remote access isn't set up, so Nova only works on the home network",
-"in": [
-"app"
-]
-},
-{
-"en": "Remote address",
-"in": [
-"app"
 ]
 },
 {
@@ -13886,6 +17158,12 @@
 ]
 },
 {
+"en": "Remove deleted files from the copy",
+"in": [
+"app"
+]
+},
+{
 "en": "Remove every device",
 "in": [
 "app"
@@ -13895,6 +17173,12 @@
 "en": "Remove every device?",
 "in": [
 "app"
+]
+},
+{
+"en": "Remove files from the copy when they're deleted here",
+"in": [
+"web"
 ]
 },
 {
@@ -13936,7 +17220,28 @@
 ]
 },
 {
+"en": "Remove the brain",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "Remove the brain?",
+"in": [
+"app",
+"web"
+]
+},
+{
 "en": "Remove the key",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "Remove the picture",
 "in": [
 "app",
 "web"
@@ -13949,9 +17254,14 @@
 ]
 },
 {
-"en": "Remove the wallpaper",
+"en": "Remove the {0} model",
 "in": [
-"app",
+"web"
+]
+},
+{
+"en": "Remove the {0} model?",
+"in": [
 "web"
 ]
 },
@@ -13991,6 +17301,20 @@
 "en": "Remove this {0}?",
 "in": [
 "app"
+]
+},
+{
+"en": "Remove voice",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "Remove voice?",
+"in": [
+"app",
+"web"
 ]
 },
 {
@@ -14125,6 +17449,13 @@
 ]
 },
 {
+"en": "Replace the script?",
+"in": [
+"app",
+"web"
+]
+},
+{
 "en": "Replace this key…",
 "in": [
 "app"
@@ -14140,6 +17471,18 @@
 "en": "Replace “{0}”?",
 "in": [
 "web"
+]
+},
+{
+"en": "Replies are read aloud",
+"in": [
+"app"
+]
+},
+{
+"en": "Replies aren't read aloud",
+"in": [
+"app"
 ]
 },
 {
@@ -14280,7 +17623,8 @@
 {
 "en": "Restart the server",
 "in": [
-"app"
+"app",
+"web"
 ]
 },
 {
@@ -14350,6 +17694,12 @@
 "en": "Restore a partition table",
 "in": [
 "app"
+]
+},
+{
+"en": "Restore size",
+"in": [
+"web"
 ]
 },
 {
@@ -14462,7 +17812,32 @@
 ]
 },
 {
+"en": "round_{0}",
+"in": [
+"app"
+]
+},
+{
+"en": "Rounded square",
+"in": [
+"app",
+"web"
+]
+},
+{
 "en": "row click",
+"in": [
+"web"
+]
+},
+{
+"en": "row click askrow",
+"in": [
+"web"
+]
+},
+{
+"en": "row click press",
 "in": [
 "web"
 ]
@@ -14520,6 +17895,12 @@
 ]
 },
 {
+"en": "Run it",
+"in": [
+"web"
+]
+},
+{
 "en": "Run it again",
 "in": [
 "app",
@@ -14534,7 +17915,7 @@
 ]
 },
 {
-"en": "Run sudo nova add on the server, on home Wi-Fi",
+"en": "Run sudo nova add on the server — or sudo nova add --remote when you're away from home",
 "in": [
 "app"
 ]
@@ -14554,13 +17935,39 @@
 ]
 },
 {
+"en": "Run this on the server?",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "Run {0} lines?",
+"in": [
+"app"
+]
+},
+{
 "en": "Run {0}?",
 "in": [
 "web"
 ]
 },
 {
+"en": "Run {0}? It runs: {1}",
+"in": [
+"web"
+]
+},
+{
 "en": "Running",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "Running for",
 "in": [
 "app",
 "web"
@@ -14603,6 +18010,18 @@
 "en": "Runs every core flat out to see how hot the CPU gets, whether the clock stays up, and how much power it draws. Most desktop CPUs are fine up to about 90–95 °C. Nova stops at 97 °C.",
 "in": [
 "web"
+]
+},
+{
+"en": "Runs on your server — nothing is sent anywhere. Risky steps still need approval on your phone, and everything goes in the action log.",
+"in": [
+"web"
+]
+},
+{
+"en": "Runs on your server — nothing is sent anywhere. Risky steps still need your fingerprint, and everything goes in the action log.",
+"in": [
+"app"
 ]
 },
 {
@@ -14667,9 +18086,16 @@
 ]
 },
 {
-"en": "Same as the {0}",
+"en": "Same as Nova (your living wallpaper too, when it's on)",
 "in": [
-"app"
+"web"
+]
+},
+{
+"en": "Same as the accent color",
+"in": [
+"app",
+"web"
 ]
 },
 {
@@ -14739,6 +18165,20 @@
 },
 {
 "en": "Save",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "Save and apply",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "Save and apply?",
 "in": [
 "app",
 "web"
@@ -14829,6 +18269,13 @@
 ]
 },
 {
+"en": "Saved — it's running with the new settings",
+"in": [
+"app",
+"web"
+]
+},
+{
 "en": "Saved — sending a test",
 "in": [
 "app"
@@ -14867,7 +18314,49 @@
 ]
 },
 {
+"en": "Say it in plain words — several things at once is fine. Ask about your server, or just chat.",
+"in": [
+"app"
+]
+},
+{
+"en": "scale(.9) translateY(30px)",
+"in": [
+"web"
+]
+},
+{
+"en": "scale(.94) translateY(12px)",
+"in": [
+"web"
+]
+},
+{
+"en": "scale(.95)",
+"in": [
+"web"
+]
+},
+{
 "en": "Scan pairing code",
+"in": [
+"app"
+]
+},
+{
+"en": "Scan the browser's code",
+"in": [
+"app"
+]
+},
+{
+"en": "Scan the code while on the server's Wi-Fi",
+"in": [
+"app"
+]
+},
+{
+"en": "Scan this from anywhere — or send the setup code below. It works once, for 10 minutes, and carries the key to your Cloudflare door: keep it private.",
 "in": [
 "app"
 ]
@@ -14893,7 +18382,34 @@
 ]
 },
 {
+"en": "Scene",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "Schedule",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "Schedule a restart or shutdown",
+"in": [
+"app",
+"web"
+]
+},
+{
 "en": "schedule/",
+"in": [
+"web"
+]
+},
+{
+"en": "Scheduled",
 "in": [
 "web"
 ]
@@ -14922,6 +18438,12 @@
 "en": "Screen",
 "in": [
 "app",
+"web"
+]
+},
+{
+"en": "Screen care",
+"in": [
 "web"
 ]
 },
@@ -14963,6 +18485,13 @@
 "en": "Search again",
 "in": [
 "app"
+]
+},
+{
+"en": "Search by name, user or PID",
+"in": [
+"app",
+"web"
 ]
 },
 {
@@ -15113,6 +18642,7 @@
 "en": "Security & privacy",
 "in": [
 "app",
+"site",
 "web"
 ]
 },
@@ -15159,6 +18689,13 @@
 {
 "en": "See what's taking space, and clean it up",
 "in": [
+"web"
+]
+},
+{
+"en": "See-through {0}%",
+"in": [
+"app",
 "web"
 ]
 },
@@ -15246,6 +18783,12 @@
 ]
 },
 {
+"en": "Send this to the person (it's shown only now):",
+"in": [
+"web"
+]
+},
+{
 "en": "Send to Discord",
 "in": [
 "app",
@@ -15263,6 +18806,13 @@
 "in": [
 "app",
 "web"
+]
+},
+{
+"en": "Sent twice",
+"in": [
+"app",
+"wear"
 ]
 },
 {
@@ -15371,6 +18921,13 @@
 ]
 },
 {
+"en": "server's network",
+"in": [
+"app",
+"web"
+]
+},
+{
 "en": "Server: {0}{1}",
 "in": [
 "web"
@@ -15382,12 +18939,6 @@
 "app",
 "site",
 "web"
-]
-},
-{
-"en": "Servers need Nova 0.4.4 or newer, on the same network (and udp 8496 open)",
-"in": [
-"app"
 ]
 },
 {
@@ -15412,6 +18963,19 @@
 {
 "en": "Session ended — go back and open it again for a new one.",
 "in": [
+"web"
+]
+},
+{
+"en": "Set",
+"in": [
+"web"
+]
+},
+{
+"en": "set -u",
+"in": [
+"app",
 "web"
 ]
 },
@@ -15445,6 +19009,12 @@
 "in": [
 "app",
 "web"
+]
+},
+{
+"en": "Set it up now",
+"in": [
+"app"
 ]
 },
 {
@@ -15529,6 +19099,12 @@
 ]
 },
 {
+"en": "Set up Nova",
+"in": [
+"site"
+]
+},
+{
 "en": "Set up swap",
 "in": [
 "app",
@@ -15564,6 +19140,12 @@
 "en": "Setting up a drive deletes everything on it. It can't be undone. Nova never offers the system drive, or drives that are mounted or part of a pool.",
 "in": [
 "web"
+]
+},
+{
+"en": "Setting up…",
+"in": [
+"app"
 ]
 },
 {
@@ -15635,6 +19217,20 @@
 "en": "Shake to…",
 "in": [
 "app"
+]
+},
+{
+"en": "Shape and glass",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "Shapes (Material)",
+"in": [
+"app",
+"web"
 ]
 },
 {
@@ -15736,6 +19332,13 @@
 ]
 },
 {
+"en": "Show each core ({0})",
+"in": [
+"app",
+"web"
+]
+},
+{
 "en": "Show frame rate",
 "in": [
 "app",
@@ -15764,6 +19367,13 @@
 ]
 },
 {
+"en": "Show kernel threads",
+"in": [
+"app",
+"web"
+]
+},
+{
 "en": "Show less",
 "in": [
 "app",
@@ -15781,6 +19391,13 @@
 "en": "Show older ({0})",
 "in": [
 "app"
+]
+},
+{
+"en": "Show one CPU graph",
+"in": [
+"app",
+"web"
 ]
 },
 {
@@ -15902,7 +19519,8 @@
 {
 "en": "Shut down the server",
 "in": [
-"app"
+"app",
+"web"
 ]
 },
 {
@@ -15913,9 +19531,27 @@
 ]
 },
 {
+"en": "Shutdown",
+"in": [
+"web"
+]
+},
+{
+"en": "Side by side on wide screens",
+"in": [
+"web"
+]
+},
+{
 "en": "Sign every request",
 "in": [
 "site"
+]
+},
+{
+"en": "Sign in",
+"in": [
+"app"
 ]
 },
 {
@@ -15926,13 +19562,51 @@
 ]
 },
 {
+"en": "Sign in in a tab",
+"in": [
+"web"
+]
+},
+{
+"en": "Sign in to {0}",
+"in": [
+"app"
+]
+},
+{
+"en": "Sign in with Cloudflare",
+"in": [
+"app"
+]
+},
+{
 "en": "Signed release · tap to install (fingerprint)",
 "in": [
 "app"
 ]
 },
 {
+"en": "Signed too early or too late",
+"in": [
+"app"
+]
+},
+{
 "en": "Signing key",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "Silhouette (black)",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "Silhouette (white)",
 "in": [
 "app",
 "web"
@@ -15951,9 +19625,23 @@
 ]
 },
 {
+"en": "since restart",
+"in": [
+"app",
+"web"
+]
+},
+{
 "en": "since {0}",
 "in": [
 "app"
+]
+},
+{
+"en": "Single-board PC",
+"in": [
+"app",
+"web"
 ]
 },
 {
@@ -15984,6 +19672,13 @@
 },
 {
 "en": "SK hynix",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "Skip (one pattern per line)",
 "in": [
 "app",
 "web"
@@ -16039,6 +19734,14 @@
 {
 "en": "Small",
 "in": [
+"app",
+"web"
+]
+},
+{
+"en": "Small — the layout moves a few pixels every minute",
+"in": [
+"app",
 "web"
 ]
 },
@@ -16080,10 +19783,28 @@
 ]
 },
 {
+"en": "snapshots (unchanged files are shared between them, so each costs little)",
+"in": [
+"web"
+]
+},
+{
 "en": "Snapshots and checksums",
 "in": [
 "app",
 "web"
+]
+},
+{
+"en": "Soft, slowly changing music under everything, in the mood of the look you picked",
+"in": [
+"web"
+]
+},
+{
+"en": "Soft, slowly changing music while Nova is open, in the mood of the look you picked",
+"in": [
+"app"
 ]
 },
 {
@@ -16101,13 +19822,13 @@
 ]
 },
 {
-"en": "Some effects can't run fully here",
+"en": "Some drives and shares can't do hard links (exFAT and FAT drives, some NAS shares). Then Nova keeps one up-to-date copy, plus what each backup replaced or removed — you can restore from either.",
 "in": [
 "app"
 ]
 },
 {
-"en": "Some shares can't do hard links. Then Nova keeps one up-to-date copy plus dated 'versions' folders holding the files that changed or were deleted.",
+"en": "Some effects can't run fully here",
 "in": [
 "app"
 ]
@@ -16120,15 +19841,55 @@
 ]
 },
 {
+"en": "something other than Nova answered (HTTP {0})",
+"in": [
+"app"
+]
+},
+{
 "en": "Something went wrong",
 "in": [
 "app"
 ]
 },
 {
+"en": "Sorry, I couldn't work out {0}",
+"in": [
+"web"
+]
+},
+{
 "en": "Sorted by CPU use",
 "in": [
 "app"
+]
+},
+{
+"en": "Sound options",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "Sound pack",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "Sounds",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "Sounds and touch",
+"in": [
+"app",
+"web"
 ]
 },
 {
@@ -16158,10 +19919,34 @@
 ]
 },
 {
+"en": "span2 tall",
+"in": [
+"web"
+]
+},
+{
 "en": "Spare or replacement drive",
 "in": [
 "app",
 "web"
+]
+},
+{
+"en": "Speak",
+"in": [
+"app"
+]
+},
+{
+"en": "Speech to text on this server (Whisper). Tap the mic to talk.",
+"in": [
+"web"
+]
+},
+{
+"en": "Speech to text on your server (Whisper). Tap the mic to talk.",
+"in": [
+"app"
 ]
 },
 {
@@ -16179,7 +19964,20 @@
 ]
 },
 {
+"en": "Speed {0}% · Tint {1}% · {2} fps",
+"in": [
+"app"
+]
+},
+{
 "en": "Speed, stress and network tests",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "Splitting {0}%",
 "in": [
 "app",
 "web"
@@ -16188,13 +19986,21 @@
 {
 "en": "Square",
 "in": [
-"app"
+"app",
+"web"
 ]
 },
 {
 "en": "Square tile",
 "in": [
 "app"
+]
+},
+{
+"en": "Squircle",
+"in": [
+"app",
+"web"
 ]
 },
 {
@@ -16217,6 +20023,12 @@
 },
 {
 "en": "SSH into the server",
+"in": [
+"app"
+]
+},
+{
+"en": "SSH isn't installed on the server — install it there: sudo apt install openssh-server",
 "in": [
 "app"
 ]
@@ -16307,6 +20119,19 @@
 ]
 },
 {
+"en": "Starting the download…",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "starting…",
+"in": [
+"web"
+]
+},
+{
 "en": "Starting…",
 "in": [
 "app",
@@ -16341,6 +20166,12 @@
 ]
 },
 {
+"en": "Stats",
+"in": [
+"app"
+]
+},
+{
 "en": "Status",
 "in": [
 "app",
@@ -16355,19 +20186,19 @@
 ]
 },
 {
-"en": "Status: not set up — this {0} needs a screen lock (PIN or fingerprint) first. Add one in Android settings, then reopen Nova.",
+"en": "Status, stats and quick actions without opening Nova",
+"in": [
+"app"
+]
+},
+{
+"en": "Status: not set up — this {0} needs a fingerprint or a screen lock first. Add one in Android settings, then tap Set it up now. Until then, risky actions wait for another admin device (or the server) to approve them.",
 "in": [
 "app"
 ]
 },
 {
 "en": "Status: set up and registered with the server.",
-"in": [
-"app"
-]
-},
-{
-"en": "Status: waiting — it's registered automatically the next time Nova opens on home Wi-Fi (registration is only accepted from home).",
 "in": [
 "app"
 ]
@@ -16420,6 +20251,13 @@
 ]
 },
 {
+"en": "Stop halts before the next step. Something the server has already started (an install, freeing space) finishes on its own.",
+"in": [
+"app",
+"web"
+]
+},
+{
 "en": "Stop ignoring",
 "in": [
 "app",
@@ -16440,10 +20278,29 @@
 ]
 },
 {
+"en": "Stop it from going to sleep by itself",
+"in": [
+"app"
+]
+},
+{
+"en": "Stop it from going to sleep by itself — for a few hours, or until you say",
+"in": [
+"app",
+"web"
+]
+},
+{
 "en": "Stop it?",
 "in": [
 "app",
 "web"
+]
+},
+{
+"en": "Stop listening",
+"in": [
+"app"
 ]
 },
 {
@@ -16468,6 +20325,12 @@
 },
 {
 "en": "Stop opening {0} from anywhere?",
+"in": [
+"web"
+]
+},
+{
+"en": "Stop reading replies aloud",
 "in": [
 "web"
 ]
@@ -16508,6 +20371,20 @@
 {
 "en": "Stopped waiting — the request expires on its own",
 "in": [
+"web"
+]
+},
+{
+"en": "Stopped — {0} done, {1} not started.",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "Stopping after this step…",
+"in": [
+"app",
 "web"
 ]
 },
@@ -16618,10 +20495,23 @@
 ]
 },
 {
+"en": "Stronger text only where the glass or the background makes it hard to read",
+"in": [
+"app",
+"web"
+]
+},
+{
 "en": "Style",
 "in": [
 "app",
 "web"
+]
+},
+{
+"en": "Style, light or dark, colors, animation, sounds",
+"in": [
+"app"
 ]
 },
 {
@@ -16631,19 +20521,7 @@
 ]
 },
 {
-"en": "sudo apt install ./nova-server_*.deb # or from source: git clone",
-"in": [
-"web"
-]
-},
-{
-"en": "sudo apt install ./nova-server_*.deb # or from source: git clone <repo> && cd nova && sudo ./server/install.sh",
-"in": [
-"app"
-]
-},
-{
-"en": "sudo apt install ./nova-server_*_all.deb",
+"en": "sudo apt install ./nova-server.deb",
 "in": [
 "site"
 ]
@@ -16695,6 +20573,12 @@
 ]
 },
 {
+"en": "sudo nova doctor",
+"in": [
+"site"
+]
+},
+{
 "en": "sudo nova remove NAME",
 "in": [
 "site"
@@ -16703,26 +20587,22 @@
 {
 "en": "sudo nova setup",
 "in": [
-"site"
+"app",
+"site",
+"web"
 ]
 },
 {
 "en": "sudo nova status",
 "in": [
-"site"
+"site",
+"web"
 ]
 },
 {
 "en": "sudo nova update",
 "in": [
 "site"
-]
-},
-{
-"en": "sudo nova-setup",
-"in": [
-"app",
-"web"
 ]
 },
 {
@@ -16827,7 +20707,19 @@
 ]
 },
 {
+"en": "swatch cp-auto",
+"in": [
+"web"
+]
+},
+{
 "en": "swatch custom",
+"in": [
+"web"
+]
+},
+{
+"en": "swatch press",
 "in": [
 "web"
 ]
@@ -16875,6 +20767,13 @@
 ]
 },
 {
+"en": "Switch brain",
+"in": [
+"app",
+"web"
+]
+},
+{
 "en": "Switch off parts of Nova you don't use, like lighting control",
 "in": [
 "app",
@@ -16907,6 +20806,13 @@
 ]
 },
 {
+"en": "Switches",
+"in": [
+"app",
+"web"
+]
+},
+{
 "en": "Switching to only you…",
 "in": [
 "app",
@@ -16920,9 +20826,16 @@
 ]
 },
 {
-"en": "Symbol",
+"en": "Switching…",
 "in": [
 "app"
+]
+},
+{
+"en": "Symbol",
+"in": [
+"app",
+"web"
 ]
 },
 {
@@ -16933,14 +20846,20 @@
 ]
 },
 {
-"en": "system drive",
+"en": "System",
+"in": [
+"app"
+]
+},
+{
+"en": "System drive",
 "in": [
 "app",
 "web"
 ]
 },
 {
-"en": "System drive",
+"en": "system drive",
 "in": [
 "app",
 "web"
@@ -16986,6 +20905,12 @@
 ]
 },
 {
+"en": "Tabs",
+"in": [
+"web"
+]
+},
+{
 "en": "Tabs · hold and drag to reorder",
 "in": [
 "app",
@@ -16994,6 +20919,12 @@
 },
 {
 "en": "Tailscale",
+"in": [
+"app"
+]
+},
+{
+"en": "Tailscale is the easiest: sudo nova setup → Away from home turns it on. Or put Nova behind Cloudflare Access (free) — docs/REMOTE.md walks you through it, then run sudo nova setup again.",
 "in": [
 "app"
 ]
@@ -17077,6 +21008,30 @@
 ]
 },
 {
+"en": "Talk to Nova",
+"in": [
+"web"
+]
+},
+{
+"en": "Talk to Nova on your server",
+"in": [
+"app"
+]
+},
+{
+"en": "Tall",
+"in": [
+"web"
+]
+},
+{
+"en": "Tap",
+"in": [
+"site"
+]
+},
+{
 "en": "Tap a color to change it, hold (or right-click) to remove it.",
 "in": [
 "web"
@@ -17102,6 +21057,12 @@
 ]
 },
 {
+"en": "Tap Add under a widget and your home screen takes it from there. You can also hold an empty spot on the home screen, choose Widgets and find Nova.",
+"in": [
+"app"
+]
+},
+{
 "en": "Tap it in the bar or the list to see what you can do",
 "in": [
 "app",
@@ -17109,9 +21070,21 @@
 ]
 },
 {
+"en": "Tap it to copy.",
+"in": [
+"app"
+]
+},
+{
 "en": "Tap one to copy it.",
 "in": [
 "app"
+]
+},
+{
+"en": "Tap Share →",
+"in": [
+"site"
 ]
 },
 {
@@ -17133,9 +21106,35 @@
 ]
 },
 {
+"en": "Tap to look again.",
+"in": [
+"app"
+]
+},
+{
 "en": "Tap to undo",
 "in": [
 "app"
+]
+},
+{
+"en": "Taps",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "Taps, switches, pages and alerts — each look has its own sound pack",
+"in": [
+"app"
+]
+},
+{
+"en": "Task manager",
+"in": [
+"app",
+"web"
 ]
 },
 {
@@ -17153,6 +21152,13 @@
 {
 "en": "taskbar glass",
 "in": [
+"web"
+]
+},
+{
+"en": "Teardrop",
+"in": [
+"app",
 "web"
 ]
 },
@@ -17238,6 +21244,12 @@
 ]
 },
 {
+"en": "Test each way in",
+"in": [
+"app"
+]
+},
+{
 "en": "Test started",
 "in": [
 "app",
@@ -17302,6 +21314,13 @@
 ]
 },
 {
+"en": "Text exactly as the look draws it",
+"in": [
+"app",
+"web"
+]
+},
+{
 "en": "Text file",
 "in": [
 "app",
@@ -17334,7 +21353,25 @@
 ]
 },
 {
+"en": "That app isn't on this server any more",
+"in": [
+"web"
+]
+},
+{
+"en": "That app isn't on this server any more.",
+"in": [
+"web"
+]
+},
+{
 "en": "That change isn't possible",
+"in": [
+"app"
+]
+},
+{
+"en": "That code didn't work",
 "in": [
 "app"
 ]
@@ -17346,13 +21383,38 @@
 ]
 },
 {
+"en": "That code only works on the home network — make one for away from home: sudo nova add --remote",
+"in": [
+"app"
+]
+},
+{
+"en": "That didn't work",
+"in": [
+"app",
+"web"
+]
+},
+{
 "en": "That didn't work ({0})",
 "in": [
 "web"
 ]
 },
 {
+"en": "That file is over 60 MB — pick a shorter or smaller one",
+"in": [
+"web"
+]
+},
+{
 "en": "That isn't a Nova pairing code.",
+"in": [
+"app"
+]
+},
+{
+"en": "That isn't a Nova setup code.",
 "in": [
 "app"
 ]
@@ -17384,9 +21446,27 @@
 ]
 },
 {
+"en": "That request expired — try again",
+"in": [
+"web"
+]
+},
+{
+"en": "That was declined.",
+"in": [
+"app"
+]
+},
+{
 "en": "That's too big for a plugin (256 KB at most)",
 "in": [
 "app",
+"web"
+]
+},
+{
+"en": "The animated one, even if it's off for the rest of Nova",
+"in": [
 "web"
 ]
 },
@@ -17416,6 +21496,56 @@
 ]
 },
 {
+"en": "The assistant is in Labs",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "The assistant is in the navigation pill now",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "the assistant's brain",
+"in": [
+"app"
+]
+},
+{
+"en": "The assistant's plan doesn't fit this drive",
+"in": [
+"app"
+]
+},
+{
+"en": "The backup drive isn\\'t mounted (or $DEST is missing) — not backing up",
+"in": [
+"web"
+]
+},
+{
+"en": "The brain",
+"in": [
+"web"
+]
+},
+{
+"en": "The brain is ready",
+"in": [
+"app"
+]
+},
+{
+"en": "The checksum list doesn't mention {0} — not installing it.",
+"in": [
+"app"
+]
+},
+{
 "en": "The code expired — get a new one",
 "in": [
 "web"
@@ -17435,6 +21565,18 @@
 ]
 },
 {
+"en": "The Compose file goes back to how it was before ({0}), and {1} is updated to match.",
+"in": [
+"web"
+]
+},
+{
+"en": "The connection dropped — check whether it went through",
+"in": [
+"web"
+]
+},
+{
 "en": "The current table is saved first. Filesystems on the old partitions come back if nothing new was written over them.",
 "in": [
 "app"
@@ -17447,7 +21589,7 @@
 ]
 },
 {
-"en": "The dashboard keeps the screen awake, drifts a few pixels every minute so nothing burns in, and hides its buttons until you tap.",
+"en": "The dashboard keeps the screen awake, moves a little every minute (Pixel shift) so nothing burns in, and hides its buttons until you tap.",
 "in": [
 "web"
 ]
@@ -17475,6 +21617,13 @@
 },
 {
 "en": "The drives keep their files and stay mounted on their own",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "The editor gets the new script. Nothing is saved until you press Save.",
 "in": [
 "app",
 "web"
@@ -17556,10 +21705,28 @@
 ]
 },
 {
+"en": "The microphone didn't work",
+"in": [
+"app"
+]
+},
+{
+"en": "The microphone isn't available",
+"in": [
+"app"
+]
+},
+{
 "en": "The name, status line and alerts always stay at the top. Hold the shortcut bar on Home to change its buttons.",
 "in": [
 "app",
 "web"
+]
+},
+{
+"en": "The newest three alerts, and how many are new.",
+"in": [
+"app"
 ]
 },
 {
@@ -17595,8 +21762,42 @@
 ]
 },
 {
+"en": "The orb in the corner of every page, to ask from anywhere",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "The orb in the corner of every page, to ask Nova from anywhere",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "The page didn't load all the way. Check the connection and try again. If it keeps happening, your browser (",
+"in": [
+"web"
+]
+},
+{
+"en": "The page's color",
+"in": [
+"app",
+"web"
+]
+},
+{
 "en": "The partition table saved before the last change goes back on the drive (the current one is saved first). Filesystems on the old partitions come back if nothing new was written over them.",
 "in": [
+"web"
+]
+},
+{
+"en": "The password (8+ characters)",
+"in": [
+"app",
 "web"
 ]
 },
@@ -17604,6 +21805,20 @@
 "en": "The phone signs each request with a key in its secure chip, stamped with the time and a one-time number, so a recorded request can't be replayed.",
 "in": [
 "site"
+]
+},
+{
+"en": "The picture on Home, for every phone and browser of this server.",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "the plan is ready — open the assistant to check it",
+"in": [
+"app",
+"web"
 ]
 },
 {
@@ -17625,7 +21840,7 @@
 ]
 },
 {
-"en": "The screen stays on and the layout shifts slightly every minute to protect the display. For a wall tablet, pair it as View only and use Android's screen pinning to keep it in Nova.",
+"en": "The screen stays on and (with Pixel shift on) the layout moves slightly every minute to protect the display. For a wall tablet, pair it as View only and use Android's screen pinning to keep it in Nova.",
 "in": [
 "app"
 ]
@@ -17634,6 +21849,12 @@
 "en": "the server",
 "in": [
 "web"
+]
+},
+{
+"en": "The server answered {0}.",
+"in": [
+"app"
 ]
 },
 {
@@ -17655,9 +21876,15 @@
 ]
 },
 {
-"en": "the server isn't available for them yet — it's planned for 1.0. You can already",
+"en": "The server has no SSH address to offer — run sudo nova setup on it",
 "in": [
-"site"
+"app"
+]
+},
+{
+"en": "The server isn't answering",
+"in": [
+"web"
 ]
 },
 {
@@ -17698,9 +21925,59 @@
 ]
 },
 {
+"en": "The server's own clock is used. You can cancel it from here any time before.",
+"in": [
+"app"
+]
+},
+{
+"en": "The server's own clock is used. You can cancel it from the power menu any time before.",
+"in": [
+"web"
+]
+},
+{
+"en": "The soft tint at the top and bottom of the screen, so the page fades out under the bars",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "The speech model is deleted from the server. You can download it again any time.",
+"in": [
+"app",
+"web"
+]
+},
+{
 "en": "the start page",
 "in": [
 "web"
+]
+},
+{
+"en": "The update didn't match its checksum — not installing it.",
+"in": [
+"app"
+]
+},
+{
+"en": "The update didn't work",
+"in": [
+"app"
+]
+},
+{
+"en": "The watch's clock is off",
+"in": [
+"wear"
+]
+},
+{
+"en": "The way Nova reaches the server right now, then the others",
+"in": [
+"app"
 ]
 },
 {
@@ -17723,13 +22000,6 @@
 },
 {
 "en": "Their email address. They'll get a one-time code there each time they sign in.",
-"in": [
-"app",
-"web"
-]
-},
-{
-"en": "Theme",
 "in": [
 "app",
 "web"
@@ -17781,6 +22051,13 @@
 ]
 },
 {
+"en": "There was nothing safe to remove",
+"in": [
+"app",
+"web"
+]
+},
+{
 "en": "There will be no login at all: anyone who finds the address can open the app. Only do this if the app has its own login you trust.",
 "in": [
 "app",
@@ -17794,7 +22071,7 @@
 ]
 },
 {
-"en": "These choices are saved in this browser. Each server also has its own name and accent color (Settings → Server).",
+"en": "These choices are saved in this browser. Each server also has its own name and accent color (Settings → Server). Nova's own words are translated by machine, so some may read oddly — tell us on GitHub.",
 "in": [
 "web"
 ]
@@ -17825,6 +22102,18 @@
 ]
 },
 {
+"en": "They open",
+"in": [
+"web"
+]
+},
+{
+"en": "They show the server you're on in the app, refresh about every 15 minutes (and whenever you open Nova), and open the matching page when tapped.",
+"in": [
+"app"
+]
+},
+{
 "en": "They sign in with a one-time code sent to their email, then open the link",
 "in": [
 "app",
@@ -17836,6 +22125,12 @@
 "in": [
 "app",
 "web"
+]
+},
+{
+"en": "Thinking…",
+"in": [
+"app"
 ]
 },
 {
@@ -17876,7 +22171,19 @@
 ]
 },
 {
+"en": "this browser",
+"in": [
+"web"
+]
+},
+{
 "en": "This browser",
+"in": [
+"web"
+]
+},
+{
+"en": "This browser (",
 "in": [
 "web"
 ]
@@ -17889,6 +22196,12 @@
 },
 {
 "en": "This browser can't show notifications",
+"in": [
+"web"
+]
+},
+{
+"en": "This browser can't use the microphone here",
 "in": [
 "web"
 ]
@@ -17948,9 +22261,15 @@
 ]
 },
 {
-"en": "This browser's tab icon, and the icon Nova gets when you add it to an iPhone or iPad home screen. The phone app has its own (Appearance → App icon in the app).",
+"en": "This browser's tab icon, and the icon Nova gets when you add it to an iPhone or iPad home screen. The phone app has its own (Appearance → Icons in the app).",
 "in": [
 "web"
+]
+},
+{
+"en": "This can shut down, restart or wipe the server.",
+"in": [
+"app"
 ]
 },
 {
@@ -17966,6 +22285,12 @@
 ]
 },
 {
+"en": "This computer's clock is {0} min off from the server's — set it to update automatically",
+"in": [
+"web"
+]
+},
+{
 "en": "This device is offline",
 "in": [
 "web"
@@ -17978,7 +22303,20 @@
 ]
 },
 {
+"en": "This drive can't be changed right now — see why below",
+"in": [
+"web"
+]
+},
+{
 "en": "This folder is empty",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "This look's own",
 "in": [
 "app",
 "web"
@@ -18027,10 +22365,22 @@
 ]
 },
 {
+"en": "This phone has no speech recognizer — download voice for the server below",
+"in": [
+"app"
+]
+},
+{
 "en": "This pool is gone.",
 "in": [
 "app",
 "web"
+]
+},
+{
+"en": "This release has no checksum list — not installing it.",
+"in": [
+"app"
 ]
 },
 {
@@ -18054,6 +22404,24 @@
 },
 {
 "en": "this server",
+"in": [
+"web"
+]
+},
+{
+"en": "This server can't be kept awake from here",
+"in": [
+"web"
+]
+},
+{
+"en": "This server has no way in from outside yet (Tailscale or a Cloudflare tunnel with an access key), so this code will only work at home.",
+"in": [
+"app"
+]
+},
+{
+"en": "This server's Nova is too old for that — update it first",
 "in": [
 "web"
 ]
@@ -18125,6 +22493,12 @@
 ]
 },
 {
+"en": "This {0}'s clock is {1} min off from the server's.",
+"in": [
+"app"
+]
+},
+{
 "en": "This {0}'s own color",
 "in": [
 "app"
@@ -18146,6 +22520,13 @@
 "en": "thread: {0}",
 "in": [
 "app"
+]
+},
+{
+"en": "Threads",
+"in": [
+"app",
+"web"
 ]
 },
 {
@@ -18188,7 +22569,7 @@
 ]
 },
 {
-"en": "Tile width",
+"en": "Tile size",
 "in": [
 "web"
 ]
@@ -18240,6 +22621,13 @@
 ]
 },
 {
+"en": "Tint",
+"in": [
+"app",
+"web"
+]
+},
+{
 "en": "Tinted frosted glass frames with a glossy shine and glowing buttons",
 "in": [
 "app",
@@ -18265,10 +22653,28 @@
 ]
 },
 {
+"en": "tmrow press",
+"in": [
+"web"
+]
+},
+{
+"en": "tmrow tmh",
+"in": [
+"web"
+]
+},
+{
 "en": "To",
 "in": [
 "app",
 "web"
+]
+},
+{
+"en": "To add one: hold an empty spot on your home screen, choose Widgets, and find Nova.",
+"in": [
+"app"
 ]
 },
 {
@@ -18315,6 +22721,12 @@
 ]
 },
 {
+"en": "Tomorrow",
+"in": [
+"app"
+]
+},
+{
 "en": "Tonal",
 "in": [
 "app",
@@ -18325,6 +22737,24 @@
 "en": "Tonal surfaces, segmented lists, large titles and springy motion, following Google's Material 3 Expressive.",
 "in": [
 "site"
+]
+},
+{
+"en": "too long for this QR maker",
+"in": [
+"web"
+]
+},
+{
+"en": "Too many tries — wait a few minutes.",
+"in": [
+"app"
+]
+},
+{
+"en": "Too many wrong tries — wait a few minutes.",
+"in": [
+"app"
 ]
 },
 {
@@ -18359,6 +22789,13 @@
 ]
 },
 {
+"en": "Top and bottom fades",
+"in": [
+"app",
+"web"
+]
+},
+{
 "en": "Top containers",
 "in": [
 "app",
@@ -18386,6 +22823,19 @@
 ]
 },
 {
+"en": "touch feedback",
+"in": [
+"app"
+]
+},
+{
+"en": "Tower",
+"in": [
+"app",
+"web"
+]
+},
+{
 "en": "Traceroute",
 "in": [
 "app",
@@ -18393,7 +22843,32 @@
 ]
 },
 {
+"en": "Track",
+"in": [
+"app",
+"web"
+]
+},
+{
 "en": "translate(-50%, 0)",
+"in": [
+"web"
+]
+},
+{
+"en": "translate(54 54) scale(1.12) translate(-58.9 -50.6)",
+"in": [
+"web"
+]
+},
+{
+"en": "translate({0}px, {1}px) scale(.08)",
+"in": [
+"web"
+]
+},
+{
+"en": "translate({0}px, {1}px) scale({2}, {3})",
 "in": [
 "web"
 ]
@@ -18423,6 +22898,13 @@
 ]
 },
 {
+"en": "Transparency",
+"in": [
+"app",
+"web"
+]
+},
+{
 "en": "Troubleshoot",
 "in": [
 "app",
@@ -18444,6 +22926,12 @@
 ]
 },
 {
+"en": "Try this address",
+"in": [
+"app"
+]
+},
+{
 "en": "Try “dark mode”, “raid”, “speed test” or a container's name. Hold a pinned search to unpin it.",
 "in": [
 "app"
@@ -18453,6 +22941,12 @@
 "en": "Try “dark mode”, “raid”, “speed test” or a container's name. Press / anywhere in Nova to search.",
 "in": [
 "web"
+]
+},
+{
+"en": "Trying…",
+"in": [
+"app"
 ]
 },
 {
@@ -18466,6 +22960,12 @@
 "en": "Tuesday",
 "in": [
 "app",
+"web"
+]
+},
+{
+"en": "Turbo fan engaged. (Not really — your server is fine.)",
+"in": [
 "web"
 ]
 },
@@ -18522,6 +23022,18 @@
 ]
 },
 {
+"en": "Turn on automatic date and time in Android settings.",
+"in": [
+"app"
+]
+},
+{
+"en": "Turn on fingerprint confirmation",
+"in": [
+"app"
+]
+},
+{
 "en": "Turn on other computers on your network",
 "in": [
 "web"
@@ -18535,6 +23047,24 @@
 },
 {
 "en": "Turn on Tailscale",
+"in": [
+"app"
+]
+},
+{
+"en": "turn on X in Settings → Labs first",
+"in": [
+"web"
+]
+},
+{
+"en": "Turn on “Nova assistant” in Settings → Labs, then ask Nova in plain words — from here or from Search.",
+"in": [
+"web"
+]
+},
+{
+"en": "Turn on “Nova assistant” in Settings → Labs, then ask Nova in plain words — here or from Search.",
 "in": [
 "app"
 ]
@@ -18611,6 +23141,12 @@
 ]
 },
 {
+"en": "Type the server's address below.",
+"in": [
+"web"
+]
+},
+{
 "en": "Type to search everything your package manager offers. These are our picks:",
 "in": [
 "app",
@@ -18663,6 +23199,19 @@
 ]
 },
 {
+"en": "Undo the last change",
+"in": [
+"app"
+]
+},
+{
+"en": "Undo the last change?",
+"in": [
+"app",
+"web"
+]
+},
+{
 "en": "Undoing things",
 "in": [
 "app",
@@ -18697,6 +23246,12 @@
 },
 {
 "en": "Uninstalling…",
+"in": [
+"app"
+]
+},
+{
+"en": "UnknownHost",
 "in": [
 "app"
 ]
@@ -18792,7 +23347,8 @@
 {
 "en": "Unpin from the dock",
 "in": [
-"app"
+"app",
+"web"
 ]
 },
 {
@@ -18842,7 +23398,28 @@
 ]
 },
 {
+"en": "Until I end it",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "Until I stop it",
+"in": [
+"app",
+"web"
+]
+},
+{
 "en": "Up",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "Up 3 hours",
 "in": [
 "app",
 "web"
@@ -18886,6 +23463,13 @@
 ]
 },
 {
+"en": "Up {0}",
+"in": [
+"app",
+"web"
+]
+},
+{
 "en": "Update",
 "in": [
 "app",
@@ -18925,6 +23509,12 @@
 ]
 },
 {
+"en": "Update Nova",
+"in": [
+"app"
+]
+},
+{
 "en": "Update Nova on it (sudo nova update) to control it from here.",
 "in": [
 "web"
@@ -18959,6 +23549,12 @@
 "in": [
 "app",
 "web"
+]
+},
+{
+"en": "Update to {0}",
+"in": [
+"app"
 ]
 },
 {
@@ -19002,6 +23598,12 @@
 },
 {
 "en": "Updates for the server",
+"in": [
+"app"
+]
+},
+{
+"en": "update|upgrade|new version",
 "in": [
 "app"
 ]
@@ -19129,7 +23731,8 @@
 {
 "en": "Use it",
 "in": [
-"app"
+"app",
+"web"
 ]
 },
 {
@@ -19202,8 +23805,21 @@
 ]
 },
 {
+"en": "used {0}×",
+"in": [
+"app"
+]
+},
+{
 "en": "useq:{0}:r",
 "in": [
+"web"
+]
+},
+{
+"en": "User",
+"in": [
+"app",
 "web"
 ]
 },
@@ -19273,6 +23889,12 @@
 ]
 },
 {
+"en": "Value",
+"in": [
+"web"
+]
+},
+{
 "en": "Version",
 "in": [
 "app",
@@ -19293,13 +23915,19 @@
 ]
 },
 {
+"en": "Version {0} is ready — tap to install",
+"in": [
+"app"
+]
+},
+{
 "en": "Version {0} · up to date",
 "in": [
 "web"
 ]
 },
 {
-"en": "Version {0} · updates aren't set up yet (sudo nova-setup)",
+"en": "Version {0} · updates are manual on this server (sudo nova update)",
 "in": [
 "web"
 ]
@@ -19333,6 +23961,13 @@
 "en": "via {0}",
 "in": [
 "app"
+]
+},
+{
+"en": "Vibration",
+"in": [
+"app",
+"web"
 ]
 },
 {
@@ -19389,6 +24024,38 @@
 ]
 },
 {
+"en": "Voice",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "Voice is ready",
+"in": [
+"app"
+]
+},
+{
+"en": "Voice · {0}",
+"in": [
+"web"
+]
+},
+{
+"en": "Volume",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "Waiting for approval",
+"in": [
+"app"
+]
+},
+{
 "en": "Waiting for you",
 "in": [
 "app",
@@ -19423,7 +24090,7 @@
 ]
 },
 {
-"en": "Wallpaper",
+"en": "Wallpaper color",
 "in": [
 "app",
 "web"
@@ -19432,6 +24099,13 @@
 {
 "en": "Wallpaper set",
 "in": [
+"web"
+]
+},
+{
+"en": "Warm (Mica)",
+"in": [
+"app",
 "web"
 ]
 },
@@ -19477,6 +24151,30 @@
 "en": "Wave",
 "in": [
 "app",
+"web"
+]
+},
+{
+"en": "wb wclose",
+"in": [
+"web"
+]
+},
+{
+"en": "wb wmax",
+"in": [
+"web"
+]
+},
+{
+"en": "wb wmin",
+"in": [
+"web"
+]
+},
+{
+"en": "wb wtab",
+"in": [
 "web"
 ]
 },
@@ -19600,6 +24298,12 @@
 ]
 },
 {
+"en": "What can I do?",
+"in": [
+"app"
+]
+},
+{
 "en": "What can someone do with a stolen phone or browser?",
 "in": [
 "site",
@@ -19675,6 +24379,13 @@
 ]
 },
 {
+"en": "What this backup replaced or removed, as it was before",
+"in": [
+"app",
+"web"
+]
+},
+{
 "en": "What time?",
 "in": [
 "app"
@@ -19685,6 +24396,12 @@
 "in": [
 "app",
 "web"
+]
+},
+{
+"en": "What works there yet",
+"in": [
+"site"
 ]
 },
 {
@@ -19715,9 +24432,22 @@
 ]
 },
 {
+"en": "What's new",
+"in": [
+"app"
+]
+},
+{
 "en": "what's new",
 "in": [
 "app"
+]
+},
+{
+"en": "What's running on the server, by CPU and memory",
+"in": [
+"app",
+"web"
 ]
 },
 {
@@ -19754,6 +24484,12 @@
 },
 {
 "en": "When the server needs attention, this light turns amber for a warning and red for something critical. When it's fine again, it goes back exactly to how it was. Nova only changes it when the status changes, so your own automations keep working.",
+"in": [
+"app"
+]
+},
+{
+"en": "When they're deleted here",
 "in": [
 "app"
 ]
@@ -19859,6 +24595,13 @@
 ]
 },
 {
+"en": "Which sounds",
+"in": [
+"app",
+"web"
+]
+},
+{
 "en": "While you type, from DuckDuckGo, through your server (it never sees your phone)",
 "in": [
 "app"
@@ -19923,6 +24666,31 @@
 ]
 },
 {
+"en": "Who is it for? (optional)",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "Whoever you give it to types it to open the app. You'll be asked to approve this on your phone.",
+"in": [
+"web"
+]
+},
+{
+"en": "Whoever you give it to types it to open the app. You'll confirm with your fingerprint.",
+"in": [
+"app"
+]
+},
+{
+"en": "whole frame",
+"in": [
+"app"
+]
+},
+{
 "en": "Whose browser? (e.g. Dash)",
 "in": [
 "app"
@@ -19942,7 +24710,26 @@
 ]
 },
 {
+"en": "width:100%",
+"in": [
+"web"
+]
+},
+{
 "en": "Wikipedia",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "will Tailscale work when I leave?",
+"in": [
+"app"
+]
+},
+{
+"en": "Window roundness",
 "in": [
 "app",
 "web"
@@ -19955,7 +24742,21 @@
 ]
 },
 {
-"en": "Windows and macOS:",
+"en": "Windows {0}%",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "Windows' own filesystem — for a drive you'll also plug into a Windows PC",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "Windows:",
 "in": [
 "site"
 ]
@@ -19967,6 +24768,18 @@
 ]
 },
 {
+"en": "Wireless Controller",
+"in": [
+"web"
+]
+},
+{
+"en": "with that code (or, if you already set them up, type a code from your authenticator app on the same screen).",
+"in": [
+"site"
+]
+},
+{
 "en": "Without a phone",
 "in": [
 "app",
@@ -19974,21 +24787,15 @@
 ]
 },
 {
-"en": "Without a VPN, put Nova behind Cloudflare Access (free) — docs/REMOTE.md walks you through it. For this web version away from home, add an Allow policy for your email to the same Access application.",
-"in": [
-"web"
-]
-},
-{
-"en": "Without a VPN, put Nova behind Cloudflare Access (free) — the README's docs/REMOTE.md walks you through it, then run nova-setup again. With Tailscale, nova-setup turns it on for you.",
-"in": [
-"app"
-]
-},
-{
 "en": "Without snapshots",
 "in": [
 "app"
+]
+},
+{
+"en": "Working",
+"in": [
+"web"
 ]
 },
 {
@@ -20037,8 +24844,22 @@
 ]
 },
 {
+"en": "Write the script",
+"in": [
+"app",
+"web"
+]
+},
+{
 "en": "Writes a temporary file (deleted afterwards) and measures sequential speed (big files, MB/s) and random 4K (tiny reads/writes, IOPS). Typical: HDD ~150 MB/s & ~100 IOPS, SATA SSD ~500 MB/s & tens of thousands, NVMe several GB/s.",
 "in": [
+"web"
+]
+},
+{
+"en": "Written — look it over, then Save",
+"in": [
+"app",
 "web"
 ]
 },
@@ -20097,6 +24918,18 @@
 "in": [
 "app",
 "wear",
+"web"
+]
+},
+{
+"en": "Xbox",
+"in": [
+"web"
+]
+},
+{
+"en": "Xbox (A B X Y)",
+"in": [
 "web"
 ]
 },
@@ -20260,9 +25093,28 @@
 ]
 },
 {
+"en": "You canceled it — nothing was changed",
+"in": [
+"app"
+]
+},
+{
+"en": "You choose it (at least 8 characters). Nova keeps only a scrambled copy.",
+"in": [
+"app",
+"web"
+]
+},
+{
 "en": "You have view-only access",
 "in": [
 "app",
+"web"
+]
+},
+{
+"en": "You said not now — nothing was changed",
+"in": [
 "web"
 ]
 },
@@ -20287,6 +25139,13 @@
 },
 {
 "en": "You, plus people you add by email. You can add them next — until then it's just you.",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "Your access code",
 "in": [
 "app",
 "web"
@@ -20361,7 +25220,19 @@
 ]
 },
 {
+"en": "Your home screen app decides the shape of Nova's icon there (and with themed icons on, Android 13+ turns every choice into its themed style).",
+"in": [
+"app"
+]
+},
+{
 "en": "Your home screen app doesn't allow adding icons",
+"in": [
+"app"
+]
+},
+{
+"en": "Your home screen didn't take it — hold an empty spot there and choose Widgets instead",
 "in": [
 "app"
 ]
@@ -20417,15 +25288,36 @@
 ]
 },
 {
+"en": "Your own color",
+"in": [
+"app",
+"web"
+]
+},
+{
 "en": "Your own colors",
 "in": [
-"app"
+"app",
+"web"
 ]
 },
 {
 "en": "Your own container",
 "in": [
 "app"
+]
+},
+{
+"en": "Your own GIF or video",
+"in": [
+"web"
+]
+},
+{
+"en": "Your own picture",
+"in": [
+"app",
+"web"
 ]
 },
 {
@@ -20475,6 +25367,12 @@
 "in": [
 "app",
 "web"
+]
+},
+{
+"en": "Your server's web address",
+"in": [
+"app"
 ]
 },
 {
@@ -20649,6 +25547,12 @@
 ]
 },
 {
+"en": "{0} and the rest of {1} are updated to match — containers whose settings changed restart. Your phone confirms it.",
+"in": [
+"web"
+]
+},
+{
 "en": "{0} Archive",
 "in": [
 "web"
@@ -20661,7 +25565,25 @@
 ]
 },
 {
+"en": "{0} brain{1}",
+"in": [
+"web"
+]
+},
+{
+"en": "{0} can't open inside Nova",
+"in": [
+"web"
+]
+},
+{
 "en": "{0} column{1}",
+"in": [
+"web"
+]
+},
+{
+"en": "{0} connected — D-pad to move, A to select, B to go back",
 "in": [
 "web"
 ]
@@ -20686,15 +25608,10 @@
 ]
 },
 {
-"en": "{0} dark",
-"in": [
-"app"
-]
-},
-{
 "en": "{0} days",
 "in": [
-"app"
+"app",
+"web"
 ]
 },
 {
@@ -20707,6 +25624,24 @@
 "en": "{0} doesn't know this browser anymore — pick it under Servers to pair again",
 "in": [
 "web"
+]
+},
+{
+"en": "{0} done, {1} didn't work — see above.",
+"in": [
+"web"
+]
+},
+{
+"en": "{0} done, {1} didn't work — see below.",
+"in": [
+"app"
+]
+},
+{
+"en": "{0} drawn/s",
+"in": [
+"app"
 ]
 },
 {
@@ -20724,6 +25659,13 @@
 {
 "en": "{0} files changed · {1} copied · {2} s",
 "in": [
+"web"
+]
+},
+{
+"en": "{0} files put back",
+"in": [
+"app",
 "web"
 ]
 },
@@ -20766,6 +25708,12 @@
 ]
 },
 {
+"en": "{0} GB download.",
+"in": [
+"web"
+]
+},
+{
 "en": "{0} GB memory",
 "in": [
 "app"
@@ -20773,6 +25721,13 @@
 },
 {
 "en": "{0} h ago",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "{0} h {1} min",
 "in": [
 "app",
 "web"
@@ -20800,6 +25755,12 @@
 },
 {
 "en": "{0} hours ({1} years)",
+"in": [
+"web"
+]
+},
+{
+"en": "{0} hour{1}",
 "in": [
 "web"
 ]
@@ -20836,6 +25797,12 @@
 ]
 },
 {
+"en": "{0} is off",
+"in": [
+"web"
+]
+},
+{
 "en": "{0} is off the internet",
 "in": [
 "app",
@@ -20846,6 +25813,18 @@
 "en": "{0} is offline for a few seconds while the login switches over.",
 "in": [
 "app"
+]
+},
+{
+"en": "{0} is on a plain http address, which browsers won't show inside Nova here — opened in a new tab",
+"in": [
+"web"
+]
+},
+{
+"en": "{0} is ready",
+"in": [
+"web"
 ]
 },
 {
@@ -20888,12 +25867,6 @@
 ]
 },
 {
-"en": "{0} light",
-"in": [
-"app"
-]
-},
-{
 "en": "{0} loses access to this server{1}. You'll approve this on an admin phone with your fingerprint.",
 "in": [
 "web"
@@ -20907,6 +25880,13 @@
 },
 {
 "en": "{0} MB liberados",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "{0} MB of RAM",
 "in": [
 "app",
 "web"
@@ -20937,6 +25917,12 @@
 "en": "{0} min before",
 "in": [
 "app",
+"web"
+]
+},
+{
+"en": "{0} minute{1}",
+"in": [
 "web"
 ]
 },
@@ -20995,6 +25981,13 @@
 ]
 },
 {
+"en": "{0} of storage",
+"in": [
+"app",
+"web"
+]
+},
+{
 "en": "{0} of {1} GB",
 "in": [
 "web"
@@ -21010,6 +26003,18 @@
 "en": "{0} on",
 "in": [
 "web"
+]
+},
+{
+"en": "{0} On this server only.",
+"in": [
+"web"
+]
+},
+{
+"en": "{0} on your home screen",
+"in": [
+"app"
 ]
 },
 {
@@ -21029,6 +26034,12 @@
 "in": [
 "app",
 "web"
+]
+},
+{
+"en": "{0} remapped ≈ {1} retired (nothing lost)",
+"in": [
+"app"
 ]
 },
 {
@@ -21054,6 +26065,18 @@
 },
 {
 "en": "{0} Save",
+"in": [
+"web"
+]
+},
+{
+"en": "{0} scheduled",
+"in": [
+"web"
+]
+},
+{
+"en": "{0} scheduled for {1}",
 "in": [
 "web"
 ]
@@ -21089,6 +26112,12 @@
 "in": [
 "app",
 "web"
+]
+},
+{
+"en": "{0} unreadable ≈ {1} of data at risk until rewritten",
+"in": [
+"app"
 ]
 },
 {
@@ -21136,6 +26165,12 @@
 ]
 },
 {
+"en": "{0} {1} GB download, needs about {2} GB of memory.",
+"in": [
+"web"
+]
+},
+{
 "en": "{0} · /dev/{1}",
 "in": [
 "web"
@@ -21156,6 +26191,12 @@
 },
 {
 "en": "{0} · kept as it is, nothing erased",
+"in": [
+"web"
+]
+},
+{
+"en": "{0} · Nova {1}",
 "in": [
 "web"
 ]
@@ -21204,9 +26245,21 @@
 ]
 },
 {
-"en": "{0} — picked to suit this {1}",
+"en": "{0} — picked to suit this device",
+"in": [
+"web"
+]
+},
+{
+"en": "{0} — the previews above and your apps' icons inside Nova",
 "in": [
 "app"
+]
+},
+{
+"en": "{0} — {1} a line to see the value at that time.",
+"in": [
+"web"
 ]
 },
 {
@@ -21228,9 +26281,21 @@
 ]
 },
 {
+"en": "{0}-{1}-{2}.wav",
+"in": [
+"app"
+]
+},
+{
 "en": "{0}. A backup of the file is kept next to it. Your phone confirms it.",
 "in": [
 "web"
+]
+},
+{
+"en": "{0}/api/v1/ping",
+"in": [
+"app"
 ]
 },
 {
@@ -21258,6 +26323,12 @@
 ]
 },
 {
+"en": "{0}/undo",
+"in": [
+"app"
+]
+},
+{
 "en": "{0}/update",
 "in": [
 "web"
@@ -21276,9 +26347,39 @@
 ]
 },
 {
+"en": "{0}: skipped (not https)",
+"in": [
+"app"
+]
+},
+{
+"en": "{0}: small",
+"in": [
+"app"
+]
+},
+{
+"en": "{0}: the whole row",
+"in": [
+"app"
+]
+},
+{
+"en": "{0}: wide",
+"in": [
+"app"
+]
+},
+{
 "en": "{0}: {1} done",
 "in": [
 "app",
+"web"
+]
+},
+{
+"en": "{0}://{1}{2}/",
+"in": [
 "web"
 ]
 },
@@ -21309,11 +26410,31 @@
 {
 "en": "{0}d {1}h",
 "in": [
-"app"
+"app",
+"web"
 ]
 },
 {
 "en": "{0}d {1}h {2}m",
+"in": [
+"app",
+"web"
+]
+},
+{
+"en": "{0}Erases data — you'll confirm it",
+"in": [
+"web"
+]
+},
+{
+"en": "{0}h",
+"in": [
+"app"
+]
+},
+{
+"en": "{0}h {1}m",
 "in": [
 "app",
 "web"
@@ -21327,7 +26448,37 @@
 ]
 },
 {
-"en": "{0}x{1}x{2}x{3}",
+"en": "{0}m",
+"in": [
+"app"
+]
+},
+{
+"en": "{0}Needs approval",
+"in": [
+"web"
+]
+},
+{
+"en": "{0}px",
+"in": [
+"web"
+]
+},
+{
+"en": "{0}px {1}px",
+"in": [
+"web"
+]
+},
+{
+"en": "{0}x{1}/{2}/{3}",
+"in": [
+"web"
+]
+},
+{
+"en": "{0}x{1}x{2}x{3}x{4}x{5}",
 "in": [
 "web"
 ]
@@ -21351,7 +26502,19 @@
 ]
 },
 {
+"en": "| tail -1)",
+"in": [
+"web"
+]
+},
+{
 "en": "· +{0} more name{1}",
+"in": [
+"web"
+]
+},
+{
+"en": "· alert chimes",
 "in": [
 "web"
 ]
@@ -21360,6 +26523,12 @@
 "en": "· along the bottom, or down the left on wide screens",
 "in": [
 "web"
+]
+},
+{
+"en": "· app {0} ms · drawing {1} ms · worst {2} ms",
+"in": [
+"app"
 ]
 },
 {
@@ -21403,6 +26572,12 @@
 "en": "· from the store",
 "in": [
 "app"
+]
+},
+{
+"en": "· hidden",
+"in": [
+"web"
 ]
 },
 {
@@ -21503,6 +26678,12 @@
 ]
 },
 {
+"en": "· recommended",
+"in": [
+"web"
+]
+},
+{
 "en": "· restarts Docker (every container)",
 "in": [
 "app",
@@ -21542,6 +26723,12 @@
 ]
 },
 {
+"en": "· translated by machine",
+"in": [
+"app"
+]
+},
+{
 "en": "· untested",
 "in": [
 "web"
@@ -21573,9 +26760,10 @@
 ]
 },
 {
-"en": "· worst {0} ms · {1} Hz",
+"en": "· {0} already there, left alone",
 "in": [
-"app"
+"app",
+"web"
 ]
 },
 {
@@ -21636,6 +26824,18 @@
 ]
 },
 {
+"en": "— is Tailscale on and connected on this {0}? If it is: sudo nova doctor on the server",
+"in": [
+"app"
+]
+},
+{
+"en": "— is the Cloudflare tunnel to this server running?",
+"in": [
+"app"
+]
+},
+{
 "en": "— it's on that server's home network address",
 "in": [
 "web"
@@ -21685,9 +26885,27 @@
 ]
 },
 {
+"en": "“{0}” needs another device to say yes — this {1} has no fingerprint set up.",
+"in": [
+"app"
+]
+},
+{
+"en": "• In the Nova app connected to that server:",
+"in": [
+"web"
+]
+},
+{
 "en": "• Most free space (recommended) — fills drives evenly. • Keep folders together — a new file goes to a drive that already has its folder. • Least free space — fills one drive before the next. • Random (weighted by free space) — spreads files out.",
 "in": [
 "app",
+"web"
+]
+},
+{
+"en": "• Or on that server: {0}",
+"in": [
 "web"
 ]
 },
@@ -21700,6 +26918,12 @@
 },
 {
 "en": "…and {0} more",
+"in": [
+"app"
+]
+},
+{
+"en": "…and {0} more — search to find one",
 "in": [
 "app"
 ]
@@ -21771,6 +26995,12 @@
 "in": [
 "app",
 "web"
+]
+},
+{
+"en": "⚠ Erases data — you'll confirm it",
+"in": [
+"app"
 ]
 },
 {

@@ -1,4 +1,7 @@
-# Nova  ·  0.10.3-alpha
+# Nova  ·  1.0.0-beta.1
+
+> **1.0 is in beta.** The one-line install gives you the latest regular release; add `--beta` to it (or run
+> `sudo nova update --beta` on a server you already have) for the beta. What's left before 1.0: [docs/ROADMAP.md](docs/ROADMAP.md).
 
 **A secure remote control for your home server, from your Android phone or any browser.**
 Status and live graphs, containers (logs, shell, start/stop), a one-tap app store, drives,

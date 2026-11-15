@@ -34,23 +34,29 @@ A client shows a feature only when its name is listed (and not in `features_off`
 That's what keeps Nova modular: a new feature is a new capability plus new endpoints, nothing else changes, and an
 older app simply doesn't show it. Plugins will add their capabilities the same way.
 
-## Toward the 1.0 freeze
+## What 1.0 freezes
 
-The alphas are where the API settles; 1.0 freezes it. Until then:
+The alphas were where the API settled. From `1.0.0-beta.1` on it is treated as frozen, and 1.0 makes it a promise:
 
-- **Stable now — won't change incompatibly:** authentication and signing, step-up and browser approvals, errors,
-  tasks, `events`/`events/wait`, `stats`, `overview`, devices, containers, storage reads, backups, lights.
-- **Settling — may still change shape before 1.0** (listed in the changelog when they do): `recommendations`,
-  `partitions` plans, passkeys, `security/activity`, `capabilities` itself. Apps from the same release always match.
-- **The rules that hold for every endpoint, now and after 1.0:**
+- **Stable — never changes incompatibly within v1:** authentication and signing, step-up and browser approvals,
+  authenticator codes and passkeys, errors, tasks, `events`/`events/wait`, `stats`, `overview`, `settings`, devices,
+  containers, apps and the store's installs, storage reads and storage tasks, partition plans, backups and restores,
+  updates, power and schedules, lights, `security/activity`, `nodes`, and `capabilities` itself.
+- **Experimental — outside the promise, and may change in any release** (each is a capability, so an app shows it
+  only when the server offers the shape it knows): `recommendations`, the assistant, plugins, Labs (apps in Nova
+  windows). They are listed in the changelog whenever they change.
+- **Previews answer the same API with less.** The server on Windows and macOS speaks the same `/api/v1`; what it
+  can't do yet is `false` in `overview.features` (`"backup": false`, `"files": false`…), never answered differently.
+  The stability promise covers what a platform offers, not that every platform offers everything.
+- **The rules that hold for every endpoint:**
   - nouns for things, `POST …/<verb>` for actions (`containers/<name>/restart`), `GET` never changes anything;
   - anything that takes more than a few seconds is a **task** (`{"id"}`, then `tasks/<id>`), never a long request;
   - lists can grow new fields, never lose them; new optional request fields only;
   - errors are always `{"error": "a sentence"}` with the status code; machine-readable details go in extra fields
     (`stepup_required`, `busy`, `update`);
   - anything destructive or that widens access needs step-up, and says exactly what it does in its approval text.
-- **At 1.0:** every "settling" endpoint is either promoted to stable or kept out of the frozen list; `min_level` stays
-  1 for at least a year; after that, anything retired follows the deprecation steps above.
+- **After 1.0:** `min_level` stays 1 for at least a year; after that, anything retired follows the deprecation steps
+  below.
 
 
 ## Deprecation
@@ -66,7 +72,7 @@ Deprecated now: nothing.
 
 ## Client identification
 
-Clients send `X-Nova-Client: <platform> <build>` — `android 50`, `wear 50`, `web 1`. The header isn't part of
+Clients send `X-Nova-Client: <platform> <build>` — `android 50`, `wear 50`, `web 1`, `ios 3`. The header isn't part of
 the signature and grants nothing; it lets the server answer a client it can no longer serve with
 **`426`** `{"error": "...", "update": true}` instead of a confusing failure. The update endpoints
 (`/api/v1/app/…`, `/api/v1/server/update`, `/api/v1/ping`, `/api/v1/whoami`) always answer, so an old app can
@@ -83,6 +89,9 @@ X-Nova-Nonce:     random, used once (a replay is refused)
 X-Nova-Signature: base64 ECDSA P-256 / SHA-256 over
                   METHOD \n PATH?QUERY \n TIME \n NONCE \n sha256hex(BODY)
 ```
+
+Worked examples — requests, the exact bytes that get signed, and signatures that verify — are in
+[`packaging/signing_vectors.json`](../packaging/signing_vectors.json); the Android app's unit tests check against it.
 
 - **Step-up (fingerprint) actions** need a second signature over the same message in `X-Nova-StepUp`, made
   with a key that only works after the fingerprint prompt. Without it they answer `403`

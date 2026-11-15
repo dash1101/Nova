@@ -1,5 +1,57 @@
 # Changelog
 
+## 1.0.0-beta.1 (server and apps)
+The first beta of 1.0. Nothing new to learn in this one — it is about being able to trust what's already there, and
+about how releases reach you from here on. 1.0 is Linux servers, the Android app and Nova web; the server on Windows
+and macOS and the iPhone app stay previews. It is published as a beta: servers get it only if they ask
+(`sudo nova update --beta`).
+
+**Backups, proven by restoring.** A new test backs real files up to every kind of destination Nova offers — a drive,
+a drive formatted for Windows and Macs (exFAT), a USB stick (FAT), an SMB share, and two kinds of NFS export — changes
+them, backs up again, wipes the originals, restores, and compares what came back byte for byte. It runs on every
+change. What it found, now fixed:
+- **Fix: a backup to an exFAT or FAT drive said "failed" after every run.** The files were copied, but those drives
+  can't hold owners and permissions, and the attempt to set them counted as a failure. Nova now finds out what a
+  destination can hold before copying and asks for no more than that; the same goes for NAS shares that map every
+  user to one account.
+- **A restore from a destination that can't hold owners gives the files back to their owner.** From an SMB share
+  they used to come back belonging to root, readable by no one else. They now belong to whoever owns the folder they
+  return to, and stay private if that folder is private. A `restored-<date>` folder is the owner's too, on every kind
+  of destination (it used to be root's).
+- **One file that can't be copied no longer fails the whole backup.** A name the drive can't hold (a `:` on exFAT), a
+  file that can't be read: the backup keeps everything else, counts as "partly", and says which files — once, not as
+  a new alert every night. A copy that mostly fails is still a failed backup.
+- **Earlier versions on drives without snapshots can be restored.** Those destinations keep one copy plus what each
+  run replaced or removed; that second part was written but never offered. It is now in "Browse & restore" next to
+  the latest copy.
+- **A restore says what it did:** "3 files put back · 2 already there, left alone" instead of "Restored" either way.
+- Symbolic links are kept on SMB shares; on drives that can't hold them they are left out, and the run says how many.
+
+**A beta channel, and releases that are checked before they are everyone's.**
+- `sudo nova update --beta` makes a server take betas; `--stable` goes back to regular releases. A fresh install onto
+  the beta: add `--beta` to the one-line install. Betas are signed and checked like every release, and are never what
+  the ordinary install or the daily check gets.
+- A release can now be installed and tested from GitHub on fresh Linux, Windows and Mac machines *before* it is
+  promoted to the release everyone gets ([packaging/RELEASING.md](packaging/RELEASING.md)).
+- Every change is now also tested as an upgrade: the previously published release is installed and paired, updated by
+  its own updater, and the phone paired before must still get in — same certificate, same settings.
+
+**The app.**
+- A setup code pasted from a message that broke it over several lines now pairs.
+- Fix: with a beta installed, the app's check against GitHub wouldn't have seen the finished release as newer.
+- The pairing-code reader and request signing are now covered by tests that run on every change, the signing against
+  examples made with the server's own rule (`packaging/signing_vectors.json`).
+
+**Written down.**
+- What 1.0 freezes in the API, and what stays experimental ([docs/API.md](docs/API.md)).
+- A brief for an outside security review: what to try to break, where each claim is enforced, what is already known
+  to be weak ([docs/REVIEW.md](docs/REVIEW.md)).
+- How to try the previews on a real iPhone or an older Mac, and what to report ([docs/PREVIEWS.md](docs/PREVIEWS.md)).
+- The roadmap's list of what is left before 1.0. A Google Play listing is no longer planned.
+
+**Known in this beta.** The nine languages other than English each cover about two thirds of the text; the rest
+shows in English. 1.0 will ship the languages that are finished.
+
 ## 0.10.3-alpha (server)
 - **Fix: on a server that posts alerts to Discord, an alert could stop the monitor's check** (0.10.0 to 0.10.2). The
   post needed a library that 0.10.0 had stopped loading at start, so the check ended there — before the alert reached

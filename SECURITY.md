@@ -7,6 +7,6 @@ Nova controls whole servers, so security reports are taken seriously.
 and which version you tested. You'll get an answer within a few days, and credit in the release notes
 if you'd like.
 
-Nova is **alpha** software: run it on machines you're comfortable experimenting with, keep your
+Nova is **beta** software on Linux (the Windows and macOS servers and the iPhone app are earlier previews): keep your
 own backups, and read [docs/SECURITY.md](docs/SECURITY.md) for the design and what it does and
 doesn't protect against.

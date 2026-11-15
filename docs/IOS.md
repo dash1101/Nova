@@ -31,6 +31,9 @@ open Nova.xcodeproj         # pick your team under Signing & Capabilities, then 
 
 It needs iOS 16 or newer (iPhone 8 and later).
 
+**Have an iPhone and a Windows PC?** [PREVIEWS.md](PREVIEWS.md) walks through sideloading from Windows and what's worth
+trying — the app has only ever run in Apple's Simulator, so a report from a real iPhone is worth a lot.
+
 ## Pairing
 
 On the server, open **Nova Server → Pair a phone** (or run `sudo nova add`) and scan the code with the app. Without
