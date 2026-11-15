@@ -16,29 +16,40 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Build nova-macos.tar.gz
-        run: packaging/build-mac.sh
+      - name: Build nova-macos.tar.gz, with checksums signed by a key made for this run (so get.sh can be tried before a release)
+        run: |
+          packaging/build-mac.sh
+          cd dist && sha256sum nova-macos.tar.gz > SHA256SUMS
+          openssl genpkey -algorithm ed25519 -out /tmp/k.pem && openssl pkey -in /tmp/k.pem -pubout -out key.pub
+          openssl pkeyutl -sign -inkey /tmp/k.pem -rawin -in SHA256SUMS | base64 -w0 > SHA256SUMS.sig
       - uses: actions/upload-artifact@v4
-        with: { name: nova-macos, path: dist/nova-macos.tar.gz }
+        with: { name: nova-macos, path: "dist/nova-macos.tar.gz\ndist/SHA256SUMS\ndist/SHA256SUMS.sig\ndist/key.pub" }
   server:
     needs: package
     strategy:
       fail-fast: false
       matrix:
         include:
-          - { os: macos-latest, python: /usr/bin/python3 }       # Apple Silicon, the Python that comes with Apple's command line tools (3.9)
-          - { os: macos-latest, python: '' }                     # …and whichever newer Python the installer finds first (Homebrew's)
+          - { os: macos-latest, python: /usr/bin/python3, how: download }   # Apple Silicon, the Python that comes with Apple's command line tools (3.9)
+          - { os: macos-latest, python: '', how: get.sh }                   # …and the one-line install, with whichever newer Python it finds first (Homebrew's)
     runs-on: ${{ matrix.os }}
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with: { name: nova-macos, path: dl }
-      - name: Install Nova from the download
+      - name: Install Nova (${{ matrix.how }})
         run: |
           tar -xzf dl/nova-macos.tar.gz -C dl
-          # the way a hub app (Orbit) runs it: output captured; the last line says what happened
-          sudo sh dl/Nova/mac/install.sh --quiet ${{ matrix.python && format('--python {0}', matrix.python) || '' }} | tee install.log
+          if [ "${{ matrix.how }}" = get.sh ]; then
+            # the one-line install, served from this machine instead of GitHub's releases
+            (cd dl && python3 -m http.server 8377 >/dev/null 2>&1 &) ; sleep 2
+            # (with only macOS's own tools on the PATH, as on a Mac without Homebrew: its sh, its curl, its openssl)
+            env PATH=/usr/bin:/bin:/usr/sbin:/sbin NOVA_RELEASE_URL=http://127.0.0.1:8377 NOVA_KEY_URL=http://127.0.0.1:8377/key.pub sh get.sh --quiet | tee install.log
+          else
+            # the way a hub app (Orbit) runs it: output captured; the last line says what happened
+            sudo sh dl/Nova/mac/install.sh --quiet ${{ matrix.python && format('--python {0}', matrix.python) || '' }} | tee install.log
+          fi
           line="$(grep '^NOVA-RESULT ' install.log | tail -1)"; [ -n "$line" ] || { echo "no NOVA-RESULT line"; exit 1; }
           echo "${line#NOVA-RESULT }" | python3 -c "
           import json, sys

@@ -162,6 +162,53 @@ def sh(cmd, timeout=30):
     except Exception as e:
         return 1, ""
 
+DOCKER_SOCK = os.environ.get("NOVA_DOCKER_SOCK", "/var/run/docker.sock")
+
+def docker_get(path, timeout=20):
+    """Ask Docker over its own socket instead of starting the `docker` program: three of those a pass were most of what a
+    pass cost, and on a small server each start costs far more than the question. → the answer's bytes, or None when
+    Docker isn't there or doesn't answer this way (the caller then starts the program, as before)."""
+    if not hasattr(socket, "AF_UNIX"): return None
+    try:
+        s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM); s.settimeout(timeout)
+        try:
+            s.connect(DOCKER_SOCK)
+            s.sendall(f"GET {path} HTTP/1.0\r\nHost: docker\r\n\r\n".encode())      # (1.0: one answer, not chunked, then it hangs up)
+            buf = b""
+            while True:
+                b = s.recv(65536)
+                if not b: break
+                buf += b
+                if len(buf) > 64 << 20: return None
+        finally: s.close()
+    except OSError: return None
+    head, _, body = buf.partition(b"\r\n\r\n")
+    if head.split(b" ", 2)[1:2] != [b"200"] or b"transfer-encoding: chunked" in head.lower(): return None
+    return body
+
+def docker_inspect_all():
+    """Every container, as `docker inspect` describes it."""
+    raw = docker_get("/containers/json?all=1")
+    if raw is not None:
+        try:
+            out = []
+            for c in json.loads(raw):
+                one = docker_get(f"/containers/{c['Id']}/json")
+                if one is None: raise ValueError("gone meanwhile")
+                out.append(json.loads(one))
+            return out
+        except (ValueError, KeyError, TypeError): pass
+    rc, ids = sh(["docker", "ps", "-aq"])
+    rc, out = sh(["docker", "inspect"] + ids.split()) if ids.strip() else (0, "[]")
+    try: return json.loads(out)
+    except Exception: return []
+
+def docker_events(since, until):
+    """What happened to containers between two moments: one JSON line each (as `docker events --format '{{json .}}'`)."""
+    raw = docker_get(f"/events?since={since}&until={until}&filters=%7B%22type%22%3A%5B%22container%22%5D%7D", timeout=30)
+    if raw is not None: return raw.decode("utf-8", "replace").splitlines()
+    return sh(["docker", "events", "--since", str(since), "--until", str(until), "--filter", "type=container", "--format", "{{json .}}"], timeout=30)[1].splitlines()
+
 def load_json(path, default):
     try:
         with open(path) as f: return json.load(f)
@@ -532,11 +579,10 @@ class Monitor:
     # ── 1b. docker events ────────────────────────────────────────────────────
     def check_docker_events(self):
         since = int(self.st.get("docker_since", now() - 120)); until = int(now())
-        rc, out = sh(["docker", "events", "--since", str(since), "--until", str(until),
-                      "--filter", "type=container", "--format", "{{json .}}"], timeout=30)
+        lines = docker_events(since, until)
         self.st["docker_since"] = until
-        maint = self.maintenance_running()
-        for line in out.splitlines():
+        maint = self.maintenance_running() if lines else False
+        for line in lines:
             try: ev = json.loads(line)
             except Exception: continue
             act = ev.get("Action", ""); attrs = ev.get("Actor", {}).get("Attributes", {})
@@ -551,8 +597,9 @@ class Monitor:
     def maintenance_running(self):
         u = self.cfg.get("maintenance_unit")
         if not u: return False
-        rc, _ = sh(["systemctl", "is-active", "--quiet", u])
-        return rc == 0
+        if getattr(self, "_maint", None) is None:             # asked once a pass
+            self._maint = sh(["systemctl", "is-active", "--quiet", u])[0] == 0
+        return self._maint
 
     # ── 2. current state ─────────────────────────────────────────────────────
     def check_temps(self):
@@ -759,10 +806,7 @@ class Monitor:
             active = out == "active"
             if not active: down.append(svc)
             self.condition(f"svc:{svc}", not active, "critical", f"Service down: {svc}", f"systemctl is-active → {out or 'unknown'}")
-        rc, ids = sh(["docker", "ps", "-aq"])
-        rc, out = sh(["docker", "inspect"] + ids.split()) if ids.strip() else (0, "[]")
-        try: ctrs = json.loads(out)
-        except Exception: ctrs = []
+        ctrs = docker_inspect_all()
         total = running = stopped = 0
         maint = self.maintenance_running()
         fails = self.st["counters"].setdefault("container_down_runs", {})

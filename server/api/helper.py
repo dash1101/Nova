@@ -61,11 +61,49 @@ def load_json(p, d):
     except Exception: return d
 
 # ── containers ───────────────────────────────────────────────────────────────
+def docker_get(path, timeout=30):
+    """Ask Docker over its own socket instead of starting the `docker` program (the same few lines as in the monitor,
+    nova_alerts.py: listing containers happens every few seconds while an app is open, and starting two programs for it
+    cost more than the answer). → the answer's bytes, or None: no socket here (Windows), no Docker, or an odd answer —
+    the caller then starts the program."""
+    if not hasattr(socket, "AF_UNIX"): return None
+    host = os.environ.get("DOCKER_HOST", "")
+    sock = host[len("unix://"):] if host.startswith("unix://") else "/var/run/docker.sock"
+    try:
+        s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM); s.settimeout(timeout)
+        try:
+            s.connect(sock)
+            s.sendall(f"GET {path} HTTP/1.0\r\nHost: docker\r\n\r\n".encode())      # (1.0: one answer, not chunked, then it hangs up)
+            buf = b""
+            while True:
+                b = s.recv(65536)
+                if not b: break
+                buf += b
+                if len(buf) > 64 << 20: return None
+        finally: s.close()
+    except OSError: return None
+    head, _, body = buf.partition(b"\r\n\r\n")
+    if head.split(b" ", 2)[1:2] != [b"200"] or b"transfer-encoding: chunked" in head.lower(): return None
+    return body
+
 def inspect_all():
-    rc, ids, _ = run(["docker", "ps", "-aq"])
-    if rc != 0 or not ids.strip(): return []
-    rc, js, _ = run(["docker", "inspect"] + ids.split())
-    return [c for c in json.loads(js or "[]") if "com.docker.compose.project" in (c["Config"].get("Labels") or {})]
+    """Every Compose container, as `docker inspect` describes it."""
+    cs = None
+    raw = docker_get("/containers/json?all=1")
+    if raw is not None:
+        try:
+            cs = []
+            for c in json.loads(raw):
+                one = docker_get(f"/containers/{c['Id']}/json")
+                if one is None: raise ValueError("gone meanwhile")
+                cs.append(json.loads(one))
+        except (ValueError, KeyError, TypeError): cs = None
+    if cs is None:
+        rc, ids, _ = run(["docker", "ps", "-aq"])
+        if rc != 0 or not ids.strip(): return []
+        rc, js, _ = run(["docker", "inspect"] + ids.split())
+        cs = json.loads(js or "[]")
+    return [c for c in cs if "com.docker.compose.project" in (c["Config"].get("Labels") or {})]
 
 def stopped_on_purpose(c):
     """Stopped by someone, not broken: Docker never gives up restarting an "always" / "unless-stopped" container, so one

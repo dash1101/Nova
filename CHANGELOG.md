@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.10.1-alpha (server)
+- **The monitor's check now costs about a quarter of what it did.** It runs every 15 seconds on every server, and most
+  of its cost was starting the `docker` program three times a pass. It now asks Docker directly over Docker's own
+  socket (the same answers, checked side by side), asks systemd about the maintenance window once instead of twice,
+  and keeps starting the program only where the socket isn't there. Measured here: 115 ms of processor time a pass →
+  30 ms. On a small server (a Raspberry Pi, an old mini PC) that's a steady load gone.
+- **Listing containers for the app is about twice as quick on the server** (the same change: 77 ms → 40 ms each time,
+  every few seconds while the app or Nova web is open).
+- **Fix: the one-line install didn't work on a Mac** (`get.sh`: "unbound variable"). macOS's own shell read a variable
+  name followed directly by "…" as a different name. Fixed in the script (which is fetched fresh each time — no update
+  needed), and the Mac tests now run the one-line install itself, with only macOS's own tools, before every release.
+
 ## 0.10.0-alpha (server; iPhone app preview)
 Nova's server now runs on a Mac, and there's a first app for iPhone and iPad. Both are previews. The pass that made them
 also audited the server and the Android app on older hardware, and fixed what porting to a new system shook out — some
@@ -33,9 +45,9 @@ of it wrong on Linux and Windows too. The Android app is unchanged (0.9.26).
 - The task manager waits longer for a busy Windows PC or Mac to list its processes instead of failing.
 
 **Lighter**
-- **The monitor's check — every 15 seconds on every server — does about half the work:** one question to systemd for
-  all services instead of one each, its files written compactly in one go, and the web library loaded only when a
-  website is checked or Discord is posted to. It matters most on a small server (a Raspberry Pi, an old mini PC).
+- **The monitor's check — every 15 seconds on every server — does about a fifth less work:** one question to systemd
+  for all services instead of one each, its files written compactly in one go, and the web library loaded only when a
+  website is checked or Discord is posted to. (0.10.1 goes much further.)
 - Checked on an Android 7 device: the Inbox and the Menu draw nothing while idle, Home only its moving picture, and the
   app's own work per frame is about 1.5 ms — nothing to fix there this time.
 
