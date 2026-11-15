@@ -63,7 +63,7 @@ exit with 0 or 1, and end with one line to parse, the same as on Windows:
 | `nova` command: add, approve, devices, remove, status, doctor, log, alert, link, plugin, update, uninstall | ✅ | with `sudo` |
 | **Nova Server** window (status, pairing QR, devices, approvals, check-up, updates) | ✅ | Applications, or `sudo nova gui` |
 | Nova web in a browser | ✅ | `https://<address>:8495` |
-| Updating Nova itself | ◐ | `sudo nova update` or the Nova Server window (signature checked); not yet from the phone app |
+| Updating Nova itself | ✅ | from the app (Settings → Software update), the Nova Server window or `sudo nova update` — signature checked each way |
 | Programs and updates (Homebrew), macOS updates | ❌ | planned |
 | App store containers, compose editing, backups | ❌ | planned |
 | Storage wizard, partitions, RAID | ❌ | Disk Utility for now |

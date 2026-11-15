@@ -64,7 +64,7 @@ for approval, `setup`, `ports`, `urls` and the check-up's findings (`doctor`); `
 | Files, the built-in terminal (without SSH) | ❌ | planned (needs Windows' ConPTY) |
 | Backups | ❌ | planned |
 | Storage wizard, partitions, RAID, SMART self-tests, unmounting | ❌ | Windows' own tools for now |
-| Updating Nova itself | ◐ | from the Nova Server window or `nova update` (signature checked); not yet from the phone app |
+| Updating Nova itself | ✅ | from the app (Settings → Software update), the Nova Server window or `nova update` — signature checked each way |
 | Lighting module, assistant brain, Labs | ❌ | Linux only for now |
 
 ## How it's put together
