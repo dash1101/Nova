@@ -72,3 +72,17 @@ jobs:
           ls /Library/LaunchDaemons | grep -q novalabs && { echo "services left behind"; exit 1; } || true
           dscl . -read /Users/nova-api >/dev/null 2>&1 && { echo "the nova-api account was left behind"; exit 1; } || true
           pgrep -fl /usr/local/lib/nova && { echo "something of Nova's is still running"; exit 1; } || true
+  released:
+    # The one-line install, against what is actually published. Run by hand after a release (Actions → macos → Run workflow).
+    if: github.event_name == 'workflow_dispatch' && inputs.released
+    runs-on: macos-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: get.sh
+        run: |
+          sh get.sh
+          curl -fs -m 10 http://127.0.0.1:8095/api/v1/ping
+          /usr/local/lib/nova/venv/bin/python packaging/mac_test.py
+      - name: nova update finds nothing newer than the release it just installed
+        run: sudo /usr/local/bin/nova update --check

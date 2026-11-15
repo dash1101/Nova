@@ -1257,7 +1257,7 @@ class Handler(BaseHTTPRequestHandler):
         if method == "GET" and path == "/api/v1/ping":
             return self.send(200, {"ok": True, "name": "Nova", "api": API_VERSION, "api_level": API_LEVEL, "min_level": MIN_LEVEL})
         # an app too old for this server gets a clear "update the app" (it can still reach the update endpoints)
-        cl = re.fullmatch(r"(android|wear|web) (\d{1,9})", self.headers.get("X-Nova-Client", "") or "")
+        cl = re.fullmatch(r"(android|wear|web|ios) (\d{1,9})", self.headers.get("X-Nova-Client", "") or "")
         if cl and int(cl.group(2)) < MIN_CLIENT.get(cl.group(1), 0) and not path.startswith(UPDATE_PATHS):
             return self.send(426, {"error": "This app is too old for the server — update the app", "update": True, "api_level": API_LEVEL})
         if method == "POST" and path == "/api/v1/pair":

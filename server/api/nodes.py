@@ -231,7 +231,7 @@ RELAY_MAX = 4 * 1024 * 1024
 RELAY_PATH = re.compile(r"/api/v1/[A-Za-z0-9._~\-/]*(\?[A-Za-z0-9._~\-=&%+,:]*)?")
 _INNER = {"X-Nova-Device": r"[A-Za-z0-9_-]{1,64}", "X-Nova-Time": r"\d{10,16}", "X-Nova-Nonce": r"[A-Za-z0-9_-]{16,64}",
           "X-Nova-Signature": r"[A-Za-z0-9+/]{20,200}={0,2}"}
-_CLIENT = r"(android|wear|web) \d{1,9}"                # X-Nova-Client: which app it is (not signed; also sent straight to a server)
+_CLIENT = r"(android|wear|web|ios) \d{1,9}"                # X-Nova-Client: which app it is (not signed; also sent straight to a server)
 _UNSIGNED = re.compile(r"/api/v1/browser/request(/[A-Za-z0-9_-]{8,64})?")      # asking to be added, and waiting for the answer
 
 def relay(nid, method, path, hdrs, body, via, ip):

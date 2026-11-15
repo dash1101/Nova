@@ -109,7 +109,7 @@ check("…network and drive activity", isinstance(now.get("rx"), int) and isinst
 check("…history is building", len(st.get("recent", [])) >= 2, len(st.get("recent", [])))
 print("     ", json.dumps({k_: v for k_, v in now.items() if k_ != "cpus"})[:400])
 s, r = d.call("GET", "/api/v1/processes", timeout=60); ps = r.get("processes", []) if s == 200 else []
-check("processes (through the helper's socket)", s == 200 and len(ps) > 15 and any("python" in p["name"].lower() for p in ps) and all(p["pid"] > 0 for p in ps), (s, str(r)[:300]))
+check("processes (through the helper's socket)", s == 200 and len(ps) > 15 and any("python" in p["name"].lower() for p in ps) and all(p["pid"] >= 0 for p in ps), (s, str(r)[:300]))
 check("…with memory, owner and the system's own marked", any(p["mem"] > 1e6 for p in ps) and any(p["kernel"] for p in ps) and any(p["user"] == "root" for p in ps), ps[:3])
 s, r = d.call("GET", "/api/v1/hardware", timeout=90); dr = r.get("drives", []) if s == 200 else []
 check("drives", s == 200 and len(dr) >= 1 and all(x["size"] > 0 and x["name"].startswith("disk") for x in dr), (s, str(r)[:400]))

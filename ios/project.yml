@@ -1,0 +1,66 @@
+# The Xcode project is generated from this file:  brew install xcodegen && cd ios && xcodegen
+# (ios/Nova.xcodeproj isn't kept in the repository; CI generates it the same way.)
+name: Nova
+options:
+  bundleIdPrefix: app.novalabs
+  deploymentTarget:
+    iOS: "16.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "0.10.0"
+    CURRENT_PROJECT_VERSION: "1"
+    CODE_SIGN_STYLE: Automatic
+targets:
+  Nova:
+    type: application
+    platform: iOS
+    sources:
+      - path: Nova
+        excludes: ["Info.plist"]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.novalabs.nova
+        INFOPLIST_FILE: Nova/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        TARGETED_DEVICE_FAMILY: "1,2"
+        ENABLE_PREVIEWS: YES
+  NovaTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources: [NovaTests]
+    dependencies:
+      - target: Nova
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.novalabs.nova.tests
+        GENERATE_INFOPLIST_FILE: YES
+  NovaUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources: [NovaUITests]
+    dependencies:
+      - target: Nova
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.novalabs.nova.uitests
+        GENERATE_INFOPLIST_FILE: YES
+schemes:
+  Nova:
+    build:
+      targets:
+        Nova: all
+        NovaTests: [test]
+        NovaUITests: [test]
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - NovaTests
+        - NovaUITests
+    archive:
+      config: Release
