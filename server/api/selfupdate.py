@@ -22,7 +22,9 @@ class UpdateError(Exception):
 
 
 def _fetch(url, limit=80 << 20, api=False):
-    req = urllib.request.Request(url, headers={"User-Agent": "nova-update", "Accept": "application/vnd.github+json" if api else "application/octet-stream"})
+    headers = {"User-Agent": "nova-update", "Accept": "application/vnd.github+json" if api else "application/octet-stream"}
+    if api and os.environ.get("GITHUB_TOKEN"): headers["Authorization"] = "Bearer " + os.environ["GITHUB_TOKEN"]     # (Nova's own tests: GitHub limits anonymous lookups per address)
+    req = urllib.request.Request(url, headers=headers)
     try:
         with urllib.request.urlopen(req, timeout=60) as r: data = r.read(limit + 1)
     except urllib.error.HTTPError as e: raise UpdateError(f"GitHub answered {e.code}" + (" — no release published yet?" if e.code == 404 else " — try again in a few minutes"))
@@ -91,15 +93,85 @@ def prepare():
     return ver, inst
 
 
-def launch(inst, reopen=True):
+def launch(inst, reopen=True, window=True):
     """Run the installer. Windows: in a window of its own, started through `start` so it isn't this process's child — the
     installer closes everything running from Nova's folder (this window's part included) and must not take itself down
-    with it. macOS: on its own in the background (its output goes to Nova's log folder as update.log)."""
+    with it (window=False, from the app: nobody is at the screen, so it doesn't wait for Enter or open Nova Server).
+    macOS: on its own in the background (its output goes to Nova's log folder as update.log)."""
     if MAC:
         import plat
         log = open(os.path.join(plat.p("/var/log/nova-api"), "update.log"), "ab")
         subprocess.Popen(["/bin/sh", inst, "--quiet"], stdin=subprocess.DEVNULL, stdout=log, stderr=log, close_fds=True, start_new_session=True, cwd="/")
         return
-    args = ["cmd.exe", "/c", "start", "Nova update", "powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", inst, "-Relaunched"]
-    if reopen: args.append("-OpenWindow")
+    args = ["cmd.exe", "/c", "start", "Nova update", "powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", inst] + (["-Relaunched"] if window else ["-NoWindow"])
+    if reopen and window: args.append("-OpenWindow")
     subprocess.Popen(args, creationflags=0x08000000, close_fds=True, cwd=os.path.dirname(inst))
+
+
+# ── from the Nova app (Settings → Software update): the helper's update-status / update-check / update-start verbs ──────
+# What the app is told is kept next to the paired devices, in the same shape Linux's nova-update writes:
+#   {"state": "available" | "current" | "installing" | "failed", "available": version, "error": why, "t": when}
+def _status_file():
+    import plat
+    return plat.p("/var/lib/nova-api/update.json")
+
+def _load():
+    try:
+        with open(_status_file(), encoding="utf-8") as f: return json.load(f)
+    except (OSError, ValueError): return {}
+
+def _save(st):
+    import time
+    st["t"] = time.time()
+    tmp = _status_file() + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f: json.dump(st, f)
+    os.replace(tmp, _status_file())
+
+def status():
+    import time
+    st = _load(); cur = installed()
+    # an update that was started and has since been installed (or never finished) isn't "installing" forever
+    if st.get("state") in ("installing", "failed") and st.get("available") and cur == st["available"]: st["state"] = "current"; st.pop("error", None)
+    elif st.get("state") == "installing" and time.time() - st.get("t", 0) > 900: st.update(state="failed", error="it didn't finish — see update.log in Nova's log folder")
+    elif st.get("state") == "available" and st.get("available") and _key(st["available"]) <= _key(cur): st["state"] = "current"
+    return {**st, "installed": cur, "source": f"github:{REPO}", "running": st.get("state") == "installing"}
+
+def record_check():
+    """Look for a newer release and remember the answer for the app."""
+    try: r = check()
+    except UpdateError as e: return {"ok": False, "message": f"Couldn't check: {e}"}
+    st = _load()
+    if st.get("state") != "installing": _save({"state": "available" if r["update"] else "current", "available": r["available"]})
+    return {"ok": True, "message": f"Nova {r['available']} is out — this server has {r['installed'] or 'an unknown version'}." if r["update"] else f"This is the newest Nova ({r['installed']})."}
+
+def start():
+    """Download, verify and install the newest release, without anyone at the server. Runs on its own (this file, `install`),
+    so the helper call that started it can answer the app at once."""
+    st = _load()
+    if st.get("state") == "installing" and status()["running"]: return {"ok": True, "already": True}
+    _save({"state": "installing", "available": st.get("available", "")})
+    flags = 0x08000000 | 0x00000008 | 0x00000200 if os.name == "nt" else 0          # (Windows: no window, detached, its own group)
+    subprocess.Popen([sys.executable, os.path.realpath(__file__), "install"], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                     close_fds=True, cwd=os.environ.get("SystemRoot") or "/", creationflags=flags, start_new_session=os.name != "nt")
+    return {"ok": True}
+
+def _install():
+    try:
+        ver, inst = prepare()
+        _save({"state": "installing", "available": ver})
+        launch(inst, reopen=False, window=False)
+    except UpdateError as e: _save({"state": "failed", "available": _load().get("available", ""), "error": str(e)})
+    except Exception as e: _save({"state": "failed", "available": _load().get("available", ""), "error": repr(e)[:200]})
+
+def verb(name, out, changelog):
+    """helper.py's update verbs on Windows and macOS (winhost.py and machost.py pass them here)."""
+    if name == "update-status": out(status())
+    if name == "update-check":
+        r = record_check(); out(r, 0 if r["ok"] else 1)
+    if name == "update-start":
+        changelog("Server update started from the Nova app"); out(start())
+
+
+if __name__ == "__main__" and sys.argv[1:] == ["install"]:
+    sys.path.insert(0, HERE)
+    _install()

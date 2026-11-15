@@ -282,6 +282,12 @@ r = subprocess.run([NOVA[0], "-c", "import sys, os, shutil; sys.path.insert(0, r
                     "shutil.rmtree(os.path.dirname(os.path.dirname(os.path.dirname(i))))"], capture_output=True, text=True, timeout=300)
 check("downloads the newest release and checks its signature (not installed here)", r.returncode == 0 and r.stdout.strip().endswith("True"), (r.stdout[-200:], r.stderr[-400:]))
 
+s, r = d.call("GET", "/api/v1/server/update", timeout=60)
+check("the app is told which Nova this server has, and that updates come from Nova's signed releases", s == 200 and r.get("installed") and r.get("source", "").startswith("github:") and r.get("running") is False, (s, r))
+s, r = d.call("POST", "/api/v1/server/update/check", timeout=120)
+check("…and can look for a newer one", s in (200, 400) and ("newest Nova" in r.get("message", "") or "is out" in r.get("message", "") or "Couldn't check" in r.get("message", "")), (s, r))
+print("     ", r.get("message"))
+
 print("\nThe Nova Server window")
 import tempfile
 # From the Start menu it runs under pythonw.exe, with no console: sys.stdout is None. The `nova` module it loads must cope —

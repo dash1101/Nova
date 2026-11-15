@@ -209,6 +209,14 @@ rc, so, se = nova("approve", "ZZZZZZ"); check("a wrong approval code answers at 
 rc, so, se = sh("/usr/local/bin/nova", "status"); check("without sudo it says to use sudo", rc != 0 and "sudo nova status" in (so + se), (rc, so[-200:], se[-200:]))
 rc, so, se = nova("setup"); check("nova setup explains that a Mac sets itself up", "sets itself up" in (so + se), (so + se)[-200:])
 
+print("\nUpdates")
+rc, so, se = nova("update", "--check"); check("nova update --check", ("newest Nova" in so or "is out" in so) or "GitHub answered" in (so + se), (rc, so[-300:], se[-300:]))
+s, r = d.call("GET", "/api/v1/server/update", timeout=60)
+check("the app is told which Nova this server has, and that updates come from Nova's signed releases", s == 200 and r.get("installed") and r.get("source", "").startswith("github:") and r.get("running") is False, (s, r))
+s, r = d.call("POST", "/api/v1/server/update/check", timeout=120)
+check("…and can look for a newer one", s in (200, 400) and ("newest Nova" in r.get("message", "") or "is out" in r.get("message", "") or "Couldn't check" in r.get("message", "")), (s, r))
+print("     ", r.get("message"))
+
 print("\nThe Nova Server window")
 p = subprocess.Popen(["sudo", PY, LIB + "/nova-gui", "--serve", "--print-url"], stdout=subprocess.PIPE, text=True)
 url = (p.stdout.readline() or "").strip(); check("starts and gives its address", url.startswith("http://localhost:") and "?k=" in url, url[:40])

@@ -577,11 +577,9 @@ def verb(verb, args, h):
     if verb in ("programs", "program-search") and not winget():
         fail("winget isn't on this computer — it comes with Windows 10/11 (App Installer from the Microsoft Store) and Windows Server 2025", 3)
     if verb == "power-schedule-list" and not args: out({"schedules": _scheds()})
-    if verb == "update-status" and not args:
-        try: v = open(os.path.join(LIB, "VERSION")).read().strip()
-        except OSError: v = ""
-        out({"installed": v, "source": "", "running": False})
-    if verb == "update-check" and not args: out({"ok": False, "message": "Updating from the app isn't available on Windows yet — run the installer again to update."}, 1)
+    if verb in ("update-status", "update-check", "update-start") and not args:      # Nova's own updates, from the app (selfupdate.py)
+        import selfupdate
+        selfupdate.verb(verb, out, changelog)
     if verb == "power-schedule" or verb == "proc-signal" or verb == "power": fail("bad request", 2)
     if verb not in SHARED: fail("That isn't available on a Windows server yet.", 3)
 

@@ -49,6 +49,8 @@ jobs:
           if (-not $res.ok -or -not $res.firstRun -or $res.previous -or -not $res.running -or $res.ports.https -ne 8495 -or $res.urls.local -ne 'https://127.0.0.1:8495') { Write-Host "unexpected result: $line"; exit 1 }
           if (Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*nova-gui*' }) { Write-Host "Nova Server opened although the output was captured"; exit 1 }
       - name: Test
+        env:
+          GITHUB_TOKEN: ${{ github.token }}      # (only for looking up Nova's newest release without GitHub's anonymous limit)
         shell: powershell
         run: |
           & "$env:ProgramFiles\Nova\venv\Scripts\python.exe" packaging\windows_test.py
@@ -93,6 +95,8 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version: '3.12' }
       - name: get.ps1
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         shell: powershell
         run: |
           powershell -NoProfile -ExecutionPolicy Bypass -File get.ps1

@@ -433,10 +433,8 @@ def verb(verb, args, h):
     if verb == "backup-status" and not args: out({"none": True})
     if verb == "task-list" and not args: out({"tasks": []})            # (background tasks — installs, updates — aren't on a Mac yet)
     if verb == "recommendations" and not args: out({"recommendations": [], "snoozed": 0, "t": time.time()})
-    if verb == "update-status" and not args:
-        try: v = open(os.path.join(LIB, "VERSION")).read().strip()
-        except OSError: v = ""
-        out({"installed": v, "source": "", "running": False})
-    if verb == "update-check" and not args: out({"ok": False, "message": "Updating from the app isn't available on a Mac yet — on the Mac: sudo nova update"}, 1)
+    if verb in ("update-status", "update-check", "update-start") and not args:      # Nova's own updates, from the app (selfupdate.py)
+        import selfupdate
+        selfupdate.verb(verb, out, changelog)
     if verb in ("power-schedule", "proc-signal", "power", "keep-awake"): fail("bad request", 2)
     if verb not in SHARED: fail("That isn't available on a Mac server yet.", 3)
