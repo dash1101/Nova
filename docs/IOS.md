@@ -7,6 +7,13 @@ A native app (SwiftUI) that pairs with a Nova server the same way the Android ap
 > the App Store yet — that needs an Apple Developer account and a review — so today it's installed by sideloading
 > or by building it yourself.
 
+<p>
+<img src="screenshots/ios-home.png" width="200" alt="Home: status, live numbers, storage">
+<img src="screenshots/ios-inbox.png" width="200" alt="Inbox: what needs attention and what happened">
+<img src="screenshots/ios-power.png" width="200" alt="Power: restart, shut down, keep awake, schedules">
+<img src="screenshots/ios-approval.png" width="200" alt="A risky action waiting for approval">
+</p>
+
 ## Get it
 
 **Sideload the build from a release.** Each release carries `nova-ios.ipa`, an unsigned build. Install it with a tool
