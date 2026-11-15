@@ -294,7 +294,7 @@ def devices(args):
         quiet += old
         rows.append((d["name"][:28], kind, "Admin" if d.get("role", "admin") == "admin" else "View only", (d.get("user") or "")[:18],
                      (ago(seen) if seen else "never") + (f" via {d['last_via']}" if d.get("last_via") else ""), k, old))
-    w = [max(len(r[i]) for r in rows) for i in range(5)]
+    w = [max(1, max(len(r[i]) for r in rows)) for i in range(5)]      # (never 0: before Python 3.10 a width of "0" for text is an error)
     print(f"  {D}{'NAME':{w[0]}}  {'KIND':{w[1]}}  {'ROLE':{w[2]}}  {'PERSON':{w[3]}}  {'LAST SEEN':{w[4]}}  ID{X}")
     for r in rows:
         print(f"  {B}{r[0]:{w[0]}}{X}  {r[1]:{w[1]}}  {r[2]:{w[2]}}  {r[3]:{w[3]}}  {(Y if r[6] else '')}{r[4]:{w[4]}}{X}  {D}{r[5]}{X}")

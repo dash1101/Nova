@@ -59,7 +59,7 @@ jobs:
       - name: Logs
         if: always()
         run: |
-          for f in "/Library/Application Support/Nova/log/"*.log; do echo; echo "===== $f"; sudo tail -n 60 "$f"; done || true
+          sudo sh -c 'for f in "/Library/Application Support/Nova/log/"*.log; do echo; echo "===== $f"; tail -n 60 "$f"; done' || true
           sudo launchctl print system/app.novalabs.nova.api 2>/dev/null | sed -n 1,25p || true
       - name: Uninstall
         if: always()

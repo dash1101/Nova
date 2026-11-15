@@ -5,14 +5,15 @@ Deleting moves things to that account's Trash (~/.local/share/Trash), so it can 
 
 Called by the root helper, which first drops to that account (drop()).
 """
-import base64, json, mimetypes, os, pwd, grp, shutil, stat, time, urllib.parse
+import base64, json, mimetypes, os, pwd, grp, shutil, stat, sys, time, urllib.parse
 
 MAX_TEXT = 1024 * 1024            # open / save as text up to 1 MB
 
 
 def drop(u):
     """Become the user `u` (pwd entry) for the rest of this process."""
-    os.setgroups(os.getgrouplist(u.pw_name, u.pw_gid))
+    if sys.platform == "darwin": os.initgroups(u.pw_name, u.pw_gid)      # (a Mac account can be in more groups than setgroups takes)
+    else: os.setgroups(os.getgrouplist(u.pw_name, u.pw_gid))
     os.setgid(u.pw_gid); os.setuid(u.pw_uid)
     os.environ.update(HOME=u.pw_dir, USER=u.pw_name, LOGNAME=u.pw_name)
     os.umask(0o022)

@@ -9,6 +9,7 @@ KEY="${NOVA_RELEASE_KEY:-$HOME/.nova-release/release-ed25519.pem}"
 bash "$ROOT/packaging/build-deb.sh"
 bash "$ROOT/packaging/build-tar.sh"            # any Linux: the tarball and the one-file installer
 bash "$ROOT/packaging/build-win.sh"            # Windows: the zip with its installer
+bash "$ROOT/packaging/build-mac.sh"            # macOS: the tarball with its installer
 VER="$(grep -oP 'API_VERSION = "\K[^"]+' "$ROOT/server/api/server.py")"
 cd "$D"
 ls nova-*.apk >/dev/null 2>&1 || echo "note: no APKs in dist/ — this release only updates the server"
@@ -18,7 +19,7 @@ cp "nova-server_$(echo "$VER" | sed 's/-/~/')_all.deb" nova-server.deb
 # the app's stable names (Orbit and the website download these) always come from THIS version's builds — never a leftover
 [[ -f "nova-$VER-universal.apk" ]] && cp "nova-$VER-universal.apk" nova-universal.apk
 [[ -f "nova-wear-$VER.apk" ]] && cp "nova-wear-$VER.apk" nova-wear.apk
-sha256sum nova-server_*.deb nova-server.deb nova-server_*.tar.gz nova-installer.run nova-server_*_windows.zip nova-windows.zip $(ls nova-*.apk 2>/dev/null) > SHA256SUMS
+sha256sum nova-server_*.deb nova-server.deb nova-server_*.tar.gz nova-installer.run nova-server_*_windows.zip nova-windows.zip nova-server_*_macos.tar.gz nova-macos.tar.gz $(ls nova-*.apk nova-ios-*.ipa nova-ios.ipa 2>/dev/null) > SHA256SUMS
 python3 - "$KEY" <<'PY'
 import base64, sys
 from cryptography.hazmat.primitives import serialization
@@ -27,7 +28,7 @@ open("SHA256SUMS.sig", "w").write(base64.b64encode(k.sign(open("SHA256SUMS", "rb
 PY
 # Other things fetch these by name: Nova's own installer and updater, the website's download buttons, and hub apps such as
 # NovaLabs' Orbit (which also checks SHA256SUMS.sig against the release key). A release without one of them breaks those.
-for f in nova-server.deb nova-installer.run nova-windows.zip SHA256SUMS SHA256SUMS.sig; do [[ -s "$f" ]] || { echo "release is missing $f" >&2; exit 1; }; done
+for f in nova-server.deb nova-installer.run nova-windows.zip nova-macos.tar.gz SHA256SUMS SHA256SUMS.sig; do [[ -s "$f" ]] || { echo "release is missing $f" >&2; exit 1; }; done
 if ls nova-*.apk >/dev/null 2>&1; then
   for f in nova-universal.apk nova-wear.apk; do [[ -s "$f" ]] || { echo "release has app builds but no $f (the stable name others download)" >&2; exit 1; }; done
 fi

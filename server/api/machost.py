@@ -270,7 +270,7 @@ SYSTEM_PROCS = {"kernel_task", "launchd", "windowserver", "loginwindow", "logd",
 
 def proc_list():
     me = {os.getpid(), os.getppid()}
-    procs = [p for p in psutil.process_iter() if p.pid != 0]
+    procs = list(psutil.process_iter())
     for p in procs:
         try: p.cpu_percent(None)
         except psutil.Error: pass
@@ -279,7 +279,7 @@ def proc_list():
         if p.pid in me: continue
         try:
             with p.oneshot():
-                name = p.name(); cpu = p.cpu_percent(None)
+                name = p.name(); cpu = p.cpu_percent(None) if p.pid else 0.0      # (pid 0 is the kernel itself: kernel_task)
                 try: user = p.username() or ""
                 except psutil.Error: user = "root"
                 try: cmd = " ".join(p.cmdline())
@@ -290,7 +290,7 @@ def proc_list():
                 except psutil.Error: threads = 0
                 out.append({"pid": p.pid, "ppid": p.ppid(), "user": user, "cpu": round(cpu, 1), "mem": mem, "threads": threads,
                             "up_s": int(max(0, now - p.create_time())), "state": {"running": "R", "stopped": "T", "zombie": "Z"}.get(p.status(), "S"),
-                            "name": name[:60], "cmd": (cmd or name)[:400], "kernel": name == "kernel_task"})
+                            "name": name[:60], "cmd": (cmd or name)[:400], "kernel": p.pid == 0 or name == "kernel_task"})
         except psutil.Error: continue
     return out
 

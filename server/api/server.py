@@ -2907,7 +2907,7 @@ def tls_material():
         from cryptography.x509.oid import NameOID
         os.makedirs(TLS_DIR, mode=0o700, exist_ok=True)
         k = ec.generate_private_key(ec.SECP256R1())
-        name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, f"nova-api {plat.node()}")])
+        name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, f"nova-api {plat.node()}"[:64])])
         now = datetime.datetime.now(datetime.timezone.utc)
         c = (x509.CertificateBuilder().subject_name(name).issuer_name(name).public_key(k.public_key())
              .serial_number(x509.random_serial_number()).not_valid_before(now - datetime.timedelta(days=1))
