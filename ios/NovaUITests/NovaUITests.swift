@@ -1,0 +1,83 @@
+import XCTest
+
+/// Pairs the app with a real Nova server (the one CI installs on the Mac running the Simulator) and walks through it,
+/// taking a picture of every page. NOVA_PAIR carries the pairing code: `sudo nova add --json` → "payload".
+final class NovaUITests: XCTestCase {
+    private let app = XCUIApplication()
+
+    override func setUp() { continueAfterFailure = true }
+
+    private func shot(_ name: String) {
+        let a = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        a.name = name; a.lifetime = .keepAlways
+        add(a)
+    }
+
+    private func anything(_ id: String) -> XCUIElement { app.descendants(matching: .any).matching(identifier: id).firstMatch }
+
+    func testFirstScreen() {
+        app.launchEnvironment["NOVA_PAIR"] = ""
+        app.launch()
+        XCTAssertTrue(app.buttons["scan"].waitForExistence(timeout: 20), "the pairing screen offers to scan the code")
+        XCTAssertTrue(app.textFields["address"].exists && app.textFields["code"].exists, "…or to type the address and code")
+        shot("00-pair")
+    }
+
+    func testPairAndLookAround() throws {
+        guard let pair = ProcessInfo.processInfo.environment["NOVA_PAIR"], !pair.isEmpty else { throw XCTSkip("no server to pair with (NOVA_PAIR isn't set)") }
+        app.launchEnvironment["NOVA_PAIR"] = pair
+        app.launch()
+
+        XCTAssertTrue(anything("status").waitForExistence(timeout: 60), "paired, and Home shows the server's status: \(app.debugDescription.suffix(1500))")
+        XCTAssertFalse(anything("offline").exists, "the server is reachable")
+        sleep(5)                                              // a few live numbers for the graphs
+        shot("01-home")
+        app.swipeUp(); shot("02-home-more"); app.swipeDown()
+
+        app.tabBars.buttons["Inbox"].tap()
+        XCTAssertTrue(app.navigationBars["Inbox"].waitForExistence(timeout: 10))
+        shot("03-inbox")
+
+        app.tabBars.buttons["More"].tap()
+        XCTAssertTrue(app.staticTexts["Task manager"].waitForExistence(timeout: 10), "an admin sees the task manager")
+        shot("04-more")
+
+        app.staticTexts["Drives"].tap()
+        XCTAssertTrue(app.staticTexts["Healthy"].waitForExistence(timeout: 30) || app.staticTexts.containing(NSPredicate(format: "label CONTAINS 'free of'")).firstMatch.waitForExistence(timeout: 5), "drives are listed with their space")
+        shot("05-drives")
+        app.navigationBars.buttons.firstMatch.tap()
+
+        app.staticTexts["Task manager"].tap()
+        XCTAssertTrue(app.staticTexts["launchd"].waitForExistence(timeout: 30) || app.staticTexts["kernel_task"].exists, "processes are listed")
+        shot("06-task-manager")
+        app.navigationBars.buttons.firstMatch.tap()
+
+        app.staticTexts["Users & devices"].tap()
+        XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS '(this iPhone)'")).firstMatch.waitForExistence(timeout: 20), "this iPhone is in the device list")
+        shot("07-devices")
+        app.navigationBars.buttons.firstMatch.tap()
+
+        app.staticTexts["Power"].tap()
+        XCTAssertTrue(app.buttons["For 2 hours"].waitForExistence(timeout: 20))
+        app.buttons["For 2 hours"].tap()
+        XCTAssertTrue(app.buttons["Let it sleep again"].waitForExistence(timeout: 20), "keep awake turned on")
+        shot("08-power")
+        app.buttons["Let it sleep again"].tap()
+        XCTAssertTrue(app.buttons["For 2 hours"].waitForExistence(timeout: 20), "…and off again")
+        // a risky action: scheduled, confirmed (the Simulator has no Face ID, so the key signs straight away), listed, cancelled
+        app.buttons["Schedule a restart or shutdown…"].tap()
+        XCTAssertTrue(app.buttons["Schedule"].waitForExistence(timeout: 10))
+        shot("09-schedule")
+        app.buttons["Schedule"].tap()
+        XCTAssertTrue(app.staticTexts["Restart"].waitForExistence(timeout: 30), "the scheduled restart is listed: \(anything("toast").label)")
+        shot("10-scheduled")
+        app.staticTexts["Restart"].swipeLeft()
+        app.buttons["Cancel"].firstMatch.tap()
+        XCTAssertTrue(app.staticTexts["Nothing scheduled"].waitForExistence(timeout: 30), "…and cancelled: \(anything("toast").label)")
+        app.navigationBars.buttons.firstMatch.tap()
+
+        app.staticTexts["Settings"].tap()
+        XCTAssertTrue(app.staticTexts["Paired with"].waitForExistence(timeout: 10))
+        shot("11-settings")
+    }
+}

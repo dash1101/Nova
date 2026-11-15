@@ -1,0 +1,72 @@
+name: ios
+# Builds the iPhone app, runs its tests, and walks it through a real Nova server (installed on the same Mac) in the
+# Simulator, keeping a picture of every page. Also builds the unsigned .ipa people can sideload.
+on:
+  push:
+    paths: ['ios/**', '.github/workflows/ios.yml']
+  pull_request:
+    paths: ['ios/**', '.github/workflows/ios.yml']
+  workflow_dispatch:
+jobs:
+  server-package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: packaging/build-mac.sh
+      - uses: actions/upload-artifact@v4
+        with: { name: nova-macos-for-ios, path: dist/nova-macos.tar.gz, retention-days: 3 }
+  app:
+    needs: server-package
+    runs-on: macos-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Xcode project
+        run: |
+          brew install xcodegen >/dev/null
+          cd ios && xcodegen generate
+          xcodebuild -version
+      - name: Build
+        run: |
+          set -o pipefail
+          SIM="$(xcrun simctl list devices available | grep -E '^\s+iPhone 1[0-9] \(' | tail -1 | sed -E 's/^ +([^(]+) \(.*/\1/' | sed 's/ *$//')"
+          echo "SIM=${SIM:-iPhone 17}" >> "$GITHUB_ENV"; echo "simulator: ${SIM:-iPhone 17}"
+          xcodebuild build-for-testing -project ios/Nova.xcodeproj -scheme Nova -destination "platform=iOS Simulator,name=${SIM:-iPhone 17}" \
+            -derivedDataPath dd CODE_SIGN_IDENTITY=- CODE_SIGNING_REQUIRED=NO > build.log 2>&1 || { grep -E "error|Error" build.log | head -120; tail -30 build.log; exit 1; }
+          grep -E "warning:" build.log | sed -E 's/^.*\/ios\///' | sort -u | head -60 || true
+          tail -3 build.log
+      - uses: actions/download-artifact@v4
+        with: { name: nova-macos-for-ios, path: dl }
+      - name: A Nova server on this Mac for the app to pair with
+        run: |
+          tar -xzf dl/nova-macos.tar.gz -C dl
+          sudo sh dl/Nova/mac/install.sh --quiet | tail -12
+          curl -fs -m 10 http://127.0.0.1:8095/api/v1/ping
+      - name: Test (unit tests, then the app against the server in the Simulator)
+        run: |
+          set -o pipefail
+          PAYLOAD="$(sudo /usr/local/bin/nova add --json | tail -1 | python3 -c 'import json,sys; print(json.load(sys.stdin)["payload"])')"
+          TEST_RUNNER_NOVA_PAIR="$PAYLOAD" xcodebuild test-without-building -project ios/Nova.xcodeproj -scheme Nova -destination "platform=iOS Simulator,name=$SIM" \
+            -derivedDataPath dd -resultBundlePath Test.xcresult CODE_SIGN_IDENTITY=- CODE_SIGNING_REQUIRED=NO > test.log 2>&1 || { grep -E "error:|failed|XCTAssert|Fatal" test.log | head -80; tail -40 test.log; echo "TESTS_FAILED=1" >> "$GITHUB_ENV"; }
+          grep -E "Test Case|Executed|\*\* TEST" test.log | tail -40
+      - name: Pictures of every page
+        if: always()
+        run: |
+          mkdir -p shots
+          xcrun xcresulttool export attachments --path Test.xcresult --output-path shots || true
+          ls -la shots | head -40
+          sudo sh -c 'tail -n 40 "/Library/Application Support/Nova/log/api.log"' || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: ios-screens, path: "shots\nbuild.log\ntest.log", retention-days: 14 }
+      - name: The tests passed
+        run: '[ -z "$TESTS_FAILED" ]'
+      - name: Unsigned .ipa (for sideloading)
+        run: |
+          set -o pipefail
+          xcodebuild archive -project ios/Nova.xcodeproj -scheme Nova -sdk iphoneos -configuration Release -archivePath Nova.xcarchive \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" > archive.log 2>&1 || { grep -E "error" archive.log | head -60; tail -20 archive.log; exit 1; }
+          mkdir Payload && cp -R Nova.xcarchive/Products/Applications/Nova.app Payload/
+          zip -qry nova-ios-unsigned.ipa Payload && ls -la nova-ios-unsigned.ipa
+      - uses: actions/upload-artifact@v4
+        with: { name: nova-ios-ipa, path: nova-ios-unsigned.ipa, retention-days: 30 }
