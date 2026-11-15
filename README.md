@@ -1,4 +1,4 @@
-# Nova  ·  0.9.27-alpha
+# Nova  ·  0.10.0-alpha
 
 **A secure remote control for your home server, from your Android phone or any browser.**
 Status and live graphs, containers (logs, shell, start/stop), a one-tap app store, drives,
@@ -57,6 +57,8 @@ network, and optionally from anywhere over Tailscale or through Cloudflare Acces
 | **Nova Server window** | On a server with a screen, **Nova Server** in the app menu (or `sudo nova gui`) does what the terminal does: status, pairing with a QR code, devices, approvals, the check-up |
 | **Keep awake** | Power → Keep awake stops a desktop or laptop server from sleeping by itself — for a few hours, or until you say |
 | **Windows servers** | The same server runs on Windows 10/11 and Windows Server as a preview: pairing, live graphs, alerts, processes, power, drives, programs and updates through winget, Docker Desktop containers ([docs/WINDOWS.md](docs/WINDOWS.md) lists what's there and what isn't yet) |
+| **Mac servers** | …and on a Mac (a Mac mini makes a quiet home server), also as a preview: pairing, live graphs, alerts, processes, power, drives, the terminal and the file manager ([docs/MACOS.md](docs/MACOS.md)) |
+| **iPhone and iPad** | A native app (preview): Home, Inbox, containers, power, the task manager, drives and devices, with keys in the Secure Enclave and Face ID for risky actions ([docs/IOS.md](docs/IOS.md)) |
 | **Plugins** | Add apps and one-tap tools from a small `plugin.json` ([docs/PLUGINS.md](docs/PLUGINS.md)) |
 | **Optional modules** | Lighting (above); plug in your own monitor for alerts |
 
@@ -109,12 +111,24 @@ irm https://raw.githubusercontent.com/dash1101/Nova/main/get.ps1 | iex
 Then open **Nova Server** from the Start menu and pair your phone. It is the same server and the same app; what works
 on Windows today and what doesn't yet is in **[docs/WINDOWS.md](docs/WINDOWS.md)**.
 
+## Install the server on a Mac (preview)
+
+In Terminal — the same line as on Linux:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/dash1101/Nova/main/get.sh | sh
+```
+
+Then open **Nova Server** from Applications and pair your phone. What works on a Mac today and what doesn't yet is in
+**[docs/MACOS.md](docs/MACOS.md)**.
+
 ## Install the app
 
 Android 7.0 or newer (phones, tablets and foldables; Wear OS 3+ for the watch app). On older versions a
 few extras step back: wallpaper colors need Android 12 (Material uses its own palette before that),
 Glass's lens needs Android 13, and before Android 11 fingerprint confirmation can't fall back to your PIN.
-No iPhone app yet — on an iPhone, add Nova web to your home screen (steps on the [website](https://dash1101.github.io/Nova/)).
+**iPhone and iPad:** a native app is in preview — sideload `nova-ios.ipa` from a release or build it from `ios/`
+([docs/IOS.md](docs/IOS.md)). Nova web also works there: add it to your Home Screen (steps on the [website](https://dash1101.github.io/Nova/)).
 
 Build it yourself (below), or install a release APK. Updates after that come from inside the app
 (Settings → Software update), served by your own server: `sudo nova publish app.apk "notes"`.
@@ -143,13 +157,15 @@ Access and a service token. Both, step by step: [docs/REMOTE.md](docs/REMOTE.md)
 ## Layout
 
 ```
-android/                 the app (Kotlin, Jetpack Compose)
+android/                 the Android app (Kotlin, Jetpack Compose) and the Wear OS app
+ios/                     the iPhone and iPad app (SwiftUI; docs/IOS.md)
 server/api/              server.py (API), helper.py (root helper), nova-api (CLI), nova-app-publish
-server/api/plat.py       the one place that knows the operating system; winhost.py is everything Windows-specific
+server/api/plat.py       the one place that knows the operating system; winhost.py is everything Windows-specific, machost.py the Mac's
 server/windows/          the Windows installer and uninstaller (docs/WINDOWS.md)
+server/mac/              the Mac installer and uninstaller (docs/MACOS.md)
 server/store/            app store catalog: docker/*.json (compose-based apps) + programs.json (apt)
 server/modules/          optional: lighting (fan-gigabyte-fusion2)
-packaging/               .deb builder (build-deb.sh), Windows zip (build-win.sh), nova-setup-lighting, logrotate
+packaging/               .deb builder (build-deb.sh), Windows zip (build-win.sh), Mac package (build-mac.sh), nova-setup-lighting, logrotate
 server/install.sh        installer
 docs/                    security model, remote access, modules, adding store apps, design rules (DESIGN.md)
 ```

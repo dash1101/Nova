@@ -103,8 +103,20 @@ def launch(inst, reopen=True, window=True):
         log = open(os.path.join(plat.p("/var/log/nova-api"), "update.log"), "ab")
         subprocess.Popen(["/bin/sh", inst, "--quiet"], stdin=subprocess.DEVNULL, stdout=log, stderr=log, close_fds=True, start_new_session=True, cwd="/")
         return
-    args = ["cmd.exe", "/c", "start", "Nova update", "powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", inst] + (["-Relaunched"] if window else ["-NoWindow"])
-    if reopen and window: args.append("-OpenWindow")
+    if not window:
+        # From the app, this runs inside Nova's Helper task — and the installer's first step is to stop that task, which
+        # ends everything the task started. So the installer gets a task of its own (\Nova\Update, run once, as SYSTEM).
+        import winhost
+        arg = f'-NoProfile -ExecutionPolicy Bypass -File "{inst}" -NoWindow'
+        rc, so, se = winhost.ps("$a=New-ScheduledTaskAction -Execute 'powershell.exe' -Argument " + winhost.psq(arg) + ";"
+                                "$p=New-ScheduledTaskPrincipal -UserId 'S-1-5-18' -LogonType ServiceAccount -RunLevel Highest;"
+                                "$s=New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit (New-TimeSpan -Minutes 30);"
+                                "Register-ScheduledTask -TaskPath '\\Nova\\' -TaskName 'Update' -Action $a -Principal $p -Settings $s -Force | Out-Null;"
+                                "Start-ScheduledTask -TaskPath '\\Nova\\' -TaskName 'Update'", 90)
+        if rc != 0: raise UpdateError("couldn't start the installer: " + (se or so).strip()[-200:])
+        return
+    args = ["cmd.exe", "/c", "start", "Nova update", "powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", inst, "-Relaunched"]
+    if reopen: args.append("-OpenWindow")
     subprocess.Popen(args, creationflags=0x08000000, close_fds=True, cwd=os.path.dirname(inst))
 
 
@@ -130,10 +142,13 @@ def _save(st):
 def status():
     import time
     st = _load(); cur = installed()
-    # an update that was started and has since been installed (or never finished) isn't "installing" forever
-    if st.get("state") in ("installing", "failed") and st.get("available") and cur == st["available"]: st["state"] = "current"; st.pop("error", None)
-    elif st.get("state") == "installing" and time.time() - st.get("t", 0) > 900: st.update(state="failed", error="it didn't finish — see update.log in Nova's log folder")
-    elif st.get("state") == "available" and st.get("available") and _key(st["available"]) <= _key(cur): st["state"] = "current"
+    if st.get("state") == "installing":
+        # done once the installer has written this folder afresh (its VERSION file is newer than the update's start)
+        try: fresh = os.path.getmtime(os.path.join(HERE, "VERSION")) >= st.get("started", 0)
+        except OSError: fresh = False
+        if fresh and (not st.get("available") or cur == st["available"]): st["state"] = "current"
+        elif time.time() - st.get("started", st.get("t", 0)) > 900: st.update(state="failed", error="it didn't finish — see Nova's log folder")
+    elif st.get("state") in ("available", "failed") and st.get("available") and _key(st["available"]) <= _key(cur): st["state"] = "current"; st.pop("error", None)
     return {**st, "installed": cur, "source": f"github:{REPO}", "running": st.get("state") == "installing"}
 
 def record_check():
@@ -149,7 +164,8 @@ def start():
     so the helper call that started it can answer the app at once."""
     st = _load()
     if st.get("state") == "installing" and status()["running"]: return {"ok": True, "already": True}
-    _save({"state": "installing", "available": st.get("available", "")})
+    import time
+    _save({"state": "installing", "available": st.get("available", ""), "started": time.time()})
     flags = 0x08000000 | 0x00000008 | 0x00000200 if os.name == "nt" else 0          # (Windows: no window, detached, its own group)
     subprocess.Popen([sys.executable, os.path.realpath(__file__), "install"], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                      close_fds=True, cwd=os.environ.get("SystemRoot") or "/", creationflags=flags, start_new_session=os.name != "nt")
@@ -158,7 +174,7 @@ def start():
 def _install():
     try:
         ver, inst = prepare()
-        _save({"state": "installing", "available": ver})
+        _save({"state": "installing", "available": ver, "started": _load().get("started", 0)})
         launch(inst, reopen=False, window=False)
     except UpdateError as e: _save({"state": "failed", "available": _load().get("available", ""), "error": str(e)})
     except Exception as e: _save({"state": "failed", "available": _load().get("available", ""), "error": repr(e)[:200]})

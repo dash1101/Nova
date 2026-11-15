@@ -104,3 +104,8 @@ jobs:
           if ($r.StatusCode -ne 200) { exit 1 }
           & "$env:ProgramFiles\Nova\venv\Scripts\python.exe" packaging\windows_test.py
           if ($LASTEXITCODE -ne 0) { exit 1 }
+      - name: Update it the way the app does (the same release over itself, started from Nova's own service)
+        shell: powershell
+        run: |
+          & "$env:ProgramFiles\Nova\venv\Scripts\python.exe" packaging\selfupdate_test.py
+          if ($LASTEXITCODE -ne 0) { Get-Content "$env:ProgramData\Nova\log\helper.log" -Tail 30; exit 1 }

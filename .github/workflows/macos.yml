@@ -90,3 +90,5 @@ jobs:
           /usr/local/lib/nova/venv/bin/python packaging/mac_test.py
       - name: nova update finds nothing newer than the release it just installed
         run: sudo /usr/local/bin/nova update --check
+      - name: Update it the way the app does (the same release over itself, started from Nova's own service)
+        run: /usr/local/lib/nova/venv/bin/python packaging/selfupdate_test.py || { sudo sh -c 'tail -n 40 "/Library/Application Support/Nova/log/update.log"'; exit 1; }

@@ -13,7 +13,7 @@ Where Nova is heading next. Nothing here is promised; it's the plan as it stands
 - [ ] App store rework: dynamic listings and easier installs
 - [ ] Play Store listing (screenshots, store text, permission review)
 - [ ] An outside review of the pairing and approval design
-- [ ] After 1.0: a native iPhone app, then the Windows agent below
+- [x] A native iPhone app, and the server on Windows and macOS — all three in preview (below)
 
 ## Windows (server side)
 
@@ -28,19 +28,25 @@ fixed list of verbs — and is installed, tested and uninstalled on real Windows
 - [x] Installer and uninstaller (firewall for the home network only), the `nova` command, the Nova Server window
 - [x] Programs and updates through **winget** (one more backend in `pkg.py`, next to apt/dnf/pacman/zypper)
 - [x] Background tasks without systemd (`tasks.py` starts each as a detached process)
+- [x] The app's Terminal over SSH (Windows' OpenSSH Server); updating Nova from the app
 - [ ] Windows Update; backups; the app store's containers on Docker Desktop (tested)
-- [ ] Files, and the terminal (ConPTY)
-- [ ] Updating from the app; a signed MSI; winget / Chocolatey packages for Nova itself
+- [ ] Files, and the server terminal (ConPTY)
+- [ ] A signed MSI; winget / Chocolatey packages for Nova itself
 - [ ] Storage: Storage Spaces, SMART self-tests
 
 ## macOS (server side)
 
-A Mac mini makes a quiet home server, so a Mac agent follows the Windows one, built the same way: the
-unprivileged API as a `launchd` agent, the privileged half as a `launchd` daemon with the same fixed list
-of verbs, reached over a local socket only the API can use. Status comes from `sysctl`/`vm_stat`/`iostat`
-and `powermetrics`, drives from `diskutil`, containers from Docker Desktop or OrbStack, packages from
-**Homebrew**, and the sign-in key and pairing work exactly as they do now. It ships as a signed, notarized
-`.pkg`. Until then, Nova runs on Linux — including in a small Linux VM on the Mac.
+**Started — see [MACOS.md](MACOS.md).** A Mac mini makes a quiet home server, and the server now runs on macOS as a
+preview, from the same files as the Linux and Windows ones: the unprivileged API and the privileged helper (the same
+fixed list of verbs) as `launchd` services, the helper reached over a local socket only the API can use. It is
+installed, tested and uninstalled on a real Mac by CI on every change.
+
+- [x] Pairing, devices, approvals, encrypted listener, Tailscale / Cloudflare access
+- [x] Status and live graphs, Inbox and alerts, processes, power and schedules, keep awake, drives with health
+- [x] The server terminal, the file manager, the app's Terminal over SSH (Remote Login)
+- [x] Installer and uninstaller, the `nova` command, the Nova Server app, updating itself (signed releases)
+- [ ] Containers on Docker Desktop / OrbStack (there, untested); programs and updates through **Homebrew**; backups
+- [ ] Temperatures and graphics use (`powermetrics`); a signed, notarized `.pkg`
 
 ## Other Linux (done in 0.7)
 
@@ -52,12 +58,15 @@ own updates use the signed tarball on those systems. The setup can also run in a
 
 ## iOS app
 
-- SwiftUI app with the same screens. The security model carries over directly: keys made in the
-  **Secure Enclave** (P-256, non-exportable), Face ID / Touch ID for the step-up signature,
-  certificate pinning on the home network.
-- Distribution is the hard part: the App Store needs an Apple Developer account ($99/year) and
-  review; TestFlight works for testing. Sideloading (AltStore and similar) is possible but awkward.
-- Until then, **Nova web** works on iPhone and iPad in Safari, and can be added to the home screen.
+**Started — see [IOS.md](IOS.md).** A SwiftUI app with the everyday pages (Home, Inbox, containers, power, the task
+manager, drives, devices). The security model carried over directly: keys made in the **Secure Enclave** (P-256,
+non-exportable), Face ID / Touch ID for the second signature on risky actions, the server's certificate pinned. CI
+builds it and walks it through a real server in the Simulator on every change.
+
+- [ ] The remaining pages (storage, backups, the store, updates, files, terminal, lighting, the assistant, several servers)
+- [ ] Notifications while the app is closed (needs Apple's push service)
+- [ ] The App Store: an Apple Developer account ($99/year) and review; TestFlight for testing. Until then it's
+      sideloaded (AltStore and similar) or built from source, and **Nova web** works on iPhone and iPad in Safari.
 
 ## Google Play
 

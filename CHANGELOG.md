@@ -1,5 +1,52 @@
 # Changelog
 
+## 0.10.0-alpha (server; iPhone app preview)
+Nova's server now runs on a Mac, and there's a first app for iPhone and iPad. Both are previews. The pass that made them
+also audited the server and the Android app on older hardware, and fixed what porting to a new system shook out — some
+of it wrong on Linux and Windows too. The Android app is unchanged (0.9.26).
+
+**New**
+- **Mac servers (preview).** The same server, from the same files, on macOS: pairing, live graphs, the Inbox and alerts
+  (with why the Mac last went off), processes, power and schedules, keep awake, drives with health, the server terminal,
+  the file manager, the app's Terminal over SSH, the `nova` command and **Nova Server** in Applications. Install it with
+  the same line as on Linux (`curl -fsSL …/get.sh | sh`), update it with `sudo nova update`. It runs as three launchd
+  services — the API as its own account without administrator rights, only the helper as root — and is installed,
+  tested and uninstalled on a real Mac by CI on every change. What works and what doesn't yet: [docs/MACOS.md](docs/MACOS.md).
+- **iPhone and iPad app (preview).** Native (SwiftUI): pair by scanning the code (or typing the address and comparing the
+  certificate, or a setup code away from home), then Home with live numbers, the Inbox with approvals, containers,
+  power, the task manager, drives, and users & devices. Its keys are made in the Secure Enclave; risky actions are
+  signed a second time after Face ID, Touch ID or the passcode; the server's certificate is pinned — the Android app's
+  model with Apple's parts. It isn't on the App Store yet: sideload `nova-ios.ipa` from the release or build `ios/`.
+  CI builds it and walks it through a real server in the Simulator on every change. [docs/IOS.md](docs/IOS.md).
+- **Windows and Mac servers: update Nova from the app.** Settings → Software update now works there as it does on Linux:
+  the newest release is downloaded, checked against Nova's release key and installed, and Nova comes back by itself.
+
+**Fixes**
+- **A server with a long name never started its encrypted listener** (so no phone could pair): a certificate's name
+  holds 64 characters, and "nova-api " plus a long host name didn't fit. Any system.
+- **A pairing code made in Nova's very first second carried a plain address and no certificate fingerprint**, which
+  apps refuse ("That address isn't https"). An installer that opens "Pair a phone" the moment Nova answers could hit it.
+  The certificate is now made before Nova answers at all.
+- **`sudo nova devices` failed on Python older than 3.10** when no device has a person's name (Debian 11, some Windows
+  and Mac installs).
+- **Windows: `nova remove` left the removed phone's SSH key in place** (removing it in the app took it out; the command didn't).
+- The task manager waits longer for a busy Windows PC or Mac to list its processes instead of failing.
+
+**Lighter**
+- **The monitor's check — every 15 seconds on every server — does about half the work:** one question to systemd for
+  all services instead of one each, its files written compactly in one go, and the web library loaded only when a
+  website is checked or Discord is posted to. It matters most on a small server (a Raspberry Pi, an old mini PC).
+- Checked on an Android 7 device: the Inbox and the Menu draw nothing while idle, Home only its moving picture, and the
+  app's own work per frame is about 1.5 ms — nothing to fix there this time.
+
+**Under the hood**
+- `server/api/plat.py` knows three systems now (`LINUX`, `WINDOWS`, `MAC`, and `host()` for the module that does things
+  that system's way). New for the Mac: `machost.py`, `helper-mac.py`, `macmon.py`, `server/mac/`. Three files Windows
+  and macOS share got neutral names: `winrun.py` → `runpart.py`, `winsetup.py` → `autosetup.py`, `winupdate.py` → `selfupdate.py`.
+- Releases carry `nova-macos.tar.gz` (signed like the rest) and `nova-ios.ipa`. `get.sh` installs on a Mac too.
+- CI: `macos` and `ios` workflows; the Windows and Mac tests look releases up with CI's own token instead of
+  anonymously (that lookup failed at random when GitHub limited the test machine's address).
+
 ## 0.9.27-alpha (server)
 - **Fix: Nova web couldn't control another server ("only the four X-Nova signature headers").** Servers → pick another Nova server → every page failed with that message. Nova web marks each request with which app it is (`X-Nova-Client`, since 0.7.5), and the server carrying the request to the other one refused anything but the four signature headers. It now takes that one too (checked, and passed along). Only the server you open Nova web on needs this update. A new CI check signs requests exactly the way Nova web does and sends them through the relay.
 

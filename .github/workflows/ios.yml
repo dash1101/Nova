@@ -42,6 +42,9 @@ jobs:
           tar -xzf dl/nova-macos.tar.gz -C dl
           sudo sh dl/Nova/mac/install.sh --quiet | tail -12
           curl -fs -m 10 http://127.0.0.1:8095/api/v1/ping
+          # a name for the pictures (Settings → Server → Name does this from the app)
+          echo '{"display_name": "Mac mini"}' | sudo tee "/Library/Application Support/Nova/data/settings.json" >/dev/null
+          sudo chown nova-api:nova-api "/Library/Application Support/Nova/data/settings.json"
       - name: Test (unit tests, then the app against the server in the Simulator)
         run: |
           set -o pipefail
