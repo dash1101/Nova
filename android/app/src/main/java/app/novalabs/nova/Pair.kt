@@ -83,7 +83,8 @@ data class PairInfo(val lan: String, val pin: String, val remote: String, val ta
 
 fun parsePairInfo(raw: String): PairInfo? = runCatching {
     var t = raw.trim()
-    if (t.startsWith("nova1:", true)) t = String(android.util.Base64.decode(t.substring(6).trim(), android.util.Base64.URL_SAFE or android.util.Base64.NO_PADDING or android.util.Base64.NO_WRAP))
+    // a setup code: the same text as the QR, packed for pasting (a long one may arrive broken over several lines)
+    if (t.startsWith("nova1:", true)) t = String(java.util.Base64.getUrlDecoder().decode(t.substring(6).filter { !it.isWhitespace() }.trimEnd('=')))
     val o = JSONObject(t); require(o.optInt("nova") == 1)
     val cf = o.optJSONObject("cf")
     PairInfo(o.optString("lan"), o.optString("pin"), o.optString("remote"), o.optString("tailnet"), cf?.optString("id").orEmpty(), cf?.optString("secret").orEmpty(), o.getString("code"))

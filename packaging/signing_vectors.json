@@ -1,0 +1,51 @@
+{
+ "about": "What a signed Nova request covers, as the server builds it (server/api/server.py): METHOD, PATH?QUERY, TIME in ms, NONCE and sha256(BODY) in hex, joined by newlines. Each signature is ECDSA P-256 / SHA-256 (DER, base64) over that message by the key below. Every client must build the same bytes; android/app/src/test/.../PairingTest.kt checks the app against this file.",
+ "public_key": "-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE8n2BwW4UrlXWg2YUv0Jg6RYsys8Y\nKby90BkfWeQA6IHy5P6RqKPjGeARoHetrk+0K1N+qFdin1Zl6i6+X6779A==\n-----END PUBLIC KEY-----\n",
+ "requests": [
+  {
+   "method": "GET",
+   "path": "/api/v1/overview",
+   "time": "1700000000000",
+   "nonce": "c2hvcnQtbm9uY2U",
+   "body": "",
+   "message": "GET\n/api/v1/overview\n1700000000000\nc2hvcnQtbm9uY2U\ne3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "signature": "MEQCIA6gEWsM5jP2FcBIDJErpkWFcUlFsgz0LA4R4BnoKthOAiAwhBoavVxxkC30GN0xFOnMEALTT259PGkq2exlg4EVWQ=="
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/backups/ab12cd34/browse?snap=2026-11-15_210340&path=%2Fhome%2Fsam%2FPhotos",
+   "time": "1763240000123",
+   "nonce": "Zm9yLWEtcXVlcnk",
+   "body": "",
+   "message": "GET\n/api/v1/backups/ab12cd34/browse?snap=2026-11-15_210340&path=%2Fhome%2Fsam%2FPhotos\n1763240000123\nZm9yLWEtcXVlcnk\ne3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "signature": "MEYCIQCVEMHmWadLGfuoHkMqwOeZM5HP2fQDOOlWXqqnlkaYtwIhAJFK83219dqJrgR8BbrqyyleFSsgJYsm/KRVd6Tyg3Fy"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/containers/immich_server/restart",
+   "time": "1763240000456",
+   "nonce": "ZW1wdHktYm9keQ",
+   "body": "{}",
+   "message": "POST\n/api/v1/containers/immich_server/restart\n1763240000456\nZW1wdHktYm9keQ\n44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+   "signature": "MEUCIQDLMu4TdkqlyQRyoVYdcbYt0lik4rLTx1WNwkCduO12yAIgSzS2G+ZidUhDFdk9oBgA8pW63edf2zmqo4HF+vOCZmI="
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/backups/ab12cd34/restore",
+   "time": "1763240000789",
+   "nonce": "d2l0aC1hLWJvZHk",
+   "body": "{\"snapshot\":\"current\",\"path\":\"/home/sam/Fotos/naïve café.txt\",\"to\":\"beside\"}",
+   "message": "POST\n/api/v1/backups/ab12cd34/restore\n1763240000789\nd2l0aC1hLWJvZHk\n7786244abea47bffba7c4b2990b0c4656c5de03fc645e103163000202440a5ad",
+   "signature": "MEQCIHehJ44oEufTMVQGoOUlEcVnuitaZNAfQBLPqUPWwrcRAiAJnUt+n3jcD75+2DFkYBd7vmWJ8i+HsquqQx/SljoN5Q=="
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v1/devices/7PMkPDH6fKZ-NKTM",
+   "time": "1763240001000",
+   "nonce": "ZGVsZXRl",
+   "body": "",
+   "message": "DELETE\n/api/v1/devices/7PMkPDH6fKZ-NKTM\n1763240001000\nZGVsZXRl\ne3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "signature": "MEQCIGOzbhmJz0NjN9g3md0iZXm0C/r8xi7toSc6U5efQ2T6AiBaKdHZ2BLs/26tIlrGqo8FV+fdqhCnlRWoDiIUNKJomw=="
+  }
+ ]
+}

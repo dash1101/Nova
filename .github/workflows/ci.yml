@@ -53,6 +53,9 @@ jobs:
       - uses: actions/setup-java@v4
         with: { distribution: temurin, java-version: 21 }
       # the runner image already has the Android SDK (ANDROID_HOME); setup-android's sdkmanager step breaks on it
+      - name: Unit tests (pairing codes, request signing against packaging/signing_vectors.json, the terminal, light effects)
+        working-directory: android
+        run: ./gradlew --no-daemon :app:testDebugUnitTest
       - name: Build debug APK
         working-directory: android
         run: ./gradlew --no-daemon assembleDebug

@@ -91,8 +91,7 @@ class NovaApi(private val pairing: Pairing) {
     private fun prepareBytes(method: String, path: String, bytes: ByteArray): Prepared {
         val ts = ServerClock.now(pairing.profile).toString()
         val nonce = ByteArray(18).also { rnd.nextBytes(it) }.let { Base64.getUrlEncoder().withoutPadding().encodeToString(it) }
-        val digest = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
-        return Prepared(method, path, bytes, ts, nonce, "$method\n$path\n$ts\n$nonce\n$digest".toByteArray())
+        return Prepared(method, path, bytes, ts, nonce, signedMessage(method, path, ts, nonce, bytes))
     }
 
     /** Approve or deny a waiting request with the quick-approve key (notification / watch buttons). */
@@ -489,9 +488,16 @@ class NovaApi(private val pairing: Pairing) {
     }
 }
 
-/** A Tailscale address (100.64.0.0/10) in an https://host:port URL. */
+/** What a request's signature covers: METHOD, PATH?QUERY, TIME (ms), NONCE and sha256(BODY) in hex, one per line. The server
+ *  builds the same bytes to check it (server.py), as do Nova web and the iPhone app — packaging/signing_vectors.json has examples. */
+fun signedMessage(method: String, path: String, ts: String, nonce: String, body: ByteArray): ByteArray {
+    val digest = MessageDigest.getInstance("SHA-256").digest(body).joinToString("") { "%02x".format(it) }
+    return "$method\n$path\n$ts\n$nonce\n$digest".toByteArray()
+}
+
 /** A stored server address as a URL: a bare host ("nova.example.com", as some servers handed it out) is https://… */
 fun normUrl(u: String): String { val t = u.trim().trimEnd('/'); return if (t.isEmpty() || "://" in t) t else "https://$t" }
 
+/** A Tailscale address (100.64.0.0/10) in an https://host:port URL. */
 fun isTailscaleUrl(url: String) = runCatching {
     val p = (java.net.URI(url).host ?: "").split(".").map { it.toInt() }; p.size == 4 && p[0] == 100 && p[1] in 64..127 }.getOrDefault(false)

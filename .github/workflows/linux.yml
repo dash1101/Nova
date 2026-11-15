@@ -116,7 +116,7 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq ./dist/nova-server_*_all.deb
       - name: Back up, wipe, restore, compare
-        run: sudo NOVA_DRILL_NEED=ext4 python3 packaging/restore_drill.py
+        run: sudo NOVA_DRILL_NEED=ext4,exfat,fat,smb,nfs,nfs-squash python3 packaging/restore_drill.py
   released:
     # The one-line install against what is actually published — or, with a tag, against a beta before it's promoted.
     if: github.event_name == 'workflow_dispatch' && inputs.released
