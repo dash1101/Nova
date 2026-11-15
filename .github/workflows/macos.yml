@@ -1,0 +1,43 @@
+name: macos
+on:
+  push:
+    paths: ['.github/workflows/macos.yml']
+  workflow_dispatch:
+jobs:
+  probe:
+    runs-on: macos-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Machine
+        run: |
+          sw_vers; uname -a; sysctl -n machdep.cpu.brand_string hw.model hw.memsize hw.ncpu hw.physicalcpu kern.boottime kern.osproductversion; sysctl vm.swapusage vm.loadavg
+          vm_stat | head -12; id; scutil --get ComputerName; scutil --get LocalHostName; hostname
+          system_profiler SPHardwareDataType | head -25
+      - name: Python
+        run: |
+          which -a python3; python3 --version; /usr/bin/python3 --version || true
+          python3 -c "import sys; print(sys.executable, sys.platform)"; python3 -c "import cryptography; print('cryptography', cryptography.__version__)" || true
+          python3 -c "import psutil; print('psutil', psutil.__version__)" || true
+          /usr/bin/python3 -m venv /tmp/v && /tmp/v/bin/pip install -q cryptography psutil && /tmp/v/bin/python -c "
+          import psutil, json, os
+          print(psutil.cpu_times(), psutil.cpu_count()); print(psutil.virtual_memory()); print(psutil.swap_memory()); print(psutil.net_io_counters(pernic=True).keys())
+          print(psutil.disk_io_counters(perdisk=True)); print(psutil.disk_partitions()); print(psutil.boot_time(), os.getloadavg())
+          print({k: [(a.family.name, a.address, a.netmask) for a in v] for k, v in psutil.net_if_addrs().items() if k.startswith('en')})
+          try: print(psutil.sensors_temperatures())
+          except Exception as e: print('no temps', e)
+          print(len(list(psutil.process_iter(['pid','name','username','cpu_percent','memory_info']))))"
+          brew --version; brew list --formula | head -30 | tr '\n' ' '
+      - name: Network, disks, services
+        run: |
+          route -n get default | sed -n 1,12p; ifconfig en0 | head -8; networksetup -listallhardwareports | head -12
+          diskutil list | head -30; diskutil info / | head -40; diskutil info -plist / | head -30; df -h | head
+          ls -la /etc/ssh | head; sudo systemsetup -getremotelogin || true; sudo launchctl list | head -15
+          dscl . -list /Users UniqueID | sort -n -k2 | tail -8; dscl . -list /Groups PrimaryGroupID | sort -n -k2 | tail -5
+          pmset -g | head -20; which caffeinate shutdown osascript docker tailscale cloudflared || true
+          ls /Library/LaunchDaemons | head; sudo -n true && echo "sudo ok"
+          last reboot | head -3; sysctl kern.shutdownreason 2>/dev/null || true; nvram -p 2>/dev/null | head -5 || true
+      - name: Xcode
+        run: |
+          xcodebuild -version; ls /Applications | grep -i xcode | head -20; xcrun simctl list devices available | head -40; xcrun simctl list runtimes
+          swift --version; which xcodegen || brew info xcodegen | head -3
