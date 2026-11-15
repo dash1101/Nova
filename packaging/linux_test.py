@@ -110,6 +110,24 @@ rc, so, se = sh("sudo", "nova", "devices"); check("nova devices", rc == 0 and "C
 rc, so, se = sh("sudo", "nova", "log", "5"); check("nova log reads like sentences", rc == 0 and "/api/v1/" in so and '{"' not in so, so[-300:])
 rc, so, se = sh("sudo", "nova", "approve", "ZZZZZZ"); check("a wrong approval code answers at once", rc == 1 and "Nothing is waiting" in so, (rc, so[-200:]))
 
+
+print("\nAlerts reach Discord (a stand-in for it on this machine)")
+import http.server, threading
+posts = []
+class Hook(http.server.BaseHTTPRequestHandler):
+    def do_POST(self):
+        posts.append(json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))) or b"{}")); self.send_response(204); self.end_headers()
+    def log_message(self, *a): pass
+hook = http.server.HTTPServer(("127.0.0.1", 0), Hook); threading.Thread(target=hook.serve_forever, daemon=True).start()
+sh("sudo", "python3", "-c", "import json; p='/etc/nova-alerts/config.json'; c=json.load(open(p)); c['discord_webhook']='http://127.0.0.1:%d/hook'; json.dump(c, open(p,'w'))" % hook.server_address[1])
+rc, so, se = sh("sudo", "nova", "alert", "warning", "Hello Discord from the test", "A test alert.")
+end = time.time() + 90
+while time.time() < end and not any("Hello Discord from the test" in json.dumps(p) for p in posts): time.sleep(2)
+check("an alert is posted to the webhook", any("Hello Discord from the test" in json.dumps(p) for p in posts), (rc, se[-200:], posts[-2:]))
+rc, so, se = sh("systemctl", "is-failed", "nova-alerts.service"); check("…and the monitor's pass finished properly", so.strip() != "failed", so)
+s, r = d.call("GET", "/api/v1/events"); check("…and it's in the Inbox too", s == 200 and "Hello Discord from the test" in json.dumps(r), str(r)[:300])
+sh("sudo", "python3", "-c", "import json; p='/etc/nova-alerts/config.json'; c=json.load(open(p)); c['discord_webhook']=''; json.dump(c, open(p,'w'))")
+
 print("\nThe Nova Server window")
 p = subprocess.Popen(["sudo", "/usr/sbin/nova-gui", "--serve", "--print-url"], stdout=subprocess.PIPE, text=True)
 url = (p.stdout.readline() or "").strip(); check("starts and gives its address", url.startswith("http://localhost:") and "?k=" in url, url[:40])

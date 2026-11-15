@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.10.3-alpha (server)
+- **Fix: on a server that posts alerts to Discord, an alert could stop the monitor's check** (0.10.0 to 0.10.2). The
+  post needed a library that 0.10.0 had stopped loading at start, so the check ended there — before the alert reached
+  the Inbox or was remembered. A one-off alert (an app installed, a device paired) was lost; a lasting one (a full
+  drive) stopped every check until it cleared. Servers without a Discord webhook weren't affected. Fixed, and:
+  - sending can no longer cost the check: if a post fails for any reason, the alert still goes to the Inbox and waits
+    to be sent again;
+  - Nova's tests now post an alert to a stand-in webhook on every change, and a checker looks for this kind of mistake
+    (a name used that nothing defines) across the whole server.
+
 ## 0.10.2-alpha (server)
 - **Looking for an update no longer downloads the whole release.** Every Linux server checks once a day, and each check
   fetched every file of the release — every system's package and all the apps, about 55 MB — just to read the version.

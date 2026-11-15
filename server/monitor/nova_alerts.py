@@ -936,6 +936,7 @@ class Monitor:
             return
         if not out:
             return
+        import urllib.request
         remaining = []
         for i in range(0, len(out), 10):       # Discord: max 10 embeds per message
             chunk = out[i:i + 10]
@@ -1035,7 +1036,12 @@ class Monitor:
         for retired in ("photo_backup",):        # metrics that no longer exist
             self.metrics.pop(retired, None)
         self.st["last_metrics"] = self.metrics
-        self.deliver()
+        # Sending must never cost the pass: what happened still goes to the Inbox and is remembered, and what couldn't be
+        # sent waits in the outbox. (0.10.0–0.10.2 stopped here on any Discord post, losing that pass's alerts.)
+        try: self.deliver()
+        except Exception as e:
+            self.st["outbox"] = (self.st.get("outbox", []) + self.pushes)[-100:]
+            print("couldn't send alerts:", repr(e)[:300], file=sys.stderr, flush=True)
         self.write_status()
         self.st["last_run"] = now()
         write_json_atomic(STATE_FILE, self.st, 0o600)

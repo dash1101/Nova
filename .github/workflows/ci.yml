@@ -19,6 +19,14 @@ jobs:
           for f in server/web/*.js; do node --check "$f"; done
       - name: Controlling another server from Nova web (the relay takes the web's headers)
         run: python3 packaging/relay_test.py
+      - name: No name is used that nothing defines
+        run: |
+          # (a library imported inside one function and used in another — it ran fine until that other function did:
+          #  0.10.0 stopped the monitor on every Discord post that way)
+          pip install -q pyflakes
+          bad=0; for f in server/api/*.py server/monitor/*.py server/api/nova server/api/nova-gui server/api/nova-setup server/api/nova-setup-gui server/api/nova-update packaging/*.py; do
+            python3 -m pyflakes "$f" 2>&1 | grep -E "undefined name|referenced before assignment" && bad=1; done
+          [ "$bad" = 0 ]
       - name: Build package
         run: packaging/build-deb.sh
       - name: The tarball unpacks the way every installed updater unpacks it
