@@ -278,7 +278,7 @@ check("nova doctor --json", rc in (0, 1) and isinstance(dj.get("checks"), list),
 print("\nUpdates on Windows")
 check("the release key is installed (updates can be verified)", os.path.exists(os.path.join(APP, "lib", "release-key.pub")), os.listdir(os.path.join(APP, "lib"))[:40])
 rc, so, se = nova("update", "--check"); check("nova update --check", rc == 0 and ("newest Nova" in so or "is out" in so), (rc, so[-300:], se[-300:]))
-r = subprocess.run([NOVA[0], "-c", "import sys, os, shutil; sys.path.insert(0, r'" + os.path.join(APP, "lib") + "'); import winupdate as w; v, i = w.prepare(); print(v, os.path.exists(i)); "
+r = subprocess.run([NOVA[0], "-c", "import sys, os, shutil; sys.path.insert(0, r'" + os.path.join(APP, "lib") + "'); import selfupdate as w; v, i = w.prepare(); print(v, os.path.exists(i)); "
                     "shutil.rmtree(os.path.dirname(os.path.dirname(os.path.dirname(i))))"], capture_output=True, text=True, timeout=300)
 check("downloads the newest release and checks its signature (not installed here)", r.returncode == 0 and r.stdout.strip().endswith("True"), (r.stdout[-200:], r.stderr[-400:]))
 
@@ -359,7 +359,7 @@ import psutil
 mine = {}
 for p in psutil.process_iter(["pid", "name", "username", "cmdline"]):
     cl = " ".join(p.info.get("cmdline") or [])
-    if "winrun.py" in cl: mine[cl.split()[-1]] = (p.info.get("username") or "")
+    if "runpart.py" in cl: mine[cl.split()[-1]] = (p.info.get("username") or "")
 print("     ", mine)
 check("the API runs without administrator rights (Local Service)", "LOCAL SERVICE" in mine.get("api", "").upper(), mine)
 check("the helper and monitor run as SYSTEM", "SYSTEM" in mine.get("helper", "").upper() and "SYSTEM" in mine.get("alerts", "").upper(), mine)

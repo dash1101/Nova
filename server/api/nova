@@ -44,7 +44,7 @@ HERE = os.path.dirname(os.path.realpath(__file__))
 LIB = "/usr/lib/nova-api" if os.path.isdir("/usr/lib/nova-api") else HERE
 sys.path[:0] = [LIB, HERE]
 import plat                                               # which OS this is, and where Nova's folders are on it
-WIN = plat.WINDOWS
+WIN, MAC = plat.WINDOWS, plat.MAC
 DATA = plat.p("/var/lib/nova-api"); DEVICES = os.path.join(DATA, "devices.json"); PAIRING = os.path.join(DATA, "pairing.json")
 SHELL_APPROVE = os.path.join(DATA, "shell-approve.json"); PENDING = os.path.join(DATA, "pending.json")
 CONFIG = plat.p("/etc/nova-api/config.json")
@@ -74,12 +74,13 @@ def opt(args, name, default=None):
 def clock(sec): sec = max(0, int(sec)); return f"{sec // 60}:{sec % 60:02d}"
 
 def run(*cmd):
-    if not WIN: os.execvp(cmd[0], list(cmd))
-    if os.path.basename(cmd[0]) == "nova-alert":          # Windows: the monitor takes alerts itself
-        import winhost
-        sys.exit(subprocess.run([sys.executable, winhost.MONITOR, "notify", *cmd[1:]]).returncode)
-    tool = os.path.join(HERE, os.path.basename(cmd[0]))   # Windows: the same tools sit next to this file
-    if not os.path.exists(tool): sys.exit("That isn't available on a Windows server yet.")
+    if plat.LINUX: os.execvp(cmd[0], list(cmd))
+    if os.path.basename(cmd[0]) == "nova-alert":          # Windows and macOS: the monitor takes alerts itself
+        sys.exit(subprocess.run([sys.executable, plat.host().MONITOR, "notify", *cmd[1:]]).returncode)
+    tool = os.path.join(HERE, os.path.basename(cmd[0]))   # Windows and macOS: the same tools sit next to this file
+    if os.path.basename(cmd[0]) == "nova-setup" and not os.path.exists(tool):
+        sys.exit(f"Nova sets itself up on {'Windows' if WIN else 'a Mac'}: its address is found by the installer, and the Nova Server window ({plat.SUDO}nova gui) has the rest.")
+    if not os.path.exists(tool): sys.exit(f"That isn't available on a {'Windows' if WIN else 'Mac'} server yet.")
     sys.exit(subprocess.run([sys.executable, tool, *cmd[1:]]).returncode)
 
 def is_root():
@@ -90,9 +91,8 @@ def is_root():
 
 def api_state():
     """"active" when Nova's API is running."""
-    if WIN:
-        import winhost
-        return winhost.task_state("Api")
+    if WIN: return plat.host().task_state("Api")
+    if MAC: return plat.host().service_state("api")
     return subprocess.run(["systemctl", "is-active", "nova-api.service"], capture_output=True, text=True).stdout.strip()
 
 def uninstall(rest):
@@ -101,6 +101,7 @@ def uninstall(rest):
     if WIN:
         sys.exit('In an administrator PowerShell:  powershell -File "C:\\Program Files\\Nova\\uninstall.ps1"' + (" -Purge" if purge else ""))
     tar = os.path.join(LIB, "uninstall.sh")
+    if MAC: os.execvp("sh", ["sh", tar, *(["--purge"] if purge else [])])       # (it explains and asks)
     deb = shutil.which("dpkg-query") and "install ok installed" in subprocess.run(["dpkg-query", "-W", "-f=${Status}", "nova-server"], capture_output=True, text=True).stdout
     if not deb and os.path.exists(os.path.join(LIB, "INSTALLED_FROM_TARBALL")):    # (its uninstaller explains and asks; a .deb install with a leftover marker uses apt)
         if not os.path.exists(tar): sys.exit("This Nova came from the tarball, but its uninstaller is missing — install the newest release first (sudo nova update), then run this again.")
@@ -144,7 +145,7 @@ def menu():
         ("sudo nova status", "is everything running, and where"), ("sudo nova doctor", "find what's wrong, and how to fix it"),
         ("sudo nova link SERVER", "show another Nova server here"), ("sudo nova update", "install the newest version")] + (
         [("sudo nova setup", "change settings")] if setup else []) + (
-        [("nova gui", "the same in a window (Nova Server)")] if setup and (WIN or os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")) else [])
+        [("nova gui", "the same in a window (Nova Server)")] if setup and (WIN or MAC or os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")) else [])
     print(f"\n  {D}What would you like to do?{X}\n")
     for c, d in rows: print(f"    {B}{c:<24}{X} {d}")
     print(f"\n    {B}{'nova help':<24}{X} every command        {B}nova help TOPIC{X}  a short guide:")
@@ -164,7 +165,7 @@ def help_topic(t):
 def doctor(args):
     found = _guides().doctor()
     try:                                                   # plus the machine checks setup runs (ports, systemd, clock…)
-        if WIN: raise ImportError                          # (those are Linux's; Windows' are all in the doctor above)
+        if not plat.LINUX: raise ImportError               # (those are Linux's; Windows' and the Mac's are all in the doctor above)
         import preflight
         found += [{"level": c["level"], "title": c["title"], "fix": c["fix"]} for c in preflight.checks() if c["level"] != "ok"]
     except Exception: pass
@@ -308,33 +309,34 @@ def remove(args):
     for k in [k for k, v in devs.items() if v.get("owner") in hit]: devs.pop(k); hit.append(k)       # a phone's watch goes with it
     save(DEVICES, devs, mode=0o640)
     for k in hit:                    # and its SSH key, if the app installed one
-        h = f"{LIB}/helper" if os.path.exists(f"{LIB}/helper") and not WIN else None
-        if h: subprocess.run([h, "ssh-unauthorize", k], capture_output=True)
+        h = [f"{LIB}/helper"] if plat.LINUX else [sys.executable, "-I", os.path.join(HERE, "helper.py")]
+        if os.path.exists(h[-1]): subprocess.run(h + ["ssh-unauthorize", k], capture_output=True)
     print(f"{G}✓ Removed{X} {', '.join(hit)}")
 
 
-def win_update(args):
-    """`nova update` on Windows: the newest signed release, verified like on Linux, installed by its own installer in a new window."""
-    import winupdate
+def self_update(args):
+    """`nova update` on Windows and macOS: the newest signed release, verified like on Linux, installed by its own installer
+    (Windows: in a new window; a Mac: right here)."""
+    import selfupdate
     try:
-        r = winupdate.check()
+        r = selfupdate.check()
         if not r["update"]: print(f"{G}✓{X} This is the newest Nova ({r['installed']})."); return
         print(f"Nova {B}{r['available']}{X} is out — this server has {r['installed'] or 'an unknown version'}.")
         if "--check" in args: print(f"  {D}nova update installs it (settings and paired devices stay){X}"); return
         print("  downloading and checking its signature…")
-        ver, inst = winupdate.prepare()
-        winupdate.launch(inst, reopen=False)
+        ver, inst = selfupdate.prepare()
+        if MAC: print(f"{G}✓{X} Verified. Installing Nova {ver}…"); os.execvp("sh", ["sh", inst])
+        selfupdate.launch(inst, reopen=False)
         print(f"{G}✓{X} Verified. Installing Nova {ver} in its own window — Nova restarts there; this terminal can be closed.")
-    except winupdate.UpdateError as e: sys.exit(f"{R}✗{X} Not updated: {e}")
+    except selfupdate.UpdateError as e: sys.exit(f"{R}✗{X} Not updated: {e}")
 
 
 def status_info():
     """What `nova status` shows, as data (also `nova status --json`, for hub apps and scripts)."""
     cfg = load(CONFIG, {}); tls = cfg.get("tls_port", 8495); host = cfg.get("lan_host", "")
     parts = []
-    if WIN:
-        import winhost
-        parts = [{"name": "Nova " + t, "state": winhost.task_state(t)} for t in ("Api", "Helper", "Alerts")]
+    if WIN: parts = [{"name": "Nova " + t, "state": plat.host().task_state(t)} for t in ("Api", "Helper", "Alerts")]
+    elif MAC: parts = [{"name": "Nova " + t, "state": plat.host().service_state(t)} for t in plat.host().PARTS]
     else:
         for u in ("nova-api", "nova-helper.socket", "nova-alerts.timer", "nova-backups.timer", "nova-update-check.timer", "nova-rgb-anim", "nova-rgb-tick.timer"):
             st = subprocess.run(["systemctl", "is-active", u], capture_output=True, text=True).stdout.strip()
@@ -342,9 +344,12 @@ def status_info():
     tail = None
     if cfg.get("tailnet_host"):
         here = True                                           # is Tailscale connected on this computer (its address here)?
-        if not WIN:
+        if plat.LINUX:
             try: here = f"inet {cfg['tailnet_host']}/" in subprocess.run(["ip", "-o", "addr", "show"], capture_output=True, text=True, timeout=5).stdout
             except (OSError, subprocess.SubprocessError): pass
+        elif MAC:
+            import autosetup
+            here = autosetup.tailnet()[0] == cfg["tailnet_host"]
         tail = {"url": f"https://{cfg['tailnet_host']}:{tls}", "connected": here}
     return {"version": version().replace("~", "-"), "running": any(p["state"] == "active" for p in parts[:1]), "parts": parts,
             "home": f"https://{host}:{tls}" if host else "", "tailscale": tail, "local": f"https://localhost:{tls}",
@@ -355,7 +360,7 @@ def status(args):
     if "--json" in args: print(json.dumps(i)); return
     print(f"{B}Nova {i['version']}{X}")
     for p in i["parts"]: print(f"  {(G + '●') if p['state'] == 'active' else (R + '●')}{X} {p['name']:26} {p['state']}")
-    print(f"  Home network   {i['home'] or '— (not set up: ' + ('run the installer again' if WIN else 'sudo nova setup') + ')'}")
+    print(f"  Home network   {i['home'] or '— (not set up: ' + ('sudo nova setup' if plat.LINUX else 'run the installer again') + ')'}")
     if i["tailscale"]: print(f"  Tailscale      {i['tailscale']['url']}" + ("" if i["tailscale"]["connected"] else f"   {Y}not connected on this computer ({'' if WIN else 'sudo '}nova doctor){X}"))
     print(f"  This computer  {i['local']}")
     if i["remote"]: print(f"  Remote         {i['remote']}")
@@ -551,7 +556,7 @@ if __name__ == "__main__":
     elif cmd == "status": status(rest)
     elif cmd == "gui": run("/usr/sbin/nova-gui", *rest)
     elif cmd == "setup": run("/usr/sbin/nova-setup", *rest)
-    elif cmd == "update": win_update(rest) if WIN else run("/usr/sbin/nova-update", *rest)
+    elif cmd == "update": run("/usr/sbin/nova-update", *rest) if plat.LINUX else self_update(rest)
     elif cmd == "uninstall": uninstall(rest)
     elif cmd == "lighting": run("/usr/sbin/nova-setup-lighting", *rest)
     elif cmd == "backup": backup(rest)

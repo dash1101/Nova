@@ -227,9 +227,8 @@ argv = sys.argv[1:]
 if not argv: fail("no verb", 2)
 verb, args = argv[0], argv[1:]
 
-if plat.WINDOWS:                    # Windows does drives, processes, power… its own way (winhost.py); what's the same on both carries on below
-    import winhost
-    winhost.verb(verb, args, sys.modules[__name__])
+if not plat.LINUX:                  # Windows and macOS do drives, processes, power… their own way (winhost.py, machost.py); what's the same everywhere carries on below
+    plat.host().verb(verb, args, sys.modules[__name__])
 
 if verb == "containers-stats" and not args:
     # CPU and memory of every running container, for the Containers list (one docker call for all of them)
@@ -402,6 +401,8 @@ if verb == "shell" and len(args) == 1:
     os.execvp("docker", ["docker", "exec", "-i", "-e", "TERM=dumb", "-e", "PS1=\\u@\\h:\\w\\$ ", name, "sh", "-c",
                          "if command -v bash >/dev/null 2>&1; then exec bash -i 2>&1; else exec sh -i 2>&1; fi"])
 
+PEOPLE_FROM = 501 if plat.MAC else 1000          # the first user id that is a person's account, not the system's
+
 def shell_user():
     """Whose account the server terminal, file manager and command apps use: config "shell_user",
     else the only person account on the machine (uid 1000+ with a login shell). Never root."""
@@ -410,9 +411,9 @@ def shell_user():
     if want:
         try: u = pwd.getpwnam(want)
         except KeyError: return None
-        return u if u.pw_uid >= 1000 else None
+        return u if u.pw_uid >= PEOPLE_FROM else None
     ok = set(l.strip() for l in open("/etc/shells") if l.startswith("/")) if os.path.exists("/etc/shells") else {"/bin/bash", "/bin/sh"}
-    people = [u for u in pwd.getpwall() if 1000 <= u.pw_uid < 60000 and u.pw_shell in ok]
+    people = [u for u in pwd.getpwall() if PEOPLE_FROM <= u.pw_uid < 60000 and u.pw_shell in ok]
     return people[0] if len(people) == 1 else None
 
 # ── the file manager: as your normal account (files.py) ──
@@ -471,6 +472,7 @@ if verb == "host-shell" and len(args) == 1:
     changelog(f"Server terminal opened as {u.pw_name} from {who}")
     pid, fd = pty.fork()
     if pid == 0:
+        if plat.MAC: os.execve("/usr/bin/su", ["su", "-l", u.pw_name], {"TERM": "xterm-256color", "LANG": "en_US.UTF-8", "PATH": "/usr/local/bin:/usr/bin:/bin"})
         os.execve("/usr/sbin/runuser", ["runuser", "-l", u.pw_name],
                   {"TERM": "xterm-256color", "LANG": "C.UTF-8", "PATH": "/usr/local/bin:/usr/bin:/bin"})
     RESIZE = re.compile(rb"\x1b\]7799;(\d{1,4});(\d{1,4})\x07")
@@ -970,25 +972,25 @@ MONITOR = _tool("/usr/lib/nova-api/monitor/nova_alerts.py", "/usr/local/lib/nova
 ALERT_KEY_RE = r"[a-z]+:[\w./:@+-]{1,200}"
 if verb == "alerts-dismiss" and len(args) == 1 and re.fullmatch(ALERT_KEY_RE, args[0]):
     if not MONITOR: fail("monitoring isn't installed")
-    rc, so, se = run([sys.executable if plat.WINDOWS else "python3", MONITOR, "dismiss", args[0]], timeout=150)
+    rc, so, se = run(["python3" if plat.LINUX else sys.executable, MONITOR, "dismiss", args[0]], timeout=150)
     if rc != 0: fail((se or so).strip()[-200:] or "couldn't dismiss")
     changelog(f"Alert dismissed from the Nova app: {args[0]}")
     out(json.loads(so.strip().splitlines()[-1]))
 if verb == "alerts-undismiss" and len(args) == 1 and re.fullmatch(ALERT_KEY_RE, args[0]):
     if not MONITOR: fail("monitoring isn't installed")
-    rc, so, se = run([sys.executable if plat.WINDOWS else "python3", MONITOR, "undismiss", args[0]], timeout=150)
+    rc, so, se = run(["python3" if plat.LINUX else sys.executable, MONITOR, "undismiss", args[0]], timeout=150)
     if rc != 0: fail((se or so).strip()[-200:] or "couldn't do that")
     changelog(f"Alert no longer ignored (Nova app): {args[0]}")
     out(json.loads(so.strip().splitlines()[-1]))
 if verb == "events-delete" and len(args) == 1 and re.fullmatch(r"all|[\d.]+(,[\d.]+){0,199}", args[0]):
     if not MONITOR: fail("monitoring isn't installed")
-    rc, so, se = run([sys.executable if plat.WINDOWS else "python3", MONITOR, "delete-event", args[0]], timeout=150)
+    rc, so, se = run(["python3" if plat.LINUX else sys.executable, MONITOR, "delete-event", args[0]], timeout=150)
     if rc != 0: fail((se or so).strip()[-200:] or "couldn't delete")
     out(json.loads(so.strip().splitlines()[-1]))
 
 if verb == "events-restore" and len(args) == 1 and re.fullmatch(r"[\d.]+(,[\d.]+){0,199}", args[0]):
     if not MONITOR: fail("monitoring isn't installed")
-    rc, so, se = run([sys.executable if plat.WINDOWS else "python3", MONITOR, "restore-event", args[0]], timeout=150)
+    rc, so, se = run(["python3" if plat.LINUX else sys.executable, MONITOR, "restore-event", args[0]], timeout=150)
     if rc != 0: fail((se or so).strip()[-200:] or "couldn't restore")
     out(json.loads(so.strip().splitlines()[-1]))
 

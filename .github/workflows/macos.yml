@@ -1,43 +1,74 @@
 name: macos
+# Builds the macOS download and installs it on a real Mac, then checks that it works (packaging/mac_test.py).
 on:
   push:
-    paths: ['.github/workflows/macos.yml']
+    paths: ['server/**', 'packaging/mac_test.py', 'packaging/build-mac.sh', '.github/workflows/macos.yml', 'get.sh']
+  pull_request:
+    paths: ['server/**', 'packaging/mac_test.py', 'packaging/build-mac.sh', '.github/workflows/macos.yml', 'get.sh']
   workflow_dispatch:
+    inputs:
+      released:
+        description: "Also install the newest published release with get.sh (the one-line install)"
+        type: boolean
+        default: false
 jobs:
-  probe:
-    runs-on: macos-latest
-    timeout-minutes: 15
+  package:
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Machine
+      - name: Build nova-macos.tar.gz
+        run: packaging/build-mac.sh
+      - uses: actions/upload-artifact@v4
+        with: { name: nova-macos, path: dist/nova-macos.tar.gz }
+  server:
+    needs: package
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: macos-latest, python: /usr/bin/python3 }       # Apple Silicon, the Python that comes with Apple's command line tools (3.9)
+          - { os: macos-latest, python: '' }                     # …and whichever newer Python the installer finds first (Homebrew's)
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { name: nova-macos, path: dl }
+      - name: Install Nova from the download
         run: |
-          sw_vers; uname -a; sysctl -n machdep.cpu.brand_string hw.model hw.memsize hw.ncpu hw.physicalcpu kern.boottime kern.osproductversion; sysctl vm.swapusage vm.loadavg
-          vm_stat | head -12; id; scutil --get ComputerName; scutil --get LocalHostName; hostname
-          system_profiler SPHardwareDataType | head -25
-      - name: Python
+          tar -xzf dl/nova-macos.tar.gz -C dl
+          # the way a hub app (Orbit) runs it: output captured; the last line says what happened
+          sudo sh dl/Nova/mac/install.sh --quiet ${{ matrix.python && format('--python {0}', matrix.python) || '' }} | tee install.log
+          line="$(grep '^NOVA-RESULT ' install.log | tail -1)"; [ -n "$line" ] || { echo "no NOVA-RESULT line"; exit 1; }
+          echo "${line#NOVA-RESULT }" | python3 -c "
+          import json, sys
+          r = json.load(sys.stdin); print(r)
+          assert r['ok'] and r['firstRun'] and not r['previous'] and r['running'] and r['ports']['https'] == 8495 and r['urls']['local'] == 'https://127.0.0.1:8495', 'unexpected result'"
+      - name: Test
+        run: /usr/local/lib/nova/venv/bin/python packaging/mac_test.py
+      - name: Install again over itself (an update keeps settings and devices)
         run: |
-          which -a python3; python3 --version; /usr/bin/python3 --version || true
-          python3 -c "import sys; print(sys.executable, sys.platform)"; python3 -c "import cryptography; print('cryptography', cryptography.__version__)" || true
-          python3 -c "import psutil; print('psutil', psutil.__version__)" || true
-          /usr/bin/python3 -m venv /tmp/v && /tmp/v/bin/pip install -q cryptography psutil && /tmp/v/bin/python -c "
-          import psutil, json, os
-          print(psutil.cpu_times(), psutil.cpu_count()); print(psutil.virtual_memory()); print(psutil.swap_memory()); print(psutil.net_io_counters(pernic=True).keys())
-          print(psutil.disk_io_counters(perdisk=True)); print(psutil.disk_partitions()); print(psutil.boot_time(), os.getloadavg())
-          print({k: [(a.family.name, a.address, a.netmask) for a in v] for k, v in psutil.net_if_addrs().items() if k.startswith('en')})
-          try: print(psutil.sensors_temperatures())
-          except Exception as e: print('no temps', e)
-          print(len(list(psutil.process_iter(['pid','name','username','cpu_percent','memory_info']))))"
-          brew --version; brew list --formula | head -30 | tr '\n' ' '
-      - name: Network, disks, services
+          before="$(sudo shasum -a 256 '/Library/Application Support/Nova/data/tls/cert.pem')"
+          sudo sh dl/Nova/mac/install.sh --quiet | tee install2.log
+          grep '^NOVA-RESULT ' install2.log | tail -1 | sed 's/^NOVA-RESULT //' | python3 -c "
+          import json, sys
+          r = json.load(sys.stdin); print(r)
+          assert r['ok'] and not r['firstRun'] and r['previous'] and r['running'], 'an update should say so'"
+          [ "$before" = "$(sudo shasum -a 256 '/Library/Application Support/Nova/data/tls/cert.pem')" ] || { echo "the certificate changed: paired phones would stop trusting the server"; exit 1; }
+          curl -fs -m 10 http://127.0.0.1:8095/api/v1/ping
+      - name: Logs
+        if: always()
         run: |
-          route -n get default | sed -n 1,12p; ifconfig en0 | head -8; networksetup -listallhardwareports | head -12
-          diskutil list | head -30; diskutil info / | head -40; diskutil info -plist / | head -30; df -h | head
-          ls -la /etc/ssh | head; sudo systemsetup -getremotelogin || true; sudo launchctl list | head -15
-          dscl . -list /Users UniqueID | sort -n -k2 | tail -8; dscl . -list /Groups PrimaryGroupID | sort -n -k2 | tail -5
-          pmset -g | head -20; which caffeinate shutdown osascript docker tailscale cloudflared || true
-          ls /Library/LaunchDaemons | head; sudo -n true && echo "sudo ok"
-          last reboot | head -3; sysctl kern.shutdownreason 2>/dev/null || true; nvram -p 2>/dev/null | head -5 || true
-      - name: Xcode
+          for f in "/Library/Application Support/Nova/log/"*.log; do echo; echo "===== $f"; sudo tail -n 60 "$f"; done || true
+          sudo launchctl print system/app.novalabs.nova.api 2>/dev/null | sed -n 1,25p || true
+      - name: Uninstall
+        if: always()
         run: |
-          xcodebuild -version; ls /Applications | grep -i xcode | head -20; xcrun simctl list devices available | head -40; xcrun simctl list runtimes
-          swift --version; which xcodegen || brew info xcodegen | head -3
+          sudo /usr/local/bin/nova uninstall --purge --yes | tee un.log
+          grep -q '^NOVA-RESULT {"ok":true' un.log || { echo "uninstall didn't report success"; exit 1; }
+          for p in /usr/local/lib/nova "/Library/Application Support/Nova" /usr/local/bin/nova "/Applications/Nova Server.app"; do
+            [ ! -e "$p" ] || { echo "left behind: $p"; exit 1; }
+          done
+          ls /Library/LaunchDaemons | grep -q novalabs && { echo "services left behind"; exit 1; } || true
+          dscl . -read /Users/nova-api >/dev/null 2>&1 && { echo "the nova-api account was left behind"; exit 1; } || true
+          pgrep -fl /usr/local/lib/nova && { echo "something of Nova's is still running"; exit 1; } || true

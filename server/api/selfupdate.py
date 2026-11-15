@@ -1,17 +1,20 @@
 """
-Nova's own updates on Windows: the newest release, checked the same way `nova-update` checks it on Linux — the list of
-checksums must carry a valid signature from Nova's release key (shipped next to this file), and the download must match
-its signed checksum — then installed by that release's own installer, in a window of its own (it restarts Nova, and closes
-whatever runs from Nova's folder, this included). Settings and paired devices stay, as with any install over an install.
+Nova's own updates on Windows and macOS: the newest release, checked the same way `nova-update` checks it on Linux — the
+list of checksums must carry a valid signature from Nova's release key (shipped next to this file), and the download
+must match its signed checksum — then installed by that release's own installer (on Windows in a window of its own: it
+restarts Nova and closes whatever runs from Nova's folder, this included). Settings and paired devices stay, as with
+any install over an install.
 
-    from the Nova Server window: Check for updates → Update now          nova update   (in an administrator terminal)
+    from the Nova Server window: Check for updates → Update now          nova update   (as administrator / with sudo)
 """
-import base64, hashlib, json, os, re, subprocess, tempfile, urllib.error, urllib.request, zipfile
+import base64, hashlib, json, os, re, subprocess, sys, tarfile, tempfile, urllib.error, urllib.request, zipfile
+
+MAC = sys.platform == "darwin"
 
 HERE = os.path.dirname(os.path.realpath(__file__))
 REPO = "dash1101/Nova"                                   # where Nova's signed releases are published
 KEY = next((p for p in (os.path.join(HERE, "release-key.pub"), os.path.join(HERE, "..", "..", "packaging", "release-key.pub")) if os.path.exists(p)), None)
-ZIP = "nova-windows.zip"
+ZIP = "nova-macos.tar.gz" if MAC else "nova-windows.zip"          # this system's download in every release
 
 
 class UpdateError(Exception):
@@ -55,7 +58,7 @@ def check():
 
 
 def prepare():
-    """Download the newest release's Windows zip, verify it, unpack it → (version, path of its install.ps1)."""
+    """Download the newest release's package for this system, verify it, unpack it → (version, path of its installer)."""
     if not KEY: raise UpdateError("Nova's release key isn't installed here, so an update can't be checked — install the newest release by hand")
     ver, assets = latest()
     for need in ("SHA256SUMS", "SHA256SUMS.sig", ZIP):
@@ -72,18 +75,31 @@ def prepare():
     work = tempfile.mkdtemp(prefix="nova-update-")
     zp = os.path.join(work, ZIP)
     with open(zp, "wb") as f: f.write(data)
-    with zipfile.ZipFile(zp) as z:
-        for n in z.namelist():                                          # nothing may land outside the folder
-            if n.startswith(("/", "\\")) or ".." in n.replace("\\", "/").split("/"): raise UpdateError("the download has an unsafe file name in it")
-        z.extractall(work)
-    inst = os.path.join(work, "Nova", "windows", "install.ps1")
+    if MAC:
+        with tarfile.open(zp) as t:
+            for m in t.getmembers():                                    # nothing may land outside the folder, and no links or devices
+                if m.name.startswith("/") or ".." in m.name.split("/") or not (m.isfile() or m.isdir()): raise UpdateError("the download has an unsafe file in it")
+            t.extractall(work)
+        inst = os.path.join(work, "Nova", "mac", "install.sh")
+    else:
+        with zipfile.ZipFile(zp) as z:
+            for n in z.namelist():                                      # nothing may land outside the folder
+                if n.startswith(("/", "\\")) or ".." in n.replace("\\", "/").split("/"): raise UpdateError("the download has an unsafe file name in it")
+            z.extractall(work)
+        inst = os.path.join(work, "Nova", "windows", "install.ps1")
     if not os.path.exists(inst): raise UpdateError("the download has no installer in it")
     return ver, inst
 
 
 def launch(inst, reopen=True):
-    """Run the installer in a window of its own. Started through `start`, so it isn't this process's child: the installer
-    closes everything running from Nova's folder (this window's part included) and must not take itself down with it."""
+    """Run the installer. Windows: in a window of its own, started through `start` so it isn't this process's child — the
+    installer closes everything running from Nova's folder (this window's part included) and must not take itself down
+    with it. macOS: on its own in the background (its output goes to Nova's log folder as update.log)."""
+    if MAC:
+        import plat
+        log = open(os.path.join(plat.p("/var/log/nova-api"), "update.log"), "ab")
+        subprocess.Popen(["/bin/sh", inst, "--quiet"], stdin=subprocess.DEVNULL, stdout=log, stderr=log, close_fds=True, start_new_session=True, cwd="/")
+        return
     args = ["cmd.exe", "/c", "start", "Nova update", "powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", inst, "-Relaunched"]
     if reopen: args.append("-OpenWindow")
     subprocess.Popen(args, creationflags=0x08000000, close_fds=True, cwd=os.path.dirname(inst))

@@ -128,7 +128,7 @@ def check_services(m):
     parts = set()                                                       # Nova's own parts, by looking for their processes (cheap, every pass)
     for p in psutil.process_iter(["cmdline"]):
         cl = p.info.get("cmdline") or []
-        if len(cl) >= 2 and cl[-2].lower().endswith("winrun.py"): parts.add(cl[-1])
+        if len(cl) >= 2 and cl[-2].lower().endswith("runpart.py"): parts.add(cl[-1])
     for part, label in (("api", "the part your phone talks to"), ("helper", "the helper")):
         m.condition(f"svc:nova-{part}", part not in parts, "critical", f"Nova isn't fully running: {label} has stopped",
                     "Open the Nova Server window and press Start, or restart the server.")

@@ -15,7 +15,9 @@ Protocol: one line of JSON (the argv list), then
 """
 import json, os, subprocess, sys
 
-HELPER = os.path.join(os.path.dirname(os.path.realpath(__file__)), "helper")      # installed next to this file
+HERE = os.path.dirname(os.path.realpath(__file__))
+# the helper, installed next to this file: on Linux a program of its own; on a Mac helper.py, run by Nova's own Python
+HELPER = [os.path.join(HERE, "helper")] if os.path.exists(os.path.join(HERE, "helper")) else [sys.executable, "-I", os.path.join(HERE, "helper.py")]
 STREAMING = {"shell", "host-shell", "files-get"}
 WITH_INPUT = {"files-data", "cf-code-new"}          # the rest of the connection is the helper's stdin (≤ 6 MB)
 
@@ -34,13 +36,13 @@ except Exception:
     os.write(1, b'{"rc": 2, "stdout": "", "stderr": "bad request"}'); sys.exit(2)
 
 if args[0] in STREAMING:
-    os.execv(HELPER, [HELPER] + args)
+    os.execv(HELPER[0], HELPER + args)
 data = b""
 if args[0] in WITH_INPUT:
     while len(data) <= 6 * 1024 * 1024:
         c = os.read(0, 1 << 16)
         if not c: break
         data += c
-r = subprocess.run([HELPER] + args, input=data, capture_output=True) if data else subprocess.run([HELPER] + args, stdin=subprocess.DEVNULL, capture_output=True)
+r = subprocess.run(HELPER + args, input=data, capture_output=True) if data else subprocess.run(HELPER + args, stdin=subprocess.DEVNULL, capture_output=True)
 os.write(1, json.dumps({"rc": r.returncode, "stdout": r.stdout.decode(errors="replace"),
                         "stderr": r.stderr.decode(errors="replace")[-4000:]}).encode())

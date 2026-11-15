@@ -144,30 +144,6 @@ def task_state(name):
     st = so.strip().lower()
     return "active" if st == "running" else "missing" if st in ("missing", "") else "inactive"
 
-def lan():
-    """This machine's home-network address and subnet: (host, "a.b.c.0/24"), from the interface that leads to the internet."""
-    import ipaddress, socket
-    host = ""
-    try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM); s.connect(("192.0.2.1", 9)); host = s.getsockname()[0]; s.close()   # (nothing is sent)
-    except OSError: pass
-    best = None
-    for name, addrs in psutil.net_if_addrs().items():
-        for a in addrs:
-            if a.family != socket.AF_INET or not a.netmask or a.address.startswith(("127.", "169.254.")): continue
-            net = ipaddress.ip_network(f"{a.address}/{a.netmask}", strict=False)
-            if a.address == host: return host, str(net)
-            if best is None and ipaddress.ip_address(a.address).is_private and not a.address.startswith("100."): best = (a.address, str(net))
-    return best or (host or "127.0.0.1", f"{host or '127.0.0.1'}/32")
-
-def tailnet():
-    """(host, subnet) when Tailscale is up on this machine, else ("", "")."""
-    import socket
-    for name, addrs in psutil.net_if_addrs().items():
-        for a in addrs:
-            if a.family == socket.AF_INET and a.address.startswith("100.") and 64 <= int(a.address.split(".")[1]) <= 127: return a.address, "100.64.0.0/10"
-    return "", ""
-
 def doctor():
     """`nova doctor` on Windows: what's wrong, each with the fix in plain words — [{"level": ok|warn|stop, "title", "fix"}]."""
     import socket
@@ -194,7 +170,8 @@ def doctor():
         else: add("stop", f"Phones look for this server at {host}, but that's no longer its address", "Nova Server window → Where to find it → Look again")
         th = cfg.get("tailnet_host", "")                     # Tailscale: connected, same address as when Nova was set up, and Nova answers there
         if th and th != host:
-            now = tailnet()[0]
+            import autosetup
+            now = autosetup.tailnet()[0]
             if th in mine:
                 try: socket.create_connection((th, port), timeout=3).close(); add("ok", f"Tailscale address {th} is this machine's, and Nova answers there")
                 except OSError: add("warn", f"Nova isn't answering on its Tailscale address {th} yet", "it picks it up within half a minute; if not, press Restart in the Nova Server window")

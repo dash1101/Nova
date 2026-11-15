@@ -30,15 +30,16 @@ Commands:  nova_alerts.py                  one check pass (the timer runs this e
 import json, math, os, re, subprocess, sys, time, socket, glob, urllib.request, urllib.error
 from datetime import datetime, timezone
 
-WINDOWS = os.name == "nt"            # the same monitor runs on Windows; its checks there are in winmon.py
-if WINDOWS:
+WINDOWS = os.name == "nt"            # the same monitor runs on Windows and macOS; its checks there are in winmon.py / macmon.py
+MAC = sys.platform == "darwin"
+if WINDOWS or MAC:
     _here = os.path.dirname(os.path.realpath(__file__))
     sys.path[:0] = [_here] + [d for d in (os.path.dirname(_here), os.path.join(os.path.dirname(_here), "api")) if os.path.exists(os.path.join(d, "plat.py"))]
     import plat
     _p = plat.p
 else:
-    import fcntl
     _p = lambda path: path
+if not WINDOWS: import fcntl
 
 CONFIG_FILE = os.environ.get("NOVA_ALERTS_CONFIG", _p("/etc/nova-alerts/config.json"))
 APP_NOTIFY_FILE = _p("/var/lib/nova-api/notify.json")   # notification choices made in the Nova app (allowlisted keys only)
@@ -50,7 +51,7 @@ STATUS_FILE = f"{_DIR}/www/status.json"
 SPOOL_DIR   = f"{_DIR}/spool"
 ARCHIVE     = f"{_DIR}/www/archive.jsonl"        # permanent history: archived + aged-out events, one JSON per line          # nova-alert drops messages here
 PENDING_FILE = os.environ.get("NOVA_PENDING_FILE", _p("/var/lib/nova-api/pending.json"))   # written by nova-api (what waits for approval)
-LOCK_FILE   = os.environ.get("NOVA_ALERTS_LOCK", _p("/run/nova/alerts.lock") if WINDOWS else "/run/nova-alerts.lock")
+LOCK_FILE   = os.environ.get("NOVA_ALERTS_LOCK", _p("/run/nova/alerts.lock") if WINDOWS or MAC else "/run/nova-alerts.lock")
 
 API_CONFIG  = _p("/etc/nova-api/config.json")
 DOCTOR_FILE = f"{_DIR}/doctor.json"                # the check-up's last findings (run at most every 10 minutes)
@@ -946,16 +947,17 @@ class Monitor:
         minute = int(now() // 60)
         smart_due = not self.st["counters"].get("smart") or minute % 30 == 0
         web_due = minute % 5 == 0 or "websites" not in self.st.get("last_metrics", {})
-        steps = [] if WINDOWS else [
+        steps = [] if WINDOWS or MAC else [
             (self.check_last_boot, ()), (self.check_journal, ()), (self.check_docker_events, ()), (self.drain_spool, ()),
             (self.check_temps, ()), (self.check_load_mem, ()), (self.check_disks, ()),
             (self.check_drives, (smart_due,)), (self.check_services, ()),
             (self.check_public, (web_due,)), (self.check_backups, ()),
         ]
-        if WINDOWS:
-            import winmon
+        if WINDOWS or MAC:
+            if WINDOWS: import winmon as osmon
+            else: import macmon as osmon
             steps = []
-            for fn, name in winmon.steps(self, smart_due, web_due):
+            for fn, name in osmon.steps(self, smart_due, web_due):
                 try: fn.__name__ = name
                 except (AttributeError, TypeError): pass
                 steps.append((fn, ()))
@@ -998,7 +1000,7 @@ def main():
         sys.exit(cli_notify(args))
     if not _is_root():
         print("run as administrator" if WINDOWS else "run as root", file=sys.stderr); sys.exit(1)
-    if len(sys.argv) > 1 and sys.argv[1] == "loop":       # Windows: one long-running task instead of a timer — a pass every 20 s
+    if len(sys.argv) > 1 and sys.argv[1] == "loop":       # Windows and macOS: one long-running service instead of a timer — a pass every 20 s
         os.makedirs(os.path.dirname(STATE_FILE), exist_ok=True); os.makedirs(os.path.dirname(LOCK_FILE), exist_ok=True)
         while True:
             t0 = time.time()

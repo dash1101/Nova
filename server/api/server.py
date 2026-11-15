@@ -344,7 +344,7 @@ def audit(**kw):
         finally: os.close(fd)
     except Exception: pass
 
-HELPER_SOCK = "/run/nova-helper.sock"     # socket-activated helper outside this sandbox (if installed)
+HELPER_SOCK = "/run/nova-helper.sock" if plat.LINUX else plat.p("/run/nova/helper.sock")     # the root helper's socket: systemd's on Linux, helper-mac.py's on a Mac
 
 HELPER_WIN = plat.p("/run/nova/helper.json")   # Windows: the helper listens on this computer only; this file (readable by Nova's accounts) says where and holds its key
 
@@ -376,7 +376,7 @@ def helper(*args, timeout=120, data=b""):
         try: r = json.loads(buf); rc, so, se = r["rc"], r["stdout"], r["stderr"]
         except Exception: return 1, {"error": "helper failed"}
     else:
-        return 1, {"error": "the Nova helper service isn't running" + ("" if plat.WINDOWS else " (systemctl status nova-helper.socket)")}
+        return 1, {"error": "the Nova helper service isn't running" + (" (systemctl status nova-helper.socket)" if plat.LINUX else "")}
     try: return rc, json.loads(so or "{}")
     except Exception: return rc, {"error": (se or so)[:200]}
 
@@ -427,7 +427,8 @@ def chassis_type():
     if not _chassis:
         ct = 0
         try:
-            if plat.WINDOWS:
+            if plat.MAC: ct = {"laptop": 9, "mini": 35}.get(plat.host().look(), 3)      # (a Mac has no SMBIOS: its model name says what it is)
+            elif plat.WINDOWS:
                 r = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", "(Get-CimInstance Win32_SystemEnclosure).ChassisTypes[0]"],
                                    capture_output=True, text=True, timeout=20, creationflags=0x08000000)
                 ct = int((r.stdout or "0").strip() or 0)
@@ -439,7 +440,7 @@ def chassis_type():
 def detected_look():
     """What the home picture shows until someone picks: from the firmware's chassis type (SMBIOS), else a tower."""
     try:                                                       # a board with no SMBIOS (a Raspberry Pi and the like): its device tree says so
-        if not plat.WINDOWS and not os.path.exists("/sys/class/dmi/id/chassis_type") and any(os.path.exists(p) for p in ("/proc/device-tree/model", "/sys/firmware/devicetree/base/model")): return "sbc"
+        if plat.LINUX and not os.path.exists("/sys/class/dmi/id/chassis_type") and any(os.path.exists(p) for p in ("/proc/device-tree/model", "/sys/firmware/devicetree/base/model")): return "sbc"
     except OSError: pass
     ct = chassis_type()
     if ct in (8, 9, 10, 14, 31, 32): return "laptop"          # portable, laptop, notebook, sub-notebook, convertible, detachable
@@ -583,8 +584,10 @@ def _gpu():
 
 def _cpu_temp(): return _hwmon("k10temp")
 
-if plat.WINDOWS:                       # the same numbers, read the Windows way (winhost.py)
-    from winhost import _hwmon, _cpu_times, _core_times, _default_iface, _net, _disks, _gpu, _cpu_temp  # noqa: E402,F811
+if not plat.LINUX:                     # the same numbers, read the Windows way (winhost.py) or the Mac's (machost.py)
+    _h = plat.host()
+    _hwmon, _cpu_times, _core_times, _default_iface, _net, _disks, _gpu, _cpu_temp = (  # noqa: F811
+        _h._hwmon, _h._cpu_times, _h._core_times, _h._default_iface, _h._net, _h._disks, _h._gpu, _h._cpu_temp)
 
 def stats_sampler():
     iface = _default_iface()
@@ -764,7 +767,7 @@ def _brain_facts():
     except Exception: cs = []
     run = [c.get("name") for c in cs if c.get("state") == "running"]; off = [c.get("name") for c in cs if c.get("state") != "running"]
     return ("Server facts:\n" + "\n".join("- " + x for x in [
-            f"Nova (this app and server software) version {API_VERSION}", f"server name {socket.gethostname()}, {osn}, {'' if plat.WINDOWS else 'Linux '}kernel {plat.kernel()}, up {upt}",
+            f"Nova (this app and server software) version {API_VERSION}", f"server name {socket.gethostname()}, {osn}, {'Linux ' if plat.LINUX else ''}kernel {plat.kernel()}, up {upt}",
             f"CPU {cpu} ({os.cpu_count()} threads), load {la[0]:.1f} / {la[1]:.1f} / {la[2]:.1f} (1/5/15 min)" + (f", {temp}" if temp else ""), mem,
             f"system drive {du.free / 1e9:.0f} GB free of {du.total / 1e9:.0f} GB", "alerts: " + (", ".join(alerts) if alerts else "none"),
             f"containers running ({len(run)}): " + ", ".join(run[:40]), "containers stopped: " + (", ".join(off[:20]) or "none")] if x))
@@ -2639,7 +2642,8 @@ class Handler(BaseHTTPRequestHandler):
                 if f.startswith("ssh_host_") and f.endswith("_key.pub"):
                     try: keys.append(" ".join(open(f"/etc/ssh/{f}").read().split()[:2]))
                     except OSError: pass
-            return 200, {"keys": keys, "user": SSH_USER, "hosts": SSH_HOSTS, "why": "" if keys else "SSH isn't installed on the server — install it there: sudo apt install openssh-server"}
+            return 200, {"keys": keys, "user": SSH_USER, "hosts": SSH_HOSTS, "why": "" if keys else "Turn on Remote Login on the Mac: System Settings → General → Sharing → Remote Login" if plat.MAC
+                         else "SSH isn't installed on the server — install it there: sudo apt install openssh-server"}
 
         # ── jobs ──
         if method == "GET" and parts == ["jobs"]:

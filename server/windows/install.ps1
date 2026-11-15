@@ -131,7 +131,7 @@ foreach ($d in 'config', 'config\alerts', 'data', 'alerts', 'alerts\www', 'log',
 & icacls (Join-Path $Data 'log')    /grant "${SERVICE}:(OI)(CI)M"  | Out-Null
 & icacls (Join-Path $Data 'alerts\www') /grant "${SERVICE}:(OI)(CI)RX" "*S-1-5-32-545:(OI)(CI)RX" | Out-Null   # status and Inbox, written by the monitor: readable by everyone here, as on Linux (hub apps such as Orbit read status.json)
 & icacls (Join-Path $Data 'run')    /grant "${SERVICE}:(OI)(CI)RX" | Out-Null          # where the helper listens, and its key
-$r = & $Py (Join-Path $Lib 'winsetup.py'); if ($LASTEXITCODE -ne 0) { Die "Couldn't write the settings: $r" }
+$r = & $Py (Join-Path $Lib 'autosetup.py'); if ($LASTEXITCODE -ne 0) { Die "Couldn't write the settings: $r" }
 $cfg = Get-Content (Join-Path $Data 'config\config.json') -Raw | ConvertFrom-Json
 Say "home-network address $($cfg.lan_host)"
 if ($cfg.tailnet_host) { Say "Tailscale address    $($cfg.tailnet_host)" }
@@ -142,7 +142,7 @@ $set = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnB
         -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1) -MultipleInstances IgnoreNew
 $boot = New-ScheduledTaskTrigger -AtStartup
 function Add-NovaTask($name, $part, $user, $about) {
-    $act = New-ScheduledTaskAction -Execute $Py -Argument "`"$(Join-Path $Lib 'winrun.py')`" $part" -WorkingDirectory $Lib
+    $act = New-ScheduledTaskAction -Execute $Py -Argument "`"$(Join-Path $Lib 'runpart.py')`" $part" -WorkingDirectory $Lib
     $who = if ($user -eq 'SYSTEM') { New-ScheduledTaskPrincipal -UserId 'S-1-5-18' -LogonType ServiceAccount -RunLevel Highest }
            else { New-ScheduledTaskPrincipal -UserId 'S-1-5-19' -LogonType ServiceAccount }
     Register-ScheduledTask -TaskPath '\Nova\' -TaskName $name -Action $act -Trigger $boot -Principal $who -Settings $set -Description $about -Force | Out-Null

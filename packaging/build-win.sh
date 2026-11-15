@@ -8,8 +8,8 @@ VER="${VERSION:-$(grep -oP 'API_VERSION = "\K[^"]+' "$S/api/server.py")}"
 T="$(mktemp -d)"; trap 'rm -rf "$T"' EXIT
 N="$T/Nova"; mkdir -p "$N/api" "$N/monitor" "$N/web" "$N/windows" "$D"
 # what a Windows server runs (the Linux-only tools — storage, backups, apt, setup — stay out until they work there)
-for f in server.py helper.py helper-win.py plat.py winhost.py winrun.py winsetup.py safeio.py nodes.py totp.py passkeys.py plugins.py nova_tz.py guides.py qrgen.py \
-         nova nova-gui assistant.py assistant_examples.json brain.py gate.py apkver.py tasks.py installs.py updates.py pkg.py recommend.py winupdate.py; do
+for f in server.py helper.py helper-win.py plat.py winhost.py runpart.py autosetup.py safeio.py nodes.py totp.py passkeys.py plugins.py nova_tz.py guides.py qrgen.py \
+         nova nova-gui assistant.py assistant_examples.json brain.py gate.py apkver.py tasks.py installs.py updates.py pkg.py recommend.py selfupdate.py; do
   [ -f "$S/api/$f" ] && cp "$S/api/$f" "$N/api/"
 done
 cp "$ROOT/packaging/release-key.pub" "$N/api/release-key.pub"     # so updates from the Nova Server window / nova update can be checked

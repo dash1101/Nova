@@ -2,7 +2,7 @@
 Short guides for `nova help TOPIC` (and `?` during `sudo nova setup`), and the checks behind `sudo nova doctor`.
 Plain words, the commands to type, and where to look next. Kept here so the CLI, the setup and the docs say the same.
 """
-import json, os, re, shutil, socket, subprocess
+import json, os, re, shutil, socket, subprocess, sys
 
 GUIDES = {
     "start": ("Getting started", """
@@ -157,6 +157,9 @@ def doctor():
     if os.name == "nt":                                    # Windows has its own checks (tasks instead of systemd units, its own firewall)
         import winhost
         return winhost.doctor()
+    if sys.platform == "darwin":                           # …and so does a Mac (launchd services)
+        import machost
+        return machost.doctor()
     out = []
     add = lambda lv, t, fix="": out.append({"level": lv, "title": t, "fix": fix})
     try: cfg = json.load(open("/etc/nova-api/config.json"))
