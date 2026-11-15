@@ -44,6 +44,7 @@ print("\nUpdating Nova from the app")
 before = ping(); check("Nova is running", bool(before), before)
 rc, r = helper("update-check"); check("looking for an update works", rc == 0 and r.get("ok"), (rc, r)); print("     ", r.get("message"))
 rc, r = helper("update-status"); check("…and the app is told what's installed", rc == 0 and r.get("installed") == before, (rc, r))
+t0 = time.time()
 rc, r = helper("update-start"); check("the update starts", rc == 0 and r.get("ok"), (rc, r))
 seen = []; end = time.time() + 480; st = {}
 while time.time() < end:
@@ -53,7 +54,9 @@ while time.time() < end:
     if not seen or seen[-1] != s: seen.append(s); print("      state:", s, flush=True)
     if rc == 0 and st.get("state") in ("current", "failed") and not st.get("running"): break
 check("it went through: downloaded, verified against the release key, installed", st.get("state") == "current", (seen, st))
-check("…it really was installing in between", "installing" in seen or "(helper restarting)" in seen, seen)
+try: written = os.path.getmtime(os.path.join(LIB, "VERSION"))
+except OSError: written = 0
+check("…and Nova's files really were written again (not just reported)", written > t0 - 2, (written, t0, seen))
 for _ in range(30):
     if ping(): break
     time.sleep(2)
