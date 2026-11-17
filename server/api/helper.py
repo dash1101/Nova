@@ -628,9 +628,10 @@ if verb == "notify-revoked" and len(args) == 1 and args[0].isdigit():
 NOTIFY_KEYS = {"push_min_level": ("info", "warning", "critical"), "push_logins": bool, "push_usb": bool,
                "discord_paused": bool}
 if verb == "get-notify" and not args:
-    c = load_json(plat.p("/etc/nova-alerts/config.json"), {})
-    out({k: c.get(k, {"push_min_level": "info", "push_logins": True, "push_usb": True, "discord_paused": False}[k])
-         for k in NOTIFY_KEYS})
+    c = load_json(plat.p("/etc/nova-alerts/config.json"), {}); th = c.get("thresholds") or {}
+    out({**{k: c.get(k, {"push_min_level": "info", "push_logins": True, "push_usb": True, "discord_paused": False}[k])
+            for k in NOTIFY_KEYS},
+         "cpu_temp_warn": th.get("cpu_temp_warn", 85), "cpu_temp_crit": th.get("cpu_temp_crit", 95)})
 if verb == "set-notify" and len(args) == 2:
     k, v = args
     if k not in NOTIFY_KEYS: fail("unknown setting", 2)

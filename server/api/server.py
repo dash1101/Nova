@@ -47,7 +47,7 @@ def lights_ready():
     (sudo nova lighting makes /var/lib/nova-rgb) or OpenRGB is on in Labs — not on a server without that hardware."""
     return nova_rgb is not None and (os.path.isdir("/var/lib/nova-rgb") or bool(load_json(SETTINGS, {}).get("labs", {}).get("openrgb")))
 
-API_VERSION = "1.0.0-beta.1"
+API_VERSION = "1.0.0-beta.2"
 # The API contract (docs/API.md). API_LEVEL only ever goes up: each new level adds endpoints or fields, never removes or
 # changes one. MIN_LEVEL is the oldest level this server still answers in full (old apps keep working back to it).
 # MIN_CLIENT: the oldest app builds still served, per platform — 0 = all of them. Raising it is the last resort, after
@@ -94,8 +94,9 @@ WOL = f"{DATA}/wol.json"                         # Labs → Wake-on-LAN: [{id, n
 LABS_STATE = f"{DATA}/labs-state.json"           # written by labs.py (root): last weekly update, …
 RAW_BODY_PATHS = ("/api/v1/files/upload", "/api/v1/files/save", "/api/v1/assistant/hear")
 FILE_UNLOCK = {}          # browser device id → until when it may change files (after a phone approved it)
+TEMPS = tuple(range(50, 111))                # °C a CPU warning can be set to (Settings → Notifications → CPU temperature)
 NOTIFY_KEYS = {"push_min_level": ("info", "warning", "critical"), "push_logins": bool, "push_usb": bool,
-               "discord_paused": bool}
+               "discord_paused": bool, "cpu_temp_warn": TEMPS, "cpu_temp_crit": TEMPS}
 EVENTS = plat.p("/var/lib/nova-alerts/www/events.json")
 APK_DIR = f"{DATA}/apk"
 CRASH_DIR = plat.p("/var/log/nova-api/crash")
@@ -2076,8 +2077,12 @@ class Handler(BaseHTTPRequestHandler):
                     allowed = NOTIFY_KEYS.get(k)
                     if allowed is None: raise ValueError(f"unknown setting {k}")
                     if allowed is bool and not isinstance(v, bool): raise ValueError(f"{k} must be true/false")
-                    if isinstance(allowed, tuple) and v not in allowed: raise ValueError(f"{k} must be one of {', '.join(allowed)}")
+                    if allowed is TEMPS and (isinstance(v, bool) or v not in TEMPS): raise ValueError(f"pick a temperature between {TEMPS[0]} and {TEMPS[-1]} °C")
+                    if isinstance(allowed, tuple) and v not in allowed: raise ValueError(f"{k} must be one of {', '.join(map(str, allowed))}")
                     app[k] = v
+                now = {**(base if rc == 0 else {}), **app}
+                if now.get("cpu_temp_warn", 85) >= now.get("cpu_temp_crit", 95):
+                    raise ValueError("the warning has to be below the critical temperature")
                 with lock: save_json(NOTIFY_FILE, app)
             return 200, {**(base if rc == 0 else {}), **app}
 

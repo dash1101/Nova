@@ -180,6 +180,7 @@ import java.util.*
     }
     val levels = listOf("info" to "Everything", "warning" to "Warnings and critical", "critical" to "Critical only")
     var levelDialog by remember { mutableStateOf(false) }
+    var tempDialog by remember { mutableStateOf("") }               // "cpu_temp_warn" or "cpu_temp_crit" while picking
     val discord = if (app.isAdmin) live(app, "/api/v1/notify/discord") else remember { mutableStateOf<JSONObject?>(null) }
     var discordDialog by remember { mutableStateOf(false) }
     if (discordDialog) {
@@ -245,11 +246,31 @@ import java.util.*
                 RowDivider()
                 SwitchRow("USB devices", "Plugged in or unplugged", s.optBoolean("push_usb")) { set("push_usb", it) }
             }
+            if (s.has("cpu_temp_warn")) {                                    // (servers before 1.0.0-beta.2 don't have it)
+                SectionLabel("CPU temperature")
+                Group {
+                    Row1("Warn at", "${s.optInt("cpu_temp_warn")} °C", true, onClick = { tempDialog = "cpu_temp_warn" })
+                    RowDivider()
+                    Row1("Critical at", "${s.optInt("cpu_temp_crit")} °C", true, onClick = { tempDialog = "cpu_temp_crit" })
+                }
+                Text("An alert comes when the CPU stays at or above the warning; at the critical temperature it turns red. Most desktop CPUs are fine up to about 90–95 °C.",
+                    color = N.sub, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 30.dp, vertical = 4.dp))
+            }
         }
         LinksCard(listOf("Inbox" to { app.go(Route.Inbox) }, "Phone notification settings" to {
             app.activity.startActivity(if (android.os.Build.VERSION.SDK_INT >= 26) android.content.Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS)
                 .putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, app.activity.packageName)
                 else android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, android.net.Uri.parse("package:${app.activity.packageName}"))) }))
+    }
+    if (tempDialog.isNotEmpty()) {
+        val warn = tempDialog == "cpu_temp_warn"; val cur = s?.optInt(tempDialog) ?: 0
+        OneDialog({ tempDialog = "" }, if (warn) "Warn when the CPU reaches" else "Critical when the CPU reaches", buttons = listOf(DialogButton("Cancel") { tempDialog = "" })) {
+            Column(Modifier.heightIn(max = 420.dp).verticalScroll(androidx.compose.foundation.rememberScrollState())) {
+                (50..110 step 5).filter { if (warn) it < (s?.optInt("cpu_temp_crit") ?: 95) else it > (s?.optInt("cpu_temp_warn") ?: 85) }.forEach { t ->
+                    DialogChoice("$t °C", null, cur == t) { val k = tempDialog; tempDialog = ""; set(k, t) }
+                }
+            }
+        }
     }
     if (levelDialog) OneDialog({ levelDialog = false }, "Send to Discord", buttons = listOf(DialogButton("Cancel") { levelDialog = false })) {
         levels.forEach { (k, label) -> DialogChoice(label, null, s?.optString("push_min_level") == k) { levelDialog = false; set("push_min_level", k) } }

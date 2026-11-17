@@ -1126,7 +1126,10 @@ export async function notify(ctx) {
       ${s ? `${sec("Discord")}${group((isAdmin() ? row(S.cache["/api/v1/notify/discord"]?.configured ? "Discord channel" : "Set up Discord", { sub: S.cache["/api/v1/notify/discord"]?.configured ? `Sending to ${S.cache["/api/v1/notify/discord"].hint} · click to change or test` : "Get alerts in a Discord channel too — paste its webhook link", blue: !!S.cache["/api/v1/notify/discord"]?.configured, icon: "bell", tint: "#5865f2", click: "discord" }) : "")
           + switchRow("Discord pings", s.discord_paused ? "Paused — alerts still show in the Inbox" : "On", !s.discord_paused, "set:discord_paused")
           + row("Send to Discord", { sub: (LV.find(l => l[0] === s.push_min_level) || [0, "—"])[1], blue: true, click: "level" }))}
-        ${sec("What counts")}${group(switchRow("Logins", "Someone signs in to the server", s.push_logins, "set:push_logins", { blue: false }) + switchRow("USB devices", "Plugged in or unplugged", s.push_usb, "set:push_usb", { blue: false }))}` : note("Loading…")}
+        ${sec("What counts")}${group(switchRow("Logins", "Someone signs in to the server", s.push_logins, "set:push_logins", { blue: false }) + switchRow("USB devices", "Plugged in or unplugged", s.push_usb, "set:push_usb", { blue: false }))}
+        ${s.cpu_temp_warn != null ? sec("CPU temperature") + group(row("Warn at", { sub: `${s.cpu_temp_warn} °C`, blue: true, click: "temp:cpu_temp_warn" })
+          + row("Critical at", { sub: `${s.cpu_temp_crit} °C`, blue: true, click: "temp:cpu_temp_crit" }))
+          + note("An alert comes when the CPU stays at or above the warning; at the critical temperature it turns red. Most desktop CPUs are fine up to about 90–95 °C.") : ""}` : note("Loading…")}
       ${links([["Inbox", "go:inbox"]])}`, { title: "Notifications" });
   };
   ctx.handlers({ bnotify: async () => { await toggleBrowserNotify(); draw(); }, blevel: async () => { const v = await choose("Pop up on this computer", [["info", "Everything"], ["warning", "Warnings and critical"], ["critical", "Critical only"]], bLevel()); if (v) { prefs.browserNotifyLevel = v; draw(); } } });
@@ -1152,6 +1155,12 @@ export async function notify(ctx) {
   ctx.handlers({ discord: () => discordSetup(), 
     set: k => { const s = S.cache["/api/v1/notify"]; save(k, k === "discord_paused" ? !s.discord_paused : !s[k]); },
     level: async () => { const v = await choose("Send to Discord", LV.map(([k, l]) => [k, l]), S.cache["/api/v1/notify"]?.push_min_level); if (v) save("push_min_level", v); },
+    temp: async k => {
+      const s = S.cache["/api/v1/notify"], warn = k === "cpu_temp_warn";
+      const opts = []; for (let t = 50; t <= 110; t += 5) if (warn ? t < s.cpu_temp_crit : t > s.cpu_temp_warn) opts.push([String(t), `${t} °C`]);
+      const v = await choose(warn ? "Warn when the CPU reaches" : "Critical when the CPU reaches", opts, String(s[k]));
+      if (v) save(k, Number(v));
+    },
   });
   draw(); try { await Promise.all([get("/api/v1/notify"), isAdmin() ? get("/api/v1/notify/discord").catch(() => {}) : null]); if (ctx.alive()) draw(); } catch (e) { toast(e.message); }
 }

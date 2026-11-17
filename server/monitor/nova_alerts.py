@@ -46,7 +46,7 @@ if not WINDOWS: import fcntl
 CONFIG_FILE = os.environ.get("NOVA_ALERTS_CONFIG", _p("/etc/nova-alerts/config.json"))
 APP_NOTIFY_FILE = _p("/var/lib/nova-api/notify.json")   # notification choices made in the Nova app (allowlisted keys only)
 APP_NOTIFY_KEYS = {"push_min_level": ("info", "warning", "critical"), "push_logins": bool, "push_usb": bool,
-                   "discord_paused": bool}
+                   "discord_paused": bool, "cpu_temp_warn": tuple(range(50, 111)), "cpu_temp_crit": tuple(range(50, 111))}
 _DIR = os.environ.get("NOVA_ALERTS_DIR", _p("/var/lib/nova-alerts"))      # (overridable for testing)
 STATE_FILE  = f"{_DIR}/state.json"
 STATUS_FILE = f"{_DIR}/www/status.json"
@@ -384,8 +384,10 @@ class Monitor:
         cfg = load_json(CONFIG_FILE, {})
         for k, v in load_json(APP_NOTIFY_FILE, {}).items():      # app settings win; anything else is ignored
             ok = APP_NOTIFY_KEYS.get(k)
-            if (ok is bool and isinstance(v, bool)) or (isinstance(ok, tuple) and v in ok): cfg[k] = v
+            if (ok is bool and isinstance(v, bool)) or (isinstance(ok, tuple) and not isinstance(v, bool) and v in ok): cfg[k] = v
         self.cfg = {**DEFAULTS, **cfg, "thresholds": {**DEFAULTS["thresholds"], **cfg.get("thresholds", {})}}
+        for k in ("cpu_temp_warn", "cpu_temp_crit"):                # CPU temperature, as chosen in the app
+            if k in cfg: self.cfg["thresholds"][k] = cfg[k]
         self.st = load_json(STATE_FILE, {})
         self.st.setdefault("conditions", {})   # key -> {level,title,detail,since,last_push}
         self.st.setdefault("recent", [])       # newest first

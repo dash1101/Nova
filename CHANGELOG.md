@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.0-beta.2 (server and apps)
+- **Choose when the CPU temperature warns you.** Notifications → CPU temperature (in the app and Nova web) sets the
+  warning (85 °C until now) and the critical level (95 °C), from 50 to 110 °C. The warning has to stay below the
+  critical level. An older app simply doesn't show it.
+
 ## 1.0.0-beta.1 (server and apps)
 The first beta of 1.0. Nothing new to learn in this one — it is about being able to trust what's already there, and
 about how releases reach you from here on. 1.0 is Linux servers, the Android app and Nova web; the server on Windows
