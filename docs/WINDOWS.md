@@ -51,6 +51,7 @@ for approval, `setup`, `ports`, `urls` and the check-up's findings (`doctor`); `
 | Stopped services (OpenSSH, Docker, Tailscale, cloudflared), Windows needing a restart for updates | ✅ | |
 | Task manager: processes, end / force stop | ✅ | Windows' own processes are protected |
 | Power: restart, shut down, schedule either, restart or stop Nova, keep awake | ✅ | schedules are one-time tasks in Task Scheduler; keep awake holds Windows' "system required" request |
+| CPU power: plans, power and temperature limits | ❌ | Linux only for now |
 | Drives list with space and health | ✅ | |
 | Containers (Docker Desktop): list, start / stop / restart, logs, details | ✅ | untested with running containers in CI — the test machines have none |
 | `nova` command: add, approve, devices, remove, status, doctor, log, alert, link, plugin | ✅ | run from an administrator terminal |

@@ -145,7 +145,11 @@ private fun settingsFor(id: String): Route? = when {
     LaunchedEffect(app.isAdmin) { if (app.isAdmin) awake = loadAwake(app) }
     var cpu by remember { mutableStateOf<org.json.JSONObject?>(null) }; var cpuAsk by remember { mutableStateOf("") }
     LaunchedEffect(app.isAdmin) {                                       // CPU power: refreshed while the panel is open
-        while (app.isAdmin) { cpu = runCatching { app.api.get("/api/v1/power/cpu") }.getOrNull()?.takeIf { it.optBoolean("supported", true) } ?: cpu; kotlinx.coroutines.delay(3_000) }
+        while (app.isAdmin) {
+            val r = runCatching { app.api.get("/api/v1/power/cpu") }.getOrNull()?.takeIf { it.optBoolean("supported", true) }
+            if (r == null && cpu == null) break                         // (older Nova, or a server without it: no section, no more asking)
+            cpu = r ?: cpu; kotlinx.coroutines.delay(3_000)
+        }
     }
     var confirm by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf<String?>(null) }

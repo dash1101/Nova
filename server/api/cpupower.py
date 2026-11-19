@@ -17,7 +17,9 @@ works on any processor with cpufreq. The plan uses whatever the driver offers (e
     cpupower.py status     what it's doing now, as JSON
 
 Settings: /etc/nova-api/cpu-power.json (written by Nova's helper); live state: /run/nova-cpupower.json.
-When the service stops, the processor gets its full range back (the plan stays as it was set).
+Until something is set here, it only measures: the processor keeps whatever settings it had. When the service stops,
+the processor gets its full clock range back (the plan stays as it was set). In a container it does nothing: /sys there
+may be the host's.
 """
 import glob, json, os, signal, sys, time
 
@@ -50,9 +52,16 @@ def settings():
 
 def policies(): return sorted(glob.glob(f"{CPU}/cpufreq/policy[0-9]*"))
 
+def in_container():
+    return os.path.exists("/.dockerenv") or os.path.exists("/run/.containerenv") or bool(read("/run/systemd/container"))
+
+def mtime():
+    try: return os.path.getmtime(SETTINGS)
+    except OSError: return 0
+
 def hw():
     """What this machine offers: clock range, the energy preference, boost, the energy counter, a CPU temperature."""
-    pol = policies()
+    pol = [] if in_container() else policies()
     out = {"cpufreq": bool(pol)}
     if pol:
         out["min_khz"] = int(read(f"{pol[0]}/cpuinfo_min_freq", "0") or 0)
@@ -111,15 +120,18 @@ def run():
     def bye(*_): stop["now"] = True
     signal.signal(signal.SIGTERM, bye); signal.signal(signal.SIGINT, bye)
 
-    mtime = None; s = settings(); top = h["max_khz"]; cap = top
+    seen = None; s = settings(); top = h["max_khz"]; cap = top; owned = False
     floor = max(h["min_khz"], 1_000_000) if h["min_khz"] else 1_000_000
     e_last = t_last = None; temps = []
     while not stop["now"]:
-        m = os.path.getmtime(SETTINGS) if os.path.exists(SETTINGS) else 0
-        if m != mtime:                                             # settings changed (or the first look)
-            mtime = m; s = settings(); apply_plan(s["plan"], h); time.sleep(0.3)
-            top = top_khz(h); cap = top; set_cap(cap)
-            print(f"cpupower: plan {s['plan']}, power limit {s['watts'] or 'none'}, temperature limit {s['temp'] or 'none'}", flush=True)
+        m = mtime()
+        if m != seen:                                              # settings changed (or the first look)
+            seen = m; s = settings()
+            if m:                                                  # (never set: leave the processor as it is, only measure)
+                owned = True; apply_plan(s["plan"], h); time.sleep(0.3)
+                top = top_khz(h); cap = top; set_cap(cap)
+                print(f"cpupower: plan {s['plan']}, power limit {s['watts'] or 'none'}, temperature limit {s['temp'] or 'none'}", flush=True)
+            else: print("cpupower: nothing set yet: only measuring", flush=True)
         # what the package draws (energy counter, µJ, wraps around) and the CPU temperature (smoothed: it jumps about)
         watts = None
         if h["energy"]:
@@ -146,7 +158,7 @@ def run():
             new = max(floor, cap - int(100_000 + 400_000 * min(excess, 1)))
         elif under and cap < top:
             new = min(top, cap + 100_000)
-        if new != cap: cap = new; set_cap(cap)
+        if new != cap and owned: cap = new; set_cap(cap)
         limiting = ("temperature" if over_t else "power" if over_w else "") if (over_t or over_w) else ("held" if cap < top else "")
         st = {"at": time.time(), "now_watts": round(watts, 1) if watts is not None else None, "now_temp": round(temp) if temp is not None else None,
               "now_mhz": cur_mhz(), "cap_mhz": round(cap / 1000), "top_mhz": round(top / 1000), "limiting": limiting}
@@ -156,8 +168,8 @@ def run():
             os.chmod(tmp, 0o644); os.replace(tmp, STATE)
         except OSError: pass
         time.sleep(EVERY)
-    set_cap(top_khz(h))                                            # stopping: the full range back
-    print("cpupower: stopped, full clock range back", flush=True)
+    if owned: set_cap(top_khz(h))                                  # stopping: the full range back
+    print("cpupower: stopped" + (", full clock range back" if owned else ""), flush=True)
 
 if __name__ == "__main__":
     if sys.argv[1:] == ["run"]: run()

@@ -56,6 +56,7 @@ exit with 0 or 1, and end with one line to parse, the same as on Windows:
 | Low space, failing drives (S.M.A.R.T. status), high load, low memory | ✅ | |
 | Task manager: processes, end / force stop | ✅ | macOS's own processes are protected |
 | Power: restart, shut down, schedule either, restart or stop Nova, keep awake | ✅ | keep awake is macOS's `caffeinate`; schedules are carried out by Nova's helper |
+| CPU power: plans, power and temperature limits | ❌ | Linux only for now |
 | Drives list with space and health | ✅ | |
 | The server terminal and the file manager (as your own account, never root) | ✅ | folders macOS protects (Desktop, Documents, Downloads) need Full Disk Access for Nova's Python; deleted files go to `~/.local/share/Trash` |
 | The app's Terminal (SSH) | ✅ | turn on **Remote Login** (System Settings → General → Sharing); the app adds its key for you after your fingerprint |

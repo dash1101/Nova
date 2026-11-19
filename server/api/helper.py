@@ -895,6 +895,7 @@ if verb == "cpu-power-set" and len(args) == 3:
     if not (w.isdigit() and (int(w) == 0 or 10 <= int(w) <= 250)): fail("power limit: 10 to 250 W, or 0 for none", 2)
     if not (t.isdigit() and (int(t) == 0 or 60 <= int(t) <= 95)): fail("temperature limit: 60 to 95 °C, or 0 for none", 2)
     before = cpupower.settings(); new = {"plan": plan, "watts": int(w), "temp": int(t)}
+    os.makedirs(os.path.dirname(cpupower.SETTINGS), mode=0o750, exist_ok=True)
     tmp = cpupower.SETTINGS + ".tmp"
     with open(tmp, "w") as f: json.dump(new, f)
     os.chmod(tmp, 0o644); os.replace(tmp, cpupower.SETTINGS)

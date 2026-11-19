@@ -1,6 +1,8 @@
 [Unit]
 Description=Nova — CPU power plan and its power and temperature limits (Power → CPU power in the app)
 After=multi-user.target
+# (in a container /sys may be the host's: never change it from there)
+ConditionVirtualization=!container
 
 [Service]
 # Root: it sets the processor's clock limits in /sys. It reads its settings and writes one status file, nothing else.

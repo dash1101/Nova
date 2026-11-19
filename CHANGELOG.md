@@ -4,15 +4,15 @@
 - **CPU power: run the server cooler when you want to.** Quick panel → CPU power (app and Nova web) has three
   controls, held by the server from then on, through restarts:
   - **Power plan:** Full speed (boost on, as before), Balanced (boost on, leaning toward saving power) or Cool and
-    quiet (no boost). On a Ryzen 5 8500G under a six-core load, Balanced ran at 62 °C and 33 W where Full speed
-    reached 82 °C.
+    quiet (no boost).
   - **Power limit:** 15 to 95 W, or none.
   - **Temperature limit:** 70 to 90 °C, or none.
   Most processors, AMD desktop ones included, don't let Linux set a power limit directly. So Nova holds the limits
   itself: it measures what the processor package draws every two seconds and lowers the top clock until it's
-  under, then raises it again when there's room. A "Right now" line shows the watts, temperature and clock, and
-  when a limit is slowing it down. A new service, nova-cpupower, does this. With no limits set it only reports,
-  and the processor keeps its full range when the service stops.
+  under, then raises it again when there's room. On a Ryzen 5 8500G under load, a 55 °C test limit brought the top
+  clock from 5.1 to about 3 GHz in 20 seconds and held the temperature there. A "Right now" line shows the watts,
+  temperature and clock, and when a limit is slowing it down. A new service, nova-cpupower, does this (Linux only).
+  Until you set something it only measures, and the processor gets its full range back when the service stops.
 - **The CPU temperature alert no longer comes and goes every minute.** Once it's hot, it stays one alert until the
   CPU is 5 °C under the warning level. Before, a CPU hovering at the line sent "hot" and "resolved" again and again.
   The alert now also says where to find the new controls.
