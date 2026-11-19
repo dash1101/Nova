@@ -3,9 +3,9 @@ name: linux
 # person would (packaging/linux_test.py) and runs the full security test (packaging/pentest.py) against it.
 on:
   push:
-    paths: ['server/**', 'packaging/**', '.github/workflows/linux.yml']
+    paths: ['server/**', 'packaging/**', 'get.sh', '.github/workflows/linux.yml']
   pull_request:
-    paths: ['server/**', 'packaging/**', '.github/workflows/linux.yml']
+    paths: ['server/**', 'packaging/**', 'get.sh', '.github/workflows/linux.yml']
   workflow_dispatch:
     inputs:
       released:
