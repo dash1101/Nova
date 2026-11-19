@@ -66,7 +66,9 @@ case "$F" in
     tar -xzf "$T/$F" -C "$T"
     $SUDO sh "$T/Nova/mac/install.sh" "$@"
     exit 0 ;;                                               # (its installer says what's next)
-  *.deb) $SUDO apt-get install -y "$T/$F" ;;
+  *.deb) say "Refreshing the package lists…"          # (stale lists point at versions the mirror no longer has: 404)
+         $SUDO apt-get update -qq || say "  (couldn't refresh them; trying with the ones it has)"
+         $SUDO apt-get install -y "$T/$F" ;;
   *)     if [ -r /dev/tty ]; then $SUDO sh "$T/$F" </dev/tty; else $SUDO sh "$T/$F"; fi ;;
 esac
 printf '\n  \033[1mNova is installed.\033[0m Next:  sudo nova setup   (or: sudo nova setup --gui for the setup in a browser)\n\n'

@@ -16,6 +16,8 @@
 - **The CPU temperature alert no longer comes and goes every minute.** Once it's hot, it stays one alert until the
   CPU is 5 °C under the warning level. Before, a CPU hovering at the line sent "hot" and "resolved" again and again.
   The alert now also says where to find the new controls.
+- **The one-line installer refreshes the package lists first.** On a machine whose lists were out of date, installing
+  Nova's dependencies could fail with "404 Not Found".
 
 ## 1.0.0-beta.2 (server and apps)
 - **Choose when the CPU temperature warns you.** Notifications → CPU temperature (in the app and Nova web) sets the
