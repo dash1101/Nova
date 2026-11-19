@@ -343,7 +343,7 @@ def status_info():
     if WIN: parts = [{"name": "Nova " + t, "state": plat.host().task_state(t)} for t in ("Api", "Helper", "Alerts")]
     elif MAC: parts = [{"name": "Nova " + t, "state": plat.host().service_state(t)} for t in plat.host().PARTS]
     else:
-        for u in ("nova-api", "nova-helper.socket", "nova-alerts.timer", "nova-backups.timer", "nova-update-check.timer", "nova-rgb-anim", "nova-rgb-tick.timer"):
+        for u in ("nova-api", "nova-helper.socket", "nova-alerts.timer", "nova-backups.timer", "nova-update-check.timer", "nova-rgb-anim", "nova-rgb-tick.timer", "nova-cpupower"):
             st = subprocess.run(["systemctl", "is-active", u], capture_output=True, text=True).stdout.strip()
             if st != "inactive" or u.startswith("nova-api"): parts.append({"name": u, "state": st})
     tail = None

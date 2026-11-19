@@ -100,9 +100,9 @@ SYSTEM_DRIVE = (os.environ.get("SystemDrive") or "C:") + "\\" if WINDOWS else "/
 # Parts of Nova a Windows or Mac server doesn't have yet. They're reported in overview.features, so the apps hide those
 # pages instead of showing errors. Remove a line here when the part works there (docs/WINDOWS.md and docs/MACOS.md have the lists).
 WITHOUT = ({"terminal": False, "files": False, "store": False, "backup": False, "storage": False, "diagnostics": False, "diag": False,
-            "lighting": False, "lighting_installed": False, "ssh": False, "updates": False, "programs": False, "freeup": False} if WINDOWS else
+            "lighting": False, "lighting_installed": False, "ssh": False, "updates": False, "programs": False, "freeup": False, "cpu_power": False} if WINDOWS else
            {"store": False, "backup": False, "storage": False, "diagnostics": False, "diag": False,
-            "lighting": False, "lighting_installed": False, "updates": False, "programs": False, "freeup": False} if MAC else {})
+            "lighting": False, "lighting_installed": False, "updates": False, "programs": False, "freeup": False, "cpu_power": False} if MAC else {})
 # (Windows: updates, programs and the store come back on where winget is, and SSH where OpenSSH Server is: server.py's win_extras())
 
 def strftime(fmt, t=None):

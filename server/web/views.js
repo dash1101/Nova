@@ -121,6 +121,32 @@ function ignoredHtml() {
     <div class="xb">${l.map(a => row(cleanTitle(a.title), { sub: [a.detail, a.since && "since " + a.since, a.ignored && "ignored " + a.ignored].filter(Boolean).join(" · "), icon: "warn", tint: levelColor(a.level),
       end: `<button class="pillbtn press" data-act="unignore:${esc(a.key)}">Stop ignoring</button>` })).join("")}</div>`)}</div>`;
 }
+// CPU power: a plan, a power limit and a temperature limit, held by the server (nova-cpupower).
+const CPU_PLANS = [["full", "Full speed", "Boost on — the fastest it can go"], ["balanced", "Balanced", "Boost on, leaning toward saving power"],
+  ["cool", "Cool and quiet", "No boost, saving power first — the coolest, and slower"]];
+function cpuPowerRows() {
+  const c = S.cache["/api/v1/power/cpu"];
+  if (!c || c.supported === false) return "";
+  const plan = (CPU_PLANS.find(p => p[0] === c.plan) || CPU_PLANS[0])[1];
+  const now = c.running && c.now_temp != null ? [c.now_watts != null ? `${Math.round(c.now_watts)} W` : "", `${c.now_temp} °C`, c.now_mhz ? `${(c.now_mhz / 1000).toFixed(1)} GHz` : ""].filter(Boolean).join(" · ") : "";
+  const why = c.limiting === "temperature" ? `slowing it to ${(c.cap_mhz / 1000).toFixed(1)} GHz to stay under ${c.temp} °C`
+    : c.limiting === "power" ? `slowing it to ${(c.cap_mhz / 1000).toFixed(1)} GHz to stay under ${c.watts} W`
+    : c.limiting === "held" ? `held at ${(c.cap_mhz / 1000).toFixed(1)} GHz for now` : "";
+  return (now ? row("Right now", { sub: [now, why].filter(Boolean).join(" — "), icon: "cpu", tint: why ? "var(--amber)" : "var(--green)" }) : "")
+    + row("Power plan", { sub: plan, blue: true, icon: "speed", tint: "var(--blue)", click: "cpu:plan" })
+    + (c.can_watts ? row("Power limit", { sub: c.watts ? `${c.watts} W` : "No limit", blue: true, icon: "power", tint: "var(--amber)", click: "cpu:watts" }) : "")
+    + (c.can_temp ? row("Temperature limit", { sub: c.temp ? `${c.temp} °C` : "No limit", blue: true, icon: "temp", tint: "var(--red)", click: "cpu:temp" }) : "");
+}
+async function cpuPowerSet(what) {
+  const c = S.cache["/api/v1/power/cpu"]; if (!c) return;
+  let v;
+  if (what === "plan") v = await choose("Power plan", CPU_PLANS.filter(p => (c.plans || ["full"]).includes(p[0])), c.plan);
+  if (what === "watts") v = await choose("Power limit", [["0", "No limit"], ...[95, 65, 45, 35, 25, 15].map(w => [String(w), `${w} W`])], String(c.watts || 0));
+  if (what === "temp") v = await choose("Temperature limit", [["0", "No limit"], ...[90, 85, 80, 75, 70].map(t => [String(t), `${t} °C`])], String(c.temp || 0));
+  if (v == null) return;
+  const body = { plan: c.plan, watts: c.watts || 0, temp: c.temp || 0, [what]: what === "plan" ? v : Number(v) };
+  try { S.cache["/api/v1/power/cpu"] = await post("/api/v1/power/cpu", body); toast("Saved — the server holds it from now on"); } catch (e) { toast(e.message); }
+}
 // The power menu: the server itself, or just Nova (the API — everything else keeps running).
 const POWER = [
   ["reboot", "Restart server", "Everything goes offline for about 2 minutes", "restart", "var(--amber)"],
@@ -1212,7 +1238,8 @@ export async function quick(ctx) {
         return `<button class="tile glass press${on ? " on" : ""}" data-act="run:${esc(id)}" data-hold="${esc(id)}"><span class="ti">${I(d.icon)}</span><span class="tt"><b>${esc(d.label)}</b>${st ? `<small>${esc(st)}</small>` : ""}</span></button>`; }).join("")}</div>
       <p class="note" style="margin-left:24px">Tip: hold a tile for its settings.${ids.length ? "" : " No quick actions — tap the pencil to add some."}</p>
       ${(busy === "backup" || b?.running) && b ? sec("Backup") + group(`<div style="padding:16px 22px">${bar(b.progress?.phase === "copying" ? b.progress.pct / 100 : .1)}<p class="muted" style="font-size:13px;margin:8px 0 0">${esc(backupLine(b))}</p></div>`) : ""}
-      ${isAdmin() ? sec("Power") + group(awakeRow() + schedRows() + POWER.map(([id, label, sub, icon, tint]) => row(label, { sub, icon, tint, click: "power:" + id })).join("")) : ""}`,
+      ${isAdmin() ? sec("Power") + group(awakeRow() + schedRows() + POWER.map(([id, label, sub, icon, tint]) => row(label, { sub, icon, tint, click: "power:" + id })).join("")) : ""}
+      ${isAdmin() && cpuPowerRows() ? sec("CPU power") + group(cpuPowerRows()) + note("A power or temperature limit is held by lowering the processor's top clock until it's under, and raising it again when there's room. The plan decides how eagerly it boosts.") : ""}`,
       { title: "Quick panel", actions: [{ icon: "edit", label: "Edit", act: "go:edit-quick" }] });
     wireFanSlider($("#fantile"), draw, () => ctx.go("lighting"));
     $$("[data-hold]").forEach(t => onHold(t, () => { const r = { fan: "lighting", dim: "lighting", bright: "lighting", status_light: "lighting", lighting: "lighting", backup: "status", freeram: "status", status: "status", discord: "notify", inbox: "notify", containers: "containers", storage: "hardware" }[t.dataset.hold] || (t.dataset.hold.startsWith("restart:") ? "containers/" + t.dataset.hold.slice(8) : null); if (r) ctx.go(r); }));
@@ -1235,12 +1262,14 @@ export async function quick(ctx) {
     power: async what => { await powerDo(what); if (ctx.alive()) draw(); },
     unsched: async id => { await unschedule(id); if (ctx.alive()) draw(); },
     "awake-off": async () => { await awakeOff(); if (ctx.alive()) draw(); },
+    cpu: async what => { if (!isAdmin()) return viewOnly(); await cpuPowerSet(what); if (ctx.alive()) draw(); },
   });
   draw();
   if (isAdmin()) get("/api/v1/power/schedule").then(() => ctx.alive() && draw()).catch(() => {});
   if (isAdmin()) get("/api/v1/power/keep-awake").then(() => ctx.alive() && draw()).catch(() => {});
+  if (isAdmin()) get("/api/v1/power/cpu").then(() => ctx.alive() && draw()).catch(() => {});
   get("/api/v1/notify").then(() => ctx.alive() && draw()).catch(() => {});
-  ctx.every(3000, async () => { await get("/api/v1/backup"); if (!$("#fantile")?.hasPointerCapture?.()) draw(); }, true);
+  ctx.every(3000, async () => { await Promise.all([get("/api/v1/backup"), isAdmin() && S.cache["/api/v1/power/cpu"] ? get("/api/v1/power/cpu").catch(() => {}) : null]); if (!$("#fantile")?.hasPointerCapture?.()) draw(); }, true);
 }
 export async function editQuick(ctx) {
   const draw = () => {

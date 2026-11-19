@@ -47,7 +47,7 @@ def lights_ready():
     (sudo nova lighting makes /var/lib/nova-rgb) or OpenRGB is on in Labs — not on a server without that hardware."""
     return nova_rgb is not None and (os.path.isdir("/var/lib/nova-rgb") or bool(load_json(SETTINGS, {}).get("labs", {}).get("openrgb")))
 
-API_VERSION = "1.0.0-beta.2"
+API_VERSION = "1.0.0-beta.3"
 # The API contract (docs/API.md). API_LEVEL only ever goes up: each new level adds endpoints or fields, never removes or
 # changes one. MIN_LEVEL is the oldest level this server still answers in full (old apps keep working back to it).
 # MIN_CLIENT: the oldest app builds still served, per platform — 0 = all of them. Raising it is the last resort, after
@@ -1016,7 +1016,7 @@ def needs_stepup(method, parts):
     if parts[:1] == ["containers"] and len(parts) == 4 and parts[2] == "fix": return True
     if parts[:1] in (["store"], ["programs"]) and len(parts) == 3: return True
     if parts[:1] == ["drives"] and parts[-1:] == ["unmount"]: return True
-    if parts[:1] == ["power"] and parts[1:2] != ["keep-awake"]: return True      # (keeping it awake is harmless: no fingerprint)
+    if parts[:1] == ["power"] and parts[1:2] not in (["keep-awake"], ["cpu"]): return True   # (keeping it awake, or slowing it down: harmless, no fingerprint)
     if parts == ["ssh", "authorize"]: return True
     if parts[:2] == ["storage", "task"] and len(parts) == 3 and parts[2] in STORAGE_DESTRUCTIVE: return True
     if parts in (["updates", "packages"], ["updates", "containers"]): return True
@@ -2741,6 +2741,17 @@ class Handler(BaseHTTPRequestHandler):
             if not time.time() + 60 <= at <= time.time() + 366 * 86400: raise ValueError("pick a time from a minute from now to a year from now")
             rc, res = helper("power-schedule", act, str(at)); return (200 if rc == 0 else 400), res
         # Keep this computer from sleeping for a while (a desktop or laptop that sleeps by itself is unreachable)
+        if parts == ["power", "cpu"] and method == "GET":                # CPU power: plan, power limit, temperature limit
+            if plat.WITHOUT.get("cpu_power") is False: return 404, {"error": "not on this server yet"}
+            rc, res = helper("cpu-power-status"); return (200 if rc == 0 else 500), res
+        if parts == ["power", "cpu"] and method == "POST":
+            if role_of(dev) != "admin": return 403, {"error": "admins only"}
+            if plat.WITHOUT.get("cpu_power") is False: return 404, {"error": "not on this server yet"}
+            plan, w, t = data.get("plan"), data.get("watts", 0), data.get("temp", 0)
+            if plan not in ("full", "balanced", "cool"): raise ValueError("plan: full, balanced or cool")
+            for v, lo, hi, what in ((w, 10, 250, "power limit (W)"), (t, 60, 95, "temperature limit (°C)")):
+                if not isinstance(v, int) or isinstance(v, bool) or not (v == 0 or lo <= v <= hi): raise ValueError(f"{what}: {lo} to {hi}, or 0 for none")
+            rc, res = helper("cpu-power-set", plan, str(w), str(t), timeout=40); return (200 if rc == 0 else 400), res
         if parts == ["power", "keep-awake"] and method == "GET":
             rc, res = helper("keep-awake-status"); return (200 if rc == 0 else 500), res
         if parts == ["power", "keep-awake"] and method == "POST":

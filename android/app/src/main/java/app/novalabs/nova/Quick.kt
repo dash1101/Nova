@@ -143,6 +143,10 @@ private fun settingsFor(id: String): Route? = when {
     LaunchedEffect(app.isAdmin) { if (app.isAdmin) scheds = loadScheds(app) }
     var awake by remember { mutableStateOf<org.json.JSONObject?>(null) }; var awakeAsk by remember { mutableStateOf(false) }
     LaunchedEffect(app.isAdmin) { if (app.isAdmin) awake = loadAwake(app) }
+    var cpu by remember { mutableStateOf<org.json.JSONObject?>(null) }; var cpuAsk by remember { mutableStateOf("") }
+    LaunchedEffect(app.isAdmin) {                                       // CPU power: refreshed while the panel is open
+        while (app.isAdmin) { cpu = runCatching { app.api.get("/api/v1/power/cpu") }.getOrNull()?.takeIf { it.optBoolean("supported", true) } ?: cpu; kotlinx.coroutines.delay(3_000) }
+    }
     var confirm by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf<String?>(null) }
     val backupState = live(app, "/api/v1/backup", 3_000)
@@ -245,10 +249,56 @@ private fun settingsFor(id: String): Route? = when {
             if (awake != null) { RowDivider()
                 Row1("Keep awake", "Stop it from going to sleep by itself — for a few hours, or until you say", true, Icons.Rounded.LightMode, N.amber, onClick = { awakeAsk = true }) }
         }
+        cpu?.let { c -> if (app.isAdmin) {
+            SectionLabel("CPU power")
+            Group {
+                cpuNow(c)?.let { (now, why) ->
+                    Row1("Right now", listOfNotNull(now, why).joinToString(" — "), false, Icons.Rounded.Memory, if (why != null) N.amber else N.green); RowDivider() }
+                Row1("Power plan", CPU_PLANS.firstOrNull { it.first == c.optString("plan") }?.second ?: "Full speed", true, Icons.Rounded.Speed, N.blue, onClick = { cpuAsk = "plan" })
+                if (c.optBoolean("can_watts")) { RowDivider()
+                    Row1("Power limit", c.optInt("watts").let { if (it > 0) "$it W" else "No limit" }, true, Icons.Rounded.Bolt, N.amber, onClick = { cpuAsk = "watts" }) }
+                if (c.optBoolean("can_temp")) { RowDivider()
+                    Row1("Temperature limit", c.optInt("temp").let { if (it > 0) "$it °C" else "No limit" }, true, Icons.Rounded.Thermostat, N.red, onClick = { cpuAsk = "temp" }) }
+            }
+            Text("A power or temperature limit is held by lowering the processor's top clock until it's under, and raising it again when there's room. The plan decides how eagerly it boosts.",
+                color = N.sub, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 30.dp, vertical = 4.dp))
+        } }
     }
     if (awakeAsk) KeepAwakeDialog(app, awake, { awakeAsk = false }) { awake = it }
+    if (cpuAsk.isNotEmpty()) cpu?.let { c -> CpuPowerDialog(app, c, cpuAsk, { cpuAsk = "" }) { cpu = it } }
     confirm?.let { what -> PowerConfirm(app, what) { confirm = null } }
     if (scheduling) ScheduleDialog(app, { scheduling = false }) { scheds = it }
+}
+
+val CPU_PLANS = listOf(Triple("full", "Full speed", "Boost on — the fastest it can go"), Triple("balanced", "Balanced", "Boost on, leaning toward saving power"),
+    Triple("cool", "Cool and quiet", "No boost, saving power first — the coolest, and slower"))
+
+/** "33 W · 71 °C · 3.2 GHz" and, when a limit is slowing it down, why. null while the server hasn't measured yet. */
+fun cpuNow(c: org.json.JSONObject): Pair<String, String?>? {
+    if (!c.optBoolean("running") || c.isNull("now_temp")) return null
+    val now = listOfNotNull(if (c.isNull("now_watts")) null else "${Math.round(c.optDouble("now_watts"))} W", "${c.optInt("now_temp")} °C",
+        c.optInt("now_mhz").takeIf { it > 0 }?.let { "%.1f GHz".format(it / 1000.0) }).joinToString(" · ")
+    val cap = "%.1f GHz".format(c.optInt("cap_mhz") / 1000.0)
+    val why = when (c.optString("limiting")) {
+        "temperature" -> "slowing it to $cap to stay under ${c.optInt("temp")} °C"; "power" -> "slowing it to $cap to stay under ${c.optInt("watts")} W"
+        "held" -> "held at $cap for now"; else -> null }
+    return now to why
+}
+
+/** Pick a power plan, a power limit or a temperature limit; the server holds it from then on. */
+@Composable fun CpuPowerDialog(app: AppState, c: org.json.JSONObject, what: String, close: () -> Unit, done: (org.json.JSONObject) -> Unit) {
+    fun go(k: String, v: Any) { close(); app.scope.launch {
+        val body = org.json.JSONObject().put("plan", c.optString("plan", "full")).put("watts", c.optInt("watts")).put("temp", c.optInt("temp")).put(k, v)
+        runCatching { app.api.post("/api/v1/power/cpu", body) }.onSuccess { done(it); app.toast("Saved — the server holds it from now on") }.onFailure { app.toast(it.message ?: "That didn't work") } } }
+    val plans = c.optJSONArray("plans")?.let { a -> (0 until a.length()).map { a.optString(it) } } ?: listOf("full")
+    when (what) {
+        "plan" -> OneDialog(close, "Power plan", buttons = listOf(DialogButton("Cancel") { close() })) {
+            CPU_PLANS.filter { it.first in plans }.forEach { (k, l, s) -> DialogChoice(l, s, c.optString("plan") == k) { go("plan", k) } } }
+        "watts" -> OneDialog(close, "Power limit", buttons = listOf(DialogButton("Cancel") { close() })) {
+            listOf(0, 95, 65, 45, 35, 25, 15).forEach { w -> DialogChoice(if (w == 0) "No limit" else "$w W", null, c.optInt("watts") == w) { go("watts", w) } } }
+        else -> OneDialog(close, "Temperature limit", buttons = listOf(DialogButton("Cancel") { close() })) {
+            listOf(0, 90, 85, 80, 75, 70).forEach { t -> DialogChoice(if (t == 0) "No limit" else "$t °C", null, c.optInt("temp") == t) { go("temp", t) } } }
+    }
 }
 
 /** null when this server's Nova is too old to keep itself awake (the row is hidden then). */

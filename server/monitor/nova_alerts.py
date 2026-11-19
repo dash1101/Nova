@@ -616,7 +616,11 @@ class Monitor:
         if cpu is not None:
             self.metrics["cpu_temp"] = f"{cpu:.0f}°C"
             lvl = "critical" if cpu >= t["cpu_temp_crit"] else "warning"
-            self.condition("temp:cpu", cpu >= t["cpu_temp_warn"], lvl, f"CPU is hot: {cpu:.0f}°C", f"Threshold {t['cpu_temp_warn']}°C.")
+            # (once hot, it stays an alert until it's 5° under the warning: a CPU that hovers at the line doesn't send
+            # "hot" and "resolved" every minute)
+            hot = cpu >= t["cpu_temp_warn"] or ("temp:cpu" in self.st["conditions"] and cpu >= t["cpu_temp_warn"] - 5)
+            self.condition("temp:cpu", hot, lvl, f"CPU is hot: {cpu:.0f}°C",
+                           f"Threshold {t['cpu_temp_warn']}°C. To run it cooler: Quick panel → CPU power (a plan, or a temperature or power limit).")
         if nvme is not None:
             self.metrics["nvme_temp"] = f"{nvme:.0f}°C"
             lvl = "critical" if nvme >= t["nvme_temp_crit"] else "warning"

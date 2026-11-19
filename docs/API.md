@@ -125,7 +125,7 @@ Grouped by area; each is `GET` unless marked. Fields are documented by the apps 
 (`server/web/*.js`, `android/…/*.kt`) — the shapes below are the stable core.
 
 - **Server:** `ping` · `whoami` · `overview` (`status`, `server`, `features`, `containers`) · `status` · `stats` ·
-  `settings` (GET/POST) · `features` (POST, step-up) · `server/update` (GET/POST)
+  `settings` (GET/POST) · `features` (POST, step-up) · `server/update` (GET/POST) · `power/cpu` (GET/POST, admins: `{plan: full|balanced|cool, watts: 0|10–250, temp: 0|60–95}`; Linux)
   · the home picture's shape (capability `looks`): `settings` POST `{"look": "tower|mini|nas|rack|laptop|sbc"}` (or `""` to go
   back to what the firmware says); `overview.server.look` is the shape to draw and `look_set` whether someone picked it (both are in `settings` too).
   An app that doesn't know a shape draws its default. Capability `look-finish`: `{"finish": "dark|light"}` is the case's

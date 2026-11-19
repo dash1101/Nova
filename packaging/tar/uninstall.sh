@@ -24,7 +24,7 @@ if [ -s /etc/nova-api/cloudflare-added.json ] && [ "$(cat /etc/nova-api/cloudfla
     say "Note: Nova put apps on your Cloudflare tunnel. They stay there after Nova is removed."
     say "      To take them off first:  sudo nova cloudflare undo   (it lists them and asks), then run this again."
 fi
-systemctl disable --now nova-api.service nova-gate.service nova-helper.socket nova-rgb-anim.service nova-rgb-tick.timer nova-alerts.timer nova-alerts.path nova-backups.timer nova-labs.timer nova-update-check.timer nova-brain.service nova-ear.service >/dev/null 2>&1 || true
+systemctl disable --now nova-api.service nova-gate.service nova-helper.socket nova-rgb-anim.service nova-rgb-tick.timer nova-alerts.timer nova-alerts.path nova-backups.timer nova-labs.timer nova-cpupower.service nova-update-check.timer nova-brain.service nova-ear.service >/dev/null 2>&1 || true
 for t in /etc/systemd/system/nova-sched-*.timer; do [ -e "$t" ] || continue; systemctl disable --now "$(basename "$t")" >/dev/null 2>&1 || true; rm -f "$t" "${t%.timer}.service"; done
 # Nova's own files (the same list the tarball put there)
 rm -f /usr/bin/nova /usr/sbin/nova-api /usr/sbin/nova-alert /usr/sbin/nova-setup /usr/sbin/nova-setup-gui /usr/sbin/nova-setup-lighting \

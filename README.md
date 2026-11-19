@@ -1,4 +1,4 @@
-# Nova  ·  1.0.0-beta.2
+# Nova  ·  1.0.0-beta.3
 
 > **1.0 is in beta.** The one-line install gives you the latest regular release; add `--beta` to it (or run
 > `sudo nova update --beta` on a server you already have) for the beta. What's left before 1.0: [docs/ROADMAP.md](docs/ROADMAP.md).

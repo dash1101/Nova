@@ -28,6 +28,9 @@ if [ "$1" = configure ]; then
     install -d -m 755 /var/lib/nova-backups
     systemctl enable --now nova-backups.timer >/dev/null 2>&1 || true
     systemctl enable --now nova-labs.timer >/dev/null 2>&1 || true
+    # CPU power (Power → CPU power): the plan and its power and temperature limits; full speed and no limits until set
+    systemctl enable nova-cpupower.service >/dev/null 2>&1 || true
+    systemctl restart nova-cpupower.service >/dev/null 2>&1 || true
     if [ -f /etc/nova-api/config.json ]; then
         systemctl enable nova-api.service >/dev/null 2>&1 || true
         systemctl restart nova-api.service || true

@@ -1,0 +1,20 @@
+[Unit]
+Description=Nova — CPU power plan and its power and temperature limits (Power → CPU power in the app)
+After=multi-user.target
+
+[Service]
+# Root: it sets the processor's clock limits in /sys. It reads its settings and writes one status file, nothing else.
+ExecStart=/usr/bin/python3 -I /usr/local/lib/nova-api/cpupower.py run
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=yes
+ProtectSystem=full
+ProtectHome=yes
+PrivateTmp=yes
+PrivateNetwork=yes
+RestrictAddressFamilies=AF_UNIX
+MemoryMax=64M
+CPUWeight=20
+
+[Install]
+WantedBy=multi-user.target

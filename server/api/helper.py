@@ -885,6 +885,25 @@ if verb == "voice-remove" and not args:
     import brain
     brain.remove_voice(); changelog("Assistant voice removed from the Nova app"); out({"ok": True})
 
+# ── CPU power: the plan, a power limit in watts and a temperature limit, held by nova-cpupower.service (cpupower.py) ──
+if verb == "cpu-power-status" and not args:
+    import cpupower; out(cpupower.status())
+if verb == "cpu-power-set" and len(args) == 3:
+    import cpupower
+    plan, w, t = args
+    if plan not in cpupower.PLANS: fail("plan: full, balanced or cool", 2)
+    if not (w.isdigit() and (int(w) == 0 or 10 <= int(w) <= 250)): fail("power limit: 10 to 250 W, or 0 for none", 2)
+    if not (t.isdigit() and (int(t) == 0 or 60 <= int(t) <= 95)): fail("temperature limit: 60 to 95 °C, or 0 for none", 2)
+    before = cpupower.settings(); new = {"plan": plan, "watts": int(w), "temp": int(t)}
+    tmp = cpupower.SETTINGS + ".tmp"
+    with open(tmp, "w") as f: json.dump(new, f)
+    os.chmod(tmp, 0o644); os.replace(tmp, cpupower.SETTINGS)
+    run(["systemctl", "enable", "--now", "nova-cpupower.service"], timeout=30)
+    if new != before:
+        names = {"full": "Full speed", "balanced": "Balanced", "cool": "Cool and quiet"}
+        changelog(f"CPU power set to {names[plan]}, power limit {w + ' W' if int(w) else 'none'}, temperature limit {t + ' °C' if int(t) else 'none'} (from the Nova app)")
+    out({"ok": True, **cpupower.status()})
+
 # ── keep awake: a sleep inhibitor in its own transient unit, ending by itself (or "forever": until turned off or a restart) ──
 KEEP_UNIT, KEEP_STATE = "nova-keep-awake", "/run/nova-keep-awake.json"
 def keep_awake_status():
