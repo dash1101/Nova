@@ -85,6 +85,13 @@ s, r = d.call("POST", "/api/v1/power/keep-awake", {"off": True}); time.sleep(2);
 check("…and let go when turned off", s == 200 and r.get("on") is False and "Kept awake" not in so, (r, so))
 s, r = d.call("POST", "/api/v1/power/keep-awake", {"hours": 500}); check("…a silly length is refused", s == 400, (s, r))
 
+print("\nCPU power")
+s, r = d.call("GET", "/api/v1/power/cpu"); check("its settings and what this machine supports", s == 200 and r.get("plan") == "full" and "supported" in r, (s, r))
+rc, so, _ = sh("systemctl", "is-active", "nova-cpupower"); check("…the service that holds them runs", so.strip() == "active", so)
+s, r = d.call("POST", "/api/v1/power/cpu", {"plan": "balanced", "watts": 45, "temp": 85}); check("…a plan and both limits are saved (no fingerprint needed)", s == 200 and (r.get("plan"), r.get("watts"), r.get("temp")) == ("balanced", 45, 85), (s, r))
+s, r = d.call("POST", "/api/v1/power/cpu", {"plan": "turbo", "watts": 5, "temp": 200}); check("…nonsense is refused", s == 400, (s, r))
+s, r = d.call("POST", "/api/v1/power/cpu", {"plan": "full", "watts": 0, "temp": 0}); check("…and back to full speed with no limits", s == 200 and (r.get("plan"), r.get("watts"), r.get("temp")) == ("full", 0, 0), (s, r))
+
 print("\nThe monitor and the nova command")
 end = time.time() + 120
 while time.time() < end and not os.path.exists("/var/lib/nova-alerts/www/status.json"): time.sleep(2)

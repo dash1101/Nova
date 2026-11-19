@@ -143,14 +143,9 @@ private fun settingsFor(id: String): Route? = when {
     LaunchedEffect(app.isAdmin) { if (app.isAdmin) scheds = loadScheds(app) }
     var awake by remember { mutableStateOf<org.json.JSONObject?>(null) }; var awakeAsk by remember { mutableStateOf(false) }
     LaunchedEffect(app.isAdmin) { if (app.isAdmin) awake = loadAwake(app) }
-    var cpu by remember { mutableStateOf<org.json.JSONObject?>(null) }; var cpuAsk by remember { mutableStateOf("") }
-    LaunchedEffect(app.isAdmin) {                                       // CPU power: refreshed while the panel is open
-        while (app.isAdmin) {
-            val r = runCatching { app.api.get("/api/v1/power/cpu") }.getOrNull()?.takeIf { it.optBoolean("supported", true) }
-            if (r == null && cpu == null) break                         // (older Nova, or a server without it: no section, no more asking)
-            cpu = r ?: cpu; kotlinx.coroutines.delay(3_000)
-        }
-    }
+    // CPU power (admins): refreshed while the panel is on screen; an older Nova, or a server without it, shows no section
+    val cpuState = if (app.isAdmin) live(app, "/api/v1/power/cpu", 3_000) else null
+    val cpu = cpuState?.value?.takeIf { it.optBoolean("supported", true) }; var cpuAsk by remember { mutableStateOf("") }
     var confirm by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf<String?>(null) }
     val backupState = live(app, "/api/v1/backup", 3_000)
@@ -269,7 +264,7 @@ private fun settingsFor(id: String): Route? = when {
         } }
     }
     if (awakeAsk) KeepAwakeDialog(app, awake, { awakeAsk = false }) { awake = it }
-    if (cpuAsk.isNotEmpty()) cpu?.let { c -> CpuPowerDialog(app, c, cpuAsk, { cpuAsk = "" }) { cpu = it } }
+    if (cpuAsk.isNotEmpty()) cpu?.let { c -> CpuPowerDialog(app, c, cpuAsk, { cpuAsk = "" }) { cpuState?.value = it } }
     confirm?.let { what -> PowerConfirm(app, what) { confirm = null } }
     if (scheduling) ScheduleDialog(app, { scheduling = false }) { scheds = it }
 }
