@@ -135,6 +135,51 @@ rc, so, se = sh("systemctl", "is-failed", "nova-alerts.service"); check("…and 
 s, r = d.call("GET", "/api/v1/events"); check("…and it's in the Inbox too", s == 200 and "Hello Discord from the test" in json.dumps(r), str(r)[:300])
 sh("sudo", "python3", "-c", "import json; p='/etc/nova-alerts/config.json'; c=json.load(open(p)); c['discord_webhook']=''; json.dump(c, open(p,'w'))")
 
+print("\nInstant alerts on one open answer (events/stream)")
+import queue
+def stream(dev, path, timeout=60):
+    """A signed GET read line by line on a thread: ("status", code), then ("line", text)…, then ("end", why)."""
+    ts = str(int(time.time() * 1000)); nonce = secrets.token_urlsafe(18)
+    msg = "\n".join(["GET", path, ts, nonce, hashlib.sha256(b"").hexdigest()]).encode()
+    h = {"X-Nova-Device": dev.id, "X-Nova-Time": ts, "X-Nova-Nonce": nonce,
+         "X-Nova-Signature": base64.b64encode(dev.k.sign(msg, ec.ECDSA(hashes.SHA256()))).decode()} if dev else {}
+    out = queue.Queue()
+    def run():
+        try:
+            with urllib.request.urlopen(urllib.request.Request(BASE + path, headers=h), timeout=timeout) as r:
+                out.put(("status", r.status))
+                while True:
+                    line = r.readline()
+                    if not line: break
+                    out.put(("line", line.decode().rstrip("\n")))
+            out.put(("end", "closed"))
+        except urllib.error.HTTPError as e: out.put(("status", e.code)); out.put(("end", "refused"))
+        except Exception as e: out.put(("end", str(e)))
+    threading.Thread(target=run, daemon=True).start()
+    return out
+def until(q, pred, secs):
+    """Lines from the stream until pred(line) is true (returns that line) or time runs out / it ends (None)."""
+    end = time.time() + secs
+    while time.time() < end:
+        try: kind, v = q.get(timeout=max(0.1, end - time.time()))
+        except queue.Empty: return None
+        if kind == "line" and pred(v): return v
+        if kind == "end": return None
+    return None
+q1 = stream(d, f"/api/v1/events/stream?since={time.time()}&beat=3")
+st = q1.get(timeout=10)
+hello = until(q1, lambda l: l.startswith("data:"), 5)
+check("it opens at once and says how often it checks in", st == ("status", 200) and hello and json.loads(hello[5:]).get("beat") == 3, (st, hello))
+check("…a heartbeat comes when nothing happens", until(q1, lambda l: l == ":", 8) is not None)
+sh("sudo", "nova", "alert", "warning", "Stream test alert", "From the CI stream test.")
+got = until(q1, lambda l: l.startswith("data:") and "Stream test alert" in l, 45)
+check("…an alert arrives on it as it happens", got is not None and json.loads(got[5:])["events"][0]["title"] == "Stream test alert", got)
+q2 = stream(d, f"/api/v1/events/stream?since={time.time()}&beat=3")
+bye = until(q1, lambda l: l.startswith("data:") and "reason" in l, 8)
+check("…the same device opening another one ends the first", bye is not None and json.loads(bye[5:]).get("reason") == "replaced", bye)
+q3 = stream(None, "/api/v1/events/stream")
+check("…and it isn't open to anyone unsigned", q3.get(timeout=10) == ("status", 401))
+
 print("\nThe Nova Server window")
 p = subprocess.Popen(["sudo", "/usr/sbin/nova-gui", "--serve", "--print-url"], stdout=subprocess.PIPE, text=True)
 url = (p.stdout.readline() or "").strip(); check("starts and gives its address", url.startswith("http://localhost:") and "?k=" in url, url[:40])

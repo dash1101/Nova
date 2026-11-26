@@ -118,6 +118,11 @@ Worked examples — requests, the exact bytes that get signed, and signatures th
   `GET /api/v1/tasks/<id>`; `GET /api/v1/tasks` lists running and just-finished ones.
 - Live updates: `GET /api/v1/stats?since=<t>` for the per-second graphs, and
   `GET /api/v1/events/wait?since=<t>&timeout=50` as a long poll for new alerts, approvals and task changes.
+  `GET /api/v1/events/stream?since=<t>` carries the same on one open answer (server-sent events): `event: hello` with
+  `data: {"beat": s, "max": 3600}`, then `data: {"events"?, "approvals"?, "tasks"?}` the moment something happens,
+  `:` heartbeats every `beat` seconds (80 through Cloudflare, 45 through other proxies, 240 at home or over Tailscale),
+  and `event: bye` with `data: {"reason": "max age"|"replaced"|"removed"}` at the end. One per device: a newer one ends
+  the older. The Android app uses it (far fewer packets than the long poll); a 404 means an older server.
 
 ## Endpoints (level 1)
 
@@ -130,7 +135,7 @@ Grouped by area; each is `GET` unless marked. Fields are documented by the apps 
   back to what the firmware says); `overview.server.look` is the shape to draw and `look_set` whether someone picked it (both are in `settings` too).
   An app that doesn't know a shape draws its default. Capability `look-finish`: `{"finish": "dark|light"}` is the case's
   color (`overview.server.finish`, default `dark`).
-- **Inbox:** `events` · `events/wait` · `events/delete` (POST) · `events/restore` (POST) · `archive` ·
+- **Inbox:** `events` · `events/wait` · `events/stream` · `events/delete` (POST) · `events/restore` (POST) · `archive` ·
   `alerts/dismiss`, `alerts/undismiss` (POST) · `notify`, `notify/discord` (POST, step-up), `notify/discord/test`
 - **Devices:** `devices` · `devices/<id>` (DELETE, step-up) · `devices/invite`, `devices/watch`,
   `devices/remove-all` (POST, step-up) · `device/form`, `device/stepup-key` (POST) · `browser/approve`,

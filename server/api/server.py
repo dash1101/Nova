@@ -47,7 +47,7 @@ def lights_ready():
     (sudo nova lighting makes /var/lib/nova-rgb) or OpenRGB is on in Labs — not on a server without that hardware."""
     return nova_rgb is not None and (os.path.isdir("/var/lib/nova-rgb") or bool(load_json(SETTINGS, {}).get("labs", {}).get("openrgb")))
 
-API_VERSION = "1.0.0-beta.3"
+API_VERSION = "1.0.0-beta.4"
 # The API contract (docs/API.md). API_LEVEL only ever goes up: each new level adds endpoints or fields, never removes or
 # changes one. MIN_LEVEL is the oldest level this server still answers in full (old apps keep working back to it).
 # MIN_CLIENT: the oldest app builds still served, per platform — 0 = all of them. Raising it is the last resort, after
@@ -660,6 +660,7 @@ CAPABILITIES = {"devices": 1, "approvals": 1, "containers": 1, "apps": 1, "store
 REC_CACHE = {}             # recommended actions, worked out at most once a minute
 browser_requests = {}      # id -> {pem, name, code, expires, state, device_id}
 approvals = {}             # id -> {id, device, device_name, method, path, data, created, state, result}
+_streams, _stream_lock = {}, threading.Lock()   # device id -> its open events stream (one each: a newer one ends the older)
 
 def new_approval(dev, method, path, data):
     aid = secrets.token_urlsafe(9)
@@ -1105,6 +1106,76 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
+    def event_stream(self, dev):
+        """Instant alerts on one open response, for the phone app (GET /api/v1/events/stream?since=T).
+
+        The long poll (events/wait) costs a full signed request and answer every 50 s, and phones count every packet of
+        that against the app ("uses too much mobile network in the background"). Here the answer stays open: an event,
+        a new approval or a change in a background task is written the moment it happens, and otherwise only a tiny
+        heartbeat, as often as the way in needs: 80 s through Cloudflare (it closes a response that's silent for 100 s),
+        45 s through any other proxy, 4 minutes on the home network or Tailscale. Lines are server-sent events:
+        `event: hello` + `data: {"beat": s, "max": s}` first, then `data: {"events"?, "approvals"?, "tasks"?}` as things
+        happen, `:` heartbeats, and `event: bye` + `data: {"reason": …}` at the end. It ends after an hour (the app opens
+        a new one), when the same device opens another, or when the device is removed or loses its access."""
+        q = {k: v[0] for k, v in urllib.parse.parse_qs(self.path.split("?", 1)[1] if "?" in self.path else "").items()}
+        where, _ = self.origin()
+        beat = 45 if self.relayed else {"remote": 80, "lan": 240, "tailnet": 240}.get(where, 45)
+        try: beat = max(2, min(beat, int(q.get("beat", beat))))            # (tests ask for a quicker one; never a slower one)
+        except ValueError: pass
+        try: since = float(q.get("since", "0") or 0)
+        except ValueError: since = 0.0
+        did, me, MAX_AGE = dev.get("id"), object(), 3600
+        with _stream_lock: _streams[did] = me
+        started = last = time.time(); beats = 0; why = "max age"
+        mt, sent_ap, tasks_sent, tasks_at, checked = None, set(), None, 0.0, 0.0
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream")              # (Cloudflare and cloudflared pass these through unbuffered)
+        self.send_header("Cache-Control", "no-cache, no-transform")
+        self.send_header("X-Accel-Buffering", "no")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("X-Nova-Api-Level", str(API_LEVEL))
+        self.end_headers()
+        def put(obj, kind=None):
+            self.wfile.write(((f"event: {kind}\n" if kind else "") + "data: " + json.dumps(obj) + "\n\n").encode()); self.wfile.flush()
+        try:
+            put({"beat": beat, "max": MAX_AGE}, "hello")
+            while True:
+                now = time.time()
+                if _streams.get(did) is not me: why = "replaced"; break
+                if now - started >= MAX_AGE: break
+                if now - checked >= 10:                                    # still paired, and still allowed what it gets?
+                    checked = now; cur = load_json(DEVICES, {}).get(did)
+                    if not cur: why = "removed"; break
+                    dev = {**dev, **cur}
+                msg = {}
+                try: m = os.stat(EVENTS).st_mtime_ns
+                except OSError: m = 0
+                if m != mt:                                                # (read again only when it changed)
+                    mt = m; ev = [e for e in load_json(EVENTS, {}).get("events", []) if e.get("t", 0) > since]
+                    if ev: msg["events"] = ev[:50]; since = max(e.get("t", 0) for e in ev[:50])
+                if role_of(dev) == "admin" and dev.get("type") != "browser":
+                    ap = [{"id": a["id"], "what": describe_action(a), "device_name": a["device_name"], "user": a.get("user", "")}
+                          for a in list(approvals.values()) if a["state"] == "pending" and now - a["created"] < 600 and a["id"] not in sent_ap]
+                    if ap: msg["approvals"] = ap; sent_ap.update(a["id"] for a in ap)
+                tk = live_tasks()
+                shape = {t["id"]: t["state"] for t in tk}
+                progress = {t["id"]: (t.get("pct"), t.get("step"), t.get("note")) for t in tk}
+                if tasks_sent is None or shape != tasks_sent[0] or (progress != tasks_sent[1] and now - tasks_at >= 10):
+                    if tk or tasks_sent is not None: msg["tasks"] = tk    # (a task started, ended or moved on: at most every 10 s for progress)
+                    tasks_sent, tasks_at = (shape, progress), now
+                if msg: put(msg); last = now
+                elif now - last >= beat:
+                    self.wfile.write(b":\n\n"); self.wfile.flush(); last = now; beats += 1
+                time.sleep(1)
+            put({"reason": why}, "bye")
+        except (OSError, ValueError):                                      # the phone went away (or a write timed out)
+            why = "closed by the device"
+        finally:
+            with _stream_lock:
+                if _streams.get(did) is me: del _streams[did]
+        print(f"events stream: {dev.get('name', '?')} via {where}{' (relayed)' if self.relayed else ''}, "
+              f"{round((time.time() - started) / 60)} min, {beats} heartbeats of {beat} s, ended: {why}", file=sys.stderr, flush=True)
+
     def origin(self):
         """('lan'|'local'|'tailnet'|'remote'|None, client_ip) — worked out once per request."""
         if getattr(self, "_org", None) is None: self._org = self._origin()
@@ -1357,6 +1428,8 @@ class Handler(BaseHTTPRequestHandler):
                 for _ in range(mb): self.wfile.write(chunk)
             except (BrokenPipeError, ConnectionResetError): pass
             return
+        if method == "GET" and parts == ["events", "stream"]:
+            return self.event_stream(dev)
         if method == "POST" and parts == ["assistant", "hear"]:          # speech → text, on the server (raw WAV, signed like a file upload)
             fq = {k: v[0] for k, v in urllib.parse.parse_qs(self.path.split("?", 1)[1] if "?" in self.path else "").items()}
             if not load_json(SETTINGS, {}).get("labs", {}).get("assistant"): return self.send(403, {"error": "turn on Nova assistant in Settings → Labs first"})

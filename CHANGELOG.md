@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.0.0-beta.4 (server and Android app)
+- **Instant alerts use far less of your phone's network.** To get alerts right away without Google's push service, the
+  Android app kept asking the server "anything new?": the server held each question for up to 50 seconds, then the app
+  asked again. That's about 70 full signed requests an hour, all day, and phones count those packets against the app.
+  A Galaxy S26 flagged Nova as "using too much mobile network in the background" and offered to put it in deep sleep.
+  Now the app opens one connection and the server writes each alert, approval or task change into it the moment it
+  happens. When nothing happens, the server only sends a tiny heartbeat: every 80 seconds through Cloudflare (which closes
+  connections that stay silent for 100 seconds), every 4 minutes on the home network or over Tailscale. Alerts arrive
+  just as fast.
+  - When the phone changes networks (leaving home Wi-Fi, for example), it reconnects right away on the new one.
+  - The 15-minute background check is skipped while instant alerts are connected.
+  - Older servers, and proxies that cut long connections, keep working the old way.
+
 ## 1.0.0-beta.3 (server and apps)
 - **CPU power: run the server cooler when you want to.** Quick panel → CPU power (app and Nova web) has three
   controls, held by the server from then on, through restarts:

@@ -159,6 +159,8 @@ class InboxWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx,
         var retry = false
         for (id in Servers.all(applicationContext)) {           // every paired server
             val pairing = Pairing(applicationContext, id)
+            // (instant alerts already heard from this server in the last 6 minutes: nothing to catch up on)
+            if (System.currentTimeMillis() - (Alerts.alive[id] ?: 0L) < 6 * 60_000L) continue
             if (pairing.paired && !check(pairing)) retry = true
         }
         return if (retry) Result.retry() else Result.success()

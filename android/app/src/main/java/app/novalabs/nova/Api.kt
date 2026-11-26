@@ -359,28 +359,51 @@ class NovaApi(private val pairing: Pairing) {
         client(route).newCall(build(route, base, pr, stepUpSig)).execute().use { resp ->
             val text = resp.body.string()
             resp.header("X-Nova-Api-Level")?.toIntOrNull()?.let { ApiCompat.serverLevel = it }
-            if (!resp.isSuccessful) {
-                val obj = runCatching { JSONObject(text) }.getOrDefault(JSONObject())
-                if (resp.code == 426) { ApiCompat.appTooOld = true; throw ApiException(426, obj.optString("error", "Update the app to keep using this server")) }
-                if (resp.code == 401) when (obj.optString("reason")) {
-                    "clock" -> throw ApiException(401, "Signed too early or too late", reason = "clock", serverTime = obj.optLong("server_time"))
-                    "replay" -> throw ApiException(401, "Sent twice", reason = "replay")
-                    else -> throw ApiException(401, "This ${DeviceForm.noun} isn't authorized anymore. Pair again.")
-                }
-                if (obj.optString("error") == "view_only")
-                    throw ApiException(403, "This ${DeviceForm.noun} has view-only access — ask an admin to change it.")
-                if (obj.optString("error") == "stepup_required")
-                    throw ApiException(403, obj.optString("message", "Needs fingerprint confirmation"), stepUpRequired = true)
-                if (route == "remote" && !obj.has("error") && (resp.code in 520..530 || resp.code in 502..504))
-                    throw ApiException(resp.code, cloudflareSays(resp.code), offline = true)
-                // Nova's own errors always say {"error": …}: anything else is something other than Nova answering at that address
-                // (a website on the same domain, another program on the port) — not this server: try the next way in
-                if (!obj.has("error")) throw ApiException(resp.code, "something other than Nova answered (HTTP ${resp.code})" +
-                    (if (route == "remote") " — is the Cloudflare tunnel to this server running?" else ""), offline = true)
-                throw ApiException(resp.code, obj.optString("error", "HTTP ${resp.code}"))
-            }
+            if (!resp.isSuccessful) refuse(route, resp.code, text)
             return text
         }
+    }
+
+    /** The open line of instant alerts (GET /api/v1/events/stream): each line goes to [onLine] as it arrives, and this returns
+     *  when the server ends it. Same ways in, signing, pinning and errors as [call]; reading waits a little longer than the
+     *  server's heartbeat for that way in (80 s through Cloudflare, 4 min at home or over Tailscale). [onCall] gets the call, so
+     *  the caller can cut it (a new network). Once it's open, its end is a [StreamEnded], never another way in being tried. */
+    suspend fun stream(path: String, onCall: (okhttp3.Call) -> Unit, onLine: (String) -> Unit) = withContext(Dispatchers.IO) {
+        route("GET") { name, base ->
+            val c = client(name).newBuilder().readTimeout(if (name == "remote") 110L else 280L, TimeUnit.SECONDS).build()
+            val call = c.newCall(build(name, base, prepare("GET", path, null), null)); onCall(call)
+            call.execute().use { resp ->
+                resp.header("X-Nova-Api-Level")?.toIntOrNull()?.let { ApiCompat.serverLevel = it }
+                if (!resp.isSuccessful) refuse(name, resp.code, resp.body.string())
+                val src = resp.body.source()
+                try { while (true) onLine(src.readUtf8Line() ?: break) }
+                catch (e: IOException) { throw StreamEnded(e.message ?: "connection lost") }
+            }
+            ""
+        }
+    }
+    class StreamEnded(why: String) : Exception(why)
+
+    /** A refusal, as the right ApiException (offline = try the next way in). */
+    private fun refuse(route: String, code: Int, text: String): Nothing {
+        val obj = runCatching { JSONObject(text) }.getOrDefault(JSONObject())
+        if (code == 426) { ApiCompat.appTooOld = true; throw ApiException(426, obj.optString("error", "Update the app to keep using this server")) }
+        if (code == 401) when (obj.optString("reason")) {
+            "clock" -> throw ApiException(401, "Signed too early or too late", reason = "clock", serverTime = obj.optLong("server_time"))
+            "replay" -> throw ApiException(401, "Sent twice", reason = "replay")
+            else -> throw ApiException(401, "This ${DeviceForm.noun} isn't authorized anymore. Pair again.")
+        }
+        if (obj.optString("error") == "view_only")
+            throw ApiException(403, "This ${DeviceForm.noun} has view-only access — ask an admin to change it.")
+        if (obj.optString("error") == "stepup_required")
+            throw ApiException(403, obj.optString("message", "Needs fingerprint confirmation"), stepUpRequired = true)
+        if (route == "remote" && !obj.has("error") && (code in 520..530 || code in 502..504))
+            throw ApiException(code, cloudflareSays(code), offline = true)
+        // Nova's own errors always say {"error": …}: anything else is something other than Nova answering at that address
+        // (a website on the same domain, another program on the port) — not this server: try the next way in
+        if (!obj.has("error")) throw ApiException(code, "something other than Nova answered (HTTP $code)" +
+            (if (route == "remote") " — is the Cloudflare tunnel to this server running?" else ""), offline = true)
+        throw ApiException(code, obj.optString("error", "HTTP $code"))
     }
 
     companion object {
