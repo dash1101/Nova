@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.0-beta.5 (Android app)
+- **Instant alerts recover right away from a phone clock that's off.** Nova signs every request with the time, and a
+  server refuses one whose time is too far off. Ordinary requests already learned the server's clock and signed again;
+  the new alert connection from 1.0.0-beta.4 didn't, so it waited out its retry delay (up to 5 minutes, or until the
+  15-minute check) before alerts flowed again. Now it adjusts and reconnects at once.
+
 ## 1.0.0-beta.4 (server and Android app)
 - **Instant alerts use far less of your phone's network.** To get alerts right away without Google's push service, the
   Android app kept asking the server "anything new?": the server held each question for up to 50 seconds, then the app

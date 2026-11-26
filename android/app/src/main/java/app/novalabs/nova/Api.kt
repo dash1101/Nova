@@ -369,6 +369,17 @@ class NovaApi(private val pairing: Pairing) {
      *  server's heartbeat for that way in (80 s through Cloudflare, 4 min at home or over Tailscale). [onCall] gets the call, so
      *  the caller can cut it (a new network). Once it's open, its end is a [StreamEnded], never another way in being tried. */
     suspend fun stream(path: String, onCall: (okhttp3.Call) -> Unit, onLine: (String) -> Unit) = withContext(Dispatchers.IO) {
+        // Refused only for its timing, like [call]: learn the server's clock (a phone whose clock is off) and sign it again,
+        // or sign a "sent twice" again with a fresh nonce — once, right away, instead of waiting out the retry backoff.
+        for (attempt in 0..1) {
+            try { streamOnce(path, onCall, onLine); return@withContext }
+            catch (e: ApiException) {
+                if (attempt == 1 || (e.reason != "clock" && e.reason != "replay")) throw e
+                if (e.reason == "clock") ServerClock.learn(pairing.profile, e.serverTime)
+            }
+        }
+    }
+    private fun streamOnce(path: String, onCall: (okhttp3.Call) -> Unit, onLine: (String) -> Unit) {
         route("GET") { name, base ->
             val c = client(name).newBuilder().readTimeout(if (name == "remote") 110L else 280L, TimeUnit.SECONDS).build()
             val call = c.newCall(build(name, base, prepare("GET", path, null), null)); onCall(call)
